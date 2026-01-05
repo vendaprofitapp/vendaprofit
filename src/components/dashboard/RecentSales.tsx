@@ -20,7 +20,7 @@ interface RecentSalesProps {
   sales: Sale[];
 }
 
-export function RecentSales({ sales }: RecentSalesProps) {
+export function RecentSales({ sales = [] }: RecentSalesProps) {
   // Pegar as últimas 5 vendas com itens
   const recentSales = sales
     .filter(s => s.sale_items && s.sale_items.length > 0)

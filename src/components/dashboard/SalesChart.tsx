@@ -13,7 +13,7 @@ interface SalesChartProps {
   sales: Sale[];
 }
 
-export function SalesChart({ sales }: SalesChartProps) {
+export function SalesChart({ sales = [] }: SalesChartProps) {
   const { chartData, weekTotal, percentageChange } = useMemo(() => {
     const today = startOfDay(new Date());
     const weekStart = subDays(today, 6);
