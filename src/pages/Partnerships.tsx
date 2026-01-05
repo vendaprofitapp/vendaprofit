@@ -206,6 +206,8 @@ export default function Partnerships() {
     mutationFn: async () => {
       if (!user) throw new Error("Não autenticado");
       
+      // First, add user as owner member (this is allowed by RLS)
+      // We need to create the group and member in a specific order
       const { data, error } = await supabase
         .from("groups")
         .insert({
@@ -217,6 +219,20 @@ export default function Partnerships() {
         .single();
       
       if (error) throw error;
+
+      // Add creator as owner member
+      const { error: memberError } = await supabase
+        .from("group_members")
+        .insert({
+          group_id: data.id,
+          user_id: user.id,
+          role: "owner",
+        });
+
+      if (memberError) {
+        console.error("Error adding member:", memberError);
+        throw memberError;
+      }
 
       // Create default rules for the group
       const { error: rulesError } = await supabase
@@ -240,6 +256,7 @@ export default function Partnerships() {
       setNewGroupDescription("");
       queryClient.invalidateQueries({ queryKey: ["groups"] });
       queryClient.invalidateQueries({ queryKey: ["group-memberships"] });
+      queryClient.invalidateQueries({ queryKey: ["all-group-members"] });
       queryClient.invalidateQueries({ queryKey: ["partnership-rules"] });
     },
     onError: (error) => {
