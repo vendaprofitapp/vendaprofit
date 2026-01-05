@@ -98,6 +98,7 @@ export default function Sales() {
   const [discountValue, setDiscountValue] = useState(0);
   const [notes, setNotes] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [installments, setInstallments] = useState(1);
 
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
@@ -205,6 +206,7 @@ export default function Sales() {
     setCustomerName("");
     setCustomerPhone("");
     setPaymentMethod("dinheiro");
+    setInstallments(1);
     setDiscountType("fixed");
     setDiscountValue(0);
     setNotes("");
@@ -526,20 +528,42 @@ export default function Sales() {
                 </div>
               </div>
 
-              <div>
-                <Label>Forma de Pagamento</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentMethods.map((method) => (
-                      <SelectItem key={method.value} value={method.value}>
-                        {method.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Forma de Pagamento</Label>
+                  <Select value={paymentMethod} onValueChange={(value) => {
+                    setPaymentMethod(value);
+                    if (value !== "credito") setInstallments(1);
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethods.map((method) => (
+                        <SelectItem key={method.value} value={method.value}>
+                          {method.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {paymentMethod === "credito" && (
+                  <div>
+                    <Label>Nº de Parcelas</Label>
+                    <Select value={String(installments)} onValueChange={(v) => setInstallments(Number(v))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n}x {n === 1 ? "à vista" : `de R$ ${(total / n).toFixed(2).replace(".", ",")}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
