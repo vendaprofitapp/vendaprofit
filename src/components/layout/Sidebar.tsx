@@ -5,12 +5,14 @@ import {
   ShoppingCart, 
   TrendingUp,
   Settings,
-  Dumbbell
+  Dumbbell,
+  Warehouse
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: Warehouse, label: "Controle de Estoque", path: "/stock" },
   { icon: Package, label: "Produtos", path: "/products" },
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
   { icon: TrendingUp, label: "Relatórios", path: "/reports" },
