@@ -759,11 +759,19 @@ export default function StockControl() {
                           {group?.name || "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEditProduct(product)}>
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)}>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => {
+                                if (window.confirm(`Tem certeza que deseja excluir "${product.name}"?`)) {
+                                  handleDeleteProduct(product.id);
+                                }
+                              }}
+                            >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
