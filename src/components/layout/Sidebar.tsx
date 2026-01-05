@@ -7,7 +7,8 @@ import {
   Settings,
   Dumbbell,
   Warehouse,
-  Clock
+  Clock,
+  Users
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const navItems = [
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
   { icon: Clock, label: "Solicitações", path: "/stock-requests" },
   { icon: TrendingUp, label: "Relatórios", path: "/reports" },
+  { icon: Users, label: "Parcerias", path: "/partner-reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
 
