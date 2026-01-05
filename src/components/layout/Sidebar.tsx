@@ -8,9 +8,13 @@ import {
   Dumbbell,
   Warehouse,
   Clock,
-  Users
+  Users,
+  ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -26,6 +30,20 @@ const navItems = [
 
 export function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function check() {
+      if (!user) return;
+      const { data } = await supabase.rpc("has_role", {
+        _user_id: user.id,
+        _role: "admin",
+      });
+      setIsAdmin(!!data);
+    }
+    check();
+  }, [user]);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-sidebar-border">
@@ -41,7 +59,6 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -61,6 +78,22 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Admin-only link */}
+          {isAdmin && (
+            <Link
+              to="/admin/users"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
+                location.pathname === "/admin/users"
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-glow"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              )}
+            >
+              <ShieldCheck className="h-5 w-5" />
+              Admin Usuários
+            </Link>
+          )}
         </nav>
 
         {/* Footer */}
