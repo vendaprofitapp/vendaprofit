@@ -14,7 +14,7 @@ interface LowStockAlertProps {
   products: Product[];
 }
 
-export function LowStockAlert({ products }: LowStockAlertProps) {
+export function LowStockAlert({ products = [] }: LowStockAlertProps) {
   const navigate = useNavigate();
   
   // Filtrar produtos com estoque baixo

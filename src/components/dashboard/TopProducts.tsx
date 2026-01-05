@@ -19,7 +19,7 @@ interface TopProductsProps {
   sales: Sale[];
 }
 
-export function TopProducts({ sales }: TopProductsProps) {
+export function TopProducts({ sales = [] }: TopProductsProps) {
   const topProducts = useMemo(() => {
     // Agregar vendas por produto
     const productMap = new Map<string, { name: string; sold: number; revenue: number }>();
