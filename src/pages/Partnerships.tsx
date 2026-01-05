@@ -505,10 +505,10 @@ export default function Partnerships() {
                     <div className="bg-secondary/30 rounded-lg p-3 text-sm">
                       <p className="font-medium mb-1">Regras de Divisão:</p>
                       <p className="text-muted-foreground">
-                        Vendedora: {rules.seller_cost_percent}% custo + {rules.seller_profit_percent}% lucro
+                        Quem vende: {rules.seller_cost_percent}% custo + {rules.seller_profit_percent}% lucro
                       </p>
                       <p className="text-muted-foreground">
-                        Dona: {rules.owner_cost_percent}% custo + {rules.owner_profit_percent}% lucro
+                        Quem cede: {rules.owner_cost_percent}% custo + {rules.owner_profit_percent}% lucro
                       </p>
                     </div>
                   )}
@@ -645,16 +645,29 @@ export default function Partnerships() {
 
       {/* Rules Dialog */}
       <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Regras de Divisão - {selectedGroup?.name}</DialogTitle>
             <DialogDescription>
-              Configure como os ganhos serão divididos entre quem vende e a dona da peça.
+              Configure como os ganhos serão divididos entre os parceiros quando uma venda é realizada.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
+            {/* Explanation Card */}
+            <div className="bg-muted/50 rounded-lg p-4 text-sm">
+              <p className="font-medium mb-2">Como funciona a divisão?</p>
+              <p className="text-muted-foreground">
+                Quando um parceiro realiza uma venda, o valor é dividido em duas partes: 
+                <strong> custo</strong> (valor investido na peça) e <strong>lucro</strong> (diferença entre preço de venda e custo).
+                Cada parte pode ser dividida de forma diferente entre quem vende e quem cede.
+              </p>
+            </div>
+
             <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-              <p className="text-sm font-medium mb-2">Quem Vende (Vendedora)</p>
+              <p className="text-sm font-medium mb-1">Quem Vende</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                O parceiro que registra a venda no sistema
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="sellerCost">% do Custo</Label>
@@ -681,8 +694,11 @@ export default function Partnerships() {
               </div>
             </div>
 
-            <div className="bg-secondary/30 rounded-lg p-4">
-              <p className="text-sm font-medium mb-2">Dona da Peça</p>
+            <div className="bg-secondary/50 border border-secondary rounded-lg p-4">
+              <p className="text-sm font-medium mb-1">Quem Cede</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Os outros parceiros do grupo (co-investidores)
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="ownerCost">% do Custo</Label>
@@ -709,12 +725,30 @@ export default function Partnerships() {
               </div>
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              <p><strong>Exemplo:</strong> Peça com custo R$50 e venda R$100 (lucro R$50)</p>
-              <p className="mt-1">
-                Vendedora: R${((50 * sellerCostPercent/100) + (50 * sellerProfitPercent/100)).toFixed(2)} | 
-                Dona: R${((50 * ownerCostPercent/100) + (50 * ownerProfitPercent/100)).toFixed(2)}
-              </p>
+            {/* Live Preview */}
+            <div className="bg-muted rounded-lg p-4">
+              <p className="text-sm font-medium mb-2">Simulação:</p>
+              <p className="text-xs text-muted-foreground mb-2">Peça com custo R$50,00 vendida por R$100,00 (lucro R$50,00)</p>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-primary/10 rounded p-2">
+                  <p className="font-medium text-primary">Quem vende</p>
+                  <p className="text-lg font-bold">
+                    R$ {((50 * sellerCostPercent/100) + (50 * sellerProfitPercent/100)).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ({sellerCostPercent}% de R$50 + {sellerProfitPercent}% de R$50)
+                  </p>
+                </div>
+                <div className="bg-secondary/50 rounded p-2">
+                  <p className="font-medium">Quem cede</p>
+                  <p className="text-lg font-bold">
+                    R$ {((50 * ownerCostPercent/100) + (50 * ownerProfitPercent/100)).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ({ownerCostPercent}% de R$50 + {ownerProfitPercent}% de R$50)
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
