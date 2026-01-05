@@ -18,8 +18,9 @@ const navItems = [
   { icon: Package, label: "Produtos", path: "/products" },
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
   { icon: Clock, label: "Solicitações", path: "/stock-requests" },
+  { icon: Users, label: "Parcerias", path: "/partnerships" },
   { icon: TrendingUp, label: "Relatórios", path: "/reports" },
-  { icon: Users, label: "Parcerias", path: "/partner-reports" },
+  { icon: TrendingUp, label: "Rel. Parcerias", path: "/partner-reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
 

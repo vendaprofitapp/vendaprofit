@@ -76,6 +76,83 @@ export type Database = {
         }
         Relationships: []
       }
+      partnership_rules: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          owner_cost_percent: number
+          owner_profit_percent: number
+          seller_cost_percent: number
+          seller_profit_percent: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          owner_cost_percent?: number
+          owner_profit_percent?: number
+          seller_cost_percent?: number
+          seller_profit_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          owner_cost_percent?: number
+          owner_profit_percent?: number
+          seller_cost_percent?: number
+          seller_profit_percent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partnership_rules_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: true
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_partnerships: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          product_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          product_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_partnerships_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_partnerships_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category: string

@@ -50,6 +50,21 @@ interface Product {
   group_id: string | null;
 }
 
+interface ProductPartnership {
+  id: string;
+  product_id: string;
+  group_id: string;
+}
+
+interface PartnershipRule {
+  id: string;
+  group_id: string;
+  seller_cost_percent: number;
+  seller_profit_percent: number;
+  owner_cost_percent: number;
+  owner_profit_percent: number;
+}
+
 interface GroupMember {
   group_id: string;
   user_id: string;
@@ -179,6 +194,32 @@ export default function PartnerReports() {
     enabled: !!user,
   });
 
+  // Fetch product partnerships
+  const { data: productPartnerships = [] } = useQuery({
+    queryKey: ["product-partnerships-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("product_partnerships")
+        .select("*");
+      if (error) throw error;
+      return data as ProductPartnership[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch partnership rules
+  const { data: partnershipRules = [] } = useQuery({
+    queryKey: ["partnership-rules-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partnership_rules")
+        .select("*");
+      if (error) throw error;
+      return data as PartnershipRule[];
+    },
+    enabled: !!user,
+  });
+
   // Fetch profiles
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles"],
@@ -217,6 +258,25 @@ export default function PartnerReports() {
     return profiles.filter(p => partnerIds.has(p.id));
   }, [userGroupMemberships, userGroups, profiles, user, selectedGroupId]);
 
+  // Helper to get rules for a group
+  const getRulesForGroup = (groupId: string): PartnershipRule => {
+    const rules = partnershipRules.find(r => r.group_id === groupId);
+    return rules || {
+      id: "",
+      group_id: groupId,
+      seller_cost_percent: 50,
+      seller_profit_percent: 70,
+      owner_cost_percent: 50,
+      owner_profit_percent: 30,
+    };
+  };
+
+  // Helper to get product's group from product_partnerships
+  const getProductGroup = (productId: string): string | null => {
+    const partnership = productPartnerships.find(pp => pp.product_id === productId);
+    return partnership?.group_id || null;
+  };
+
   // Calculate partner earnings
   const partnerSummaries = useMemo(() => {
     if (!user) return [];
@@ -238,17 +298,21 @@ export default function PartnerReports() {
         const product = productMap.get(item.product_id);
         if (!product) continue;
 
-        // Only process products from partner groups
-        if (!product.group_id || !relevantGroupIds.includes(product.group_id)) continue;
-
         // Skip own products (no partner split needed)
         if (product.owner_id === user.id) continue;
+
+        // Check if product is in a partnership with a relevant group
+        const productGroupId = getProductGroup(product.id) || product.group_id;
+        if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
 
         // Filter by selected partner
         if (selectedPartnerId !== "all" && product.owner_id !== selectedPartnerId) continue;
 
         const partner = profiles.find(p => p.id === product.owner_id);
         if (!partner) continue;
+
+        // Get rules for this group
+        const rules = getRulesForGroup(productGroupId);
 
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
@@ -258,10 +322,9 @@ export default function PartnerReports() {
         const totalSale = salePrice * quantity;
         const profit = totalSale - totalCost;
 
-        // Seller (current user) gets: 50% cost + 70% profit
-        const sellerEarnings = (totalCost * 0.5) + (profit * 0.7);
-        // Partner (product owner) gets: 50% cost + 30% profit
-        const partnerEarnings = (totalCost * 0.5) + (profit * 0.3);
+        // Apply custom rules
+        const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
+        const partnerEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
 
         if (!summaries.has(partner.id)) {
           summaries.set(partner.id, {
@@ -288,7 +351,7 @@ export default function PartnerReports() {
     }
 
     return Array.from(summaries.values()).sort((a, b) => b.totalSales - a.totalSales);
-  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId]);
+  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, productPartnerships, partnershipRules]);
 
   // Calculate earnings from products sold by partners
   const earningsFromPartners = useMemo(() => {
@@ -319,7 +382,13 @@ export default function PartnerReports() {
 
         // Only process MY products sold by partners
         if (product.owner_id !== user.id) continue;
-        if (!product.group_id || !relevantGroupIds.includes(product.group_id)) continue;
+
+        // Check if product is in a partnership with a relevant group
+        const productGroupId = getProductGroup(product.id) || product.group_id;
+        if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
+
+        // Get rules for this group
+        const rules = getRulesForGroup(productGroupId);
 
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
@@ -329,10 +398,9 @@ export default function PartnerReports() {
         const totalSale = salePrice * quantity;
         const profit = totalSale - totalCost;
 
-        // I'm the product owner, so I get: 50% cost + 30% profit
-        const myEarnings = (totalCost * 0.5) + (profit * 0.3);
-        // Seller gets: 50% cost + 70% profit
-        const sellerEarnings = (totalCost * 0.5) + (profit * 0.7);
+        // Apply custom rules - I'm the product owner
+        const myEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
+        const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
 
         if (!summaries.has(seller.id)) {
           summaries.set(seller.id, {
@@ -342,7 +410,7 @@ export default function PartnerReports() {
             totalSales: 0,
             totalCost: 0,
             totalProfit: 0,
-            sellerEarnings: sellerEarnings,
+            sellerEarnings: 0,
             partnerEarnings: 0,
             salesCount: 0,
           });
