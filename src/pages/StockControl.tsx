@@ -635,14 +635,14 @@ export default function StockControl() {
                 <div className="col-span-2 space-y-2">
                   <Label>Compartilhar com Grupo</Label>
                   <Select
-                    value={productForm.group_id}
-                    onValueChange={(value) => setProductForm({ ...productForm, group_id: value })}
+                    value={productForm.group_id || "none"}
+                    onValueChange={(value) => setProductForm({ ...productForm, group_id: value === "none" ? "" : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Nenhum (privado)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhum (privado)</SelectItem>
+                      <SelectItem value="none">Nenhum (privado)</SelectItem>
                       {groups.map((group) => (
                         <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
                       ))}
