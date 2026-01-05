@@ -15,6 +15,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -88,6 +98,7 @@ export default function Partnerships() {
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   
   // Form states
@@ -206,33 +217,18 @@ export default function Partnerships() {
     mutationFn: async () => {
       if (!user) throw new Error("Não autenticado");
       
-      // First, add user as owner member (this is allowed by RLS)
-      // We need to create the group and member in a specific order
+      // Insert group - trigger handles group_members automatically
       const { data, error } = await supabase
         .from("groups")
         .insert({
           name: newGroupName,
           description: newGroupDescription || null,
-          created_by: user.id,
+          created_by: user.id, // Required by types, but trigger will override
         })
         .select()
         .single();
       
       if (error) throw error;
-
-      // Add creator as owner member
-      const { error: memberError } = await supabase
-        .from("group_members")
-        .insert({
-          group_id: data.id,
-          user_id: user.id,
-          role: "owner",
-        });
-
-      if (memberError) {
-        console.error("Error adding member:", memberError);
-        throw memberError;
-      }
 
       // Create default rules for the group
       const { error: rulesError } = await supabase
@@ -261,6 +257,33 @@ export default function Partnerships() {
     },
     onError: (error) => {
       toast({ title: "Erro ao criar parceria", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete group mutation
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      if (!user) throw new Error("Não autenticado");
+      
+      const { error } = await supabase
+        .from("groups")
+        .delete()
+        .eq("id", groupId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Parceria excluída com sucesso!" });
+      setIsDeleteOpen(false);
+      setSelectedGroup(null);
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: ["group-memberships"] });
+      queryClient.invalidateQueries({ queryKey: ["all-group-members"] });
+      queryClient.invalidateQueries({ queryKey: ["partnership-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao excluir parceria", description: error.message, variant: "destructive" });
     },
   });
 
@@ -557,15 +580,28 @@ export default function Partnerships() {
                   {/* Actions */}
                   <div className="flex gap-2 pt-2">
                     {isAdmin && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex-1"
-                        onClick={() => openRulesDialog(group)}
-                      >
-                        <Settings2 className="h-4 w-4 mr-1" />
-                        Regras
-                      </Button>
+                      <>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1"
+                          onClick={() => openRulesDialog(group)}
+                        >
+                          <Settings2 className="h-4 w-4 mr-1" />
+                          Regras
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => {
+                            setSelectedGroup(group);
+                            setIsDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
                     <Button 
                       variant="outline" 
@@ -861,6 +897,35 @@ export default function Partnerships() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Parceria</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a parceria "{selectedGroup?.name}"? 
+              Esta ação não pode ser desfeita. Todos os produtos liberados e regras serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsDeleteOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (selectedGroup) {
+                  deleteGroupMutation.mutate(selectedGroup.id);
+                }
+              }}
+              disabled={deleteGroupMutation.isPending}
+            >
+              {deleteGroupMutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
