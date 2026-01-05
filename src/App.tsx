@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import StockControl from "./pages/StockControl";
 import StockRequests from "./pages/StockRequests";
 import Auth from "./pages/Auth";
+import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const AppRoutes = () => (
     <Route path="/partnerships" element={<ProtectedRoute><Partnerships /></ProtectedRoute>} />
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+    <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
