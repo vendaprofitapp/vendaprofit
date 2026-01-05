@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus } from "lucide-react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -31,17 +32,34 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Product {
   id: string;
   name: string;
   price: number;
   stock_quantity: number;
+  owner_id: string;
+  group_id: string | null;
+  category: string;
+  color: string | null;
+  size: string | null;
 }
 
 interface CartItem {
   product: Product;
   quantity: number;
+  isPartnerStock: boolean;
+  ownerName?: string;
 }
 
 interface Sale {
@@ -64,6 +82,11 @@ interface SaleItem {
   quantity: number;
   unit_price: number;
   total: number;
+}
+
+interface PartnerProduct extends Product {
+  ownerName: string;
+  ownerEmail: string;
 }
 
 const paymentMethods = [
@@ -100,6 +123,15 @@ export default function Sales() {
   const [productSearch, setProductSearch] = useState("");
   const [installments, setInstallments] = useState(1);
 
+  // Partner stock dialog
+  const [partnerProducts, setPartnerProducts] = useState<PartnerProduct[]>([]);
+  const [showPartnerDialog, setShowPartnerDialog] = useState(false);
+  const [searchedProductName, setSearchedProductName] = useState("");
+  const [selectedPartnerProduct, setSelectedPartnerProduct] = useState<PartnerProduct | null>(null);
+  const [showReserveDialog, setShowReserveDialog] = useState(false);
+  const [reserveQuantity, setReserveQuantity] = useState(1);
+  const [reserveNotes, setReserveNotes] = useState("");
+
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
     queryKey: ["sales"],
@@ -114,14 +146,15 @@ export default function Sales() {
     enabled: !!user,
   });
 
-  // Fetch products for adding to cart
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-for-sale"],
+  // Fetch OWN products for adding to cart (only user's own stock)
+  const { data: ownProducts = [] } = useQuery({
+    queryKey: ["own-products-for-sale"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, stock_quantity")
+        .select("id, name, price, stock_quantity, owner_id, group_id, category, color, size")
         .eq("is_active", true)
+        .eq("owner_id", user?.id)
         .gt("stock_quantity", 0)
         .order("name");
       if (error) throw error;
@@ -130,12 +163,107 @@ export default function Sales() {
     enabled: !!user,
   });
 
+  // Fetch profiles for partner names
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Fetch user's groups
+  const { data: userGroups = [] } = useQuery({
+    queryKey: ["user-groups"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", user?.id);
+      if (error) throw error;
+      return data.map(g => g.group_id);
+    },
+    enabled: !!user,
+  });
+
+  // Search partner products when own stock doesn't have the product
+  const searchPartnerProducts = async (searchName: string) => {
+    if (!user || userGroups.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, price, stock_quantity, owner_id, group_id, category, color, size")
+      .eq("is_active", true)
+      .neq("owner_id", user.id)
+      .gt("stock_quantity", 0)
+      .in("group_id", userGroups)
+      .ilike("name", `%${searchName}%`)
+      .order("name");
+
+    if (error) {
+      console.error("Error searching partner products:", error);
+      return [];
+    }
+
+    // Map owner names
+    return (data || []).map(p => {
+      const owner = profiles.find(prof => prof.id === p.owner_id);
+      return {
+        ...p,
+        ownerName: owner?.full_name || "Parceiro",
+        ownerEmail: owner?.email || "",
+      } as PartnerProduct;
+    });
+  };
+
+  // Create stock request mutation
+  const createReserveMutation = useMutation({
+    mutationFn: async ({ product, quantity, notes }: { product: PartnerProduct; quantity: number; notes: string }) => {
+      if (!user) throw new Error("Usuário não autenticado");
+
+      const { data, error } = await supabase
+        .from("stock_requests")
+        .insert({
+          product_id: product.id,
+          requester_id: user.id,
+          owner_id: product.owner_id,
+          quantity,
+          notes: notes || null,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Solicitação de reserva enviada!", description: "Aguarde a confirmação do parceiro." });
+      setShowReserveDialog(false);
+      setSelectedPartnerProduct(null);
+      setReserveQuantity(1);
+      setReserveNotes("");
+      queryClient.invalidateQueries({ queryKey: ["stock-requests"] });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao solicitar reserva", description: error.message, variant: "destructive" });
+    },
+  });
+
   // Create sale mutation
   const createSaleMutation = useMutation({
     mutationFn: async () => {
       if (!user || cart.length === 0) throw new Error("Carrinho vazio");
 
-      const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+      // Only process own stock items
+      const ownStockItems = cart.filter(item => !item.isPartnerStock);
+      if (ownStockItems.length === 0) throw new Error("Adicione produtos do seu estoque para finalizar a venda");
+
+      const subtotal = ownStockItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
       const discountAmount = discountType === "percentage" 
         ? (subtotal * discountValue) / 100 
         : discountValue;
@@ -163,7 +291,7 @@ export default function Sales() {
       if (saleError) throw saleError;
 
       // Create sale items
-      const itemsToInsert = cart.map((item) => ({
+      const itemsToInsert = ownStockItems.map((item) => ({
         sale_id: sale.id,
         product_id: item.product.id,
         product_name: item.product.name,
@@ -179,7 +307,7 @@ export default function Sales() {
       if (itemsError) throw itemsError;
 
       // Update product stock
-      for (const item of cart) {
+      for (const item of ownStockItems) {
         const { error: stockError } = await supabase
           .from("products")
           .update({ stock_quantity: item.product.stock_quantity - item.quantity })
@@ -191,7 +319,7 @@ export default function Sales() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["products-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
       toast({ title: "Venda registrada com sucesso!" });
       resetForm();
       setIsNewSaleOpen(false);
@@ -213,7 +341,7 @@ export default function Sales() {
     setProductSearch("");
   };
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
     const existing = cart.find((item) => item.product.id === product.id);
     if (existing) {
       if (existing.quantity < product.stock_quantity) {
@@ -226,7 +354,7 @@ export default function Sales() {
         toast({ title: "Estoque insuficiente", variant: "destructive" });
       }
     } else {
-      setCart([...cart, { product, quantity: 1 }]);
+      setCart([...cart, { product, quantity: 1, isPartnerStock, ownerName }]);
     }
     setProductSearch("");
   };
@@ -250,13 +378,42 @@ export default function Sales() {
     setCart(cart.filter((item) => item.product.id !== productId));
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const handleProductSearch = async (searchValue: string) => {
+    setProductSearch(searchValue);
+    
+    if (searchValue.length >= 2) {
+      // Check if product exists in own stock
+      const ownMatch = ownProducts.filter(p => 
+        p.name.toLowerCase().includes(searchValue.toLowerCase())
+      );
+
+      if (ownMatch.length === 0) {
+        // Search in partner stocks
+        setSearchedProductName(searchValue);
+        const partnerResults = await searchPartnerProducts(searchValue);
+        if (partnerResults.length > 0) {
+          setPartnerProducts(partnerResults);
+          setShowPartnerDialog(true);
+        }
+      }
+    }
+  };
+
+  const handleRequestReserve = (product: PartnerProduct) => {
+    setSelectedPartnerProduct(product);
+    setReserveQuantity(1);
+    setReserveNotes("");
+    setShowReserveDialog(true);
+    setShowPartnerDialog(false);
+  };
+
+  const subtotal = cart.filter(i => !i.isPartnerStock).reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const discountAmount = discountType === "percentage" 
     ? (subtotal * discountValue) / 100 
     : discountValue;
   const total = Math.max(0, subtotal - discountAmount);
 
-  const filteredProducts = products.filter((p) =>
+  const filteredOwnProducts = ownProducts.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
 
@@ -419,29 +576,41 @@ export default function Sales() {
             {/* Left: Product Selection */}
             <div className="space-y-4">
               <div>
-                <Label>Buscar Produto</Label>
+                <Label>Buscar Produto (Seu Estoque)</Label>
                 <Input
                   placeholder="Digite o nome do produto..."
                   value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
+                  onChange={(e) => handleProductSearch(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Se não encontrar no seu estoque, buscaremos nos parceiros
+                </p>
               </div>
 
               {productSearch && (
                 <div className="border rounded-lg max-h-48 overflow-y-auto">
-                  {filteredProducts.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">Nenhum produto encontrado</p>
+                  {filteredOwnProducts.length === 0 ? (
+                    <div className="p-3">
+                      <p className="text-sm text-muted-foreground">Nenhum produto encontrado no seu estoque</p>
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto text-sm"
+                        onClick={() => handleProductSearch(productSearch)}
+                      >
+                        Buscar nos estoques parceiros
+                      </Button>
+                    </div>
                   ) : (
-                    filteredProducts.slice(0, 10).map((product) => (
+                    filteredOwnProducts.slice(0, 10).map((product) => (
                       <button
                         key={product.id}
                         className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
-                        onClick={() => addToCart(product)}
+                        onClick={() => addToCart(product, false)}
                       >
                         <div>
                           <p className="font-medium">{product.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            Estoque: {product.stock_quantity}
+                            Estoque próprio: {product.stock_quantity}
                           </p>
                         </div>
                         <p className="font-semibold">
@@ -472,6 +641,12 @@ export default function Sales() {
                           <p className="text-sm text-muted-foreground">
                             R$ {item.product.price.toFixed(2).replace(".", ",")} x {item.quantity}
                           </p>
+                          {item.isPartnerStock && (
+                            <Badge variant="outline" className="text-xs">
+                              <Users className="h-3 w-3 mr-1" />
+                              {item.ownerName}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
@@ -620,7 +795,7 @@ export default function Sales() {
               <Button
                 className="w-full"
                 size="lg"
-                disabled={cart.length === 0 || createSaleMutation.isPending}
+                disabled={cart.filter(i => !i.isPartnerStock).length === 0 || createSaleMutation.isPending}
                 onClick={() => createSaleMutation.mutate()}
               >
                 {createSaleMutation.isPending ? "Registrando..." : "Finalizar Venda"}
@@ -629,6 +804,128 @@ export default function Sales() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Partner Products Dialog */}
+      <Dialog open={showPartnerDialog} onOpenChange={setShowPartnerDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Produtos Encontrados em Parceiros
+            </DialogTitle>
+          </DialogHeader>
+          
+          <p className="text-sm text-muted-foreground">
+            Não encontramos "{searchedProductName}" no seu estoque, mas encontramos nos parceiros:
+          </p>
+
+          <div className="border rounded-lg max-h-64 overflow-y-auto">
+            {partnerProducts.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground text-center">
+                Nenhum produto encontrado nos estoques parceiros
+              </p>
+            ) : (
+              partnerProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="p-3 flex justify-between items-center border-b last:border-b-0"
+                >
+                  <div>
+                    <p className="font-medium">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Parceiro: {product.ownerName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Disponível: {product.stock_quantity} | R$ {product.price.toFixed(2).replace(".", ",")}
+                    </p>
+                  </div>
+                  <Button 
+                    size="sm"
+                    onClick={() => handleRequestReserve(product)}
+                  >
+                    <Clock className="h-4 w-4 mr-1" />
+                    Solicitar Reserva
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPartnerDialog(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reserve Request Dialog */}
+      <AlertDialog open={showReserveDialog} onOpenChange={setShowReserveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Solicitar Reserva</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está solicitando uma reserva para o parceiro {selectedPartnerProduct?.ownerName}.
+              Após a confirmação, o parceiro receberá a solicitação e poderá aprovar ou recusar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {selectedPartnerProduct && (
+            <div className="space-y-4 py-2">
+              <div className="bg-secondary/30 rounded-lg p-3">
+                <p className="font-medium">{selectedPartnerProduct.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Preço: R$ {selectedPartnerProduct.price.toFixed(2).replace(".", ",")}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Disponível: {selectedPartnerProduct.stock_quantity} unidades
+                </p>
+              </div>
+
+              <div>
+                <Label>Quantidade</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max={selectedPartnerProduct.stock_quantity}
+                  value={reserveQuantity}
+                  onChange={(e) => setReserveQuantity(Math.min(
+                    Number(e.target.value),
+                    selectedPartnerProduct.stock_quantity
+                  ))}
+                />
+              </div>
+
+              <div>
+                <Label>Observações (opcional)</Label>
+                <Textarea
+                  placeholder="Adicione uma mensagem para o parceiro..."
+                  value={reserveNotes}
+                  onChange={(e) => setReserveNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={createReserveMutation.isPending}
+              onClick={() => {
+                if (selectedPartnerProduct) {
+                  createReserveMutation.mutate({
+                    product: selectedPartnerProduct,
+                    quantity: reserveQuantity,
+                    notes: reserveNotes,
+                  });
+                }
+              }}
+            >
+              {createReserveMutation.isPending ? "Enviando..." : "Enviar Solicitação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* View Sale Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>

@@ -6,7 +6,8 @@ import {
   TrendingUp,
   Settings,
   Dumbbell,
-  Warehouse
+  Warehouse,
+  Clock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,7 @@ const navItems = [
   { icon: Warehouse, label: "Controle de Estoque", path: "/stock" },
   { icon: Package, label: "Produtos", path: "/products" },
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
+  { icon: Clock, label: "Solicitações", path: "/stock-requests" },
   { icon: TrendingUp, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
