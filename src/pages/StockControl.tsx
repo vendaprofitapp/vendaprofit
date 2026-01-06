@@ -556,10 +556,10 @@ export default function StockControl() {
 
   return (
     <MainLayout>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Controle de Estoque</h1>
-          <p className="text-muted-foreground">Gerencie seu estoque e requisições de parceiros</p>
+          <h1 className="text-2xl font-bold text-foreground">Estoque</h1>
+          <p className="text-muted-foreground text-sm">Gerencie seu estoque e requisições de parceiros</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
