@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Search, Package, Edit, Trash2, Users, 
-  ArrowRightLeft, Check, X, Clock, Filter 
+  ArrowRightLeft, Check, X, Clock, Filter, Upload 
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { StockImportDialog } from "@/components/stock/StockImportDialog";
+import { SupplierSelect } from "@/components/stock/SupplierSelect";
 
 interface Product {
   id: string;
@@ -105,8 +107,12 @@ export default function StockControl() {
     color: "",
     stock_quantity: "",
     min_stock_level: "5",
-    group_id: ""
+    group_id: "",
+    supplier_id: ""
   });
+
+  // Import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Request form state
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
@@ -234,6 +240,7 @@ export default function StockControl() {
       stock_quantity: parseInt(productForm.stock_quantity) || 0,
       min_stock_level: parseInt(productForm.min_stock_level) || 5,
       group_id: productForm.group_id || null,
+      supplier_id: productForm.supplier_id && productForm.supplier_id !== "none" ? productForm.supplier_id : null,
       owner_id: user.id
     };
 
@@ -294,7 +301,8 @@ export default function StockControl() {
       color: product.color || "",
       stock_quantity: product.stock_quantity.toString(),
       min_stock_level: product.min_stock_level.toString(),
-      group_id: product.group_id || ""
+      group_id: product.group_id || "",
+      supplier_id: (product as any).supplier_id || ""
     });
     setProductDialogOpen(true);
   };
@@ -312,7 +320,8 @@ export default function StockControl() {
       color: "",
       stock_quantity: "",
       min_stock_level: "5",
-      group_id: ""
+      group_id: "",
+      supplier_id: ""
     });
   };
 
@@ -450,6 +459,10 @@ export default function StockControl() {
           <p className="text-muted-foreground">Gerencie seu estoque e requisições de parceiros</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Importar
+          </Button>
           <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -630,6 +643,12 @@ export default function StockControl() {
                     value={productForm.min_stock_level}
                     onChange={(e) => setProductForm({ ...productForm, min_stock_level: e.target.value })}
                     placeholder="5"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <SupplierSelect 
+                    value={productForm.supplier_id} 
+                    onChange={(value) => setProductForm({ ...productForm, supplier_id: value })} 
                   />
                 </div>
                 <div className="col-span-2 space-y-2">
@@ -1034,6 +1053,12 @@ export default function StockControl() {
           </div>
         </div>
       )}
+
+      <StockImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImportComplete={fetchProducts}
+      />
     </MainLayout>
   );
 }
