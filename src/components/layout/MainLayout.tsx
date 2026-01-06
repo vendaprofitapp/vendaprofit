@@ -1,4 +1,5 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -10,9 +11,36 @@ interface MainLayoutProps {
   children: ReactNode;
 }
 
+const pageTitles: Record<string, string> = {
+  "/": "Painel",
+  "/stock": "Estoque",
+  "/products": "Produtos",
+  "/sales": "Vendas",
+  "/stock-requests": "Solicitações",
+  "/partnerships": "Parcerias",
+  "/reports": "Relatórios",
+  "/partner-reports": "Rel. Parcerias",
+  "/settings": "Configurações",
+  "/admin/users": "Admin Usuários",
+};
+
 export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // Reset navigation state when location changes
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [location.pathname]);
+
+  const pageTitle = pageTitles[location.pathname] || "FitStock";
+
+  const handleNavigate = () => {
+    setIsNavigating(true);
+    setSidebarOpen(false);
+  };
 
   if (isMobile) {
     return (
@@ -25,13 +53,13 @@ export function MainLayout({ children }: MainLayoutProps) {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-64">
-              <Sidebar onNavigate={() => setSidebarOpen(false)} />
+              <Sidebar onNavigate={handleNavigate} />
             </SheetContent>
           </Sheet>
-          <h1 className="font-bold text-lg">FitStock</h1>
+          <h1 className="font-bold text-lg">{pageTitle}</h1>
           <div className="w-10" /> {/* Spacer for centering */}
         </header>
-        <main className="p-4 pb-20">
+        <main className="p-4 pb-20" key={location.pathname}>
           {children}
         </main>
       </div>
