@@ -1,6 +1,9 @@
-import { useState, useEffect } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useVoiceCommand } from "@/hooks/useVoiceCommand";
+import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
+import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -452,18 +455,92 @@ export default function Sales() {
 
   const isMobile = useIsMobile();
 
+  // Voice command handler
+  const handleVoiceResult = useCallback((result: { type: string; data: Record<string, any>; rawText: string }) => {
+    if (result.type === 'sale') {
+      // Open new sale dialog and search for the product
+      setIsNewSaleOpen(true);
+      
+      if (result.data.customerName) {
+        setCustomerName(result.data.customerName);
+      }
+      
+      if (result.data.productSearch) {
+        // Wait for dialog to open, then search for product
+        setTimeout(() => {
+          setProductSearch(result.data.productSearch);
+          
+          // Try to find and add the product
+          const matchingProduct = ownProducts.find(p => 
+            p.name.toLowerCase().includes(result.data.productSearch.toLowerCase())
+          );
+          
+          if (matchingProduct) {
+            const qty = result.data.quantity || 1;
+            for (let i = 0; i < qty; i++) {
+              addToCart(matchingProduct, false);
+            }
+            toast({ 
+              title: "Produto adicionado por voz!", 
+              description: `${qty}x ${matchingProduct.name}` 
+            });
+          } else {
+            toast({ 
+              title: "Produto não encontrado", 
+              description: `Busque por: "${result.data.productSearch}"`,
+              variant: "destructive"
+            });
+          }
+        }, 300);
+      }
+    } else if (result.type === 'unknown') {
+      toast({ 
+        title: "Comando não reconhecido", 
+        description: `"${result.rawText}" - Tente: "Vender 2 camisetas para Maria"`,
+        variant: "destructive"
+      });
+    }
+  }, [ownProducts, addToCart]);
+
+  const { isListening, transcript, isSupported, startListening, stopListening } = useVoiceCommand({
+    onResult: handleVoiceResult,
+  });
+
+  const toggleVoice = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
   return (
     <MainLayout>
+      {/* Voice Command Feedback */}
+      <VoiceCommandFeedback isListening={isListening} transcript={transcript} />
+
       {/* Page Header - Mobile Optimized */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-foreground">Vendas</h1>
           <p className="text-sm text-muted-foreground">Acompanhe e gerencie suas vendas</p>
         </div>
-        <Button onClick={() => setIsNewSaleOpen(true)} className="w-full sm:w-auto" size={isMobile ? "lg" : "default"}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Venda
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          {isSupported && (
+            <VoiceCommandButton
+              isListening={isListening}
+              isSupported={isSupported}
+              onClick={toggleVoice}
+              size={isMobile ? "lg" : "default"}
+              showLabel={!isMobile}
+              className={isMobile ? "flex-1" : ""}
+            />
+          )}
+          <Button onClick={() => setIsNewSaleOpen(true)} className="flex-1 sm:flex-initial" size={isMobile ? "lg" : "default"}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Venda
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards - Mobile Optimized */}
