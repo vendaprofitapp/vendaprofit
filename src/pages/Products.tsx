@@ -21,41 +21,33 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-
-type StockStatusKey = "available" | "low" | "out";
+import { CategoryManager, Category } from "@/components/products/CategoryManager";
+import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
 
 interface Product {
   id: string;
   name: string;
   category: string;
   price: number;
+  cost_price: number | null;
   stock_quantity: number;
   min_stock_level: number;
   owner_id: string;
   is_active: boolean;
   created_at: string;
+  color: string | null;
+  size: string | null;
+  sku: string | null;
+  supplier_id: string | null;
 }
 
-const categories = [
-  "Calças",
-  "Tops",
-  "Shorts",
-  "Conjuntos",
-  "Bodies",
-  "Regatas",
-  "Bermudas",
-  "Acessórios",
-];
+interface Supplier {
+  id: string;
+  name: string;
+}
 
 const statusConfig: Record<
   StockStatusKey,
@@ -97,16 +89,29 @@ function usePageSeo() {
   }, []);
 }
 
+const initialFilters: ProductFiltersState = {
+  category: "all",
+  status: "all",
+  supplier: "all",
+  color: "all",
+  size: "all",
+  minPrice: "",
+  maxPrice: "",
+  minStock: "",
+  maxStock: "",
+};
+
 export default function Products() {
   usePageSeo();
   const { user } = useAuth();
 
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<StockStatusKey | "all">("all");
+  const [filters, setFilters] = useState<ProductFiltersState>(initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -115,8 +120,13 @@ export default function Products() {
     name: "",
     category: "",
     price: "",
+    cost_price: "",
     stock_quantity: "",
     min_stock_level: "5",
+    color: "",
+    size: "",
+    sku: "",
+    supplier_id: "",
   });
 
   const fetchProducts = async () => {
@@ -125,9 +135,7 @@ export default function Products() {
     setLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select(
-        "id, name, category, price, stock_quantity, min_stock_level, owner_id, is_active, created_at",
-      )
+      .select("id, name, category, price, cost_price, stock_quantity, min_stock_level, owner_id, is_active, created_at, color, size, sku, supplier_id")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -140,26 +148,123 @@ export default function Products() {
     setLoading(false);
   };
 
+  const fetchSuppliers = async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("suppliers")
+      .select("id, name")
+      .eq("owner_id", user.id)
+      .order("name");
+
+    setSuppliers(data ?? []);
+  };
+
   useEffect(() => {
-    if (user) fetchProducts();
+    if (user) {
+      fetchProducts();
+      fetchSuppliers();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Extract unique colors and sizes from products
+  const { uniqueColors, uniqueSizes } = useMemo(() => {
+    const colors = new Set<string>();
+    const sizes = new Set<string>();
+
+    items.forEach((p) => {
+      if (p.color) colors.add(p.color);
+      if (p.size) sizes.add(p.size);
+    });
+
+    return {
+      uniqueColors: Array.from(colors).sort(),
+      uniqueSizes: Array.from(sizes).sort(),
+    };
+  }, [items]);
 
   const filteredProducts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     return items.filter((p) => {
       const statusKey = getStockStatusKey(p.stock_quantity, p.min_stock_level);
-      const matchesTerm = !term || p.name.toLowerCase().includes(term);
-      const matchesCategory = categoryFilter === "all" || p.category === categoryFilter;
-      const matchesStatus = statusFilter === "all" || statusKey === statusFilter;
-      return matchesTerm && matchesCategory && matchesStatus;
+      
+      // Search term
+      const matchesTerm = !term || 
+        p.name.toLowerCase().includes(term) ||
+        (p.sku && p.sku.toLowerCase().includes(term));
+      
+      // Category
+      const matchesCategory = filters.category === "all" || p.category === filters.category;
+      
+      // Status
+      const matchesStatus = filters.status === "all" || statusKey === filters.status;
+      
+      // Supplier
+      const matchesSupplier = filters.supplier === "all" || p.supplier_id === filters.supplier;
+      
+      // Color
+      const matchesColor = filters.color === "all" || p.color === filters.color;
+      
+      // Size
+      const matchesSize = filters.size === "all" || p.size === filters.size;
+      
+      // Price range
+      const minPrice = filters.minPrice ? Number(filters.minPrice) : null;
+      const maxPrice = filters.maxPrice ? Number(filters.maxPrice) : null;
+      const matchesMinPrice = minPrice === null || p.price >= minPrice;
+      const matchesMaxPrice = maxPrice === null || p.price <= maxPrice;
+      
+      // Stock range
+      const minStock = filters.minStock ? Number(filters.minStock) : null;
+      const maxStock = filters.maxStock ? Number(filters.maxStock) : null;
+      const matchesMinStock = minStock === null || p.stock_quantity >= minStock;
+      const matchesMaxStock = maxStock === null || p.stock_quantity <= maxStock;
+
+      return (
+        matchesTerm &&
+        matchesCategory &&
+        matchesStatus &&
+        matchesSupplier &&
+        matchesColor &&
+        matchesSize &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesMinStock &&
+        matchesMaxStock
+      );
     });
-  }, [items, searchTerm, categoryFilter, statusFilter]);
+  }, [items, searchTerm, filters]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.category !== "all") count++;
+    if (filters.status !== "all") count++;
+    if (filters.supplier !== "all") count++;
+    if (filters.color !== "all") count++;
+    if (filters.size !== "all") count++;
+    if (filters.minPrice) count++;
+    if (filters.maxPrice) count++;
+    if (filters.minStock) count++;
+    if (filters.maxStock) count++;
+    return count;
+  }, [filters]);
 
   const resetForm = () => {
     setEditing(null);
-    setForm({ name: "", category: "", price: "", stock_quantity: "", min_stock_level: "5" });
+    setForm({
+      name: "",
+      category: "",
+      price: "",
+      cost_price: "",
+      stock_quantity: "",
+      min_stock_level: "5",
+      color: "",
+      size: "",
+      sku: "",
+      supplier_id: "",
+    });
   };
 
   const openCreate = () => {
@@ -173,8 +278,13 @@ export default function Products() {
       name: product.name,
       category: product.category,
       price: String(product.price ?? 0),
+      cost_price: String(product.cost_price ?? ""),
       stock_quantity: String(product.stock_quantity ?? 0),
       min_stock_level: String(product.min_stock_level ?? 5),
+      color: product.color ?? "",
+      size: product.size ?? "",
+      sku: product.sku ?? "",
+      supplier_id: product.supplier_id ?? "",
     });
     setDialogOpen(true);
   };
@@ -191,8 +301,13 @@ export default function Products() {
       name: form.name.trim(),
       category: form.category,
       price: Number(form.price) || 0,
+      cost_price: form.cost_price ? Number(form.cost_price) : null,
       stock_quantity: Number(form.stock_quantity) || 0,
       min_stock_level: Number(form.min_stock_level) || 5,
+      color: form.color.trim() || null,
+      size: form.size.trim() || null,
+      sku: form.sku.trim() || null,
+      supplier_id: form.supplier_id || null,
     };
 
     if (editing) {
@@ -229,6 +344,12 @@ export default function Products() {
     fetchProducts();
   };
 
+  const getSupplierName = (supplierId: string | null) => {
+    if (!supplierId) return "-";
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    return supplier?.name ?? "-";
+  };
+
   return (
     <MainLayout>
       <header className="flex items-center justify-between mb-8">
@@ -248,7 +369,7 @@ export default function Products() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Buscar produtos..."
+              placeholder="Buscar por nome ou SKU..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -256,67 +377,27 @@ export default function Products() {
             />
           </div>
 
-          <Button variant="outline" onClick={() => setFiltersOpen(true)}>
+          <Button variant="outline" onClick={() => setFiltersOpen(true)} className="relative">
             <Filter className="h-4 w-4 mr-2" />
             Filtros
+            {activeFiltersCount > 0 && (
+              <Badge variant="default" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                {activeFiltersCount}
+              </Badge>
+            )}
           </Button>
         </section>
 
-        <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Filtros</DialogTitle>
-              <DialogDescription>Refine a lista por categoria e status de estoque</DialogDescription>
-            </DialogHeader>
-
-            <div className="grid gap-4 py-2">
-              <div className="grid gap-2">
-                <Label>Categoria</Label>
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Status</Label>
-                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StockStatusKey | "all")}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="available">Disponível</SelectItem>
-                    <SelectItem value="low">Baixo estoque</SelectItem>
-                    <SelectItem value="out">Esgotado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCategoryFilter("all");
-                  setStatusFilter("all");
-                }}
-              >
-                Limpar
-              </Button>
-              <Button onClick={() => setFiltersOpen(false)}>Aplicar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ProductFilters
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          filters={filters}
+          onFiltersChange={setFilters}
+          categories={categories}
+          suppliers={suppliers}
+          colors={uniqueColors}
+          sizes={uniqueSizes}
+        />
 
         <Dialog
           open={dialogOpen}
@@ -325,13 +406,13 @@ export default function Products() {
             if (!open) resetForm();
           }}
         >
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editing ? "Editar produto" : "Novo produto"}</DialogTitle>
               <DialogDescription>Cadastre e mantenha seu catálogo atualizado</DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 py-2">
+            <div className="grid gap-4 py-2 max-h-[60vh] overflow-y-auto">
               <div className="grid gap-2">
                 <Label>Nome *</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -339,23 +420,16 @@ export default function Products() {
 
               <div className="grid gap-2">
                 <Label>Categoria *</Label>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategoryManager
+                  value={form.category}
+                  onChange={(v) => setForm({ ...form, category: v })}
+                  onCategoriesChange={setCategories}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Preço</Label>
+                  <Label>Preço de Venda</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -365,6 +439,19 @@ export default function Products() {
                   />
                 </div>
                 <div className="grid gap-2">
+                  <Label>Preço de Custo</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.cost_price}
+                    onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
                   <Label>Estoque</Label>
                   <Input
                     type="number"
@@ -373,16 +460,59 @@ export default function Products() {
                     placeholder="0"
                   />
                 </div>
+                <div className="grid gap-2">
+                  <Label>Estoque Mínimo</Label>
+                  <Input
+                    type="number"
+                    value={form.min_stock_level}
+                    onChange={(e) => setForm({ ...form, min_stock_level: e.target.value })}
+                    placeholder="5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Cor</Label>
+                  <Input
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    placeholder="Ex: Preto"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Tamanho</Label>
+                  <Input
+                    value={form.size}
+                    onChange={(e) => setForm({ ...form, size: e.target.value })}
+                    placeholder="Ex: M"
+                  />
+                </div>
               </div>
 
               <div className="grid gap-2">
-                <Label>Estoque mínimo</Label>
+                <Label>SKU</Label>
                 <Input
-                  type="number"
-                  value={form.min_stock_level}
-                  onChange={(e) => setForm({ ...form, min_stock_level: e.target.value })}
-                  placeholder="5"
+                  value={form.sku}
+                  onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                  placeholder="Código do produto"
                 />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Fornecedor</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={form.supplier_id}
+                  onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+                >
+                  <option value="">Sem fornecedor</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -401,6 +531,8 @@ export default function Products() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Produto</TableHead>
                 <TableHead>Categoria</TableHead>
+                <TableHead>Cor/Tamanho</TableHead>
+                <TableHead>Fornecedor</TableHead>
                 <TableHead>Preço</TableHead>
                 <TableHead>Estoque</TableHead>
                 <TableHead>Status</TableHead>
@@ -410,13 +542,13 @@ export default function Products() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Nenhum produto encontrado
                   </TableCell>
                 </TableRow>
@@ -432,18 +564,38 @@ export default function Products() {
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
                             <Package className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          <span className="font-medium">{product.name}</span>
+                          <div>
+                            <span className="font-medium block">{product.name}</span>
+                            {product.sku && (
+                              <span className="text-xs text-muted-foreground">{product.sku}</span>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                      <TableCell className="font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {product.color || product.size
+                          ? `${product.color || "-"} / ${product.size || "-"}`
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {getSupplierName(product.supplier_id)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        R$ {product.price.toFixed(2).replace(".", ",")}
+                      </TableCell>
                       <TableCell>{product.stock_quantity} un.</TableCell>
                       <TableCell>
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(product)} aria-label="Editar produto">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(product)}
+                            aria-label="Editar produto"
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
@@ -467,4 +619,3 @@ export default function Products() {
     </MainLayout>
   );
 }
-
