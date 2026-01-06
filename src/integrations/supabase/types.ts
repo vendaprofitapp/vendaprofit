@@ -187,6 +187,8 @@ export type Database = {
           group_id: string | null
           id: string
           image_url: string | null
+          image_url_2: string | null
+          image_url_3: string | null
           is_active: boolean
           min_stock_level: number
           name: string
@@ -207,6 +209,8 @@ export type Database = {
           group_id?: string | null
           id?: string
           image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
           is_active?: boolean
           min_stock_level?: number
           name: string
@@ -227,6 +231,8 @@ export type Database = {
           group_id?: string | null
           id?: string
           image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
           is_active?: boolean
           min_stock_level?: number
           name?: string
