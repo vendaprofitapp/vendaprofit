@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -449,42 +450,44 @@ export default function Sales() {
   const monthTotal = monthSales.reduce((sum, s) => sum + Number(s.total), 0);
   const avgTicket = monthSales.length > 0 ? monthTotal / monthSales.length : 0;
 
+  const isMobile = useIsMobile();
+
   return (
     <MainLayout>
-      {/* Page Header */}
-      <div className="flex items-center justify-between mb-8">
+      {/* Page Header - Mobile Optimized */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendas</h1>
-          <p className="text-muted-foreground">Acompanhe e gerencie suas vendas</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Vendas</h1>
+          <p className="text-sm text-muted-foreground">Acompanhe e gerencie suas vendas</p>
         </div>
-        <Button onClick={() => setIsNewSaleOpen(true)}>
+        <Button onClick={() => setIsNewSaleOpen(true)} className="w-full sm:w-auto" size={isMobile ? "lg" : "default"}>
           <Plus className="h-4 w-4 mr-2" />
           Nova Venda
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      {/* Stats Cards - Mobile Optimized */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <div className="rounded-xl bg-card p-4 shadow-soft">
-          <p className="text-sm text-muted-foreground">Vendas Hoje</p>
-          <p className="text-2xl font-bold">R$ {todayTotal.toFixed(2).replace(".", ",")}</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Vendas Hoje</p>
+          <p className="text-xl sm:text-2xl font-bold">R$ {todayTotal.toFixed(2).replace(".", ",")}</p>
           <p className="text-xs text-muted-foreground">{todaySales.length} vendas</p>
         </div>
         <div className="rounded-xl bg-card p-4 shadow-soft">
-          <p className="text-sm text-muted-foreground">Vendas do Mês</p>
-          <p className="text-2xl font-bold">R$ {monthTotal.toFixed(2).replace(".", ",")}</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Vendas do Mês</p>
+          <p className="text-xl sm:text-2xl font-bold">R$ {monthTotal.toFixed(2).replace(".", ",")}</p>
           <p className="text-xs text-muted-foreground">{monthSales.length} vendas</p>
         </div>
         <div className="rounded-xl bg-card p-4 shadow-soft">
-          <p className="text-sm text-muted-foreground">Ticket Médio</p>
-          <p className="text-2xl font-bold">R$ {avgTicket.toFixed(2).replace(".", ",")}</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Ticket Médio</p>
+          <p className="text-xl sm:text-2xl font-bold">R$ {avgTicket.toFixed(2).replace(".", ",")}</p>
           <p className="text-xs text-muted-foreground">baseado em {monthSales.length} vendas</p>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters - Mobile Optimized */}
       <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
@@ -496,76 +499,116 @@ export default function Sales() {
         </div>
       </div>
 
-      {/* Sales Table */}
-      <div className="rounded-xl bg-card shadow-soft overflow-hidden animate-fade-in">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>ID</TableHead>
-              <TableHead>Data</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Pagamento</TableHead>
-              <TableHead>Total</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
-                  Carregando...
-                </TableCell>
-              </TableRow>
-            ) : filteredSales.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  Nenhuma venda encontrada
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredSales.map((sale) => {
-                const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
-                const paymentLabel = paymentMethods.find((p) => p.value === sale.payment_method)?.label || sale.payment_method;
-                return (
-                  <TableRow key={sale.id} className="group">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                          <ShoppingCart className="h-5 w-5 text-primary" />
-                        </div>
-                        <span className="font-medium text-xs">{sale.id.slice(0, 8)}</span>
+      {/* Sales List - Mobile Cards / Desktop Table */}
+      {isMobile ? (
+        <div className="space-y-3">
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : filteredSales.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada</div>
+          ) : (
+            filteredSales.map((sale) => {
+              const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
+              const paymentLabel = paymentMethods.find((p) => p.value === sale.payment_method)?.label || sale.payment_method;
+              return (
+                <div
+                  key={sale.id}
+                  className="rounded-xl bg-card p-4 shadow-soft cursor-pointer active:scale-[0.98] transition-transform"
+                  onClick={() => viewSaleDetails(sale)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                        <ShoppingCart className="h-4 w-4 text-primary" />
                       </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(sale.created_at).toLocaleDateString("pt-BR")}
-                    </TableCell>
-                    <TableCell className="font-medium">{sale.customer_name || "—"}</TableCell>
-                    <TableCell>{paymentLabel}</TableCell>
-                    <TableCell className="font-semibold">
+                      <span className="text-xs text-muted-foreground">{sale.id.slice(0, 8)}</span>
+                    </div>
+                    <Badge variant={status.variant} className="text-xs">{status.label}</Badge>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="font-medium">{sale.customer_name || "Cliente não informado"}</p>
+                      <p className="text-xs text-muted-foreground">{paymentLabel} • {new Date(sale.created_at).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <p className="text-lg font-bold text-primary">
                       R$ {Number(sale.total).toFixed(2).replace(".", ",")}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => viewSaleDetails(sale)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl bg-card shadow-soft overflow-hidden animate-fade-in">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>ID</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Pagamento</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">
+                    Carregando...
+                  </TableCell>
+                </TableRow>
+              ) : filteredSales.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    Nenhuma venda encontrada
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredSales.map((sale) => {
+                  const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
+                  const paymentLabel = paymentMethods.find((p) => p.value === sale.payment_method)?.label || sale.payment_method;
+                  return (
+                    <TableRow key={sale.id} className="group">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                            <ShoppingCart className="h-5 w-5 text-primary" />
+                          </div>
+                          <span className="font-medium text-xs">{sale.id.slice(0, 8)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {new Date(sale.created_at).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="font-medium">{sale.customer_name || "—"}</TableCell>
+                      <TableCell>{paymentLabel}</TableCell>
+                      <TableCell className="font-semibold">
+                        R$ {Number(sale.total).toFixed(2).replace(".", ",")}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => viewSaleDetails(sale)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
-      {/* New Sale Dialog */}
       <Dialog open={isNewSaleOpen} onOpenChange={setIsNewSaleOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

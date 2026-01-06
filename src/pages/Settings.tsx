@@ -1,11 +1,104 @@
+import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Store, Bell, User, Shield } from "lucide-react";
+import { Store, Bell, User, Shield, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function Settings() {
+  const { user, signOut } = useAuth();
+  const queryClient = useQueryClient();
+  
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Fetch user profile
+  const { data: profile } = useQuery({
+    queryKey: ["user-profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Update profile mutation
+  const updateProfileMutation = useMutation({
+    mutationFn: async (updates: { full_name?: string; phone?: string; store_name?: string }) => {
+      if (!user?.id) throw new Error("Usuário não autenticado");
+      const { error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      toast({ title: "Dados atualizados com sucesso!" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao atualizar dados", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleChangePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast({ title: "Preencha todos os campos de senha", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "As senhas não coincidem", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast({ title: "A nova senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      
+      toast({ title: "Senha alterada com sucesso!" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      toast({ title: "Erro ao alterar senha", description: error.message, variant: "destructive" });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleSaveProfile = () => {
+    const storeName = (document.getElementById("store-name") as HTMLInputElement)?.value;
+    const userName = (document.getElementById("user-name") as HTMLInputElement)?.value;
+    const phone = (document.getElementById("store-phone") as HTMLInputElement)?.value;
+    
+    updateProfileMutation.mutate({
+      store_name: storeName,
+      full_name: userName,
+      phone: phone,
+    });
+  };
+
   return (
     <MainLayout>
       {/* Page Header */}
@@ -22,23 +115,23 @@ export default function Settings() {
               <Store className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-card-foreground">Dados da Loja</h3>
+              <h3 className="text-lg font-semibold text-card-foreground">Dados da Loja ou Vendedora</h3>
               <p className="text-sm text-muted-foreground">Informações básicas do estabelecimento</p>
             </div>
           </div>
 
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="store-name">Nome da Loja</Label>
-              <Input id="store-name" defaultValue="FitWear Store" />
+              <Label htmlFor="store-name">Nome da Loja/Vendedora</Label>
+              <Input id="store-name" defaultValue={profile?.store_name || ""} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="store-email">Email</Label>
-              <Input id="store-email" type="email" defaultValue="contato@fitwear.com" />
+              <Input id="store-email" type="email" value={user?.email || ""} disabled className="bg-muted" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="store-phone">Telefone</Label>
-              <Input id="store-phone" defaultValue="(11) 99999-9999" />
+              <Input id="store-phone" defaultValue={profile?.phone || ""} placeholder="(11) 99999-9999" />
             </div>
           </div>
         </div>
@@ -88,20 +181,84 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-card-foreground">Minha Conta</h3>
-              <p className="text-sm text-muted-foreground">Dados do usuário administrador</p>
+              <p className="text-sm text-muted-foreground">Dados do usuário</p>
             </div>
           </div>
 
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="user-name">Nome</Label>
-              <Input id="user-name" defaultValue="Admin" />
+              <Label htmlFor="user-name">Nome Completo</Label>
+              <Input id="user-name" defaultValue={profile?.full_name || ""} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="user-email">Email</Label>
-              <Input id="user-email" type="email" defaultValue="admin@fitwear.com" />
+              <Input id="user-email" type="email" value={user?.email || ""} disabled className="bg-muted" />
             </div>
-            <Button variant="outline" className="w-fit">
+          </div>
+        </div>
+
+        {/* Password Change */}
+        <div className="rounded-xl bg-card p-6 shadow-soft animate-fade-in">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <Shield className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-card-foreground">Alterar Senha</h3>
+              <p className="text-sm text-muted-foreground">Atualize sua senha de acesso</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="new-password">Nova Senha</Label>
+              <div className="relative">
+                <Input
+                  id="new-password"
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repita a nova senha"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              className="w-fit"
+              onClick={handleChangePassword}
+              disabled={isChangingPassword}
+            >
+              {isChangingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Alterar Senha
             </Button>
           </div>
@@ -110,8 +267,8 @@ export default function Settings() {
         {/* Security */}
         <div className="rounded-xl bg-card p-6 shadow-soft animate-fade-in">
           <div className="flex items-center gap-3 mb-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-              <Shield className="h-5 w-5 text-destructive" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Shield className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-card-foreground">Segurança</h3>
@@ -122,24 +279,22 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-card-foreground">Autenticação em Dois Fatores</p>
-                <p className="text-sm text-muted-foreground">Adicionar camada extra de segurança</p>
+                <p className="font-medium text-card-foreground">Sessão Atual</p>
+                <p className="text-sm text-muted-foreground">Logado como {user?.email}</p>
               </div>
-              <Switch />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-card-foreground">Sessão Ativa</p>
-                <p className="text-sm text-muted-foreground">Manter logado por 30 dias</p>
-              </div>
-              <Switch defaultChecked />
+              <Button variant="destructive" size="sm" onClick={signOut}>
+                Sair
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Save Button */}
         <div className="flex justify-end">
-          <Button size="lg">Salvar Alterações</Button>
+          <Button size="lg" onClick={handleSaveProfile} disabled={updateProfileMutation.isPending}>
+            {updateProfileMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Salvar Alterações
+          </Button>
         </div>
       </div>
     </MainLayout>
