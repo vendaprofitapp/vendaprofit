@@ -171,6 +171,7 @@ export type Database = {
           size: string | null
           sku: string | null
           stock_quantity: number
+          supplier_id: string | null
           updated_at: string
         }
         Insert: {
@@ -190,6 +191,7 @@ export type Database = {
           size?: string | null
           sku?: string | null
           stock_quantity?: number
+          supplier_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -209,6 +211,7 @@ export type Database = {
           size?: string | null
           sku?: string | null
           stock_quantity?: number
+          supplier_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -217,6 +220,13 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -399,6 +409,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          cnpj: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          owner_id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          owner_id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          owner_id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
