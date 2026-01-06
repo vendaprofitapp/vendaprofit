@@ -21,8 +21,8 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Warehouse, label: "Controle de Estoque", path: "/stock" },
+  { icon: LayoutDashboard, label: "Painel", path: "/" },
+  { icon: Warehouse, label: "Estoque", path: "/stock" },
   { icon: Package, label: "Produtos", path: "/products" },
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
   { icon: Clock, label: "Solicitações", path: "/stock-requests" },
