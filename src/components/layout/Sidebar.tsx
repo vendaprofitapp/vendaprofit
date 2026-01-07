@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, DollarSign } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, DollarSign, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +39,10 @@ const navItems = [{
   icon: TrendingUp,
   label: "Rel. Parcerias",
   path: "/partner-reports"
+}, {
+  icon: Store,
+  label: "Minha Loja",
+  path: "/my-store"
 }, {
   icon: Settings,
   label: "Configurações",

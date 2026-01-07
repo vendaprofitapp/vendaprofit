@@ -16,6 +16,8 @@ import StockRequests from "./pages/StockRequests";
 import Auth from "./pages/Auth";
 import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
+import StoreSettingsPage from "./pages/StoreSettings";
+import StoreCatalog from "./pages/StoreCatalog";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +52,8 @@ const AppRoutes = () => (
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+    <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
+    <Route path="/loja/:slug" element={<StoreCatalog />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
