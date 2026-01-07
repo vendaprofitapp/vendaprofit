@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon } from "lucide-react";
 
 interface StoreSettings {
   id: string;
@@ -41,6 +41,7 @@ interface StorePartnership {
 export default function StoreSettings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const logoInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     store_slug: "",
@@ -52,6 +53,8 @@ export default function StoreSettings() {
     primary_color: "#8B5CF6",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Fetch store settings
   const { data: storeSettings, isLoading } = useQuery({
@@ -120,8 +123,71 @@ export default function StoreSettings() {
         is_active: storeSettings.is_active,
         primary_color: storeSettings.primary_color || "#8B5CF6",
       });
+      setLogoUrl(storeSettings.logo_url);
     }
   }, [storeSettings]);
+
+  // Handle logo upload
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor, selecione uma imagem");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 2MB");
+      return;
+    }
+
+    setUploadingLogo(true);
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${user!.id}/logo-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("product-images")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrl } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(fileName);
+
+      setLogoUrl(publicUrl.publicUrl);
+
+      // Update in database if store exists
+      if (storeSettings?.id) {
+        await supabase
+          .from("store_settings")
+          .update({ logo_url: publicUrl.publicUrl })
+          .eq("id", storeSettings.id);
+        queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+      }
+
+      toast.success("Logo enviada com sucesso!");
+    } catch (error) {
+      console.error("Error uploading logo:", error);
+      toast.error("Erro ao enviar logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setLogoUrl(null);
+    if (storeSettings?.id) {
+      await supabase
+        .from("store_settings")
+        .update({ logo_url: null })
+        .eq("id", storeSettings.id);
+      queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+    }
+  };
 
   // Set selected groups when partnerships load
   useEffect(() => {
@@ -259,6 +325,62 @@ export default function StoreSettings() {
             </CardContent>
           </Card>
         )}
+
+        {/* Logo Upload */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              Logomarca
+            </CardTitle>
+            <CardDescription>Adicione a logo da sua loja</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              {logoUrl ? (
+                <div className="relative">
+                  <img
+                    src={logoUrl}
+                    alt="Logo da loja"
+                    className="w-24 h-24 object-contain rounded-lg border bg-muted"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-6 w-6"
+                    onClick={removeLogo}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50">
+                  <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                </div>
+              )}
+              <div className="space-y-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {uploadingLogo ? "Enviando..." : "Enviar Logo"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  PNG, JPG ou WebP. Máximo 2MB.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Basic Settings */}
         <Card>
