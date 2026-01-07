@@ -440,6 +440,90 @@ export type Database = {
           },
         ]
       }
+      store_partnerships: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          store_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          store_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          store_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_partnerships_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_partnerships_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "store_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_settings: {
+        Row: {
+          banner_url: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          logo_url: string | null
+          owner_id: string
+          primary_color: string | null
+          show_own_products: boolean
+          store_description: string | null
+          store_name: string
+          store_slug: string
+          updated_at: string
+          whatsapp_number: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          owner_id: string
+          primary_color?: string | null
+          show_own_products?: boolean
+          store_description?: string | null
+          store_name: string
+          store_slug: string
+          updated_at?: string
+          whatsapp_number?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          owner_id?: string
+          primary_color?: string | null
+          show_own_products?: boolean
+          store_description?: string | null
+          store_name?: string
+          store_slug?: string
+          updated_at?: string
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
