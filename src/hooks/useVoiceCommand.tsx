@@ -44,22 +44,38 @@ interface SpeechRecognitionInstance extends EventTarget {
   abort(): void;
 }
 
-interface VoiceCommandResult {
+export interface VoiceCommandResult {
   type: 'sale' | 'stock' | 'product' | 'unknown';
   data: Record<string, any>;
   rawText: string;
 }
 
+export interface SmartSaleResult {
+  success: boolean;
+  quantity?: number;
+  productId?: string | null;
+  productName?: string;
+  paymentMethod?: string | null;
+  customerName?: string | null;
+  confidence?: number;
+  message?: string;
+  error?: string;
+}
+
 interface UseVoiceCommandOptions {
   onResult?: (result: VoiceCommandResult) => void;
+  onSmartSaleResult?: (result: SmartSaleResult, rawText: string) => void;
   onError?: (error: string) => void;
   language?: string;
+  smartSaleMode?: boolean;
+  userId?: string;
 }
 
 export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
-  const { onResult, onError, language = 'pt-BR' } = options;
+  const { onResult, onSmartSaleResult, onError, language = 'pt-BR', smartSaleMode = false, userId } = options;
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isSupported, setIsSupported] = useState(true); // Always supported now (fallback to recording)
   const [useBackendTranscription, setUseBackendTranscription] = useState(false);
   
@@ -67,6 +83,40 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const isInitializedRef = useRef(false);
+
+  // Process transcription - either smart sale mode or regular parsing
+  const handleTranscription = useCallback(async (text: string) => {
+    if (smartSaleMode && userId) {
+      setIsProcessing(true);
+      setTranscript('Interpretando...');
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('parse-voice-sale', {
+          body: { voiceText: text, userId }
+        });
+        
+        setIsProcessing(false);
+        
+        if (error) {
+          console.error('Smart sale error:', error);
+          setTranscript(text);
+          onError?.('Erro ao interpretar comando');
+          return;
+        }
+        
+        setTranscript(text);
+        onSmartSaleResult?.(data, text);
+      } catch (err) {
+        console.error('Smart sale error:', err);
+        setIsProcessing(false);
+        setTranscript(text);
+        onError?.('Erro ao processar comando');
+      }
+    } else {
+      const result = parseVoiceCommand(text);
+      onResult?.(result);
+    }
+  }, [smartSaleMode, userId, onSmartSaleResult, onResult, onError]);
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -126,8 +176,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
         setTranscript(finalTranscript || interimTranscript);
 
         if (finalTranscript) {
-          const result = parseVoiceCommand(finalTranscript);
-          onResult?.(result);
+          handleTranscription(finalTranscript);
         }
       };
 
@@ -241,8 +290,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
             const transcription = data.transcription;
             setTranscript(transcription);
             
-            const result = parseVoiceCommand(transcription);
-            onResult?.(result);
+            handleTranscription(transcription);
           };
         } catch (err) {
           console.error('Transcription error:', err);
@@ -318,6 +366,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
 
   return {
     isListening,
+    isProcessing,
     transcript,
     isSupported,
     startListening,
