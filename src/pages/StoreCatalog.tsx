@@ -184,18 +184,18 @@ export default function StoreCatalog() {
         style={{ backgroundColor: primaryColor }}
       >
         <div className="max-w-6xl mx-auto">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 md:gap-6">
             {store.logo_url && (
               <img 
                 src={store.logo_url} 
                 alt={store.store_name}
-                className="h-16 w-16 rounded-full object-cover bg-white"
+                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-full object-cover bg-white shadow-lg flex-shrink-0"
               />
             )}
             <div className="text-white">
-              <h1 className="text-2xl md:text-3xl font-bold">{store.store_name}</h1>
+              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold">{store.store_name}</h1>
               {store.store_description && (
-                <p className="text-white/80 mt-1">{store.store_description}</p>
+                <p className="text-white/80 mt-1 text-sm md:text-base">{store.store_description}</p>
               )}
             </div>
           </div>
