@@ -455,55 +455,65 @@ export default function Sales() {
 
   const isMobile = useIsMobile();
 
-  // Voice command handler
-  const handleVoiceResult = useCallback((result: { type: string; data: Record<string, any>; rawText: string }) => {
-    if (result.type === 'sale') {
-      // Open new sale dialog and search for the product
-      setIsNewSaleOpen(true);
-      
-      if (result.data.customerName) {
-        setCustomerName(result.data.customerName);
-      }
-      
-      if (result.data.productSearch) {
-        // Wait for dialog to open, then search for product
-        setTimeout(() => {
-          setProductSearch(result.data.productSearch);
-          
-          // Try to find and add the product
-          const matchingProduct = ownProducts.find(p => 
-            p.name.toLowerCase().includes(result.data.productSearch.toLowerCase())
-          );
-          
-          if (matchingProduct) {
-            const qty = result.data.quantity || 1;
-            for (let i = 0; i < qty; i++) {
-              addToCart(matchingProduct, false);
-            }
-            toast({ 
-              title: "Produto adicionado por voz!", 
-              description: `${qty}x ${matchingProduct.name}` 
-            });
-          } else {
-            toast({ 
-              title: "Produto não encontrado", 
-              description: `Busque por: "${result.data.productSearch}"`,
-              variant: "destructive"
-            });
-          }
-        }, 300);
-      }
-    } else if (result.type === 'unknown') {
+  // Smart voice command handler using AI
+  const handleSmartSaleResult = useCallback((result: any, rawText: string) => {
+    console.log('Smart sale result:', result);
+    
+    if (!result.success) {
       toast({ 
-        title: "Comando não reconhecido", 
-        description: `"${result.rawText}" - Tente: "Vender 2 camisetas para Maria"`,
+        title: "Não foi possível interpretar", 
+        description: result.error || result.message || rawText,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Open new sale dialog
+    setIsNewSaleOpen(true);
+    
+    // Set payment method if identified
+    if (result.paymentMethod) {
+      setPaymentMethod(result.paymentMethod);
+    }
+    
+    // Set customer name if identified
+    if (result.customerName) {
+      setCustomerName(result.customerName);
+    }
+    
+    // Add product to cart if found
+    if (result.productId) {
+      setTimeout(() => {
+        const matchingProduct = ownProducts.find(p => p.id === result.productId);
+        
+        if (matchingProduct) {
+          const qty = result.quantity || 1;
+          // Reset cart and add the product with correct quantity
+          setCart([{ product: matchingProduct, quantity: qty, isPartnerStock: false }]);
+          
+          toast({ 
+            title: "✓ Venda reconhecida por voz!", 
+            description: `${qty}x ${matchingProduct.name}${result.paymentMethod ? ` - ${paymentMethods.find(p => p.value === result.paymentMethod)?.label || result.paymentMethod}` : ''}`
+          });
+        }
+      }, 300);
+    } else if (result.productName) {
+      // Product not found in user's stock, show message
+      toast({ 
+        title: "Produto não encontrado no estoque", 
+        description: `"${result.productName}" - ${result.message || 'Verifique o nome do produto'}`,
         variant: "destructive"
       });
     }
-  }, [ownProducts, addToCart]);
+  }, [ownProducts]);
 
-  const { isListening, transcript, isSupported, startListening, stopListening } = useVoiceCommand({
-    onResult: handleVoiceResult,
+  const { isListening, isProcessing, transcript, isSupported, startListening, stopListening } = useVoiceCommand({
+    smartSaleMode: true,
+    userId: user?.id,
+    onSmartSaleResult: handleSmartSaleResult,
+    onError: (error) => {
+      toast({ title: "Erro no comando de voz", description: error, variant: "destructive" });
+    },
   });
 
   const toggleVoice = () => {
@@ -517,7 +527,7 @@ export default function Sales() {
   return (
     <MainLayout>
       {/* Voice Command Feedback */}
-      <VoiceCommandFeedback isListening={isListening} transcript={transcript} />
+      <VoiceCommandFeedback isListening={isListening || isProcessing} transcript={transcript} />
 
       {/* Page Header - Mobile Optimized */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
