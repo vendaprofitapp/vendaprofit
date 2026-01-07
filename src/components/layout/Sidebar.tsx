@@ -79,7 +79,7 @@ export function Sidebar({
           </div>
           <div>
             <h1 className="text-lg font-bold text-white">Vendas L.E.V.E.</h1>
-            <p className="text-xs text-sidebar-foreground/60">Gestão de Estoque</p>
+            <p className="text-xs text-sidebar-foreground/60">Gestão de Vendas Fitness</p>
           </div>
         </div>
 
