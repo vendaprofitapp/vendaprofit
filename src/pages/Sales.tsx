@@ -468,6 +468,9 @@ export default function Sales() {
       return;
     }
 
+    // Clear search field to allow new searches
+    setProductSearch("");
+
     // Open new sale dialog
     setIsNewSaleOpen(true);
     
@@ -696,11 +699,31 @@ export default function Sales() {
         </div>
       )}
 
-      <Dialog open={isNewSaleOpen} onOpenChange={setIsNewSaleOpen}>
+      <Dialog open={isNewSaleOpen} onOpenChange={(open) => {
+        setIsNewSaleOpen(open);
+        if (!open) setProductSearch("");
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova Venda</DialogTitle>
           </DialogHeader>
+
+          {/* Mobile: Show totals at top */}
+          {isMobile && cart.length > 0 && (
+            <div className="bg-primary/10 rounded-lg p-3 mb-2">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total da Venda:</span>
+                <span className="text-xl font-bold text-primary">
+                  R$ {total.toFixed(2).replace(".", ",")}
+                </span>
+              </div>
+              {discountAmount > 0 && (
+                <p className="text-xs text-muted-foreground text-right">
+                  Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")} | Desc: -R$ {discountAmount.toFixed(2).replace(".", ",")}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-6">
             {/* Left: Product Selection */}
@@ -710,7 +733,12 @@ export default function Sales() {
                 <Input
                   placeholder="Digite o nome do produto..."
                   value={productSearch}
-                  onChange={(e) => handleProductSearch(e.target.value)}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  onKeyUp={(e) => {
+                    if (e.key === 'Enter' && productSearch.length >= 2) {
+                      handleProductSearch(productSearch);
+                    }
+                  }}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Se não encontrar no seu estoque, buscaremos nos parceiros
@@ -778,29 +806,55 @@ export default function Sales() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
-                            onClick={() => updateQuantity(item.product.id, -1)}
+                            className="h-10 w-10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantity(item.product.id, -1);
+                            }}
                           >
-                            <Minus className="h-3 w-3" />
+                            <Minus className="h-4 w-4" />
                           </Button>
-                          <span className="w-8 text-center">{item.quantity}</span>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={item.product.stock_quantity}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const newQty = parseInt(e.target.value) || 1;
+                              if (newQty >= 1 && newQty <= item.product.stock_quantity) {
+                                setCart(cart.map(c => 
+                                  c.product.id === item.product.id 
+                                    ? { ...c, quantity: newQty } 
+                                    : c
+                                ));
+                              }
+                            }}
+                            className="w-14 h-10 text-center px-1"
+                          />
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
-                            onClick={() => updateQuantity(item.product.id, 1)}
+                            className="h-10 w-10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantity(item.product.id, 1);
+                            }}
                           >
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => removeFromCart(item.product.id)}
+                            className="h-10 w-10 text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromCart(item.product.id);
+                            }}
                           >
                             <X className="h-4 w-4" />
                           </Button>
