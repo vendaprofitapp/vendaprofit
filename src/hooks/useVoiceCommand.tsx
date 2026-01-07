@@ -104,6 +104,11 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
       
+      // 'aborted' happens when recognition is stopped normally or browser interrupts
+      if (event.error === 'aborted') {
+        return; // Don't show error for normal abort
+      }
+      
       let errorMessage = 'Erro no reconhecimento de voz';
       if (event.error === 'not-allowed') {
         errorMessage = 'Permissão de microfone negada. Habilite nas configurações do navegador.';
