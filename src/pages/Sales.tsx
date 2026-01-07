@@ -346,26 +346,31 @@ export default function Sales() {
   };
 
   const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
-    const existing = cart.find((item) => item.product.id === product.id);
-    if (existing) {
-      if (existing.quantity < product.stock_quantity) {
-        setCart(cart.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        ));
-      } else {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
+        if (existing.quantity < product.stock_quantity) {
+          return prev.map((item) =>
+            item.product.id === product.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item,
+          );
+        }
         toast({ title: "Estoque insuficiente", variant: "destructive" });
+        return prev;
       }
-    } else {
-      setCart([...cart, { product, quantity: 1, isPartnerStock, ownerName }]);
-    }
+
+      return [...prev, { product, quantity: 1, isPartnerStock, ownerName }];
+    });
+
     setProductSearch("");
   };
 
   const updateQuantity = (productId: string, delta: number) => {
-    setCart(cart.map((item) => {
-      if (item.product.id === productId) {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.product.id !== productId) return item;
+
         const newQty = item.quantity + delta;
         if (newQty <= 0) return item;
         if (newQty > item.product.stock_quantity) {
@@ -373,13 +378,12 @@ export default function Sales() {
           return item;
         }
         return { ...item, quantity: newQty };
-      }
-      return item;
-    }));
+      }),
+    );
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.product.id !== productId));
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
   const handleProductSearch = async (searchValue: string) => {
@@ -703,7 +707,7 @@ export default function Sales() {
         setIsNewSaleOpen(open);
         if (!open) setProductSearch("");
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90dvh] overflow-y-auto !left-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 rounded-t-xl sm:rounded-lg sm:!left-[50%] sm:!top-[50%] sm:!bottom-auto sm:!translate-x-[-50%] sm:!translate-y-[-50%]">
           <DialogHeader>
             <DialogTitle>Nova Venda</DialogTitle>
           </DialogHeader>
@@ -825,14 +829,16 @@ export default function Sales() {
                             max={item.product.stock_quantity}
                             value={item.quantity}
                             onChange={(e) => {
-                              const newQty = parseInt(e.target.value) || 1;
-                              if (newQty >= 1 && newQty <= item.product.stock_quantity) {
-                                setCart(cart.map(c => 
-                                  c.product.id === item.product.id 
-                                    ? { ...c, quantity: newQty } 
-                                    : c
-                                ));
-                              }
+                              const next = e.target.value;
+                              const parsed = Number(next);
+                              const newQty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                              setCart((prev) =>
+                                prev.map((c) =>
+                                  c.product.id === item.product.id
+                                    ? { ...c, quantity: Math.min(Math.max(1, newQty), item.product.stock_quantity) }
+                                    : c,
+                                ),
+                              );
                             }}
                             className="w-14 h-10 text-center px-1"
                           />
@@ -897,7 +903,7 @@ export default function Sales() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent portal={!isMobile ? undefined : false}>
                       {paymentMethods.map((method) => (
                         <SelectItem key={method.value} value={method.value}>
                           {method.label}
@@ -913,7 +919,7 @@ export default function Sales() {
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent portal={!isMobile ? undefined : false}>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
                           <SelectItem key={n} value={String(n)}>
                             {n}x {n === 1 ? "à vista" : `de R$ ${(total / n).toFixed(2).replace(".", ",")}`}
@@ -932,7 +938,7 @@ export default function Sales() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent portal={!isMobile ? undefined : false}>
                       <SelectItem value="fixed">Valor Fixo (R$)</SelectItem>
                       <SelectItem value="percentage">Percentual (%)</SelectItem>
                     </SelectContent>
