@@ -311,6 +311,10 @@ export function ProductFormDialog({
 
   const totalImages = existingImageUrls.length + productImageUrls.length;
 
+  // On iOS inside Drawer, portals can cause blank screen/glitches.
+  // Render SelectContent inline on mobile.
+  const selectContentProps = isMobile ? ({ portal: false } as const) : ({} as const);
+
   const FormContent = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="col-span-1 sm:col-span-2 space-y-2">
@@ -404,7 +408,7 @@ export function ProductFormDialog({
           <SelectTrigger>
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4}>
+          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
             {categories.map((cat) => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}
@@ -450,7 +454,7 @@ export function ProductFormDialog({
           <SelectTrigger>
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4}>
+          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
             {sizes.map((size) => (
               <SelectItem key={size} value={size}>{size}</SelectItem>
             ))}
@@ -494,7 +498,7 @@ export function ProductFormDialog({
           <SelectTrigger>
             <SelectValue placeholder="Selecione um fornecedor" />
           </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4}>
+          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
             <SelectItem value="none">Nenhum</SelectItem>
             {suppliers.map((s) => (
               <SelectItem key={s.id} value={s.id}>
@@ -513,7 +517,7 @@ export function ProductFormDialog({
           <SelectTrigger>
             <SelectValue placeholder="Nenhum (privado)" />
           </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4}>
+          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
             <SelectItem value="none">Nenhum (privado)</SelectItem>
             {groups.map((group) => (
               <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
