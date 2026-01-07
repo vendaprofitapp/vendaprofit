@@ -59,92 +59,153 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const { onResult, onError, language = 'pt-BR' } = options;
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [isSupported, setIsSupported] = useState(true);
+  const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
-    // Check browser support
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    // Prevent double initialization
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
+    // Check browser support - works on mobile Chrome, Safari, Edge
+    const SpeechRecognitionAPI = 
+      (window as any).SpeechRecognition || 
+      (window as any).webkitSpeechRecognition ||
+      (window as any).mozSpeechRecognition ||
+      (window as any).msSpeechRecognition;
+    
     if (!SpeechRecognitionAPI) {
+      console.log('Speech Recognition API not available');
       setIsSupported(false);
       return;
     }
-    const recognition = new SpeechRecognitionAPI() as SpeechRecognitionInstance;
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = language;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      setTranscript('');
-    };
+    // Check if running on HTTPS (required for mobile)
+    const isSecureContext = window.isSecureContext || 
+      window.location.protocol === 'https:' || 
+      window.location.hostname === 'localhost';
+    
+    if (!isSecureContext) {
+      console.log('Speech Recognition requires HTTPS');
+      setIsSupported(false);
+      return;
+    }
 
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
+    setIsSupported(true);
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
+    try {
+      const recognition = new SpeechRecognitionAPI() as SpeechRecognitionInstance;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = language;
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        setIsListening(true);
+        setTranscript('');
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
         }
-      }
 
-      setTranscript(finalTranscript || interimTranscript);
+        setTranscript(finalTranscript || interimTranscript);
 
-      if (finalTranscript) {
-        const result = parseVoiceCommand(finalTranscript);
-        onResult?.(result);
-      }
-    };
+        if (finalTranscript) {
+          const result = parseVoiceCommand(finalTranscript);
+          onResult?.(result);
+        }
+      };
 
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-      
-      // 'aborted' happens when recognition is stopped normally or browser interrupts
-      if (event.error === 'aborted') {
-        return; // Don't show error for normal abort
-      }
-      
-      let errorMessage = 'Erro no reconhecimento de voz';
-      if (event.error === 'not-allowed') {
-        errorMessage = 'Permissão de microfone negada. Habilite nas configurações do navegador.';
-      } else if (event.error === 'no-speech') {
-        errorMessage = 'Nenhuma fala detectada. Tente novamente.';
-      } else if (event.error === 'network') {
-        errorMessage = 'Erro de rede. Verifique sua conexão.';
-      }
-      
-      onError?.(errorMessage);
-      toast.error(errorMessage);
-    };
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        
+        // 'aborted' happens when recognition is stopped normally or browser interrupts
+        if (event.error === 'aborted') {
+          return; // Don't show error for normal abort
+        }
+        
+        let errorMessage = 'Erro no reconhecimento de voz';
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Permissão de microfone negada. Vá em Configurações > Site > Microfone e permita.';
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'Nenhuma fala detectada. Tente novamente.';
+        } else if (event.error === 'network') {
+          errorMessage = 'Erro de rede. Verifique sua conexão.';
+        } else if (event.error === 'service-not-allowed') {
+          errorMessage = 'Serviço de voz não disponível. Tente usar o Chrome.';
+        }
+        
+        onError?.(errorMessage);
+        toast.error(errorMessage);
+      };
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        setIsListening(false);
+      };
 
-    recognitionRef.current = recognition;
+      recognitionRef.current = recognition;
+    } catch (error) {
+      console.error('Error initializing speech recognition:', error);
+      setIsSupported(false);
+    }
 
     return () => {
-      recognition.abort();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Ignore abort errors
+        }
+      }
     };
   }, [language, onResult, onError]);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
     if (!isSupported) {
-      toast.error('Reconhecimento de voz não suportado neste navegador. Use Chrome ou Edge.');
+      toast.error('Reconhecimento de voz não suportado. Use Chrome, Safari ou Edge.');
+      return;
+    }
+
+    // Request microphone permission first (important for mobile)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop the stream immediately, we just needed permission
+      stream.getTracks().forEach(track => track.stop());
+    } catch (permError) {
+      console.error('Microphone permission error:', permError);
+      toast.error('Permissão de microfone negada. Habilite nas configurações do navegador.');
       return;
     }
 
     try {
+      // Stop any existing recognition first
+      if (recognitionRef.current && isListening) {
+        recognitionRef.current.stop();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       recognitionRef.current?.start();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting recognition:', error);
+      if (error.message?.includes('already started')) {
+        // Already listening, ignore
+        return;
+      }
+      toast.error('Erro ao iniciar reconhecimento de voz. Tente novamente.');
     }
-  }, [isSupported]);
+  }, [isSupported, isListening]);
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
