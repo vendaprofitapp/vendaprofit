@@ -374,9 +374,11 @@ export default function StoreSettings() {
                   <Upload className="h-4 w-4 mr-2" />
                   {uploadingLogo ? "Enviando..." : "Enviar Logo"}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  PNG, JPG ou WebP. Máximo 2MB.
-                </p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>PNG, JPG ou WebP. Máximo 2MB.</p>
+                  <p className="font-medium text-amber-600">📐 Tamanho recomendado: 200x200px a 400x400px</p>
+                  <p>Imagens quadradas funcionam melhor. A logo será exibida em formato circular.</p>
+                </div>
               </div>
             </div>
           </CardContent>
