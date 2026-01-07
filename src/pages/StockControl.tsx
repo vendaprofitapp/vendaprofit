@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { 
-  Plus, Search, Package, Edit, Trash2, Users, 
-  ArrowRightLeft, Check, X, Clock, Filter, Upload, Image as ImageIcon 
+  Plus, Search, Edit, Trash2, Users, 
+  ArrowRightLeft, Check, X, Clock, Upload, Package
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -26,19 +26,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { StockImportDialog } from "@/components/stock/StockImportDialog";
-import { SupplierSelect } from "@/components/stock/SupplierSelect";
+import { ProductFormDialog } from "@/components/stock/ProductFormDialog";
 
 interface Product {
   id: string;
@@ -81,15 +74,8 @@ interface Group {
   invite_code: string;
 }
 
-const categories = [
-  "Calças", "Tops", "Shorts", "Conjuntos", "Bodies", "Regatas", "Bermudas", "Acessórios"
-];
-
-const sizes = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
-
 export default function StockControl() {
   const { user } = useAuth();
-  const imageInputRef = useRef<HTMLInputElement>(null);
   
   const [products, setProducts] = useState<Product[]>([]);
   const [partnerProducts, setPartnerProducts] = useState<Product[]>([]);
@@ -102,25 +88,6 @@ export default function StockControl() {
   // Product form state
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({
-    name: "",
-    description: "",
-    category: "",
-    price: "",
-    cost_price: "",
-    sku: "",
-    size: "",
-    color: "",
-    stock_quantity: "",
-    min_stock_level: "5",
-    group_id: "",
-    supplier_id: ""
-  });
-  
-  // Product images state
-  const [productImages, setProductImages] = useState<File[]>([]);
-  const [productImageUrls, setProductImageUrls] = useState<string[]>([]);
-  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
 
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -140,7 +107,8 @@ export default function StockControl() {
   useEffect(() => {
     if (user) {
       fetchData();
-      subscribeToRequests();
+      const unsubscribe = subscribeToRequests();
+      return unsubscribe;
     }
   }, [user]);
 
@@ -186,7 +154,6 @@ export default function StockControl() {
   };
 
   const fetchRequests = async () => {
-    // My requests (where I'm the requester)
     const { data: myReqs } = await supabase
       .from("stock_requests")
       .select(`
@@ -198,7 +165,6 @@ export default function StockControl() {
     
     setMyRequests(myReqs || []);
 
-    // Incoming requests (where I'm the owner)
     const { data: incomingReqs } = await supabase
       .from("stock_requests")
       .select(`
@@ -236,133 +202,9 @@ export default function StockControl() {
     };
   };
 
-  const handleImageUpload = (files: FileList | null) => {
-    if (!files) return;
-    
-    const totalImages = productImages.length + existingImageUrls.length;
-    const newImages = Array.from(files).slice(0, 3 - totalImages);
-    const newUrls = newImages.map(file => URL.createObjectURL(file));
-    
-    setProductImages(prev => [...prev, ...newImages].slice(0, 3 - existingImageUrls.length));
-    setProductImageUrls(prev => [...prev, ...newUrls].slice(0, 3 - existingImageUrls.length));
-  };
-
-  const removeImage = (index: number, isExisting: boolean) => {
-    if (isExisting) {
-      setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
-    } else {
-      URL.revokeObjectURL(productImageUrls[index]);
-      setProductImages(prev => prev.filter((_, i) => i !== index));
-      setProductImageUrls(prev => prev.filter((_, i) => i !== index));
-    }
-  };
-
-  const uploadProductImages = async (productId: string): Promise<string[]> => {
-    if (!user || productImages.length === 0) return [];
-    
-    const urls: string[] = [];
-    
-    for (let i = 0; i < productImages.length; i++) {
-      const file = productImages[i];
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${productId}/${Date.now()}_${i + 1}.${fileExt}`;
-      
-      const { error } = await supabase.storage
-        .from('product-images')
-        .upload(fileName, file, { upsert: true });
-      
-      if (!error) {
-        const { data } = supabase.storage
-          .from('product-images')
-          .getPublicUrl(fileName);
-        urls.push(data.publicUrl);
-      }
-    }
-    
-    return urls;
-  };
-
-  const handleSaveProduct = async () => {
-    if (!user) return;
-
-    const productData = {
-      name: productForm.name,
-      description: productForm.description || null,
-      category: productForm.category,
-      price: parseFloat(productForm.price) || 0,
-      cost_price: productForm.cost_price ? parseFloat(productForm.cost_price) : null,
-      sku: productForm.sku || null,
-      size: productForm.size || null,
-      color: productForm.color || null,
-      stock_quantity: parseInt(productForm.stock_quantity) || 0,
-      min_stock_level: parseInt(productForm.min_stock_level) || 5,
-      group_id: productForm.group_id || null,
-      supplier_id: productForm.supplier_id && productForm.supplier_id !== "none" ? productForm.supplier_id : null,
-      owner_id: user.id
-    };
-
-    if (editingProduct) {
-      // Handle existing + new images
-      const allUrls = [...existingImageUrls];
-      
-      if (productImages.length > 0) {
-        const newUrls = await uploadProductImages(editingProduct.id);
-        allUrls.push(...newUrls);
-      }
-
-      const { error } = await supabase
-        .from("products")
-        .update({
-          ...productData,
-          image_url: allUrls[0] || null,
-          image_url_2: allUrls[1] || null,
-          image_url_3: allUrls[2] || null,
-        })
-        .eq("id", editingProduct.id);
-
-      if (error) {
-        toast.error("Erro ao atualizar produto");
-      } else {
-        toast.success("Produto atualizado!");
-        setProductDialogOpen(false);
-        fetchProducts();
-      }
-    } else {
-      // Insert new product first to get ID
-      const { data: newProduct, error } = await supabase
-        .from("products")
-        .insert(productData)
-        .select("id")
-        .single();
-
-      if (error || !newProduct) {
-        toast.error("Erro ao criar produto");
-      } else {
-        // Upload images if any
-        if (productImages.length > 0) {
-          const urls = await uploadProductImages(newProduct.id);
-          if (urls.length > 0) {
-            await supabase
-              .from("products")
-              .update({
-                image_url: urls[0] || null,
-                image_url_2: urls[1] || null,
-                image_url_3: urls[2] || null,
-              })
-              .eq("id", newProduct.id);
-          }
-        }
-        
-        toast.success("Produto criado!");
-        setProductDialogOpen(false);
-        fetchProducts();
-      }
-    }
-
-    resetProductForm();
-  };
-
   const handleDeleteProduct = async (productId: string) => {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+    
     const { error } = await supabase
       .from("products")
       .delete()
@@ -378,52 +220,7 @@ export default function StockControl() {
 
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
-    setProductForm({
-      name: product.name,
-      description: product.description || "",
-      category: product.category,
-      price: product.price.toString(),
-      cost_price: product.cost_price?.toString() || "",
-      sku: product.sku || "",
-      size: product.size || "",
-      color: product.color || "",
-      stock_quantity: product.stock_quantity.toString(),
-      min_stock_level: product.min_stock_level.toString(),
-      group_id: product.group_id || "",
-      supplier_id: product.supplier_id || ""
-    });
-    
-    // Set existing images
-    const existing: string[] = [];
-    if (product.image_url) existing.push(product.image_url);
-    if (product.image_url_2) existing.push(product.image_url_2);
-    if (product.image_url_3) existing.push(product.image_url_3);
-    setExistingImageUrls(existing);
-    
     setProductDialogOpen(true);
-  };
-
-  const resetProductForm = () => {
-    setEditingProduct(null);
-    setProductForm({
-      name: "",
-      description: "",
-      category: "",
-      price: "",
-      cost_price: "",
-      sku: "",
-      size: "",
-      color: "",
-      stock_quantity: "",
-      min_stock_level: "5",
-      group_id: "",
-      supplier_id: ""
-    });
-    // Clear images
-    productImageUrls.forEach(url => URL.revokeObjectURL(url));
-    setProductImages([]);
-    setProductImageUrls([]);
-    setExistingImageUrls([]);
   };
 
   const handleRequestProduct = async () => {
@@ -491,7 +288,6 @@ export default function StockControl() {
   const handleJoinGroup = async () => {
     if (!user || !inviteCode.trim()) return;
 
-    // Find group by invite code
     const { data: group, error: findError } = await supabase
       .from("groups")
       .select("id")
@@ -503,7 +299,6 @@ export default function StockControl() {
       return;
     }
 
-    // Join group
     const { error } = await supabase
       .from("group_members")
       .insert({
@@ -552,8 +347,6 @@ export default function StockControl() {
     p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalImages = productImages.length + existingImageUrls.length;
-
   return (
     <MainLayout>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
@@ -561,16 +354,18 @@ export default function StockControl() {
           <h1 className="text-2xl font-bold text-foreground">Estoque</h1>
           <p className="text-muted-foreground text-sm">Gerencie seu estoque e requisições de parceiros</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Importar
           </Button>
+          
           <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
-                Entrar em Grupo
+                <span className="hidden sm:inline">Entrar em Grupo</span>
+                <span className="sm:hidden">Grupo</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -599,9 +394,10 @@ export default function StockControl() {
 
           <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
-                Criar Grupo
+                <span className="hidden sm:inline">Criar Grupo</span>
+                <span className="sm:hidden">Novo</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -628,226 +424,14 @@ export default function StockControl() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={productDialogOpen} onOpenChange={(open) => {
-            setProductDialogOpen(open);
-            if (!open) resetProductForm();
+          <Button size="sm" onClick={() => {
+            setEditingProduct(null);
+            setProductDialogOpen(true);
           }}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Produto
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</DialogTitle>
-                <DialogDescription>
-                  Preencha os dados do produto
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="col-span-2 space-y-2">
-                  <Label>Nome *</Label>
-                  <Input
-                    value={productForm.name}
-                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                    placeholder="Nome do produto"
-                  />
-                </div>
-                <div className="col-span-2 space-y-2">
-                  <Label>Descrição</Label>
-                  <Textarea
-                    value={productForm.description}
-                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                    placeholder="Descrição do produto"
-                  />
-                </div>
-                
-                {/* Image Upload Section */}
-                <div className="col-span-2 space-y-2">
-                  <Label>Fotos do Produto (máx. 3)</Label>
-                  <div className="flex gap-3 items-center flex-wrap">
-                    {/* Existing images */}
-                    {existingImageUrls.map((url, idx) => (
-                      <div key={`existing-${idx}`} className="relative w-20 h-20">
-                        <img 
-                          src={url} 
-                          alt={`Foto ${idx + 1}`} 
-                          className="w-full h-full object-cover rounded-lg border"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(idx, true)}
-                          className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    
-                    {/* New images */}
-                    {productImageUrls.map((url, idx) => (
-                      <div key={`new-${idx}`} className="relative w-20 h-20">
-                        <img 
-                          src={url} 
-                          alt={`Nova foto ${idx + 1}`} 
-                          className="w-full h-full object-cover rounded-lg border"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(idx, false)}
-                          className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    
-                    {/* Upload button */}
-                    {totalImages < 3 && (
-                      <>
-                        <input
-                          ref={imageInputRef}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => handleImageUpload(e.target.files)}
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => imageInputRef.current?.click()}
-                          className="w-20 h-20 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                        >
-                          <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground mt-1">Adicionar</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {totalImages}/3 fotos adicionadas
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Categoria *</Label>
-                  <Select
-                    value={productForm.category}
-                    onValueChange={(value) => setProductForm({ ...productForm, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>SKU</Label>
-                  <Input
-                    value={productForm.sku}
-                    onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
-                    placeholder="Código do produto"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Preço de Venda *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={productForm.price}
-                    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Preço de Custo</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={productForm.cost_price}
-                    onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tamanho</Label>
-                  <Select
-                    value={productForm.size}
-                    onValueChange={(value) => setProductForm({ ...productForm, size: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sizes.map((size) => (
-                        <SelectItem key={size} value={size}>{size}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Cor</Label>
-                  <Input
-                    value={productForm.color}
-                    onChange={(e) => setProductForm({ ...productForm, color: e.target.value })}
-                    placeholder="Ex: Preto"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Quantidade em Estoque *</Label>
-                  <Input
-                    type="number"
-                    value={productForm.stock_quantity}
-                    onChange={(e) => setProductForm({ ...productForm, stock_quantity: e.target.value })}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Estoque Mínimo</Label>
-                  <Input
-                    type="number"
-                    value={productForm.min_stock_level}
-                    onChange={(e) => setProductForm({ ...productForm, min_stock_level: e.target.value })}
-                    placeholder="5"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <SupplierSelect 
-                    value={productForm.supplier_id} 
-                    onChange={(value) => setProductForm({ ...productForm, supplier_id: value })} 
-                  />
-                </div>
-                <div className="col-span-2 space-y-2">
-                  <Label>Compartilhar com Grupo</Label>
-                  <Select
-                    value={productForm.group_id || "none"}
-                    onValueChange={(value) => setProductForm({ ...productForm, group_id: value === "none" ? "" : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Nenhum (privado)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Nenhum (privado)</SelectItem>
-                      {groups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSaveProduct}>
-                  {editingProduct ? "Salvar" : "Criar Produto"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            <Plus className="h-4 w-4 mr-2" />
+            <span className="hidden sm:inline">Novo Produto</span>
+            <span className="sm:hidden">Novo</span>
+          </Button>
         </div>
       </div>
 
@@ -866,14 +450,14 @@ export default function StockControl() {
       </div>
 
       <Tabs defaultValue="my-stock" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="my-stock">Meu Estoque</TabsTrigger>
-          <TabsTrigger value="partner-stock">Estoque Parceiros</TabsTrigger>
-          <TabsTrigger value="my-requests">Minhas Requisições</TabsTrigger>
-          <TabsTrigger value="incoming-requests">
-            Requisições Recebidas
+        <TabsList className="w-full sm:w-auto overflow-x-auto">
+          <TabsTrigger value="my-stock" className="text-xs sm:text-sm">Meu Estoque</TabsTrigger>
+          <TabsTrigger value="partner-stock" className="text-xs sm:text-sm">Parceiros</TabsTrigger>
+          <TabsTrigger value="my-requests" className="text-xs sm:text-sm">Requisições</TabsTrigger>
+          <TabsTrigger value="incoming-requests" className="text-xs sm:text-sm">
+            Recebidas
             {incomingRequests.filter(r => r.status === 'pending').length > 0 && (
-              <Badge variant="destructive" className="ml-2">
+              <Badge variant="destructive" className="ml-1 sm:ml-2 h-5 w-5 p-0 flex items-center justify-center text-[10px]">
                 {incomingRequests.filter(r => r.status === 'pending').length}
               </Badge>
             )}
@@ -882,16 +466,16 @@ export default function StockControl() {
 
         {/* My Stock Tab */}
         <TabsContent value="my-stock">
-          <div className="rounded-xl bg-card shadow-soft overflow-hidden">
+          <div className="rounded-xl bg-card shadow-soft overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produto</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Tamanho/Cor</TableHead>
+                  <TableHead className="hidden md:table-cell">Categoria</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tam/Cor</TableHead>
                   <TableHead>Preço</TableHead>
                   <TableHead>Estoque</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -914,42 +498,43 @@ export default function StockControl() {
                     return (
                       <TableRow key={product.id}>
                         <TableCell>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3">
                             {product.image_url ? (
                               <img 
                                 src={product.image_url} 
                                 alt={product.name}
-                                className="h-10 w-10 rounded-lg object-cover"
+                                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg object-cover flex-shrink-0"
                               />
                             ) : (
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-                                <Package className="h-5 w-5 text-muted-foreground" />
+                              <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-secondary flex-shrink-0">
+                                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                               </div>
                             )}
-                            <div>
-                              <span className="font-medium block">{product.name}</span>
+                            <div className="min-w-0">
+                              <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
                               {product.sku && (
                                 <span className="text-xs text-muted-foreground">{product.sku}</span>
                               )}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
                           {product.size || "-"} / {product.color || "-"}
                         </TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell className="font-medium whitespace-nowrap">
                           R$ {product.price.toFixed(2).replace(".", ",")}
                         </TableCell>
-                        <TableCell>{product.stock_quantity} un.</TableCell>
-                        <TableCell>
+                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge variant={status.variant}>{status.label}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-8 w-8"
                               onClick={() => handleEditProduct(product)}
                             >
                               <Edit className="h-4 w-4" />
@@ -957,6 +542,7 @@ export default function StockControl() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-8 w-8"
                               onClick={() => handleDeleteProduct(product.id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
@@ -974,15 +560,15 @@ export default function StockControl() {
 
         {/* Partner Stock Tab */}
         <TabsContent value="partner-stock">
-          <div className="rounded-xl bg-card shadow-soft overflow-hidden">
+          <div className="rounded-xl bg-card shadow-soft overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produto</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Tamanho/Cor</TableHead>
+                  <TableHead className="hidden md:table-cell">Categoria</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tam/Cor</TableHead>
                   <TableHead>Estoque</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1005,32 +591,32 @@ export default function StockControl() {
                     return (
                       <TableRow key={product.id}>
                         <TableCell>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3">
                             {product.image_url ? (
                               <img 
                                 src={product.image_url} 
                                 alt={product.name}
-                                className="h-10 w-10 rounded-lg object-cover"
+                                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg object-cover flex-shrink-0"
                               />
                             ) : (
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-                                <Package className="h-5 w-5 text-muted-foreground" />
+                              <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-secondary flex-shrink-0">
+                                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                               </div>
                             )}
-                            <div>
-                              <span className="font-medium block">{product.name}</span>
+                            <div className="min-w-0">
+                              <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
                               {product.sku && (
                                 <span className="text-xs text-muted-foreground">{product.sku}</span>
                               )}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
                           {product.size || "-"} / {product.color || "-"}
                         </TableCell>
-                        <TableCell>{product.stock_quantity} un.</TableCell>
-                        <TableCell>
+                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge variant={status.variant}>{status.label}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -1042,8 +628,8 @@ export default function StockControl() {
                               setRequestDialogOpen(true);
                             }}
                           >
-                            <ArrowRightLeft className="h-4 w-4 mr-2" />
-                            Requisitar
+                            <ArrowRightLeft className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">Requisitar</span>
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1057,22 +643,22 @@ export default function StockControl() {
 
         {/* My Requests Tab */}
         <TabsContent value="my-requests">
-          <div className="rounded-xl bg-card shadow-soft overflow-hidden">
+          <div className="rounded-xl bg-card shadow-soft overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produto</TableHead>
-                  <TableHead>Quantidade</TableHead>
-                  <TableHead>Data</TableHead>
+                  <TableHead>Qtd</TableHead>
+                  <TableHead className="hidden sm:table-cell">Data</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Notas</TableHead>
+                  <TableHead className="hidden md:table-cell">Notas</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {myRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      Nenhuma requisição realizada
+                      Nenhuma requisição feita
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1082,24 +668,21 @@ export default function StockControl() {
                     return (
                       <TableRow key={request.id}>
                         <TableCell className="font-medium">
-                          {request.products?.name || "Produto removido"}
-                          {request.products?.sku && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              ({request.products.sku})
-                            </span>
-                          )}
+                          <span className="truncate max-w-[120px] sm:max-w-none block">
+                            {request.products?.name || "Produto removido"}
+                          </span>
                         </TableCell>
-                        <TableCell>{request.quantity} un.</TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell>{request.quantity}</TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
                           {new Date(request.created_at).toLocaleDateString("pt-BR")}
                         </TableCell>
                         <TableCell>
                           <Badge variant={status.variant} className="gap-1">
                             <StatusIcon className="h-3 w-3" />
-                            {status.label}
+                            <span className="hidden sm:inline">{status.label}</span>
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="text-muted-foreground max-w-[200px] truncate hidden md:table-cell">
                           {request.notes || "-"}
                         </TableCell>
                       </TableRow>
@@ -1113,15 +696,15 @@ export default function StockControl() {
 
         {/* Incoming Requests Tab */}
         <TabsContent value="incoming-requests">
-          <div className="rounded-xl bg-card shadow-soft overflow-hidden">
+          <div className="rounded-xl bg-card shadow-soft overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produto</TableHead>
-                  <TableHead>Quantidade</TableHead>
-                  <TableHead>Data</TableHead>
+                  <TableHead>Qtd</TableHead>
+                  <TableHead className="hidden sm:table-cell">Data</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Notas</TableHead>
+                  <TableHead className="hidden md:table-cell">Notas</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1139,39 +722,41 @@ export default function StockControl() {
                     return (
                       <TableRow key={request.id}>
                         <TableCell className="font-medium">
-                          {request.products?.name || "Produto removido"}
+                          <span className="truncate max-w-[120px] sm:max-w-none block">
+                            {request.products?.name || "Produto removido"}
+                          </span>
                         </TableCell>
-                        <TableCell>{request.quantity} un.</TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell>{request.quantity}</TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
                           {new Date(request.created_at).toLocaleDateString("pt-BR")}
                         </TableCell>
                         <TableCell>
                           <Badge variant={status.variant} className="gap-1">
                             <StatusIcon className="h-3 w-3" />
-                            {status.label}
+                            <span className="hidden sm:inline">{status.label}</span>
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="text-muted-foreground max-w-[200px] truncate hidden md:table-cell">
                           {request.notes || "-"}
                         </TableCell>
                         <TableCell className="text-right">
                           {request.status === 'pending' && (
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1">
                               <Button
                                 variant="outline"
-                                size="sm"
+                                size="icon"
+                                className="h-8 w-8"
                                 onClick={() => handleUpdateRequest(request.id, 'approved')}
                               >
-                                <Check className="h-4 w-4 mr-1" />
-                                Aprovar
+                                <Check className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="outline"
-                                size="sm"
+                                size="icon"
+                                className="h-8 w-8"
                                 onClick={() => handleUpdateRequest(request.id, 'rejected')}
                               >
-                                <X className="h-4 w-4 mr-1" />
-                                Rejeitar
+                                <X className="h-4 w-4" />
                               </Button>
                             </div>
                           )}
@@ -1185,6 +770,18 @@ export default function StockControl() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Product Form Dialog */}
+      <ProductFormDialog
+        open={productDialogOpen}
+        onOpenChange={(open) => {
+          setProductDialogOpen(open);
+          if (!open) setEditingProduct(null);
+        }}
+        editingProduct={editingProduct}
+        groups={groups}
+        onSuccess={fetchProducts}
+      />
 
       {/* Request Product Dialog */}
       <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
@@ -1200,6 +797,7 @@ export default function StockControl() {
               <Label>Quantidade</Label>
               <Input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 value={requestQuantity}
                 onChange={(e) => setRequestQuantity(e.target.value)}
@@ -1216,7 +814,7 @@ export default function StockControl() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRequestDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleRequestProduct}>Enviar Requisição</Button>
+            <Button onClick={handleRequestProduct}>Enviar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
