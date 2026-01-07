@@ -74,7 +74,7 @@ export function Sidebar({
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-6 border-b border-sidebar-border">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-glow text-success">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-glow text-white bg-[#c41c68]">
             <DollarSign className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
