@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ConsortiumItemsDialog } from "./ConsortiumItemsDialog";
+import { ConsortiumPaymentsDialog } from "./ConsortiumPaymentsDialog";
 
 interface Consortium {
   id: string;
@@ -64,6 +65,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
   const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
   const [isDrawingOpen, setIsDrawingOpen] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<{ winnerId: string; participantName: string } | null>(null);
+  const [selectedPaymentParticipant, setSelectedPaymentParticipant] = useState<{ id: string; name: string } | null>(null);
   const [participantForm, setParticipantForm] = useState({
     customer_name: "",
     customer_phone: "",
@@ -511,6 +513,15 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1"
+                                  onClick={() => setSelectedPaymentParticipant({ id: p.id, name: p.customer_name })}
+                                >
+                                  <DollarSign className="h-4 w-4" />
+                                  Parcelas
+                                </Button>
                                 {winner && (
                                   <Button
                                     variant="outline"
@@ -624,6 +635,18 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
           consortiumValue={consortium.total_value}
           open={!!selectedWinner}
           onOpenChange={(open) => !open && setSelectedWinner(null)}
+        />
+      )}
+
+      {/* Dialog de pagamentos */}
+      {selectedPaymentParticipant && (
+        <ConsortiumPaymentsDialog
+          participantId={selectedPaymentParticipant.id}
+          participantName={selectedPaymentParticipant.name}
+          installmentsCount={consortium.installments_count}
+          installmentValue={consortium.installment_value}
+          open={!!selectedPaymentParticipant}
+          onOpenChange={(open) => !open && setSelectedPaymentParticipant(null)}
         />
       )}
     </MainLayout>
