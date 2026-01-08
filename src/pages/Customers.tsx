@@ -302,14 +302,23 @@ export default function Customers() {
     toast.success("Instagram copiado!");
   };
 
-  const openInstagram = (instagram: string) => {
+  const getInstagramUrl = (instagram: string) => {
     const handle = instagram.replace("@", "").trim();
-    window.open(`https://instagram.com/${handle}`, "_blank");
+    return `https://instagram.com/${handle}`;
   };
 
   const formatInstagram = (instagram: string) => {
     if (!instagram) return "";
     return instagram.startsWith("@") ? instagram : `@${instagram}`;
+  };
+
+  const getWhatsAppUrl = (phone: string, name: string) => {
+    const cleaned = phone.replace(/\D/g, "");
+    const countryCode = cleaned.startsWith("55") ? "" : "55";
+    const message = encodeURIComponent(
+      `Olá ${name}! 👋\n\nTemos novidades especiais para você! Confira nossos lançamentos e promoções exclusivas.`
+    );
+    return `https://wa.me/${countryCode}${cleaned}?text=${message}`;
   };
 
   const formatPhone = (phone: string) => {
@@ -323,14 +332,6 @@ export default function Customers() {
     return phone;
   };
 
-  const openWhatsApp = (phone: string, name: string) => {
-    const cleaned = phone.replace(/\D/g, "");
-    const countryCode = cleaned.startsWith("55") ? "" : "55";
-    const message = encodeURIComponent(
-      `Olá ${name}! 👋\n\nTemos novidades especiais para você! Confira nossos lançamentos e promoções exclusivas.`
-    );
-    window.open(`https://wa.me/${countryCode}${cleaned}?text=${message}`, "_blank");
-  };
 
   const viewCustomerDetails = (customer: CustomerWithSales) => {
     setSelectedCustomer(customer);
@@ -505,13 +506,16 @@ export default function Customers() {
                                 >
                                   <Copy className="h-3 w-3" />
                                 </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); openInstagram(customer.instagram!); }}
+                                <a
+                                  href={getInstagramUrl(customer.instagram!)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
                                   className="p-1 hover:bg-muted rounded transition-colors"
                                   title="Abrir Instagram"
                                 >
                                   <ExternalLink className="h-3 w-3" />
-                                </button>
+                                </a>
                               </div>
                             )}
                           </div>
@@ -551,13 +555,18 @@ export default function Customers() {
                               <Edit className="h-4 w-4" />
                             </Button>
                             {customer.phone && (
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => openWhatsApp(customer.phone!, customer.name)}
+                              <a
+                                href={getWhatsAppUrl(customer.phone!, customer.name)}
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
-                                <MessageCircle className="h-4 w-4" />
-                              </Button>
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                </Button>
+                              </a>
                             )}
                             <Button
                               size="sm"
@@ -714,25 +723,30 @@ export default function Customers() {
                           >
                             <Copy className="h-3 w-3" />
                           </button>
-                          <button
-                            onClick={() => openInstagram(selectedCustomer.instagram!)}
+                          <a
+                            href={getInstagramUrl(selectedCustomer.instagram!)}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="p-1 hover:bg-muted rounded transition-colors"
                             title="Abrir Instagram"
                           >
                             <ExternalLink className="h-3 w-3" />
-                          </button>
+                          </a>
                         </p>
                       )}
                     </div>
                   </div>
                   {selectedCustomer.phone && (
-                    <Button
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => openWhatsApp(selectedCustomer.phone!, selectedCustomer.name)}
+                    <a
+                      href={getWhatsAppUrl(selectedCustomer.phone!, selectedCustomer.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      WhatsApp
-                    </Button>
+                      <Button className="bg-green-600 hover:bg-green-700 text-white">
+                        <MessageCircle className="h-4 w-4 mr-2" />
+                        WhatsApp
+                      </Button>
+                    </a>
                   )}
                 </div>
 
