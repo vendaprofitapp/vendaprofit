@@ -29,7 +29,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const pageTitle = pageTitles[location.pathname] || "Vendas L.E.V.E.";
+  const pageTitle = pageTitles[location.pathname] || "Venda PROFIT";
 
   if (isMobile) {
     return (
