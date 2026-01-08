@@ -82,8 +82,8 @@ export function Sidebar({
             <DollarSign className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">Vendas L.E.V.E.</h1>
-            <p className="text-xs text-sidebar-foreground/60">Gestão de Vendas Fitness</p>
+            <h1 className="text-lg font-bold text-white">Venda PROFIT</h1>
+            <p className="text-xs text-sidebar-foreground/60">Gestão Inteligente de Vendas</p>
           </div>
         </div>
 

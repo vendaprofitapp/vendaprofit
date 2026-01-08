@@ -66,8 +66,8 @@ function getStockStatusKey(stock: number, minLevel: number): StockStatusKey {
 
 function usePageSeo() {
   useEffect(() => {
-    const title = "Produtos | Vendas L.E.V.E.";
-    const description = "Produtos: gerencie seu catálogo e estoque no Vendas L.E.V.E.";
+    const title = "Produtos | Venda PROFIT";
+    const description = "Produtos: gerencie seu catálogo e estoque no Venda PROFIT";
 
     document.title = title;
 

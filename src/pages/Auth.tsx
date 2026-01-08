@@ -72,7 +72,7 @@ export default function Auth() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary shadow-glow mb-4">
             <Dumbbell className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Vendas L.E.V.E.</h1>
+          <h1 className="text-3xl font-bold text-foreground">Venda PROFIT</h1>
           <p className="text-muted-foreground">Gestão inteligente de vendas e estoque</p>
         </div>
 
