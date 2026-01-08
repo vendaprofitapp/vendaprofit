@@ -296,8 +296,8 @@ export type Database = {
       customers: {
         Row: {
           created_at: string
-          email: string | null
           id: string
+          instagram: string | null
           name: string
           notes: string | null
           owner_id: string
@@ -307,8 +307,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          email?: string | null
           id?: string
+          instagram?: string | null
           name: string
           notes?: string | null
           owner_id: string
@@ -318,8 +318,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          email?: string | null
           id?: string
+          instagram?: string | null
           name?: string
           notes?: string | null
           owner_id?: string
