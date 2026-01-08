@@ -41,9 +41,10 @@ import {
   Copy,
   ExternalLink,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { Cake, Gift } from "lucide-react";
 
 interface Customer {
   id: string;
@@ -52,6 +53,7 @@ interface Customer {
   instagram: string | null;
   photo_url: string | null;
   notes: string | null;
+  birth_date: string | null;
   created_at: string;
 }
 
@@ -95,6 +97,7 @@ export default function Customers() {
     instagram: "",
     notes: "",
     photo_url: "",
+    birth_date: "",
   });
 
   // Fetch customers from database
@@ -206,6 +209,7 @@ export default function Customers() {
             instagram: formData.instagram || null,
             notes: formData.notes || null,
             photo_url: formData.photo_url || null,
+            birth_date: formData.birth_date || null,
           })
           .eq("id", editingCustomer.id);
         if (error) throw error;
@@ -217,6 +221,7 @@ export default function Customers() {
           instagram: formData.instagram || null,
           notes: formData.notes || null,
           photo_url: formData.photo_url || null,
+          birth_date: formData.birth_date || null,
         });
         if (error) throw error;
       }
@@ -275,7 +280,7 @@ export default function Customers() {
 
   const openNewForm = () => {
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "" });
     setIsFormOpen(true);
   };
 
@@ -287,6 +292,7 @@ export default function Customers() {
       instagram: customer.instagram || "",
       notes: customer.notes || "",
       photo_url: customer.photo_url || "",
+      birth_date: customer.birth_date || "",
     });
     setIsFormOpen(true);
   };
@@ -294,8 +300,21 @@ export default function Customers() {
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "" });
   };
+
+  // Check if today is the customer's birthday (same month and day)
+  const isBirthdayToday = (birthDate: string | null) => {
+    if (!birthDate) return false;
+    const today = new Date();
+    const birth = parseISO(birthDate);
+    return today.getMonth() === birth.getMonth() && today.getDate() === birth.getDate();
+  };
+
+  // Get customers with birthday today
+  const birthdayCustomers = useMemo(() => {
+    return customersWithSales.filter(c => isBirthdayToday(c.birth_date));
+  }, [customersWithSales]);
 
   const copyInstagram = (instagram: string) => {
     navigator.clipboard.writeText(instagram);
@@ -363,6 +382,48 @@ export default function Customers() {
             Novo Cliente
           </Button>
         </div>
+
+        {/* Birthday Alert */}
+        {birthdayCustomers.length > 0 && (
+          <Card className="border-pink-200 bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
+                  <Cake className="h-5 w-5 text-pink-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-pink-700 dark:text-pink-300 flex items-center gap-2">
+                    🎉 Aniversariantes de Hoje!
+                  </h3>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {birthdayCustomers.map(customer => (
+                      <Badge 
+                        key={customer.id} 
+                        variant="outline" 
+                        className="bg-white dark:bg-background border-pink-200 text-pink-700 dark:text-pink-300 cursor-pointer hover:bg-pink-50 dark:hover:bg-pink-900/20"
+                        onClick={() => viewCustomerDetails(customer)}
+                      >
+                        <Gift className="h-3 w-3 mr-1" />
+                        {customer.name}
+                        {customer.phone && (
+                          <a
+                            href={getWhatsAppUrl(customer.phone, `${customer.name}, feliz aniversário! 🎂`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-2 text-green-600 hover:text-green-700"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                          </a>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -661,6 +722,15 @@ export default function Customers() {
               </div>
 
               <div>
+                <Label>Data de Aniversário</Label>
+                <Input
+                  type="date"
+                  value={formData.birth_date}
+                  onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                />
+              </div>
+
+              <div>
                 <Label>Observações</Label>
                 <Textarea
                   value={formData.notes}
@@ -732,6 +802,17 @@ export default function Customers() {
                           >
                             <ExternalLink className="h-3 w-3" />
                           </a>
+                        </p>
+                      )}
+                      {selectedCustomer.birth_date && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Cake className="h-3 w-3" />
+                          {format(parseISO(selectedCustomer.birth_date), "dd/MM/yyyy")}
+                          {isBirthdayToday(selectedCustomer.birth_date) && (
+                            <Badge variant="outline" className="ml-1 text-xs bg-pink-50 text-pink-600 border-pink-200">
+                              🎂 Aniversário hoje!
+                            </Badge>
+                          )}
                         </p>
                       )}
                     </div>
