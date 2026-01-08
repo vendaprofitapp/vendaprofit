@@ -40,15 +40,18 @@ interface Participant {
   notes: string | null;
 }
 
+interface Winner {
+  id: string;
+  participant_id: string;
+  participant_name: string;
+  items_total: number;
+}
+
 interface Drawing {
   id: string;
   drawing_date: string;
   notes: string | null;
-  winners: Array<{
-    id: string;
-    participant_id: string;
-    participant_name: string;
-  }>;
+  winners: Winner[];
 }
 
 interface Props {
@@ -127,13 +130,20 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
           .select("id, participant_id")
           .eq("drawing_id", d.id);
 
-        const winnersWithNames = await Promise.all(
+        const winnersWithNames: Winner[] = await Promise.all(
           (winners || []).map(async (w) => {
             const participant = participants.find((p) => p.id === w.participant_id);
+            // Buscar total de itens do vencedor
+            const { data: items } = await supabase
+              .from("consortium_items")
+              .select("total")
+              .eq("winner_id", w.id);
+            const itemsTotal = (items || []).reduce((sum, i) => sum + Number(i.total), 0);
             return {
               id: w.id,
               participant_id: w.participant_id,
               participant_name: participant?.customer_name || "Desconhecido",
+              items_total: itemsTotal,
             };
           })
         );
@@ -458,60 +468,87 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                       <TableHead>Telefone</TableHead>
                       <TableHead>Pagamento</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Saldo Restante</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {participants.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           Nenhum participante adicionado ainda
                         </TableCell>
                       </TableRow>
                     ) : (
-                      participants.map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell className="font-medium">{p.customer_name}</TableCell>
-                          <TableCell>{p.customer_phone || "-"}</TableCell>
-                          <TableCell className="capitalize">{p.payment_method.replace("_", " ")}</TableCell>
-                          <TableCell>
-                            {p.is_drawn ? (
-                              <Badge className="bg-yellow-500/10 text-yellow-500 gap-1">
-                                <Trophy className="h-3 w-3" />
-                                Sorteado
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary">Aguardando</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              {p.customer_phone && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openWhatsApp(p.customer_phone!, p.customer_name)}
-                                >
-                                  <MessageCircle className="h-4 w-4" />
-                                </Button>
+                      participants.map((p) => {
+                        // Encontrar o winner correspondente se foi sorteado
+                        const winner = drawings.flatMap(d => d.winners).find(w => w.participant_id === p.id);
+                        const remaining = winner ? Number(consortium.total_value) - winner.items_total : null;
+                        
+                        return (
+                          <TableRow key={p.id}>
+                            <TableCell className="font-medium">{p.customer_name}</TableCell>
+                            <TableCell>{p.customer_phone || "-"}</TableCell>
+                            <TableCell className="capitalize">{p.payment_method.replace("_", " ")}</TableCell>
+                            <TableCell>
+                              {p.is_drawn ? (
+                                <Badge className="bg-yellow-500/10 text-yellow-500 gap-1">
+                                  <Trophy className="h-3 w-3" />
+                                  Sorteado
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">Aguardando</Badge>
                               )}
-                              {!p.is_drawn && (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => {
-                                    if (confirm("Remover participante?")) {
-                                      removeParticipantMutation.mutate(p.id);
-                                    }
-                                  }}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
+                            </TableCell>
+                            <TableCell>
+                              {winner ? (
+                                <span className={remaining === 0 ? "text-green-500 font-medium" : remaining && remaining < 0 ? "text-destructive font-medium" : "font-medium"}>
+                                  R$ {remaining?.toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
                               )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                {winner && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1"
+                                    onClick={() => setSelectedWinner({ winnerId: winner.id, participantName: p.customer_name })}
+                                  >
+                                    <Package className="h-4 w-4" />
+                                    Peças
+                                  </Button>
+                                )}
+                                {p.customer_phone && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openWhatsApp(p.customer_phone!, p.customer_name)}
+                                  >
+                                    <MessageCircle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {!p.is_drawn && (
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (confirm("Remover participante?")) {
+                                        removeParticipantMutation.mutate(p.id);
+                                      }
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
