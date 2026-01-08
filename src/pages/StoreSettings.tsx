@@ -342,19 +342,19 @@ export default function StoreSettings() {
                   <img
                     src={logoUrl}
                     alt="Logo da loja"
-                    className="w-24 h-24 object-contain rounded-lg border bg-muted"
+                    className="w-24 h-24 object-cover rounded-full border-2 border-primary/20 bg-muted shadow-md"
                   />
                   <Button
                     variant="destructive"
                     size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6"
+                    className="absolute -top-1 -right-1 h-6 w-6 rounded-full"
                     onClick={removeLogo}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
-                <div className="w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50">
+                <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center bg-muted/50">
                   <ImageIcon className="h-8 w-8 text-muted-foreground" />
                 </div>
               )}
