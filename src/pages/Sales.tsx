@@ -174,7 +174,7 @@ export default function Sales() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone, email, photo_url")
+        .select("id, name, phone, instagram, photo_url")
         .eq("owner_id", user?.id)
         .order("name");
       if (error) throw error;

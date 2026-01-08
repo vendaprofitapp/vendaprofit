@@ -37,7 +37,9 @@ import {
   Edit,
   Trash2,
   Camera,
-  Mail,
+  Instagram,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -47,7 +49,7 @@ interface Customer {
   id: string;
   name: string;
   phone: string | null;
-  email: string | null;
+  instagram: string | null;
   photo_url: string | null;
   notes: string | null;
   created_at: string;
@@ -90,7 +92,7 @@ export default function Customers() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
-    email: "",
+    instagram: "",
     notes: "",
     photo_url: "",
   });
@@ -175,7 +177,7 @@ export default function Customers() {
       (c) =>
         c.name.toLowerCase().includes(term) ||
         c.phone?.includes(term) ||
-        c.email?.toLowerCase().includes(term)
+        c.instagram?.toLowerCase().includes(term)
     );
   }, [customersWithSales, searchTerm]);
 
@@ -201,7 +203,7 @@ export default function Customers() {
           .update({
             name: formData.name,
             phone: formData.phone || null,
-            email: formData.email || null,
+            instagram: formData.instagram || null,
             notes: formData.notes || null,
             photo_url: formData.photo_url || null,
           })
@@ -212,7 +214,7 @@ export default function Customers() {
           owner_id: user.id,
           name: formData.name,
           phone: formData.phone || null,
-          email: formData.email || null,
+          instagram: formData.instagram || null,
           notes: formData.notes || null,
           photo_url: formData.photo_url || null,
         });
@@ -273,7 +275,7 @@ export default function Customers() {
 
   const openNewForm = () => {
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", email: "", notes: "", photo_url: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "" });
     setIsFormOpen(true);
   };
 
@@ -282,7 +284,7 @@ export default function Customers() {
     setFormData({
       name: customer.name,
       phone: customer.phone || "",
-      email: customer.email || "",
+      instagram: customer.instagram || "",
       notes: customer.notes || "",
       photo_url: customer.photo_url || "",
     });
@@ -292,7 +294,22 @@ export default function Customers() {
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", email: "", notes: "", photo_url: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "" });
+  };
+
+  const copyInstagram = (instagram: string) => {
+    navigator.clipboard.writeText(instagram);
+    toast.success("Instagram copiado!");
+  };
+
+  const openInstagram = (instagram: string) => {
+    const handle = instagram.replace("@", "").trim();
+    window.open(`https://instagram.com/${handle}`, "_blank");
+  };
+
+  const formatInstagram = (instagram: string) => {
+    if (!instagram) return "";
+    return instagram.startsWith("@") ? instagram : `@${instagram}`;
   };
 
   const formatPhone = (phone: string) => {
@@ -412,7 +429,7 @@ export default function Customers() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome, telefone ou email..."
+                placeholder="Buscar por nome, telefone ou Instagram..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -477,10 +494,24 @@ export default function Customers() {
                                 {formatPhone(customer.phone)}
                               </div>
                             )}
-                            {customer.email && (
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <Mail className="h-3 w-3" />
-                                {customer.email}
+                            {customer.instagram && (
+                              <div className="flex items-center gap-1 text-sm text-pink-500">
+                                <Instagram className="h-3 w-3" />
+                                <span className="font-medium">{formatInstagram(customer.instagram)}</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); copyInstagram(customer.instagram!); }}
+                                  className="p-1 hover:bg-muted rounded transition-colors"
+                                  title="Copiar Instagram"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openInstagram(customer.instagram!); }}
+                                  className="p-1 hover:bg-muted rounded transition-colors"
+                                  title="Abrir Instagram"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </button>
                               </div>
                             )}
                           </div>
@@ -612,12 +643,11 @@ export default function Customers() {
               </div>
 
               <div>
-                <Label>Email</Label>
+                <Label>Instagram</Label>
                 <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="email@exemplo.com"
+                  value={formData.instagram}
+                  onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
+                  placeholder="@usuario"
                 />
               </div>
 
@@ -673,10 +703,24 @@ export default function Customers() {
                           {formatPhone(selectedCustomer.phone)}
                         </p>
                       )}
-                      {selectedCustomer.email && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {selectedCustomer.email}
+                      {selectedCustomer.instagram && (
+                        <p className="text-sm text-pink-500 flex items-center gap-1">
+                          <Instagram className="h-3 w-3" />
+                          <span>{formatInstagram(selectedCustomer.instagram)}</span>
+                          <button
+                            onClick={() => copyInstagram(selectedCustomer.instagram!)}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                            title="Copiar"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => openInstagram(selectedCustomer.instagram!)}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                            title="Abrir Instagram"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </button>
                         </p>
                       )}
                     </div>
