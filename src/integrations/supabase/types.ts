@@ -38,6 +38,261 @@ export type Database = {
         }
         Relationships: []
       }
+      consortium_drawings: {
+        Row: {
+          consortium_id: string
+          created_at: string
+          drawing_date: string
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          consortium_id: string
+          created_at?: string
+          drawing_date: string
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          consortium_id?: string
+          created_at?: string
+          drawing_date?: string
+          id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_drawings_consortium_id_fkey"
+            columns: ["consortium_id"]
+            isOneToOne: false
+            referencedRelation: "consortiums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortium_items: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          product_id: string | null
+          product_name: string
+          quantity: number
+          total: number
+          unit_price: number
+          winner_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          total?: number
+          unit_price?: number
+          winner_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          total?: number
+          unit_price?: number
+          winner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consortium_items_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "consortium_winners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortium_participants: {
+        Row: {
+          consortium_id: string
+          created_at: string
+          customer_name: string
+          customer_phone: string | null
+          drawn_at: string | null
+          id: string
+          is_drawn: boolean
+          notes: string | null
+          payment_method: string
+          updated_at: string
+        }
+        Insert: {
+          consortium_id: string
+          created_at?: string
+          customer_name: string
+          customer_phone?: string | null
+          drawn_at?: string | null
+          id?: string
+          is_drawn?: boolean
+          notes?: string | null
+          payment_method?: string
+          updated_at?: string
+        }
+        Update: {
+          consortium_id?: string
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string | null
+          drawn_at?: string | null
+          id?: string
+          is_drawn?: boolean
+          notes?: string | null
+          payment_method?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_participants_consortium_id_fkey"
+            columns: ["consortium_id"]
+            isOneToOne: false
+            referencedRelation: "consortiums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortium_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          installment_number: number
+          is_paid: boolean
+          notes: string | null
+          paid_at: string | null
+          participant_id: string
+          payment_method: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          installment_number: number
+          is_paid?: boolean
+          notes?: string | null
+          paid_at?: string | null
+          participant_id: string
+          payment_method?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          installment_number?: number
+          is_paid?: boolean
+          notes?: string | null
+          paid_at?: string | null
+          participant_id?: string
+          payment_method?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_payments_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "consortium_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortium_winners: {
+        Row: {
+          created_at: string
+          drawing_id: string
+          id: string
+          participant_id: string
+        }
+        Insert: {
+          created_at?: string
+          drawing_id: string
+          id?: string
+          participant_id: string
+        }
+        Update: {
+          created_at?: string
+          drawing_id?: string
+          id?: string
+          participant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_winners_drawing_id_fkey"
+            columns: ["drawing_id"]
+            isOneToOne: false
+            referencedRelation: "consortium_drawings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consortium_winners_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "consortium_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortiums: {
+        Row: {
+          created_at: string
+          description: string | null
+          end_date: string
+          id: string
+          installment_value: number
+          installments_count: number
+          is_active: boolean
+          name: string
+          owner_id: string
+          start_date: string
+          total_value: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          end_date: string
+          id?: string
+          installment_value?: number
+          installments_count?: number
+          is_active?: boolean
+          name: string
+          owner_id: string
+          start_date: string
+          total_value?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          end_date?: string
+          id?: string
+          installment_value?: number
+          installments_count?: number
+          is_active?: boolean
+          name?: string
+          owner_id?: string
+          start_date?: string
+          total_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       group_members: {
         Row: {
           group_id: string
