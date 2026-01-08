@@ -5,6 +5,80 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function callLovableAI(audioBase64: string, mimeType: string, apiKey: string) {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `Você é um assistente de transcrição de áudio em português brasileiro. 
+Sua tarefa é transcrever exatamente o que foi dito no áudio.
+Retorne APENAS o texto transcrito, sem explicações adicionais.
+Se não conseguir entender o áudio, retorne "AUDIO_UNCLEAR".`
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Transcreva o áudio a seguir para texto em português:"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType || "audio/webm"};base64,${audioBase64}`
+              }
+            }
+          ]
+        }
+      ],
+    }),
+  });
+
+  return response;
+}
+
+async function callGeminiDirect(audioBase64: string, mimeType: string, apiKey: string) {
+  console.log("Using Gemini direct API as fallback...");
+  
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              text: `Você é um assistente de transcrição de áudio em português brasileiro. 
+Sua tarefa é transcrever exatamente o que foi dito no áudio.
+Retorne APENAS o texto transcrito, sem explicações adicionais.
+Se não conseguir entender o áudio, retorne "AUDIO_UNCLEAR".
+
+Transcreva o áudio a seguir para texto em português:`
+            },
+            {
+              inline_data: {
+                mime_type: mimeType || "audio/webm",
+                data: audioBase64
+              }
+            }
+          ]
+        }
+      ]
+    }),
+  });
+
+  return response;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,66 +95,72 @@ serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY not configured");
+    const GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
+    
+    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) {
+      console.error("No API key configured");
       return new Response(
         JSON.stringify({ error: "AI service not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Use Gemini's audio understanding capabilities
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `Você é um assistente de transcrição de áudio em português brasileiro. 
-Sua tarefa é transcrever exatamente o que foi dito no áudio.
-Retorne APENAS o texto transcrito, sem explicações adicionais.
-Se não conseguir entender o áudio, retorne "AUDIO_UNCLEAR".`
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Transcreva o áudio a seguir para texto em português:"
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType || "audio/webm"};base64,${audioBase64}`
-                }
-              }
-            ]
-          }
-        ],
-      }),
-    });
+    let response;
+    let useGeminiFallback = false;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI API error:", response.status, errorText);
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      response = await callLovableAI(audioBase64, mimeType, LOVABLE_API_KEY);
       
-      if (response.status === 429) {
+      // Check if we need to fallback to Gemini (credits exhausted)
+      if (response.status === 402 && GEMINI_API_KEY) {
+        console.log("Lovable credits exhausted, using Gemini fallback...");
+        useGeminiFallback = true;
+      } else if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+    } else {
+      useGeminiFallback = true;
+    }
+
+    // Use Gemini direct API as fallback
+    if (useGeminiFallback && GEMINI_API_KEY) {
+      response = await callGeminiDirect(audioBase64, mimeType, GEMINI_API_KEY);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Gemini API error:", response.status, errorText);
         return new Response(
-          JSON.stringify({ error: "Créditos insuficientes para o serviço de IA." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Erro ao processar áudio" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
+      const data = await response.json();
+      const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+
+      if (transcription === "AUDIO_UNCLEAR" || !transcription) {
+        return new Response(
+          JSON.stringify({ error: "Não foi possível entender o áudio. Tente falar mais claramente." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("Transcription successful (Gemini):", transcription);
+
+      return new Response(
+        JSON.stringify({ transcription }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle Lovable AI response
+    if (!response || !response.ok) {
+      const errorText = response ? await response.text() : "No response";
+      console.error("AI API error:", response?.status, errorText);
       
       return new Response(
         JSON.stringify({ error: "Erro ao processar áudio" }),
