@@ -6,8 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { Search, MessageCircle, Store, Package } from "lucide-react";
-
+import { Search, MessageCircle, Store, Package, Sparkles } from "lucide-react";
+import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
 interface Product {
   id: string;
   name: string;
@@ -38,6 +38,13 @@ export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [fittingRoomOpen, setFittingRoomOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  const handleOpenFittingRoom = (product: Product) => {
+    setSelectedProduct(product);
+    setFittingRoomOpen(true);
+  };
 
   // Fetch store settings
   const { data: store, isLoading: storeLoading, error: storeError } = useQuery({
@@ -298,17 +305,30 @@ export default function StoreCatalog() {
                   >
                     {formatPrice(product.price)}
                   </p>
-                  {store.whatsapp_number && (
-                    <Button
-                      size="sm"
-                      className="w-full gap-2"
-                      style={{ backgroundColor: "#25D366" }}
-                      onClick={() => handleWhatsApp(product)}
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      Comprar
-                    </Button>
-                  )}
+                  <div className="space-y-2">
+                    {product.image_url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                        onClick={() => handleOpenFittingRoom(product)}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Provador I.A.
+                      </Button>
+                    )}
+                    {store.whatsapp_number && (
+                      <Button
+                        size="sm"
+                        className="w-full gap-2"
+                        style={{ backgroundColor: "#25D366" }}
+                        onClick={() => handleWhatsApp(product)}
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Comprar
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -322,6 +342,13 @@ export default function StoreCatalog() {
           <p>© {new Date().getFullYear()} {store.store_name}. Todos os direitos reservados.</p>
         </div>
       </footer>
+
+      {/* AI Fitting Room Dialog */}
+      <AIFittingRoomDialog
+        open={fittingRoomOpen}
+        onOpenChange={setFittingRoomOpen}
+        product={selectedProduct}
+      />
     </div>
   );
 }
