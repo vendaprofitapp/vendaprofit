@@ -19,6 +19,7 @@ import NotFound from "./pages/NotFound";
 import StoreSettingsPage from "./pages/StoreSettings";
 import StoreCatalog from "./pages/StoreCatalog";
 import Customers from "./pages/Customers";
+import Consortiums from "./pages/Consortiums";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const AppRoutes = () => (
     <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+    <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
     <Route path="/partner-reports" element={<ProtectedRoute><PartnerReports /></ProtectedRoute>} />
     <Route path="/partnerships" element={<ProtectedRoute><Partnerships /></ProtectedRoute>} />
