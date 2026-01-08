@@ -135,6 +135,7 @@ export default function Sales() {
   const [showReserveDialog, setShowReserveDialog] = useState(false);
   const [reserveQuantity, setReserveQuantity] = useState(1);
   const [reserveNotes, setReserveNotes] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
@@ -163,6 +164,21 @@ export default function Sales() {
         .order("name");
       if (error) throw error;
       return data as Product[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch registered customers for selection
+  const { data: registeredCustomers = [] } = useQuery({
+    queryKey: ["registered-customers-for-sale"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id, name, phone, email, photo_url")
+        .eq("owner_id", user?.id)
+        .order("name");
+      if (error) throw error;
+      return data;
     },
     enabled: !!user,
   });
@@ -343,6 +359,21 @@ export default function Sales() {
     setDiscountValue(0);
     setNotes("");
     setProductSearch("");
+    setSelectedCustomerId("");
+  };
+
+  const handleCustomerSelect = (customerId: string) => {
+    setSelectedCustomerId(customerId);
+    if (customerId === "") {
+      setCustomerName("");
+      setCustomerPhone("");
+    } else {
+      const customer = registeredCustomers.find(c => c.id === customerId);
+      if (customer) {
+        setCustomerName(customer.name);
+        setCustomerPhone(customer.phone || "");
+      }
+    }
   };
 
   const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
@@ -874,13 +905,34 @@ export default function Sales() {
 
             {/* Right: Sale Details */}
             <div className="space-y-4">
+              {/* Customer Selection */}
+              <div>
+                <Label>Selecionar Cliente Cadastrado</Label>
+                <Select value={selectedCustomerId} onValueChange={handleCustomerSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione ou digite manualmente" />
+                  </SelectTrigger>
+                  <SelectContent portal={!isMobile ? undefined : false}>
+                    <SelectItem value="">Digitar manualmente</SelectItem>
+                    {registeredCustomers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} {customer.phone ? `- ${customer.phone}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Nome do Cliente</Label>
                   <Input
                     placeholder="Opcional"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      setSelectedCustomerId("");
+                    }}
                   />
                 </div>
                 <div>
@@ -888,7 +940,10 @@ export default function Sales() {
                   <Input
                     placeholder="Opcional"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerPhone(e.target.value);
+                      setSelectedCustomerId("");
+                    }}
                   />
                 </div>
               </div>
