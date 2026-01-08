@@ -1,1 +1,13 @@
 project_id = "dghbxwpxgsuprlksiklv"
+
+[functions.parse-invoice]
+verify_jwt = false
+
+[functions.parse-voice-sale]
+verify_jwt = false
+
+[functions.transcribe-audio]
+verify_jwt = false
+
+[functions.ai-fitting-room]
+verify_jwt = false
