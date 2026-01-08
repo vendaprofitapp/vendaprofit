@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_WINDOW_HOURS = 1;
 
 const FITTING_ROOM_PROMPT = (productName: string) => `You are a virtual fitting room AI. Your task is to create a realistic image of the person in the first photo wearing the clothing item shown in the second photo.
 
@@ -110,6 +114,66 @@ serve(async (req) => {
         JSON.stringify({ error: "Imagens do usuário e do produto são obrigatórias" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Get user from authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Autenticação necessária" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("Auth error:", userError);
+      return new Response(
+        JSON.stringify({ error: "Usuário não autenticado" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check rate limit: count requests in the last hour
+    const oneHourAgo = new Date(Date.now() - RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await supabase
+      .from("ai_fitting_room_usage")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", oneHourAgo);
+
+    if (countError) {
+      console.error("Error checking rate limit:", countError);
+    }
+
+    const currentUsage = count || 0;
+    console.log(`User ${user.id} has used ${currentUsage}/${RATE_LIMIT_MAX_REQUESTS} requests in the last hour`);
+
+    if (currentUsage >= RATE_LIMIT_MAX_REQUESTS) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Você atingiu o limite de ${RATE_LIMIT_MAX_REQUESTS} tentativas por hora. Tente novamente mais tarde.`,
+          remainingRequests: 0,
+          resetTime: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Record this usage attempt
+    const { error: insertError } = await supabase
+      .from("ai_fitting_room_usage")
+      .insert({ user_id: user.id });
+
+    if (insertError) {
+      console.error("Error recording usage:", insertError);
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");

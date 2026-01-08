@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_fitting_room_usage: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -883,6 +901,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_fitting_room_usage: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
