@@ -303,12 +303,18 @@ export default function Customers() {
     setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "" });
   };
 
-  // Check if today is the customer's birthday (same month and day)
+  // Check if today is the customer's birthday (same month and day) - iOS safe
   const isBirthdayToday = (birthDate: string | null) => {
     if (!birthDate) return false;
-    const today = new Date();
-    const birth = parseISO(birthDate);
-    return today.getMonth() === birth.getMonth() && today.getDate() === birth.getDate();
+    try {
+      const today = new Date();
+      const birth = parseISO(birthDate);
+      // Validate parsed date
+      if (isNaN(birth.getTime())) return false;
+      return today.getMonth() === birth.getMonth() && today.getDate() === birth.getDate();
+    } catch {
+      return false;
+    }
   };
 
   // Get customers with birthday today
