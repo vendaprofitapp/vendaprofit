@@ -453,6 +453,33 @@ export type Database = {
           },
         ]
       }
+      payment_fees: {
+        Row: {
+          created_at: string
+          fee_percent: number
+          id: string
+          owner_id: string
+          payment_method: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          fee_percent?: number
+          id?: string
+          owner_id: string
+          payment_method: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          fee_percent?: number
+          id?: string
+          owner_id?: string
+          payment_method?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       product_partnerships: {
         Row: {
           created_at: string
