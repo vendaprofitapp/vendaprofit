@@ -326,8 +326,141 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* FAQ Section */}
+      {/* Pricing Section */}
       <section className="py-20 px-4">
+        <div className="container mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Planos que cabem no seu{" "}
+              <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                bolso
+              </span>
+            </h2>
+            <p className="text-lg text-muted-foreground">
+              Escolha o plano ideal para o seu negócio
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {/* Teste Grátis */}
+            <Card className="relative hover:shadow-lg transition-all hover:-translate-y-1 border-border">
+              <CardContent className="p-8">
+                <h3 className="text-xl font-bold mb-2">Teste Grátis</h3>
+                <p className="text-muted-foreground mb-6">Experimente sem compromisso</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold">R$0</span>
+                  <span className="text-muted-foreground">/14 dias</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Acesso completo ao sistema</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Todas as funcionalidades</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Suporte por WhatsApp</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Sem cartão de crédito</span>
+                  </li>
+                </ul>
+                <Link to="/auth">
+                  <Button variant="outline" className="w-full">
+                    Começar Grátis
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {/* Mensal */}
+            <Card className="relative hover:shadow-xl transition-all hover:-translate-y-1 border-primary shadow-lg shadow-primary/20">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-sm font-medium rounded-full">
+                Mais Popular
+              </div>
+              <CardContent className="p-8">
+                <h3 className="text-xl font-bold mb-2">Mensal</h3>
+                <p className="text-muted-foreground mb-6">Flexibilidade total</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold">R$197</span>
+                  <span className="text-muted-foreground">/mês</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Tudo do plano gratuito</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Produtos ilimitados</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Provador Virtual IA</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Suporte prioritário</span>
+                  </li>
+                </ul>
+                <Link to="/auth">
+                  <Button className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70">
+                    Assinar Agora
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {/* Anual */}
+            <Card className="relative hover:shadow-lg transition-all hover:-translate-y-1 border-border bg-gradient-to-br from-background to-muted/30">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-green-500 text-white text-sm font-medium rounded-full">
+                Economia de 51%
+              </div>
+              <CardContent className="p-8">
+                <h3 className="text-xl font-bold mb-2">Anual</h3>
+                <p className="text-muted-foreground mb-6">Melhor custo-benefício</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold">R$97</span>
+                  <span className="text-muted-foreground">/mês</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Cobrado anualmente (R$1.164/ano)
+                </p>
+                <ul className="space-y-3 mb-8">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Tudo do plano mensal</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Economia de R$1.200/ano</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Treinamento exclusivo</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span>Consultoria inicial</span>
+                  </li>
+                </ul>
+                <Link to="/auth">
+                  <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                    Assinar Anual
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="py-20 px-4 bg-muted/30">
         <div className="container mx-auto max-w-3xl">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
