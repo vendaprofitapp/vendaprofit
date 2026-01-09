@@ -289,6 +289,33 @@ export default function Sales() {
         : discountValue;
       const total = Math.max(0, subtotal - discountAmount);
 
+      // If customer name is provided but not from registered customers, create new customer
+      if (customerName && !selectedCustomerId) {
+        // Check if customer already exists with this name
+        const { data: existingCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("owner_id", user.id)
+          .eq("name", customerName.trim())
+          .maybeSingle();
+
+        if (!existingCustomer) {
+          // Create new customer
+          const { error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              owner_id: user.id,
+              name: customerName.trim(),
+              phone: customerPhone || null,
+            });
+
+          if (customerError) {
+            console.error("Error creating customer:", customerError);
+            // Don't throw - continue with sale even if customer creation fails
+          }
+        }
+      }
+
       // Create sale
       const { data: sale, error: saleError } = await supabase
         .from("sales")
@@ -340,6 +367,7 @@ export default function Sales() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
       toast({ title: "Venda registrada com sucesso!" });
       resetForm();
       setIsNewSaleOpen(false);
