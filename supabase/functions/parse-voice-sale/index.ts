@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-ai-provider, x-ai-key",
 };
 
 function buildSystemPrompt(productList: string) {
@@ -44,8 +44,9 @@ Responda APENAS com um JSON válido no formato:
 }`;
 }
 
+// Call Lovable AI Gateway
 async function callLovableAI(systemPrompt: string, voiceText: string, apiKey: string) {
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  return fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -57,36 +58,45 @@ async function callLovableAI(systemPrompt: string, voiceText: string, apiKey: st
         { role: "system", content: systemPrompt },
         { role: "user", content: `Comando de voz: "${voiceText}"` }
       ],
-      temperature: 0.1,
     }),
   });
-
-  return response;
 }
 
-async function callGeminiDirect(systemPrompt: string, voiceText: string, apiKey: string) {
-  console.log("Using Gemini direct API as fallback...");
+// Call OpenAI API
+async function callOpenAI(systemPrompt: string, voiceText: string, apiKey: string) {
+  console.log("Using OpenAI API");
   
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey, {
+  return fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: `${systemPrompt}\n\nComando de voz: "${voiceText}"` }
-          ]
-        }
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Comando de voz: "${voiceText}"` }
       ],
-      generationConfig: {
-        temperature: 0.1
-      }
+      max_tokens: 1024,
     }),
   });
+}
 
-  return response;
+// Call direct Gemini API
+async function callGeminiDirect(systemPrompt: string, voiceText: string, apiKey: string) {
+  console.log("Using Gemini direct API");
+  
+  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: `${systemPrompt}\n\nComando de voz: "${voiceText}"` }]
+      }],
+      generationConfig: { temperature: 0.1 }
+    }),
+  });
 }
 
 serve(async (req) => {
@@ -102,13 +112,6 @@ serve(async (req) => {
         JSON.stringify({ error: "Texto de voz não fornecido" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
-    
-    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) {
-      throw new Error("Nenhuma API key configurada");
     }
 
     // Create Supabase client to fetch user's products
@@ -135,6 +138,83 @@ serve(async (req) => {
 
     const systemPrompt = buildSystemPrompt(productList);
 
+    // Get user-provided AI config from headers (BYOK)
+    const userProvider = req.headers.get("x-ai-provider") as "gemini" | "openai" | null;
+    const userKey = req.headers.get("x-ai-key");
+
+    // If user provided their own key, use it directly
+    if (userKey && userProvider) {
+      console.log(`Using user-provided ${userProvider} key`);
+      
+      try {
+        let response;
+        if (userProvider === "openai") {
+          response = await callOpenAI(systemPrompt, voiceText, userKey);
+        } else {
+          response = await callGeminiDirect(systemPrompt, voiceText, userKey);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`${userProvider} error:`, response.status, errorText);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `Erro ao processar com ${userProvider}. Verifique sua chave API.` 
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const data = await response.json();
+        let content;
+        
+        if (userProvider === "openai") {
+          content = data.choices?.[0]?.message?.content;
+        } else {
+          content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        }
+
+        if (!content) {
+          throw new Error("Resposta vazia da IA");
+        }
+
+        // Parse JSON response
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
+        const jsonStr = jsonMatch[1]?.trim() || content.trim();
+        const parsed = JSON.parse(jsonStr);
+
+        console.log("Voice command parsed with user key:", { voiceText, parsed });
+        return new Response(
+          JSON.stringify(parsed),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (userKeyError) {
+        console.error("Error with user key:", userKeyError);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: "Erro ao usar sua chave API. Verifique as configurações." 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Fallback to system keys
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
+    
+    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Configure sua chave de IA nas configurações para usar este recurso." 
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let response;
     let useGeminiFallback = false;
 
@@ -142,13 +222,15 @@ serve(async (req) => {
     if (LOVABLE_API_KEY) {
       response = await callLovableAI(systemPrompt, voiceText, LOVABLE_API_KEY);
       
-      // Check if we need to fallback to Gemini (credits exhausted)
       if (response.status === 402 && GEMINI_API_KEY) {
         console.log("Lovable credits exhausted, using Gemini fallback...");
         useGeminiFallback = true;
       } else if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }),
+          JSON.stringify({ 
+            success: false, 
+            error: "Limite de requisições excedido. Tente novamente em alguns segundos." 
+          }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -173,26 +255,11 @@ serve(async (req) => {
         throw new Error("Resposta vazia da IA");
       }
 
-      // Parse JSON response (handle markdown code blocks)
-      let parsed;
-      try {
-        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
-        const jsonStr = jsonMatch[1]?.trim() || content.trim();
-        parsed = JSON.parse(jsonStr);
-      } catch (parseError) {
-        console.error("Error parsing Gemini response:", content);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: "Não foi possível interpretar o comando",
-            rawResponse: content 
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
+      const jsonStr = jsonMatch[1]?.trim() || content.trim();
+      const parsed = JSON.parse(jsonStr);
 
       console.log("Voice command parsed (Gemini):", { voiceText, parsed });
-
       return new Response(
         JSON.stringify(parsed),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -213,26 +280,11 @@ serve(async (req) => {
       throw new Error("Resposta vazia da IA");
     }
 
-    // Parse JSON response (handle markdown code blocks)
-    let parsed;
-    try {
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
-      const jsonStr = jsonMatch[1]?.trim() || content.trim();
-      parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("Error parsing AI response:", content);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Não foi possível interpretar o comando",
-          rawResponse: content 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
+    const jsonStr = jsonMatch[1]?.trim() || content.trim();
+    const parsed = JSON.parse(jsonStr);
 
     console.log("Voice command parsed:", { voiceText, parsed });
-
     return new Response(
       JSON.stringify(parsed),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

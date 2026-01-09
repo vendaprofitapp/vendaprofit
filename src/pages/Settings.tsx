@@ -9,27 +9,26 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { AISettingsSection } from "@/components/settings/AISettingsSection";
 
 export default function Settings() {
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
   
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Fetch user profile
-  const { data: profile } = useQuery({
+  // Fetch user profile with AI settings
+  const { data: profile, refetch: refetchProfile } = useQuery({
     queryKey: ["user-profile", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("*, preferred_ai_provider, gemini_api_key, openai_api_key")
         .eq("id", user.id)
         .single();
       if (error) throw error;
@@ -77,7 +76,6 @@ export default function Settings() {
       if (error) throw error;
       
       toast({ title: "Senha alterada com sucesso!" });
-      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (error: any) {
@@ -172,6 +170,15 @@ export default function Settings() {
             </div>
           </div>
         </div>
+
+        {/* AI Settings */}
+        {user?.id && (
+          <AISettingsSection 
+            userId={user.id} 
+            profile={profile} 
+            onUpdate={() => refetchProfile()} 
+          />
+        )}
 
         {/* User Settings */}
         <div className="rounded-xl bg-card p-6 shadow-soft animate-fade-in">
