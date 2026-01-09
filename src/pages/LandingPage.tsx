@@ -159,9 +159,9 @@ const LandingPage = () => {
             </div>
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 animate-fade-in">
-              Transforme sua loja com{" "}
+              Transforme suas vendas fitness com{" "}
               <span className="bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-                Inteligência Artificial
+                controle total na palma da mão e I.A.
               </span>
             </h1>
             
