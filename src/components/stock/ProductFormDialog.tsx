@@ -55,12 +55,6 @@ interface Product {
   supplier_id: string | null;
 }
 
-interface Group {
-  id: string;
-  name: string;
-  invite_code: string;
-}
-
 interface Supplier {
   id: string;
   name: string;
@@ -71,7 +65,6 @@ interface ProductFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingProduct: Product | null;
-  groups: Group[];
   onSuccess: () => void;
 }
 
@@ -80,8 +73,7 @@ const sizes = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
 export function ProductFormDialog({ 
   open, 
   onOpenChange, 
-  editingProduct, 
-  groups,
+  editingProduct,
   onSuccess 
 }: ProductFormDialogProps) {
   const { user } = useAuth();
@@ -105,7 +97,6 @@ export function ProductFormDialog({
     color: "",
     stock_quantity: "",
     min_stock_level: "5",
-    group_id: "",
     supplier_id: ""
   });
 
@@ -128,7 +119,6 @@ export function ProductFormDialog({
         color: editingProduct.color || "",
         stock_quantity: editingProduct.stock_quantity.toString(),
         min_stock_level: editingProduct.min_stock_level.toString(),
-        group_id: editingProduct.group_id || "",
         supplier_id: editingProduct.supplier_id || ""
       });
       
@@ -164,7 +154,6 @@ export function ProductFormDialog({
       color: "",
       stock_quantity: "",
       min_stock_level: "5",
-      group_id: "",
       supplier_id: ""
     });
     productImageUrls.forEach(url => URL.revokeObjectURL(url));
@@ -243,9 +232,9 @@ export function ProductFormDialog({
       color: form.color || null,
       stock_quantity: parseInt(form.stock_quantity) || 0,
       min_stock_level: parseInt(form.min_stock_level) || 5,
-      group_id: form.group_id || null,
       supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
-      owner_id: user.id
+      owner_id: user.id,
+      group_id: null,
     };
 
     try {
@@ -495,23 +484,6 @@ export function ProductFormDialog({
               <SelectItem key={s.id} value={s.id}>
                 {s.name}
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Compartilhar com Grupo</Label>
-        <Select
-          value={form.group_id || "none"}
-          onValueChange={(value) => setForm({ ...form, group_id: value === "none" ? "" : value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Nenhum (privado)" />
-          </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-            <SelectItem value="none">Nenhum (privado)</SelectItem>
-            {groups.map((group) => (
-              <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

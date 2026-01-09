@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface PaymentFee {
   payment_method: string;
@@ -15,6 +16,8 @@ const PAYMENT_METHODS = [
   { value: "pix", label: "PIX" },
   { value: "dinheiro", label: "Dinheiro" },
   { value: "debito", label: "Cartão Débito" },
+  { value: "credito", label: "Cartão Crédito" },
+  { value: "boleto", label: "Boleto" },
   { value: "credito_1x", label: "Cartão Crédito 1x" },
   { value: "credito_2x", label: "Cartão Crédito 2x" },
   { value: "credito_3x", label: "Cartão Crédito 3x" },
@@ -31,6 +34,7 @@ interface PaymentFeesSectionProps {
 }
 
 export function PaymentFeesSection({ userId }: PaymentFeesSectionProps) {
+  const queryClient = useQueryClient();
   const [fees, setFees] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,6 +82,7 @@ export function PaymentFeesSection({ userId }: PaymentFeesSectionProps) {
 
       if (error) throw error;
 
+      queryClient.invalidateQueries({ queryKey: ["payment-fees-report", userId] });
       toast({ title: "Taxas salvas com sucesso!" });
     } catch (error: any) {
       toast({ 
