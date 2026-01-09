@@ -19,6 +19,7 @@ import {
   Zap,
   Shield,
   Smartphone,
+  Play,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -183,6 +184,46 @@ const LandingPage = () => {
             
             <p className="text-sm text-muted-foreground mt-4">
               ✓ Sem cartão de crédito &nbsp;&nbsp; ✓ Cancele quando quiser
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Video Section */}
+      <section className="py-20 px-4 bg-muted/30">
+        <div className="container mx-auto">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-4">
+                <Play className="w-4 h-4" />
+                <span className="text-sm font-medium">Veja o sistema em ação</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                Conheça o{" "}
+                <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                  Venda PROFIT por dentro
+                </span>
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                Assista e descubra como o sistema pode revolucionar sua loja
+              </p>
+            </div>
+
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/20 border border-border bg-background">
+              <div className="aspect-video">
+                {/* Substitua VIDEO_ID pelo ID do seu vídeo do YouTube */}
+                <iframe
+                  className="w-full h-full"
+                  src="https://www.youtube.com/embed/VIDEO_ID"
+                  title="Demonstração Venda PROFIT"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              🎬 Tour completo pelo sistema em menos de 5 minutos
             </p>
           </div>
         </div>
