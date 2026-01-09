@@ -32,6 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { CategoryManager } from "@/components/products/CategoryManager";
 
 interface Product {
   id: string;
@@ -73,10 +74,6 @@ interface ProductFormDialogProps {
   groups: Group[];
   onSuccess: () => void;
 }
-
-const categories = [
-  "Calças", "Tops", "Shorts", "Conjuntos", "Bodies", "Regatas", "Bermudas", "Acessórios"
-];
 
 const sizes = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
 
@@ -323,6 +320,7 @@ export function ProductFormDialog({
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           placeholder="Nome do produto"
+          autoComplete="off"
         />
       </div>
       <div className="col-span-1 sm:col-span-2 space-y-2">
@@ -399,21 +397,12 @@ export function ProductFormDialog({
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Categoria *</Label>
-        <Select
+        <CategoryManager
           value={form.category}
-          onValueChange={(value) => setForm({ ...form, category: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione" />
-          </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(value) => setForm({ ...form, category: value })}
+        />
       </div>
       <div className="space-y-2">
         <Label>SKU</Label>
@@ -421,6 +410,7 @@ export function ProductFormDialog({
           value={form.sku}
           onChange={(e) => setForm({ ...form, sku: e.target.value })}
           placeholder="Código do produto"
+          autoComplete="off"
         />
       </div>
       <div className="space-y-2">
@@ -467,6 +457,7 @@ export function ProductFormDialog({
           value={form.color}
           onChange={(e) => setForm({ ...form, color: e.target.value })}
           placeholder="Ex: Preto"
+          autoComplete="off"
         />
       </div>
       <div className="space-y-2">
