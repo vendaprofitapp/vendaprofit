@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AISettingsSection } from "@/components/settings/AISettingsSection";
+import { PaymentFeesSection } from "@/components/settings/PaymentFeesSection";
 
 export default function Settings() {
   const { user, signOut } = useAuth();
@@ -171,10 +172,13 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Payment Fees Settings */}
+        {user?.id && <PaymentFeesSection userId={user.id} />}
+
         {/* AI Settings */}
         {user?.id && (
           <AISettingsSection 
-            userId={user.id} 
+            userId={user.id}
             profile={profile} 
             onUpdate={() => refetchProfile()} 
           />
