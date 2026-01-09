@@ -20,6 +20,7 @@ import StoreSettingsPage from "./pages/StoreSettings";
 import StoreCatalog from "./pages/StoreCatalog";
 import Customers from "./pages/Customers";
 import Consortiums from "./pages/Consortiums";
+import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 const AppRoutes = () => (
   <Routes>
+    <Route path="/landing" element={<LandingPage />} />
     <Route path="/auth" element={<Auth />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/stock" element={<ProtectedRoute><StockControl /></ProtectedRoute>} />
