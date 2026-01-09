@@ -68,12 +68,6 @@ interface StockRequest {
   requester?: { full_name: string; store_name: string | null };
 }
 
-interface Group {
-  id: string;
-  name: string;
-  invite_code: string;
-}
-
 export default function StockControl() {
   const { user } = useAuth();
   
@@ -81,7 +75,6 @@ export default function StockControl() {
   const [partnerProducts, setPartnerProducts] = useState<Product[]>([]);
   const [myRequests, setMyRequests] = useState<StockRequest[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<StockRequest[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -98,12 +91,6 @@ export default function StockControl() {
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [requestNotes, setRequestNotes] = useState("");
 
-  // Group form state
-  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-
   useEffect(() => {
     if (user) {
       fetchData();
@@ -119,8 +106,7 @@ export default function StockControl() {
     await Promise.all([
       fetchProducts(),
       fetchPartnerProducts(),
-      fetchRequests(),
-      fetchGroups()
+      fetchRequests()
     ]);
     
     setLoading(false);
@@ -141,13 +127,51 @@ export default function StockControl() {
   };
 
   const fetchPartnerProducts = async () => {
+    if (!user) return;
+
+    // 1) grupos/parcerias que eu participo
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", user.id);
+
+    if (membershipsError) {
+      // se falhar, não bloqueia tela toda, só zera lista
+      setPartnerProducts([]);
+      return;
+    }
+
+    const groupIds = (memberships || []).map((m) => m.group_id);
+    if (groupIds.length === 0) {
+      setPartnerProducts([]);
+      return;
+    }
+
+    // 2) produtos liberados nessas parcerias
+    const { data: partnerships, error: ppError } = await supabase
+      .from("product_partnerships")
+      .select("product_id")
+      .in("group_id", groupIds);
+
+    if (ppError) {
+      setPartnerProducts([]);
+      return;
+    }
+
+    const productIds = Array.from(new Set((partnerships || []).map((p) => p.product_id)));
+    if (productIds.length === 0) {
+      setPartnerProducts([]);
+      return;
+    }
+
+    // 3) carrega dados dos produtos (exceto meus)
     const { data, error } = await supabase
       .from("products")
       .select("*")
-      .neq("owner_id", user?.id)
-      .not("group_id", "is", null)
+      .in("id", productIds)
+      .neq("owner_id", user.id)
       .order("created_at", { ascending: false });
-    
+
     if (!error) {
       setPartnerProducts(data || []);
     }
@@ -175,14 +199,6 @@ export default function StockControl() {
       .order("created_at", { ascending: false });
     
     setIncomingRequests(incomingReqs || []);
-  };
-
-  const fetchGroups = async () => {
-    const { data } = await supabase
-      .from("groups")
-      .select("id, name, invite_code");
-    
-    setGroups(data || []);
   };
 
   const subscribeToRequests = () => {
@@ -265,62 +281,6 @@ export default function StockControl() {
     }
   };
 
-  const handleCreateGroup = async () => {
-    if (!user || !newGroupName.trim()) return;
-
-    const { error } = await supabase
-      .from("groups")
-      .insert({
-        name: newGroupName,
-        created_by: user.id
-      });
-
-    if (error) {
-      toast.error("Erro ao criar grupo");
-    } else {
-      toast.success("Grupo criado!");
-      setGroupDialogOpen(false);
-      setNewGroupName("");
-      fetchGroups();
-    }
-  };
-
-  const handleJoinGroup = async () => {
-    if (!user || !inviteCode.trim()) return;
-
-    const { data: group, error: findError } = await supabase
-      .from("groups")
-      .select("id")
-      .eq("invite_code", inviteCode.trim())
-      .maybeSingle();
-
-    if (findError || !group) {
-      toast.error("Código de convite inválido");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("group_members")
-      .insert({
-        group_id: group.id,
-        user_id: user.id,
-        role: "member"
-      });
-
-    if (error) {
-      if (error.code === "23505") {
-        toast.error("Você já faz parte deste grupo");
-      } else {
-        toast.error("Erro ao entrar no grupo");
-      }
-    } else {
-      toast.success("Você entrou no grupo!");
-      setJoinDialogOpen(false);
-      setInviteCode("");
-      fetchGroups();
-      fetchPartnerProducts();
-    }
-  };
 
   const getStockStatus = (quantity: number, minLevel: number) => {
     if (quantity === 0) return { label: "Esgotado", variant: "destructive" as const };
@@ -360,70 +320,6 @@ export default function StockControl() {
             Importar
           </Button>
           
-          <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Users className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Entrar em Grupo</span>
-                <span className="sm:hidden">Grupo</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Entrar em um Grupo</DialogTitle>
-                <DialogDescription>
-                  Insira o código de convite do grupo para participar
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Código de Convite</Label>
-                  <Input
-                    placeholder="Ex: abc12345"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setJoinDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleJoinGroup}>Entrar</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Users className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Criar Grupo</span>
-                <span className="sm:hidden">Novo</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Criar Novo Grupo</DialogTitle>
-                <DialogDescription>
-                  Crie um grupo para compartilhar estoque com parceiros
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Nome do Grupo</Label>
-                  <Input
-                    placeholder="Ex: Loja Centro"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setGroupDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreateGroup}>Criar Grupo</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
           <Button size="sm" onClick={() => {
             setEditingProduct(null);
             setProductDialogOpen(true);
@@ -779,7 +675,6 @@ export default function StockControl() {
           if (!open) setEditingProduct(null);
         }}
         editingProduct={editingProduct}
-        groups={groups}
         onSuccess={fetchProducts}
       />
 
