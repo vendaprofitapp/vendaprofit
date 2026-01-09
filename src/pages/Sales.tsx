@@ -780,7 +780,7 @@ export default function Sales() {
                 </p>
               </div>
 
-              {productSearch && (
+              {productSearch && productSearch.length >= 2 && (
                 <div className="border rounded-lg max-h-48 overflow-y-auto">
                   {filteredOwnProducts.length === 0 ? (
                     <div className="p-3">
@@ -794,7 +794,7 @@ export default function Sales() {
                       </Button>
                     </div>
                   ) : (
-                    filteredOwnProducts.slice(0, 10).map((product) => (
+                    filteredOwnProducts.slice(0, 20).map((product) => (
                       <button
                         key={product.id}
                         className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
