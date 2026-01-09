@@ -908,12 +908,12 @@ export default function Sales() {
               {/* Customer Selection */}
               <div>
                 <Label>Selecionar Cliente Cadastrado</Label>
-                <Select value={selectedCustomerId} onValueChange={handleCustomerSelect}>
+                <Select value={selectedCustomerId || "manual"} onValueChange={(v) => handleCustomerSelect(v === "manual" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione ou digite manualmente" />
                   </SelectTrigger>
                   <SelectContent portal={!isMobile ? undefined : false}>
-                    <SelectItem value="">Digitar manualmente</SelectItem>
+                    <SelectItem value="manual">Digitar manualmente</SelectItem>
                     {registeredCustomers.map((customer) => (
                       <SelectItem key={customer.id} value={customer.id}>
                         {customer.name} {customer.phone ? `- ${customer.phone}` : ""}
