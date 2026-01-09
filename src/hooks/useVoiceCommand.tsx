@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -76,13 +76,43 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSupported, setIsSupported] = useState(true); // Always supported now (fallback to recording)
-  const [useBackendTranscription, setUseBackendTranscription] = useState(false);
   
+  // Recognition is created lazily on user interaction - NOT in useEffect
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const isInitializedRef = useRef(false);
+
+  // Check if we should use backend transcription (iOS or no Web Speech API)
+  const shouldUseBackend = useCallback((): boolean => {
+    // Detect iOS (iPhone/iPad)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+      console.log('iOS detected - using backend transcription');
+      return true;
+    }
+
+    // Check for Web Speech API
+    const SpeechRecognitionAPI = 
+      (window as any).SpeechRecognition || 
+      (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognitionAPI) {
+      console.log('No Web Speech API - using backend transcription');
+      return true;
+    }
+
+    // Check secure context
+    const isSecureContext = window.isSecureContext || 
+      window.location.protocol === 'https:' || 
+      window.location.hostname === 'localhost';
+    
+    if (!isSecureContext) {
+      console.log('Not secure context - using backend transcription');
+      return true;
+    }
+
+    return false;
+  }, []);
 
   // Process transcription - either smart sale mode or regular parsing
   const handleTranscription = useCallback(async (text: string) => {
@@ -117,114 +147,6 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       onResult?.(result);
     }
   }, [smartSaleMode, userId, onSmartSaleResult, onResult, onError]);
-
-  useEffect(() => {
-    if (isInitializedRef.current) return;
-    isInitializedRef.current = true;
-
-    // Check if Web Speech API is available
-    const SpeechRecognitionAPI = 
-      (window as any).SpeechRecognition || 
-      (window as any).webkitSpeechRecognition;
-    
-    // Detect iOS (iPhone/iPad)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
-    if (!SpeechRecognitionAPI || isIOS) {
-      console.log('Using backend transcription (iOS or no Web Speech API)');
-      setUseBackendTranscription(true);
-      return;
-    }
-
-    // Check if running on HTTPS
-    const isSecureContext = window.isSecureContext || 
-      window.location.protocol === 'https:' || 
-      window.location.hostname === 'localhost';
-    
-    if (!isSecureContext) {
-      console.log('Using backend transcription (not secure context)');
-      setUseBackendTranscription(true);
-      return;
-    }
-
-    // Try to use native Web Speech API
-    try {
-      const recognition = new SpeechRecognitionAPI() as SpeechRecognitionInstance;
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = language;
-
-      recognition.onstart = () => {
-        console.log('Speech recognition started');
-        setIsListening(true);
-        setTranscript('');
-      };
-
-      recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        setTranscript(finalTranscript || interimTranscript);
-
-        if (finalTranscript) {
-          handleTranscription(finalTranscript);
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        
-        if (event.error === 'aborted') return;
-        
-        // If service not available, fall back to backend
-        if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-          console.log('Falling back to backend transcription');
-          setUseBackendTranscription(true);
-          return;
-        }
-        
-        let errorMessage = 'Erro no reconhecimento de voz';
-        if (event.error === 'not-allowed') {
-          errorMessage = 'Permissão de microfone negada.';
-        } else if (event.error === 'no-speech') {
-          errorMessage = 'Nenhuma fala detectada. Tente novamente.';
-        } else if (event.error === 'network') {
-          errorMessage = 'Erro de rede. Verifique sua conexão.';
-        }
-        
-        onError?.(errorMessage);
-        toast.error(errorMessage);
-      };
-
-      recognition.onend = () => {
-        console.log('Speech recognition ended');
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-    } catch (error) {
-      console.error('Error initializing speech recognition:', error);
-      setUseBackendTranscription(true);
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch (e) {}
-      }
-    };
-  }, [language, onResult, onError]);
 
   // Backend transcription using audio recording
   const startBackendRecording = useCallback(async () => {
@@ -311,11 +233,11 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
         }
       }, 10000);
       
-    } catch (permError) {
+    } catch (permError: any) {
       console.error('Microphone permission error:', permError);
       toast.error('Permissão de microfone negada. Habilite nas configurações.');
     }
-  }, [onResult, onError]);
+  }, [handleTranscription, onError]);
 
   const stopBackendRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
@@ -323,8 +245,83 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
     }
   }, []);
 
+  // Create speech recognition instance ONLY on user click - lazy initialization
+  const createRecognition = useCallback((): SpeechRecognitionInstance | null => {
+    const SpeechRecognitionAPI = 
+      (window as any).SpeechRecognition || 
+      (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognitionAPI) {
+      return null;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionAPI() as SpeechRecognitionInstance;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = language;
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        setIsListening(true);
+        setTranscript('');
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        setTranscript(finalTranscript || interimTranscript);
+
+        if (finalTranscript) {
+          handleTranscription(finalTranscript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        
+        if (event.error === 'aborted') return;
+        
+        let errorMessage = 'Erro no reconhecimento de voz';
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Permissão de microfone negada.';
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'Nenhuma fala detectada. Tente novamente.';
+        } else if (event.error === 'network') {
+          errorMessage = 'Erro de rede. Verifique sua conexão.';
+        }
+        
+        onError?.(errorMessage);
+        toast.error(errorMessage);
+      };
+
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        setIsListening(false);
+      };
+
+      return recognition;
+    } catch (error) {
+      console.error('Error creating speech recognition:', error);
+      return null;
+    }
+  }, [language, handleTranscription, onError]);
+
+  // Start listening - called ONLY on user click
   const startListening = useCallback(async () => {
-    if (useBackendTranscription) {
+    // Check if we should use backend
+    if (shouldUseBackend()) {
       await startBackendRecording();
       return;
     }
@@ -339,49 +336,69 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       return;
     }
 
+    // Create recognition instance lazily (only on user click)
     try {
+      // Stop any existing recognition
       if (recognitionRef.current && isListening) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      recognitionRef.current?.start();
+
+      // Create new instance on each click for Safari compatibility
+      const recognition = createRecognition();
+      
+      if (!recognition) {
+        // Fall back to backend if creation fails
+        console.log('Falling back to backend transcription');
+        await startBackendRecording();
+        return;
+      }
+
+      recognitionRef.current = recognition;
+      recognition.start();
     } catch (error: any) {
       console.error('Error starting recognition:', error);
       if (error.message?.includes('already started')) return;
       
       // Fall back to backend
       console.log('Falling back to backend transcription');
-      setUseBackendTranscription(true);
       await startBackendRecording();
     }
-  }, [useBackendTranscription, isListening, startBackendRecording]);
+  }, [shouldUseBackend, isListening, createRecognition, startBackendRecording]);
 
   const stopListening = useCallback(() => {
-    if (useBackendTranscription) {
+    if (shouldUseBackend()) {
       stopBackendRecording();
-    } else {
-      recognitionRef.current?.stop();
+    } else if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recognition:', e);
+      }
     }
-  }, [useBackendTranscription, stopBackendRecording]);
+  }, [shouldUseBackend, stopBackendRecording]);
 
+  // isSupported is always true because we have backend fallback
   return {
     isListening,
     isProcessing,
     transcript,
-    isSupported,
+    isSupported: true,
     startListening,
     stopListening,
   };
 }
 
-// Parse natural language commands in Portuguese
+// Parse natural language commands in Portuguese - NO LOOKBEHIND REGEX
 function parseVoiceCommand(text: string): VoiceCommandResult {
   const lowerText = text.toLowerCase().trim();
   
-  // Sale patterns
+  // Sale patterns - using simple match() without lookbehind
   const salePatterns = [
     /(?:vender|venda|vendido|registrar venda)\s*(?:de\s*)?(\d+)?\s*(.+?)(?:\s+para\s+(.+))?$/i,
-    /(\d+)\s*(.+?)\s+(?:para|cliente)\s+(.+)/i,
+    /(\d+)\s+(.+?)\s+(?:para|cliente)\s+(.+)/i,
   ];
 
   for (const pattern of salePatterns) {
@@ -399,10 +416,10 @@ function parseVoiceCommand(text: string): VoiceCommandResult {
     }
   }
 
-  // Stock entry patterns
+  // Stock entry patterns - simple regex without lookbehind
   const stockPatterns = [
     /(?:entrada|adicionar|receber|chegou)\s*(?:de\s*)?(\d+)\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
-    /(\d+)\s*(.+?)\s+(?:chegou|entrou|recebido)/i,
+    /(\d+)\s+(.+?)\s+(?:chegou|entrou|recebido)/i,
   ];
 
   for (const pattern of stockPatterns) {
@@ -420,7 +437,7 @@ function parseVoiceCommand(text: string): VoiceCommandResult {
     }
   }
 
-  // Stock exit patterns
+  // Stock exit patterns - simple regex without lookbehind
   const stockExitPatterns = [
     /(?:saída|baixa|retirar|saiu)\s*(?:de\s*)?(\d+)\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
   ];
@@ -440,7 +457,7 @@ function parseVoiceCommand(text: string): VoiceCommandResult {
     }
   }
 
-  // Product creation patterns
+  // Product creation patterns - simple regex
   const productPatterns = [
     /(?:novo produto|criar produto|cadastrar|adicionar produto)\s+(.+?)\s+(\d+(?:[,\.]\d+)?)\s*(?:reais|r\$)?/i,
     /(?:novo produto|criar produto|cadastrar)\s+(.+)/i,
