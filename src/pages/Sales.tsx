@@ -738,7 +738,7 @@ export default function Sales() {
         setIsNewSaleOpen(open);
         if (!open) setProductSearch("");
       }}>
-        <DialogContent className="max-w-4xl max-h-[90dvh] overflow-y-auto !left-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 rounded-t-xl sm:rounded-lg sm:!left-[50%] sm:!top-[50%] sm:!bottom-auto sm:!translate-x-[-50%] sm:!translate-y-[-50%]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto !left-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 rounded-t-xl sm:rounded-lg sm:!left-[50%] sm:!top-[50%] sm:!bottom-auto sm:!translate-x-[-50%] sm:!translate-y-[-50%]">
           <DialogHeader>
             <DialogTitle>Nova Venda</DialogTitle>
           </DialogHeader>
