@@ -578,8 +578,11 @@ export type Database = {
           created_at: string
           email: string
           full_name: string
+          gemini_api_key: string | null
           id: string
+          openai_api_key: string | null
           phone: string | null
+          preferred_ai_provider: string | null
           store_name: string | null
           updated_at: string
         }
@@ -587,8 +590,11 @@ export type Database = {
           created_at?: string
           email: string
           full_name: string
+          gemini_api_key?: string | null
           id: string
+          openai_api_key?: string | null
           phone?: string | null
+          preferred_ai_provider?: string | null
           store_name?: string | null
           updated_at?: string
         }
@@ -596,8 +602,11 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string
+          gemini_api_key?: string | null
           id?: string
+          openai_api_key?: string | null
           phone?: string | null
+          preferred_ai_provider?: string | null
           store_name?: string | null
           updated_at?: string
         }
