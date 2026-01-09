@@ -296,7 +296,7 @@ const LandingPage = () => {
               </span>
             </h2>
             <p className="text-lg text-muted-foreground">
-              Histórias reais de lojistas que transformaram seus negócios
+              Histórias reais de vendedoras fitness que transformaram seus negócios
             </p>
           </div>
 
@@ -501,7 +501,7 @@ const LandingPage = () => {
               Pronto para transformar sua loja?
             </h2>
             <p className="text-xl mb-8 opacity-90">
-              Junte-se a centenas de lojistas que já estão vendendo mais com o Venda PROFIT
+              Junte-se a centenas de vendedoras fitness que já estão vendendo mais com o Venda PROFIT
             </p>
             <Link to="/auth">
               <Button
