@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -33,11 +34,20 @@ interface SupplierSelectProps {
   onChange: (value: string) => void;
 }
 
+const emptyFormData = {
+  name: "",
+  cnpj: "",
+  phone: "",
+  attendant_name: "",
+  attendant_phone: "",
+  purchase_rules: "",
+};
+
 export function SupplierSelect({ value, onChange }: SupplierSelectProps) {
   const { user } = useAuth();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: "", cnpj: "" });
+  const [formData, setFormData] = useState(emptyFormData);
 
   const fetchSuppliers = async () => {
     if (!user) return;
@@ -54,17 +64,21 @@ export function SupplierSelect({ value, onChange }: SupplierSelectProps) {
   }, [user]);
 
   const handleCreateSupplier = async () => {
-    if (!user || !newSupplier.name.trim()) {
-      toast.error("Nome do fornecedor é obrigatório");
+    if (!user || !formData.name.trim()) {
+      toast.error("Nome da empresa é obrigatório");
       return;
     }
 
     const { data, error } = await supabase
       .from("suppliers")
       .insert({
-        name: newSupplier.name.trim(),
-        cnpj: newSupplier.cnpj.trim() || null,
-        owner_id: user.id
+        name: formData.name.trim(),
+        cnpj: formData.cnpj.trim() || null,
+        phone: formData.phone.trim() || null,
+        attendant_name: formData.attendant_name.trim() || null,
+        attendant_phone: formData.attendant_phone.trim() || null,
+        purchase_rules: formData.purchase_rules.trim() || null,
+        owner_id: user.id,
       })
       .select("id")
       .single();
@@ -76,9 +90,9 @@ export function SupplierSelect({ value, onChange }: SupplierSelectProps) {
 
     toast.success("Fornecedor criado!");
     setDialogOpen(false);
-    setNewSupplier({ name: "", cnpj: "" });
+    setFormData(emptyFormData);
     fetchSuppliers();
-    
+
     if (data) {
       onChange(data.id);
     }
@@ -107,26 +121,59 @@ export function SupplierSelect({ value, onChange }: SupplierSelectProps) {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Fornecedor</DialogTitle>
             <DialogDescription>Cadastre um novo fornecedor/marca</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nome *</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+            <div className="sm:col-span-2 space-y-2">
+              <Label>Empresa *</Label>
               <Input
-                value={newSupplier.name}
-                onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
-                placeholder="Nome do fornecedor"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Nome da empresa/marca"
               />
             </div>
             <div className="space-y-2">
               <Label>CNPJ</Label>
               <Input
-                value={newSupplier.cnpj}
-                onChange={(e) => setNewSupplier({ ...newSupplier, cnpj: e.target.value })}
+                value={formData.cnpj}
+                onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
                 placeholder="00.000.000/0000-00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone Geral</Label>
+              <Input
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="(00) 0000-0000"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Atendente</Label>
+              <Input
+                value={formData.attendant_name}
+                onChange={(e) => setFormData({ ...formData, attendant_name: e.target.value })}
+                placeholder="Nome do atendente"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone Atendente</Label>
+              <Input
+                value={formData.attendant_phone}
+                onChange={(e) => setFormData({ ...formData, attendant_phone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-2">
+              <Label>Regras de Compras</Label>
+              <Textarea
+                value={formData.purchase_rules}
+                onChange={(e) => setFormData({ ...formData, purchase_rules: e.target.value })}
+                placeholder="Condições de pagamento, prazos, pedido mínimo..."
+                rows={3}
               />
             </div>
           </div>

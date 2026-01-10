@@ -1,13 +1,15 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import logoVendaProfit from "@/assets/logo-venda-profit.png";
+
 interface SidebarProps {
   onNavigate?: () => void;
 }
+
 const navItems = [{
   icon: LayoutDashboard,
   label: "Painel",
@@ -20,6 +22,10 @@ const navItems = [{
   icon: Package,
   label: "Produtos",
   path: "/products"
+}, {
+  icon: Truck,
+  label: "Fornecedores",
+  path: "/suppliers"
 }, {
   icon: ShoppingCart,
   label: "Vendas",

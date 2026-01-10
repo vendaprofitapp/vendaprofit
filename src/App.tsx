@@ -21,6 +21,7 @@ import StoreCatalog from "./pages/StoreCatalog";
 import Customers from "./pages/Customers";
 import Consortiums from "./pages/Consortiums";
 import LandingPage from "./pages/LandingPage";
+import Suppliers from "./pages/Suppliers";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const AppRoutes = () => (
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/stock" element={<ProtectedRoute><StockControl /></ProtectedRoute>} />
     <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+    <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
     <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
