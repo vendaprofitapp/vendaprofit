@@ -47,26 +47,62 @@ async function callLovableAI(userImage: string, productImage: string, productNam
   return response;
 }
 
+// Helper function to convert URL to base64
+async function urlToBase64(url: string): Promise<{ mimeType: string; data: string }> {
+  console.log("Fetching image from URL:", url.substring(0, 50) + "...");
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  const base64 = btoa(binary);
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  return { mimeType: contentType.split(";")[0], data: base64 };
+}
+
+// Helper function to extract base64 from data URL
+function extractBase64FromDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+  const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (matches) {
+    return { mimeType: matches[1], data: matches[2] };
+  }
+  return null;
+}
+
+// Helper function to get image data (handles both URLs and base64)
+async function getImageData(image: string): Promise<{ mimeType: string; data: string }> {
+  // Check if it's a data URL
+  if (image.startsWith("data:")) {
+    const extracted = extractBase64FromDataUrl(image);
+    if (extracted) {
+      return extracted;
+    }
+    throw new Error("Invalid data URL format");
+  }
+  
+  // Otherwise, it's a URL - fetch and convert
+  if (image.startsWith("http://") || image.startsWith("https://")) {
+    return await urlToBase64(image);
+  }
+  
+  throw new Error("Invalid image format - must be data URL or HTTP URL");
+}
+
 async function callGeminiDirect(userImage: string, productImage: string, productName: string, apiKey: string) {
   console.log("Using Gemini direct API as fallback...");
   
-  // Extract base64 data from data URLs
-  const extractBase64 = (dataUrl: string) => {
-    const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (matches) {
-      return { mimeType: matches[1], data: matches[2] };
-    }
-    return null;
-  };
+  // Get image data for both images
+  const userImageData = await getImageData(userImage);
+  const productImageData = await getImageData(productImage);
 
-  const userImageData = extractBase64(userImage);
-  const productImageData = extractBase64(productImage);
+  console.log("Images prepared for Gemini API");
 
-  if (!userImageData || !productImageData) {
-    throw new Error("Invalid image format");
-  }
-
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey, {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=" + apiKey, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -92,7 +128,7 @@ async function callGeminiDirect(userImage: string, productImage: string, product
         }
       ],
       generationConfig: {
-        responseModalities: ["image", "text"]
+        responseModalities: ["TEXT", "IMAGE"]
       }
     }),
   });
