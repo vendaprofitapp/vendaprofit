@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Dumbbell, Mail, Lock, User, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import logoVendaProfit from "@/assets/logo-venda-profit.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -69,9 +70,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary shadow-glow mb-4">
-            <Dumbbell className="h-8 w-8 text-primary-foreground" />
-          </div>
+          <img src={logoVendaProfit} alt="Venda PROFIT" className="h-16 w-16 rounded-2xl shadow-glow mb-4" />
           <h1 className="text-3xl font-bold text-foreground">Venda PROFIT</h1>
           <p className="text-muted-foreground">Gestão inteligente de vendas e estoque</p>
         </div>

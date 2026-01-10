@@ -1,9 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, DollarSign, Store, UserCheck, Gift } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
+import logoVendaProfit from "@/assets/logo-venda-profit.png";
 interface SidebarProps {
   onNavigate?: () => void;
 }
@@ -86,9 +87,7 @@ export function Sidebar({
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-6 border-b border-sidebar-border">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-glow text-white bg-[#c41c68]">
-            <DollarSign className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img src={logoVendaProfit} alt="Venda PROFIT" className="h-10 w-10 rounded-xl shadow-glow" />
           <div>
             <h1 className="text-lg font-bold text-white">Venda PROFIT</h1>
             <p className="text-xs text-sidebar-foreground/60">Gestão Inteligente de Vendas</p>
