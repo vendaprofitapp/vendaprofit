@@ -97,9 +97,12 @@ interface GroupMember {
   };
 }
 
-interface PaymentFee {
-  payment_method: string;
+interface CustomPaymentMethod {
+  id: string;
+  name: string;
   fee_percent: number;
+  is_deferred: boolean;
+  is_active: boolean;
 }
 
 export default function Reports() {
@@ -189,16 +192,16 @@ export default function Reports() {
     enabled: !!user,
   });
 
-  // Fetch payment fees
-  const { data: paymentFees = [] } = useQuery({
-    queryKey: ["payment-fees-report", user?.id],
+  // Fetch custom payment methods (for fees)
+  const { data: customPaymentMethods = [] } = useQuery({
+    queryKey: ["custom-payment-methods-report", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("payment_fees")
-        .select("payment_method, fee_percent")
+        .from("custom_payment_methods")
+        .select("id, name, fee_percent, is_deferred, is_active")
         .eq("owner_id", user!.id);
       if (error) throw error;
-      return data as PaymentFee[];
+      return data as CustomPaymentMethod[];
     },
     enabled: !!user,
   });
@@ -231,12 +234,12 @@ export default function Reports() {
     return map;
   }, [products]);
 
-  // Create payment fees map
+  // Create payment fees map (by payment method name)
   const feesMap = useMemo(() => {
     const map = new Map<string, number>();
-    paymentFees.forEach(f => map.set(f.payment_method, f.fee_percent));
+    customPaymentMethods.forEach(m => map.set(m.name, m.fee_percent));
     return map;
-  }, [paymentFees]);
+  }, [customPaymentMethods]);
 
   // Get unique categories and colors from products
   const categories = useMemo(() => {
@@ -312,18 +315,26 @@ export default function Reports() {
     });
   }, [salesData, paymentMethodFilter, discountFilter, stockTypeFilter, partnerFilter, categoryFilter, colorFilter, productMap, user?.id]);
 
-  // Detailed sales data for table
+  // Detailed sales data for table - includes discount proportionally distributed
   const detailedSalesData = useMemo(() => {
     return filteredSales.flatMap(sale => {
       const feePercent = feesMap.get(sale.payment_method) || 0;
+      const saleDiscount = Number(sale.discount_amount) || 0;
+      const saleSubtotal = Number(sale.subtotal) || 0;
       
       return sale.sale_items.map(item => {
         const product = productMap.get(item.product_id);
         const costPrice = product?.cost_price || 0;
         const totalCost = costPrice * item.quantity;
-        const totalSale = item.total;
-        const grossProfit = totalSale - totalCost;
-        const feeAmount = (totalSale * feePercent) / 100;
+        const itemTotal = Number(item.total);
+        
+        // Proportionally distribute the sale discount across items
+        const discountProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 0;
+        const itemDiscount = saleDiscount * discountProportion;
+        const totalSaleAfterDiscount = itemTotal - itemDiscount;
+        
+        const grossProfit = totalSaleAfterDiscount - totalCost;
+        const feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
         const realProfit = grossProfit - feeAmount;
 
         return {
@@ -333,7 +344,9 @@ export default function Reports() {
           productName: item.product_name,
           quantity: item.quantity,
           totalCost,
-          totalSale,
+          totalSale: itemTotal,
+          itemDiscount,
+          totalSaleAfterDiscount,
           grossProfit,
           feePercent,
           feeAmount,
@@ -350,17 +363,18 @@ export default function Reports() {
     const totalSales = filteredSales.length;
     const totalItems = filteredSales.reduce((sum, sale) => 
       sum + sale.sale_items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
-    const totalDiscount = filteredSales.reduce((sum, sale) => sum + (sale.discount_amount || 0), 0);
+    const totalDiscount = filteredSales.reduce((sum, sale) => sum + (Number(sale.discount_amount) || 0), 0);
     const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
     const uniqueCustomers = new Set(filteredSales.filter(s => s.customer_name).map(s => s.customer_name)).size;
 
     // Calculate totals from detailed data
     const totalCost = detailedSalesData.reduce((sum, d) => sum + d.totalCost, 0);
+    const totalItemDiscount = detailedSalesData.reduce((sum, d) => sum + d.itemDiscount, 0);
     const totalGrossProfit = detailedSalesData.reduce((sum, d) => sum + d.grossProfit, 0);
     const totalFees = detailedSalesData.reduce((sum, d) => sum + d.feeAmount, 0);
     const totalRealProfit = detailedSalesData.reduce((sum, d) => sum + d.realProfit, 0);
 
-    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalGrossProfit, totalFees, totalRealProfit };
+    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalRealProfit };
   }, [filteredSales, detailedSalesData]);
 
   // Chart data: Sales over time
@@ -476,8 +490,9 @@ export default function Reports() {
       "Cliente",
       "Produto",
       "Quantidade",
-      "Preço de Custo Total",
-      "Preço de Venda Total",
+      "Custo Total",
+      "Venda Total",
+      "Desconto",
       "Lucro Bruto",
       "Taxa (%)",
       "Valor da Taxa",
@@ -492,11 +507,12 @@ export default function Reports() {
       d.quantity,
       d.totalCost.toFixed(2).replace(".", ","),
       d.totalSale.toFixed(2).replace(".", ","),
+      d.itemDiscount.toFixed(2).replace(".", ","),
       d.grossProfit.toFixed(2).replace(".", ","),
       d.feePercent.toFixed(2).replace(".", ","),
       d.feeAmount.toFixed(2).replace(".", ","),
       d.realProfit.toFixed(2).replace(".", ","),
-      paymentMethodsLabels[d.paymentMethod] || d.paymentMethod
+      d.paymentMethod
     ]);
 
     // Add totals row
@@ -506,7 +522,8 @@ export default function Reports() {
       "",
       detailedSalesData.reduce((s, d) => s + d.quantity, 0).toString(),
       stats.totalCost.toFixed(2).replace(".", ","),
-      stats.totalRevenue.toFixed(2).replace(".", ","),
+      (stats.totalRevenue + stats.totalDiscount).toFixed(2).replace(".", ","),
+      stats.totalDiscount.toFixed(2).replace(".", ","),
       stats.totalGrossProfit.toFixed(2).replace(".", ","),
       "",
       stats.totalFees.toFixed(2).replace(".", ","),
@@ -683,11 +700,17 @@ export default function Reports() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5 mb-6">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6 mb-6">
         <div className="rounded-xl bg-card p-5 shadow-soft">
-          <p className="text-sm text-muted-foreground">Receita Total</p>
+          <p className="text-sm text-muted-foreground">Receita Bruta</p>
           <p className="text-2xl font-bold text-foreground">
-            R$ {stats.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ {(stats.totalRevenue + stats.totalDiscount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+        <div className="rounded-xl bg-card p-5 shadow-soft">
+          <p className="text-sm text-muted-foreground">Descontos Cedidos</p>
+          <p className="text-2xl font-bold text-orange-500">
+            - R$ {stats.totalDiscount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
         <div className="rounded-xl bg-card p-5 shadow-soft">
@@ -701,20 +724,22 @@ export default function Reports() {
           <p className="text-2xl font-bold text-foreground">
             R$ {stats.totalGrossProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
+          <p className="text-xs text-muted-foreground">(Após descontos)</p>
         </div>
         <div className="rounded-xl bg-card p-5 shadow-soft">
           <p className="text-sm text-muted-foreground flex items-center gap-1">
-            <Percent className="h-3 w-3" /> Taxas Descontadas
+            <Percent className="h-3 w-3" /> Taxas de Pagamento
           </p>
           <p className="text-2xl font-bold text-destructive">
-            R$ {stats.totalFees.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            - R$ {stats.totalFees.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="rounded-xl bg-card p-5 shadow-soft">
-          <p className="text-sm text-muted-foreground">Lucro Real</p>
+        <div className="rounded-xl bg-card p-5 shadow-soft border-2 border-green-500/30">
+          <p className="text-sm text-muted-foreground font-medium">Lucro Real</p>
           <p className="text-2xl font-bold text-green-600">
             R$ {stats.totalRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
+          <p className="text-xs text-muted-foreground">(Descontos + Taxas abatidos)</p>
         </div>
       </div>
 
@@ -753,8 +778,9 @@ export default function Reports() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Produto</TableHead>
                 <TableHead className="text-right">Qtd</TableHead>
-                <TableHead className="text-right">Custo Total</TableHead>
-                <TableHead className="text-right">Venda Total</TableHead>
+                <TableHead className="text-right">Custo</TableHead>
+                <TableHead className="text-right">Venda</TableHead>
+                <TableHead className="text-right">Desconto</TableHead>
                 <TableHead className="text-right">Lucro Bruto</TableHead>
                 <TableHead className="text-right">Taxa</TableHead>
                 <TableHead className="text-right">Lucro Real</TableHead>
@@ -763,13 +789,13 @@ export default function Reports() {
             <TableBody>
               {salesLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : detailedSalesData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     Nenhuma venda encontrada no período
                   </TableCell>
                 </TableRow>
@@ -779,8 +805,8 @@ export default function Reports() {
                     <TableCell className="whitespace-nowrap">
                       {format(parseISO(item.date), "dd/MM/yyyy HH:mm")}
                     </TableCell>
-                    <TableCell className="max-w-[150px] truncate">{item.customer}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.productName}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{item.customer}</TableCell>
+                    <TableCell className="max-w-[150px] truncate">{item.productName}</TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -788,11 +814,14 @@ export default function Reports() {
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.totalSale.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </TableCell>
+                    <TableCell className="text-right whitespace-nowrap text-orange-500">
+                      {item.itemDiscount > 0 ? `- R$ ${item.itemDiscount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
+                    </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.grossProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap text-destructive">
-                      {item.feePercent > 0 ? `${item.feePercent}%` : "-"}
+                      {item.feePercent > 0 ? `${item.feePercent}% (-R$ ${item.feeAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "-"}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap font-medium text-green-600">
                       R$ {item.realProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
