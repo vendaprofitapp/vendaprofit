@@ -448,7 +448,6 @@ export default function Sales() {
     setSelectedCustomerId("");
     setDueDate("");
   };
-  };
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomerId(customerId);
