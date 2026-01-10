@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic } from "lucide-react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
@@ -120,6 +120,7 @@ export default function Sales() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerInstagram, setCustomerInstagram] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("dinheiro");
   const [discountType, setDiscountType] = useState("fixed");
   const [discountValue, setDiscountValue] = useState(0);
@@ -322,6 +323,7 @@ export default function Sales() {
               owner_id: user.id,
               name: customerName.trim(),
               phone: customerPhone || null,
+              instagram: customerInstagram || null,
             });
 
           if (customerError) {
@@ -396,6 +398,7 @@ export default function Sales() {
     setCart([]);
     setCustomerName("");
     setCustomerPhone("");
+    setCustomerInstagram("");
     setPaymentMethod("dinheiro");
     setInstallments(1);
     setDiscountType("fixed");
@@ -410,11 +413,13 @@ export default function Sales() {
     if (customerId === "") {
       setCustomerName("");
       setCustomerPhone("");
+      setCustomerInstagram("");
     } else {
       const customer = registeredCustomers.find(c => c.id === customerId);
       if (customer) {
         setCustomerName(customer.name);
         setCustomerPhone(customer.phone || "");
+        setCustomerInstagram(customer.instagram || "");
       }
     }
   };
@@ -966,7 +971,7 @@ export default function Sales() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
                 <div>
                   <Label>Nome do Cliente</Label>
                   <Input
@@ -978,16 +983,32 @@ export default function Sales() {
                     }}
                   />
                 </div>
-                <div>
-                  <Label>Telefone</Label>
-                  <Input
-                    placeholder="Opcional"
-                    value={customerPhone}
-                    onChange={(e) => {
-                      setCustomerPhone(e.target.value);
-                      setSelectedCustomerId("");
-                    }}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Telefone</Label>
+                    <Input
+                      placeholder="(00) 00000-0000"
+                      value={customerPhone}
+                      onChange={(e) => {
+                        setCustomerPhone(e.target.value);
+                        setSelectedCustomerId("");
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Instagram className="h-3.5 w-3.5" />
+                      Instagram
+                    </Label>
+                    <Input
+                      placeholder="@usuario"
+                      value={customerInstagram}
+                      onChange={(e) => {
+                        setCustomerInstagram(e.target.value);
+                        setSelectedCustomerId("");
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
