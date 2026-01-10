@@ -276,7 +276,7 @@ export default function StoreSettings() {
     );
   };
 
-  const storeUrl = `${window.location.origin}/loja/${formData.store_slug}`;
+  const storeUrl = `${window.location.origin}/${formData.store_slug}`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(storeUrl);
@@ -404,7 +404,7 @@ export default function StoreSettings() {
               <div className="space-y-2">
                 <Label htmlFor="store_slug">URL da Loja *</Label>
                 <div className="flex items-center gap-1">
-                  <span className="text-sm text-muted-foreground">/loja/</span>
+                  <span className="text-sm text-muted-foreground">/</span>
                   <Input
                     id="store_slug"
                     value={formData.store_slug}
