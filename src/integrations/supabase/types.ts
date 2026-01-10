@@ -997,6 +997,8 @@ export type Database = {
       suppliers: {
         Row: {
           address: string | null
+          attendant_name: string | null
+          attendant_phone: string | null
           cnpj: string | null
           created_at: string
           email: string | null
@@ -1005,10 +1007,13 @@ export type Database = {
           notes: string | null
           owner_id: string
           phone: string | null
+          purchase_rules: string | null
           updated_at: string
         }
         Insert: {
           address?: string | null
+          attendant_name?: string | null
+          attendant_phone?: string | null
           cnpj?: string | null
           created_at?: string
           email?: string | null
@@ -1017,10 +1022,13 @@ export type Database = {
           notes?: string | null
           owner_id: string
           phone?: string | null
+          purchase_rules?: string | null
           updated_at?: string
         }
         Update: {
           address?: string | null
+          attendant_name?: string | null
+          attendant_phone?: string | null
           cnpj?: string | null
           created_at?: string
           email?: string | null
@@ -1029,6 +1037,7 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           phone?: string | null
+          purchase_rules?: string | null
           updated_at?: string
         }
         Relationships: []
