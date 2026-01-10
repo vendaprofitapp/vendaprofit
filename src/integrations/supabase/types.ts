@@ -412,6 +412,30 @@ export type Database = {
         }
         Relationships: []
       }
+      partnership_auto_share: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          group_id: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          group_id: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          group_id?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partnership_rules: {
         Row: {
           created_at: string
@@ -952,6 +976,10 @@ export type Database = {
       is_group_member: {
         Args: { _group_id: string; _user_id: string }
         Returns: boolean
+      }
+      set_partnership_auto_share: {
+        Args: { _enabled: boolean; _group_id: string }
+        Returns: undefined
       }
     }
     Enums: {

@@ -84,6 +84,12 @@ interface ProductPartnership {
   group_id: string;
 }
 
+interface AutoShareSetting {
+  group_id: string;
+  owner_id: string;
+  enabled: boolean;
+}
+
 interface Profile {
   id: string;
   full_name: string;
@@ -203,6 +209,20 @@ export default function Partnerships() {
         .select("*");
       if (error) throw error;
       return data as ProductPartnership[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch auto-share settings
+  const { data: autoShareSettings = [] } = useQuery({
+    queryKey: ["auto-share-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partnership_auto_share")
+        .select("*")
+        .eq("owner_id", user?.id);
+      if (error) throw error;
+      return data as AutoShareSetting[];
     },
     enabled: !!user,
   });
@@ -384,10 +404,10 @@ export default function Partnerships() {
           .eq("group_id", groupId);
         if (error) throw error;
       } else {
-        // Add partnership
+        // Add partnership - use upsert to handle constraint
         const { error } = await supabase
           .from("product_partnerships")
-          .insert({ product_id: productId, group_id: groupId });
+          .upsert({ product_id: productId, group_id: groupId }, { onConflict: "group_id,product_id" });
         if (error) throw error;
       }
     },
@@ -396,6 +416,25 @@ export default function Partnerships() {
     },
     onError: (error) => {
       toast({ title: "Erro ao atualizar produto", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Toggle auto-share mutation (share all products at once)
+  const toggleAutoShareMutation = useMutation({
+    mutationFn: async ({ groupId, enabled }: { groupId: string; enabled: boolean }) => {
+      const { error } = await supabase.rpc("set_partnership_auto_share", {
+        _group_id: groupId,
+        _enabled: enabled,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["auto-share-settings"] });
+      toast({ title: "Configuração atualizada!" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao atualizar configuração", description: error.message, variant: "destructive" });
     },
   });
 
@@ -446,6 +485,10 @@ export default function Partnerships() {
 
   const getProductPartnershipsCount = (productId: string) => {
     return productPartnerships.filter(pp => pp.product_id === productId).length;
+  };
+
+  const isAutoShareEnabled = (groupId: string) => {
+    return autoShareSettings.some(s => s.group_id === groupId && s.enabled);
   };
 
   const formatCurrency = (value: number) => {
@@ -827,6 +870,32 @@ export default function Partnerships() {
               Selecione quais produtos você quer liberar para esta parceria.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Auto-share toggle */}
+          {selectedGroup && (
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border mb-4">
+              <div>
+                <p className="font-medium text-sm">Liberar todos os produtos automaticamente</p>
+                <p className="text-xs text-muted-foreground">
+                  Inclui produtos atuais e futuros cadastrados
+                </p>
+              </div>
+              <Button
+                variant={isAutoShareEnabled(selectedGroup.id) ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  toggleAutoShareMutation.mutate({
+                    groupId: selectedGroup.id,
+                    enabled: !isAutoShareEnabled(selectedGroup.id),
+                  });
+                }}
+                disabled={toggleAutoShareMutation.isPending}
+              >
+                {isAutoShareEnabled(selectedGroup.id) ? "Ativado" : "Ativar"}
+              </Button>
+            </div>
+          )}
+
           <div className="flex-1 overflow-auto">
             {products.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
