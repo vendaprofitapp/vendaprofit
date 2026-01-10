@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Package, Clock, CheckCircle, XCircle, Users, Eye } from "lucide-react";
+import { Package, Clock, CheckCircle, XCircle, Users, Eye, MessageCircle } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +51,7 @@ interface RequestWithDetails extends StockRequest {
   requester_name: string;
   requester_email: string;
   owner_name: string;
+  owner_phone: string | null;
 }
 
 const statusConfig = {
@@ -100,7 +101,7 @@ export default function StockRequests() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email");
+        .select("id, full_name, email, phone");
       if (error) throw error;
       return data;
     },
@@ -120,8 +121,41 @@ export default function StockRequests() {
       requester_name: requester?.full_name || "Usuário",
       requester_email: requester?.email || "",
       owner_name: owner?.full_name || "Usuário",
+      owner_phone: owner?.phone || null,
     };
   });
+
+  // Function to open WhatsApp with pre-filled message
+  const openWhatsApp = (request: RequestWithDetails) => {
+    if (!request.owner_phone) {
+      toast({ 
+        title: "Telefone não cadastrado", 
+        description: "O parceiro ainda não cadastrou um número de telefone.",
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // Clean phone number (remove non-digits)
+    const cleanPhone = request.owner_phone.replace(/\D/g, "");
+    
+    // Build the pre-filled message
+    const message = `Olá ${request.owner_name}! 👋
+
+Minha solicitação de reserva foi aprovada e gostaria de combinar a entrega/retirada da peça:
+
+📦 *Produto:* ${request.product_name}
+🔢 *Quantidade:* ${request.quantity} unidade(s)
+💰 *Valor:* R$ ${(request.product_price * request.quantity).toFixed(2).replace(".", ",")}
+
+Quando podemos agendar?`;
+
+    // Encode message for URL
+    const encodedMessage = encodeURIComponent(message);
+    
+    // Open WhatsApp with the message
+    window.open(`https://wa.me/55${cleanPhone}?text=${encodedMessage}`, "_blank");
+  };
 
   // Separate received and sent requests
   const receivedRequests = enrichedRequests.filter(r => r.owner_id === user?.id);
@@ -256,6 +290,17 @@ export default function StockRequests() {
                 disabled={cancelMutation.isPending}
               >
                 Cancelar
+              </Button>
+            )}
+            {!isReceived && request.status === "approved" && (
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => openWhatsApp(request)}
+              >
+                <MessageCircle className="h-4 w-4 mr-1" />
+                WhatsApp
               </Button>
             )}
           </div>
