@@ -276,7 +276,7 @@ export default function StoreSettings() {
     );
   };
 
-  const storeUrl = `${window.location.origin}/${formData.store_slug}`;
+  const storeUrl = `https://www.vendaprofit.com.br/${formData.store_slug}`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(storeUrl);
