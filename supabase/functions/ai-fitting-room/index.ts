@@ -100,6 +100,9 @@ async function callGeminiDirect(userImage: string, productImage: string, product
   return response;
 }
 
+// Simple in-memory rate limit for anonymous users (by IP)
+const anonymousRateLimits = new Map<string, { count: number; resetTime: number }>();
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -116,45 +119,61 @@ serve(async (req) => {
       );
     }
 
-    // Get user from authorization header
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Autenticação necessária" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.error("Auth error:", userError);
-      return new Response(
-        JSON.stringify({ error: "Usuário não autenticado" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Try to get authenticated user if token is provided
+    const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
+    
+    if (authHeader && authHeader !== `Bearer ${supabaseAnonKey}`) {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || null;
     }
 
-    // Check rate limit: count requests in the last hour
+    // Use service role client for database operations
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
+    // Rate limiting
+    let currentUsage = 0;
     const oneHourAgo = new Date(Date.now() - RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-    const { count, error: countError } = await supabase
-      .from("ai_fitting_room_usage")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .gte("created_at", oneHourAgo);
 
-    if (countError) {
-      console.error("Error checking rate limit:", countError);
+    if (userId) {
+      // Authenticated user: check database for rate limit
+      const { count, error: countError } = await supabaseAdmin
+        .from("ai_fitting_room_usage")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .gte("created_at", oneHourAgo);
+
+      if (countError) {
+        console.error("Error checking rate limit:", countError);
+      }
+      currentUsage = count || 0;
+      console.log(`User ${userId} has used ${currentUsage}/${RATE_LIMIT_MAX_REQUESTS} requests in the last hour`);
+    } else {
+      // Anonymous user: use IP-based in-memory rate limit
+      const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                       req.headers.get("cf-connecting-ip") || 
+                       "unknown";
+      
+      const now = Date.now();
+      const windowMs = RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000;
+      
+      const rateData = anonymousRateLimits.get(clientIP);
+      if (rateData && rateData.resetTime > now) {
+        currentUsage = rateData.count;
+      } else {
+        currentUsage = 0;
+        anonymousRateLimits.set(clientIP, { count: 0, resetTime: now + windowMs });
+      }
+      
+      console.log(`Anonymous user (IP: ${clientIP}) has used ${currentUsage}/${RATE_LIMIT_MAX_REQUESTS} requests in the last hour`);
     }
-
-    const currentUsage = count || 0;
-    console.log(`User ${user.id} has used ${currentUsage}/${RATE_LIMIT_MAX_REQUESTS} requests in the last hour`);
 
     if (currentUsage >= RATE_LIMIT_MAX_REQUESTS) {
       return new Response(
@@ -167,13 +186,24 @@ serve(async (req) => {
       );
     }
 
-    // Record this usage attempt
-    const { error: insertError } = await supabase
-      .from("ai_fitting_room_usage")
-      .insert({ user_id: user.id });
+    // Record usage
+    if (userId) {
+      const { error: insertError } = await supabaseAdmin
+        .from("ai_fitting_room_usage")
+        .insert({ user_id: userId });
 
-    if (insertError) {
-      console.error("Error recording usage:", insertError);
+      if (insertError) {
+        console.error("Error recording usage:", insertError);
+      }
+    } else {
+      // Update in-memory counter for anonymous users
+      const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                       req.headers.get("cf-connecting-ip") || 
+                       "unknown";
+      const rateData = anonymousRateLimits.get(clientIP);
+      if (rateData) {
+        rateData.count++;
+      }
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
