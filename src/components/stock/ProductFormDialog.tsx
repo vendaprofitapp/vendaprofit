@@ -301,7 +301,7 @@ export function ProductFormDialog({
   // Render SelectContent inline on mobile.
   const selectContentProps = isMobile ? ({ portal: false } as const) : ({} as const);
 
-  const FormContent = () => (
+  const formContent = (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Nome *</Label>
@@ -514,7 +514,7 @@ export function ProductFormDialog({
           </DrawerHeader>
           <ScrollArea className="flex-1 px-4 overflow-y-auto max-h-[60vh]">
             <div className="pb-4">
-              <FormContent />
+              {formContent}
             </div>
           </ScrollArea>
           <DrawerFooter className="flex-row gap-2 pt-2">
@@ -534,7 +534,7 @@ export function ProductFormDialog({
             Preencha os dados do produto
           </DialogDescription>
         </DialogHeader>
-        <FormContent />
+        {formContent}
         <DialogFooter>
           <FooterButtons />
         </DialogFooter>
