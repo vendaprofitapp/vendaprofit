@@ -214,13 +214,28 @@ export default function Sales() {
   const searchPartnerProducts = async (searchName: string) => {
     if (!user || userGroups.length === 0) return [];
 
+    // First get product IDs shared with user's groups via product_partnerships
+    const { data: partnerships, error: ppError } = await supabase
+      .from("product_partnerships")
+      .select("product_id")
+      .in("group_id", userGroups);
+
+    if (ppError) {
+      console.error("Error fetching product partnerships:", ppError);
+      return [];
+    }
+
+    const sharedProductIds = partnerships?.map(pp => pp.product_id) || [];
+    if (sharedProductIds.length === 0) return [];
+
+    // Now fetch the actual products that are shared and match the search
     const { data, error } = await supabase
       .from("products")
       .select("id, name, price, stock_quantity, owner_id, group_id, category, color, size")
       .eq("is_active", true)
       .neq("owner_id", user.id)
       .gt("stock_quantity", 0)
-      .in("group_id", userGroups)
+      .in("id", sharedProductIds)
       .ilike("name", `%${searchName}%`)
       .order("name");
 
