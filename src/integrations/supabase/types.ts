@@ -977,6 +977,10 @@ export type Database = {
         Args: { _group_id: string; _user_id: string }
         Returns: boolean
       }
+      is_product_owner: {
+        Args: { _product_id: string; _user_id: string }
+        Returns: boolean
+      }
       set_partnership_auto_share: {
         Args: { _enabled: boolean; _group_id: string }
         Returns: undefined
