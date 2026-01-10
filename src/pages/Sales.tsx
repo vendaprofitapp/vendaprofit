@@ -791,8 +791,8 @@ export default function Sales() {
             <DialogTitle>Nova Venda</DialogTitle>
           </DialogHeader>
 
-          {/* Mobile: Show totals at top */}
-          {isMobile && cart.length > 0 && (
+          {/* Mobile: Show totals at top - always visible */}
+          {isMobile && (
             <div className="bg-primary/10 rounded-lg p-3 mb-2">
               <div className="flex justify-between items-center">
                 <span className="font-medium">Total da Venda:</span>
@@ -800,10 +800,13 @@ export default function Sales() {
                   R$ {total.toFixed(2).replace(".", ",")}
                 </span>
               </div>
-              {discountAmount > 0 && (
+              {cart.length > 0 && discountAmount > 0 && (
                 <p className="text-xs text-muted-foreground text-right">
                   Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")} | Desc: -R$ {discountAmount.toFixed(2).replace(".", ",")}
                 </p>
+              )}
+              {cart.length === 0 && (
+                <p className="text-xs text-muted-foreground">Adicione produtos ao carrinho</p>
               )}
             </div>
           )}
@@ -960,7 +963,7 @@ export default function Sales() {
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione ou digite manualmente" />
                   </SelectTrigger>
-                  <SelectContent portal={!isMobile ? undefined : false}>
+                  <SelectContent portal={!isMobile}>
                     <SelectItem value="manual">Digitar manualmente</SelectItem>
                     {registeredCustomers.map((customer) => (
                       <SelectItem key={customer.id} value={customer.id}>
@@ -1022,7 +1025,7 @@ export default function Sales() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent portal={!isMobile ? undefined : false}>
+                    <SelectContent portal={!isMobile}>
                       {paymentMethods.map((method) => (
                         <SelectItem key={method.value} value={method.value}>
                           {method.label}
@@ -1038,7 +1041,7 @@ export default function Sales() {
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent portal={!isMobile ? undefined : false}>
+                      <SelectContent portal={!isMobile}>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
                           <SelectItem key={n} value={String(n)}>
                             {n}x {n === 1 ? "à vista" : `de R$ ${(total / n).toFixed(2).replace(".", ",")}`}
@@ -1057,7 +1060,7 @@ export default function Sales() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent portal={!isMobile ? undefined : false}>
+                    <SelectContent portal={!isMobile}>
                       <SelectItem value="fixed">Valor Fixo (R$)</SelectItem>
                       <SelectItem value="percentage">Percentual (%)</SelectItem>
                     </SelectContent>
