@@ -311,6 +311,39 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_payment_methods: {
+        Row: {
+          created_at: string
+          fee_percent: number
+          id: string
+          is_active: boolean
+          is_deferred: boolean
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          fee_percent?: number
+          id?: string
+          is_active?: boolean
+          is_deferred?: boolean
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          fee_percent?: number
+          id?: string
+          is_active?: boolean
+          is_deferred?: boolean
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           birth_date: string | null
@@ -503,6 +536,71 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      payment_reminders: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_instagram: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          due_date: string
+          id: string
+          is_paid: boolean
+          notes: string | null
+          notification_sent: boolean
+          notification_sent_at: string | null
+          owner_id: string
+          paid_at: string | null
+          payment_method_name: string
+          sale_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          customer_instagram?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          due_date: string
+          id?: string
+          is_paid?: boolean
+          notes?: string | null
+          notification_sent?: boolean
+          notification_sent_at?: string | null
+          owner_id: string
+          paid_at?: string | null
+          payment_method_name: string
+          sale_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_instagram?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          due_date?: string
+          id?: string
+          is_paid?: boolean
+          notes?: string | null
+          notification_sent?: boolean
+          notification_sent_at?: string | null
+          owner_id?: string
+          paid_at?: string | null
+          payment_method_name?: string
+          sale_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reminders_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_partnerships: {
         Row: {

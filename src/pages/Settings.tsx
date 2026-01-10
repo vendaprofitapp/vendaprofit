@@ -10,7 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AISettingsSection } from "@/components/settings/AISettingsSection";
-import { PaymentFeesSection } from "@/components/settings/PaymentFeesSection";
+import { CustomPaymentMethodsSection } from "@/components/settings/CustomPaymentMethodsSection";
+import { PaymentRemindersSection } from "@/components/settings/PaymentRemindersSection";
 
 export default function Settings() {
   const { user, signOut } = useAuth();
@@ -172,8 +173,11 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Payment Fees Settings */}
-        {user?.id && <PaymentFeesSection userId={user.id} />}
+        {/* Payment Reminders - Show pending deferred payments */}
+        {user?.id && <PaymentRemindersSection userId={user.id} />}
+
+        {/* Custom Payment Methods Settings */}
+        {user?.id && <CustomPaymentMethodsSection userId={user.id} />}
 
         {/* AI Settings */}
         {user?.id && (

@@ -93,13 +93,13 @@ interface PartnerProduct extends Product {
   ownerEmail: string;
 }
 
-const paymentMethods = [
-  { value: "dinheiro", label: "Dinheiro" },
-  { value: "pix", label: "PIX" },
-  { value: "credito", label: "Cartão de Crédito" },
-  { value: "debito", label: "Cartão de Débito" },
-  { value: "boleto", label: "Boleto" },
-];
+interface CustomPaymentMethod {
+  id: string;
+  name: string;
+  fee_percent: number;
+  is_deferred: boolean;
+  is_active: boolean;
+}
 
 const statusConfig = {
   completed: { label: "Concluída", variant: "default" as const },
@@ -121,11 +121,12 @@ export default function Sales() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerInstagram, setCustomerInstagram] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("dinheiro");
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>("");
   const [discountType, setDiscountType] = useState("fixed");
   const [discountValue, setDiscountValue] = useState(0);
   const [notes, setNotes] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [dueDate, setDueDate] = useState<string>("");
   const [installments, setInstallments] = useState(1);
 
   // Partner stock dialog
@@ -193,6 +194,22 @@ export default function Sales() {
         .select("id, full_name, email");
       if (error) throw error;
       return data;
+    },
+    enabled: !!user,
+  });
+
+  // Fetch custom payment methods
+  const { data: customPaymentMethods = [] } = useQuery({
+    queryKey: ["custom-payment-methods", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_payment_methods")
+        .select("*")
+        .eq("owner_id", user?.id)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data as CustomPaymentMethod[];
     },
     enabled: !!user,
   });
@@ -333,6 +350,11 @@ export default function Sales() {
         }
       }
 
+      const selectedPaymentMethod = customPaymentMethods.find(m => m.id === selectedPaymentMethodId);
+      const paymentMethodName = selectedPaymentMethod?.name || "Dinheiro";
+      const feePercent = selectedPaymentMethod?.fee_percent || 0;
+      const isDeferred = selectedPaymentMethod?.is_deferred || false;
+
       // Create sale
       const { data: sale, error: saleError } = await supabase
         .from("sales")
@@ -340,7 +362,7 @@ export default function Sales() {
           owner_id: user.id,
           customer_name: customerName || null,
           customer_phone: customerPhone || null,
-          payment_method: paymentMethod,
+          payment_method: paymentMethodName,
           subtotal,
           discount_type: discountType,
           discount_value: discountValue,
@@ -353,6 +375,24 @@ export default function Sales() {
         .single();
 
       if (saleError) throw saleError;
+
+      // If deferred payment, create payment reminder
+      if (isDeferred && dueDate) {
+        const { error: reminderError } = await supabase
+          .from("payment_reminders")
+          .insert({
+            sale_id: sale.id,
+            owner_id: user.id,
+            customer_name: customerName || null,
+            customer_phone: customerPhone || null,
+            customer_instagram: customerInstagram || null,
+            amount: total,
+            due_date: dueDate,
+            payment_method_name: paymentMethodName,
+            notes: notes || null,
+          });
+        if (reminderError) console.error("Error creating reminder:", reminderError);
+      }
 
       // Create sale items
       const itemsToInsert = ownStockItems.map((item) => ({
@@ -399,13 +439,15 @@ export default function Sales() {
     setCustomerName("");
     setCustomerPhone("");
     setCustomerInstagram("");
-    setPaymentMethod("dinheiro");
+    setSelectedPaymentMethodId("");
     setInstallments(1);
     setDiscountType("fixed");
     setDiscountValue(0);
     setNotes("");
     setProductSearch("");
     setSelectedCustomerId("");
+    setDueDate("");
+  };
   };
 
   const handleCustomerSelect = (customerId: string) => {
@@ -557,9 +599,14 @@ export default function Sales() {
     // Open new sale dialog
     setIsNewSaleOpen(true);
     
-    // Set payment method if identified
+    // Set payment method if identified - try to match with custom methods
     if (result.paymentMethod) {
-      setPaymentMethod(result.paymentMethod);
+      const matchedMethod = customPaymentMethods.find(m => 
+        m.name.toLowerCase().includes(result.paymentMethod?.toLowerCase() || "")
+      );
+      if (matchedMethod) {
+        setSelectedPaymentMethodId(matchedMethod.id);
+      }
     }
     
     // Set customer name if identified
@@ -579,7 +626,7 @@ export default function Sales() {
           
           toast({ 
             title: "✓ Venda reconhecida por voz!", 
-            description: `${qty}x ${matchingProduct.name}${result.paymentMethod ? ` - ${paymentMethods.find(p => p.value === result.paymentMethod)?.label || result.paymentMethod}` : ''}`
+            description: `${qty}x ${matchingProduct.name}`
           });
         }
       }, 300);
@@ -591,7 +638,7 @@ export default function Sales() {
         variant: "destructive"
       });
     }
-  }, [ownProducts]);
+  }, [ownProducts, customPaymentMethods]);
 
   const { isListening, isProcessing, transcript, isSupported, startListening, stopListening } = useVoiceCommand({
     smartSaleMode: true,
@@ -682,7 +729,7 @@ export default function Sales() {
           ) : (
             filteredSales.map((sale) => {
               const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
-              const paymentLabel = paymentMethods.find((p) => p.value === sale.payment_method)?.label || sale.payment_method;
+              const paymentLabel = sale.payment_method;
               return (
                 <div
                   key={sale.id}
@@ -742,7 +789,7 @@ export default function Sales() {
               ) : (
                 filteredSales.map((sale) => {
                   const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
-                  const paymentLabel = paymentMethods.find((p) => p.value === sale.payment_method)?.label || sale.payment_method;
+                  const paymentLabel = sale.payment_method;
                   return (
                     <TableRow key={sale.id} className="group">
                       <TableCell>
@@ -1015,40 +1062,66 @@ export default function Sales() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4">
                 <div>
                   <Label>Forma de Pagamento</Label>
-                  <Select value={paymentMethod} onValueChange={(value) => {
-                    setPaymentMethod(value);
-                    if (value !== "credito") setInstallments(1);
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent portal={!isMobile}>
-                      {paymentMethods.map((method) => (
-                        <SelectItem key={method.value} value={method.value}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {paymentMethod === "credito" && (
-                  <div>
-                    <Label>Nº de Parcelas</Label>
-                    <Select value={String(installments)} onValueChange={(v) => setInstallments(Number(v))}>
+                  {customPaymentMethods.length === 0 ? (
+                    <div className="p-3 rounded-lg border border-dashed bg-muted/30 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma forma de pagamento cadastrada
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Cadastre em Configurações → Formas de Pagamento
+                      </p>
+                    </div>
+                  ) : (
+                    <Select value={selectedPaymentMethodId} onValueChange={setSelectedPaymentMethodId}>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent portal={!isMobile}>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n}x {n === 1 ? "à vista" : `de R$ ${(total / n).toFixed(2).replace(".", ",")}`}
+                        {customPaymentMethods.map((method) => (
+                          <SelectItem key={method.id} value={method.id}>
+                            <div className="flex items-center gap-2">
+                              <span>{method.name}</span>
+                              {method.fee_percent > 0 && (
+                                <span className="text-xs text-muted-foreground">({method.fee_percent}%)</span>
+                              )}
+                              {method.is_deferred && (
+                                <span className="text-xs text-primary">(a prazo)</span>
+                              )}
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  )}
+                </div>
+
+                {/* Deferred payment - show due date picker */}
+                {selectedPaymentMethodId && customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.is_deferred && (
+                  <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
+                    <Label className="flex items-center gap-2 text-primary">
+                      <Calendar className="h-4 w-4" />
+                      Data de Vencimento *
+                    </Label>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Você receberá um lembrete com o WhatsApp do cliente para enviar cobrança
+                    </p>
+                  </div>
+                )}
+
+                {/* Fee display */}
+                {selectedPaymentMethodId && (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0) > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    Taxa aplicada: {customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent}%
                   </div>
                 )}
               </div>
@@ -1270,7 +1343,7 @@ export default function Sales() {
                 <div>
                   <p className="text-muted-foreground">Pagamento</p>
                   <p className="font-medium">
-                    {paymentMethods.find((p) => p.value === selectedSale.payment_method)?.label}
+                    {selectedSale.payment_method}
                   </p>
                 </div>
                 <div>
