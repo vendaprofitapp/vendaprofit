@@ -356,7 +356,9 @@ export default function StockControl() {
           <VoiceCommandButton
             isListening={isListening}
             isSupported={isSupported}
-            onClick={handleVoiceClick}
+            onStart={startListening}
+            onStop={stopListening}
+            holdToSpeak
             size="sm"
             showLabel
             className="gap-2"
