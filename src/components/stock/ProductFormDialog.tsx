@@ -33,6 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { CategoryManager } from "@/components/products/CategoryManager";
+import { ColorManager } from "@/components/products/ColorManager";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 
 interface Product {
@@ -80,7 +81,6 @@ interface ProductFormDialogProps {
 }
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
-const availableColors = ["Preto", "Branco", "Azul", "Vermelho", "Verde", "Amarelo", "Rosa", "Roxo", "Laranja", "Marrom", "Cinza", "Bege", "Nude", "Dourado", "Prata", "Multicolor"];
 
 export function ProductFormDialog({ 
   open, 
@@ -643,21 +643,11 @@ export function ProductFormDialog({
                 </SelectContent>
               </Select>
               
-              <Select
+              <ColorManager
                 value={variant.color}
-                onValueChange={(value) => updateProductVariant(index, "color", value)}
-              >
-                <SelectTrigger className="w-24 sm:w-28">
-                  <SelectValue placeholder="Cor" />
-                </SelectTrigger>
-                <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-                  {availableColors.map((color) => (
-                    <SelectItem key={color} value={color}>
-                      {color}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(value) => updateProductVariant(index, "color", value)}
+                placeholder="Cor"
+              />
               
               <Input
                 type="number"
