@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 // Type definitions for Web Speech API
 interface SpeechRecognitionEvent extends Event {
@@ -73,14 +74,37 @@ interface UseVoiceCommandOptions {
 
 export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const { onResult, onSmartSaleResult, onError, language = 'pt-BR', smartSaleMode = false, userId } = options;
+  const { user } = useAuth();
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [aiConfig, setAiConfig] = useState<{ provider: string; apiKey: string | null } | null>(null);
   
   // Recognition is created lazily on user interaction - NOT in useEffect
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Fetch user's AI configuration
+  useEffect(() => {
+    async function fetchAIConfig() {
+      if (!user?.id) return;
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('preferred_ai_provider, gemini_api_key, openai_api_key')
+        .eq('id', user.id)
+        .single();
+      
+      if (!error && data) {
+        const provider = data.preferred_ai_provider || 'gemini';
+        const apiKey = provider === 'openai' ? data.openai_api_key : data.gemini_api_key;
+        setAiConfig({ provider, apiKey });
+      }
+    }
+    
+    fetchAIConfig();
+  }, [user?.id]);
 
   // Check if we should use backend transcription (iOS or no Web Speech API)
   const shouldUseBackend = useCallback((): boolean => {
@@ -195,8 +219,16 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
           reader.onloadend = async () => {
             const base64 = (reader.result as string).split(',')[1];
             
+            // Build headers with user's AI config
+            const headers: Record<string, string> = {};
+            if (aiConfig?.apiKey) {
+              headers['x-ai-provider'] = aiConfig.provider;
+              headers['x-ai-key'] = aiConfig.apiKey;
+            }
+            
             const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-              body: { audioBase64: base64, mimeType }
+              body: { audioBase64: base64, mimeType },
+              headers
             });
             
             setIsListening(false);
@@ -237,7 +269,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       console.error('Microphone permission error:', permError);
       toast.error('Permissão de microfone negada. Habilite nas configurações.');
     }
-  }, [handleTranscription, onError]);
+  }, [handleTranscription, onError, aiConfig]);
 
   const stopBackendRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
