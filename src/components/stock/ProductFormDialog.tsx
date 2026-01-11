@@ -204,6 +204,25 @@ export function ProductFormDialog({
     setScrapedImageUrls(prev => [...prev, ...toAdd]);
   };
 
+  const handleProductDataImport = (data: {
+    name?: string;
+    price?: number;
+    description?: string;
+    colors?: string[];
+    sizes?: string[];
+    category?: string;
+  }) => {
+    setForm(prev => ({
+      ...prev,
+      ...(data.name && { name: data.name }),
+      ...(data.price && { price: data.price.toString() }),
+      ...(data.description && { description: data.description }),
+      ...(data.colors?.length && { color: data.colors[0] }),
+      ...(data.sizes?.length && { size: data.sizes[0] }),
+      ...(data.category && { category: data.category }),
+    }));
+  };
+
   const removeScrapedImage = (index: number) => {
     setScrapedImageUrls(prev => prev.filter((_, i) => i !== index));
   };
@@ -455,6 +474,7 @@ export function ProductFormDialog({
           maxImages={3}
           currentImageCount={totalImages}
           onImagesSelected={handleScrapedImagesSelected}
+          onProductDataImport={handleProductDataImport}
         />
       </div>
 
