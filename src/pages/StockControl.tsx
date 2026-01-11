@@ -32,6 +32,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { StockImportDialog } from "@/components/stock/StockImportDialog";
 import { ProductFormDialog } from "@/components/stock/ProductFormDialog";
+import { VoiceStockDialog } from "@/components/stock/VoiceStockDialog";
+import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
+import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
+import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
 
 interface Product {
   id: string;
@@ -90,6 +94,40 @@ export default function StockControl() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [requestNotes, setRequestNotes] = useState("");
+
+  // Voice stock state
+  const [voiceStockDialogOpen, setVoiceStockDialogOpen] = useState(false);
+  const [voiceCommand, setVoiceCommand] = useState<StockVoiceCommand | null>(null);
+  const [initialProductName, setInitialProductName] = useState<string>("");
+
+  // Voice command hook
+  const {
+    isListening,
+    transcript,
+    isSupported,
+    startListening,
+    stopListening,
+  } = useStockVoiceCommand({
+    onCommand: (command) => {
+      setVoiceCommand(command);
+      setVoiceStockDialogOpen(true);
+    },
+    onError: (error) => toast.error(error),
+  });
+
+  const handleVoiceClick = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  const handleCreateNewFromVoice = (productName: string) => {
+    setInitialProductName(productName);
+    setEditingProduct(null);
+    setProductDialogOpen(true);
+  };
 
   useEffect(() => {
     if (user) {
@@ -315,12 +353,22 @@ export default function StockControl() {
           <p className="text-muted-foreground text-sm">Gerencie seu estoque e requisições de parceiros</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <VoiceCommandButton
+            isListening={isListening}
+            isSupported={isSupported}
+            onClick={handleVoiceClick}
+            size="sm"
+            showLabel
+            className="gap-2"
+          />
+          
           <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Importar
           </Button>
           
           <Button size="sm" onClick={() => {
+            setInitialProductName("");
             setEditingProduct(null);
             setProductDialogOpen(true);
           }}>
@@ -330,6 +378,9 @@ export default function StockControl() {
           </Button>
         </div>
       </div>
+
+      {/* Voice Feedback */}
+      <VoiceCommandFeedback isListening={isListening} transcript={transcript} />
 
       {/* Search */}
       <div className="flex items-center gap-4 mb-6">
@@ -672,10 +723,24 @@ export default function StockControl() {
         open={productDialogOpen}
         onOpenChange={(open) => {
           setProductDialogOpen(open);
-          if (!open) setEditingProduct(null);
+          if (!open) {
+            setEditingProduct(null);
+            setInitialProductName("");
+          }
         }}
         editingProduct={editingProduct}
         onSuccess={fetchProducts}
+        initialProductName={initialProductName}
+      />
+
+      {/* Voice Stock Dialog */}
+      <VoiceStockDialog
+        open={voiceStockDialogOpen}
+        onOpenChange={setVoiceStockDialogOpen}
+        command={voiceCommand}
+        userId={user?.id || ""}
+        onSuccess={fetchProducts}
+        onCreateNewProduct={handleCreateNewFromVoice}
       />
 
       {/* Request Product Dialog */}

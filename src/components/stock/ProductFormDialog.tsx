@@ -66,6 +66,7 @@ interface ProductFormDialogProps {
   onOpenChange: (open: boolean) => void;
   editingProduct: Product | null;
   onSuccess: () => void;
+  initialProductName?: string;
 }
 
 const sizes = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
@@ -74,7 +75,8 @@ export function ProductFormDialog({
   open, 
   onOpenChange, 
   editingProduct,
-  onSuccess 
+  onSuccess,
+  initialProductName = ""
 }: ProductFormDialogProps) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -129,8 +131,12 @@ export function ProductFormDialog({
       setExistingImageUrls(existing);
     } else {
       resetForm();
+      // Apply initial product name from voice command
+      if (initialProductName) {
+        setForm(prev => ({ ...prev, name: initialProductName }));
+      }
     }
-  }, [editingProduct, open]);
+  }, [editingProduct, open, initialProductName]);
 
   const fetchSuppliers = async () => {
     if (!user) return;
