@@ -670,6 +670,9 @@ export type Database = {
           color: string | null
           created_at: string
           id: string
+          image_url: string | null
+          image_url_2: string | null
+          image_url_3: string | null
           product_id: string
           size: string
           sku: string | null
@@ -680,6 +683,9 @@ export type Database = {
           color?: string | null
           created_at?: string
           id?: string
+          image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
           product_id: string
           size: string
           sku?: string | null
@@ -690,6 +696,9 @@ export type Database = {
           color?: string | null
           created_at?: string
           id?: string
+          image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
           product_id?: string
           size?: string
           sku?: string | null

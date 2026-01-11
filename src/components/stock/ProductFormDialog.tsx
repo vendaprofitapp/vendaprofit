@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Image as ImageIcon, Plus, Trash2 } from "lucide-react";
+import { Image as ImageIcon, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -69,6 +74,16 @@ interface ProductVariant {
   color: string;
   sku: string;
   stock_quantity: number;
+  image_url?: string | null;
+  image_url_2?: string | null;
+  image_url_3?: string | null;
+}
+
+// Structure to hold images per color
+interface ColorImages {
+  existingUrls: string[];
+  newFiles: File[];
+  newPreviewUrls: string[];
 }
 
 interface ProductFormDialogProps {
@@ -92,15 +107,13 @@ export function ProductFormDialog({
 }: ProductFormDialogProps) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRefs = useRef<{ [color: string]: HTMLInputElement | null }>({});
   
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [productImages, setProductImages] = useState<File[]>([]);
-  const [productImageUrls, setProductImageUrls] = useState<string[]>([]);
-  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
-  const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
+  const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>({});
+  const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
   
   const [form, setForm] = useState({
     name: "",
@@ -130,13 +143,7 @@ export function ProductFormDialog({
         supplier_id: editingProduct.supplier_id || ""
       });
       
-      const existing: string[] = [];
-      if (editingProduct.image_url) existing.push(editingProduct.image_url);
-      if (editingProduct.image_url_2) existing.push(editingProduct.image_url_2);
-      if (editingProduct.image_url_3) existing.push(editingProduct.image_url_3);
-      setExistingImageUrls(existing);
-      
-      // Fetch existing variants
+      // Fetch existing variants with images
       fetchProductVariants(editingProduct.id);
     } else if (duplicatingProduct) {
       setForm({
@@ -149,14 +156,9 @@ export function ProductFormDialog({
         supplier_id: duplicatingProduct.supplier_id || ""
       });
       
-      const existing: string[] = [];
-      if (duplicatingProduct.image_url) existing.push(duplicatingProduct.image_url);
-      if (duplicatingProduct.image_url_2) existing.push(duplicatingProduct.image_url_2);
-      if (duplicatingProduct.image_url_3) existing.push(duplicatingProduct.image_url_3);
-      setExistingImageUrls(existing);
-      
       // Start with empty variants for duplicate
       setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
+      setColorImages({});
     } else {
       resetForm();
       if (initialProductName) {
@@ -170,19 +172,47 @@ export function ProductFormDialog({
       .from("product_variants")
       .select("*")
       .eq("product_id", productId)
-      .order("size");
+      .order("color", { ascending: true })
+      .order("size", { ascending: true });
     
     if (!error && data && data.length > 0) {
-      setProductVariants(data.map(v => ({
+      const variants = data.map(v => ({
         id: v.id,
         size: v.size,
         color: v.color || "",
         sku: v.sku || "",
-        stock_quantity: v.stock_quantity
-      })));
+        stock_quantity: v.stock_quantity,
+        image_url: v.image_url,
+        image_url_2: v.image_url_2,
+        image_url_3: v.image_url_3
+      }));
+      setProductVariants(variants);
+      
+      // Build color images from variants
+      const images: { [color: string]: ColorImages } = {};
+      const expanded: { [color: string]: boolean } = {};
+      
+      variants.forEach(v => {
+        if (v.color && !images[v.color]) {
+          const existingUrls: string[] = [];
+          if (v.image_url) existingUrls.push(v.image_url);
+          if (v.image_url_2) existingUrls.push(v.image_url_2);
+          if (v.image_url_3) existingUrls.push(v.image_url_3);
+          
+          images[v.color] = {
+            existingUrls,
+            newFiles: [],
+            newPreviewUrls: []
+          };
+          expanded[v.color] = existingUrls.length > 0;
+        }
+      });
+      
+      setColorImages(images);
+      setExpandedColors(expanded);
     } else {
-      // If no variants, add default one
       setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
+      setColorImages({});
     }
   };
 
@@ -206,19 +236,13 @@ export function ProductFormDialog({
       min_stock_level: "5",
       supplier_id: ""
     });
-    productImageUrls.forEach(url => URL.revokeObjectURL(url));
-    setProductImages([]);
-    setProductImageUrls([]);
-    setExistingImageUrls([]);
-    setScrapedImageUrls([]);
+    // Clean up preview URLs
+    Object.values(colorImages).forEach(ci => {
+      ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    });
+    setColorImages({});
+    setExpandedColors({});
     setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
-  };
-
-  const handleScrapedImagesSelected = (urls: string[]) => {
-    const totalExisting = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
-    const available = 3 - totalExisting;
-    const toAdd = urls.slice(0, available);
-    setScrapedImageUrls(prev => [...prev, ...toAdd]);
   };
 
   const handleProductDataImport = (data: {
@@ -237,7 +261,6 @@ export function ProductFormDialog({
       ...(data.category && { category: data.category }),
     }));
     
-    // Auto-populate variants if sizes and/or colors are extracted
     const sizes = data.sizes && data.sizes.length > 0 ? data.sizes : [""];
     const colors = data.colors && data.colors.length > 0 ? data.colors : [""];
     
@@ -255,43 +278,94 @@ export function ProductFormDialog({
     
     if (newVariants.length > 0) {
       setProductVariants(newVariants);
+      // Initialize color images for new colors
+      const newColorImages: { [color: string]: ColorImages } = {};
+      colors.forEach(color => {
+        if (color && !newColorImages[color]) {
+          newColorImages[color] = { existingUrls: [], newFiles: [], newPreviewUrls: [] };
+        }
+      });
+      setColorImages(prev => ({ ...prev, ...newColorImages }));
     }
   };
 
-  const removeScrapedImage = (index: number) => {
-    setScrapedImageUrls(prev => prev.filter((_, i) => i !== index));
+  // Get unique colors from variants
+  const getUniqueColors = (): string[] => {
+    const colors = new Set<string>();
+    productVariants.forEach(v => {
+      if (v.color) colors.add(v.color);
+    });
+    return Array.from(colors);
   };
 
-  const handleImageUpload = (files: FileList | null) => {
-    if (!files) return;
+  // Handle image upload for a specific color
+  const handleColorImageUpload = (color: string, files: FileList | null) => {
+    if (!files || !color) return;
     
-    const totalImages = productImages.length + existingImageUrls.length;
-    const newImages = Array.from(files).slice(0, 3 - totalImages);
-    const newUrls = newImages.map(file => URL.createObjectURL(file));
+    const currentImages = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
+    const totalCurrent = currentImages.existingUrls.length + currentImages.newFiles.length;
+    const available = 3 - totalCurrent;
     
-    setProductImages(prev => [...prev, ...newImages].slice(0, 3 - existingImageUrls.length));
-    setProductImageUrls(prev => [...prev, ...newUrls].slice(0, 3 - existingImageUrls.length));
-  };
-
-  const removeImage = (index: number, isExisting: boolean) => {
-    if (isExisting) {
-      setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
-    } else {
-      URL.revokeObjectURL(productImageUrls[index]);
-      setProductImages(prev => prev.filter((_, i) => i !== index));
-      setProductImageUrls(prev => prev.filter((_, i) => i !== index));
+    if (available <= 0) {
+      toast.error("Máximo de 3 fotos por cor");
+      return;
     }
+    
+    const newFiles = Array.from(files).slice(0, available);
+    const newUrls = newFiles.map(file => URL.createObjectURL(file));
+    
+    setColorImages(prev => ({
+      ...prev,
+      [color]: {
+        existingUrls: currentImages.existingUrls,
+        newFiles: [...currentImages.newFiles, ...newFiles],
+        newPreviewUrls: [...currentImages.newPreviewUrls, ...newUrls]
+      }
+    }));
   };
 
-  const uploadProductImages = async (productId: string): Promise<string[]> => {
-    if (!user || productImages.length === 0) return [];
+  // Remove image from a color
+  const removeColorImage = (color: string, index: number, isExisting: boolean) => {
+    setColorImages(prev => {
+      const current = prev[color];
+      if (!current) return prev;
+      
+      if (isExisting) {
+        return {
+          ...prev,
+          [color]: {
+            ...current,
+            existingUrls: current.existingUrls.filter((_, i) => i !== index)
+          }
+        };
+      } else {
+        URL.revokeObjectURL(current.newPreviewUrls[index]);
+        return {
+          ...prev,
+          [color]: {
+            ...current,
+            newFiles: current.newFiles.filter((_, i) => i !== index),
+            newPreviewUrls: current.newPreviewUrls.filter((_, i) => i !== index)
+          }
+        };
+      }
+    });
+  };
+
+  // Upload images for a color and return URLs
+  const uploadColorImages = async (productId: string, color: string): Promise<string[]> => {
+    if (!user) return [];
     
-    const urls: string[] = [];
+    const current = colorImages[color];
+    if (!current) return [];
     
-    for (let i = 0; i < productImages.length; i++) {
-      const file = productImages[i];
+    const urls: string[] = [...current.existingUrls];
+    
+    for (let i = 0; i < current.newFiles.length; i++) {
+      const file = current.newFiles[i];
       const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${productId}/${Date.now()}_${i + 1}.${fileExt}`;
+      const colorSlug = color.toLowerCase().replace(/\s+/g, '-');
+      const fileName = `${user.id}/${productId}/${colorSlug}_${Date.now()}_${i + 1}.${fileExt}`;
       
       const { error } = await supabase.storage
         .from('product-images')
@@ -305,7 +379,7 @@ export function ProductFormDialog({
       }
     }
     
-    return urls;
+    return urls.slice(0, 3);
   };
 
   // Variant handlers
@@ -314,18 +388,59 @@ export function ProductFormDialog({
   };
 
   const removeProductVariant = (index: number) => {
+    const variant = productVariants[index];
     setProductVariants(prev => prev.filter((_, i) => i !== index));
+    
+    // Check if this was the last variant with this color
+    const remainingWithColor = productVariants.filter((v, i) => i !== index && v.color === variant.color);
+    if (remainingWithColor.length === 0 && variant.color) {
+      // Clean up images for this color
+      const ci = colorImages[variant.color];
+      if (ci) {
+        ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      }
+      setColorImages(prev => {
+        const { [variant.color]: _, ...rest } = prev;
+        return rest;
+      });
+    }
   };
 
   const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number) => {
+    const oldVariant = productVariants[index];
+    
     setProductVariants(prev => prev.map((v, i) => 
       i === index ? { ...v, [field]: value } : v
     ));
+    
+    // If color changed, initialize color images for new color
+    if (field === 'color' && typeof value === 'string' && value !== oldVariant.color) {
+      if (value && !colorImages[value]) {
+        setColorImages(prev => ({
+          ...prev,
+          [value]: { existingUrls: [], newFiles: [], newPreviewUrls: [] }
+        }));
+      }
+      
+      // Check if old color still has variants
+      const remainingWithOldColor = productVariants.filter((v, i) => i !== index && v.color === oldVariant.color);
+      if (remainingWithOldColor.length === 0 && oldVariant.color) {
+        const ci = colorImages[oldVariant.color];
+        if (ci) {
+          ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+        }
+        setColorImages(prev => {
+          const { [oldVariant.color]: _, ...rest } = prev;
+          return rest;
+        });
+      }
+    }
   };
 
-  const totalImages = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
-  
-  // Calculate total stock from all variants
+  const toggleColorExpanded = (color: string) => {
+    setExpandedColors(prev => ({ ...prev, [color]: !prev[color] }));
+  };
+
   const totalStock = productVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
 
   const handleSave = async () => {
@@ -339,7 +454,6 @@ export function ProductFormDialog({
       return;
     }
     
-    // Validate that at least one variant has a size or color
     const validVariants = productVariants.filter(v => v.size.trim() || v.color.trim());
     if (validVariants.length === 0) {
       toast.error("Adicione pelo menos uma variante com tamanho ou cor");
@@ -354,14 +468,18 @@ export function ProductFormDialog({
       category: form.category,
       price: parseFloat(form.price) || 0,
       cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
-      sku: null, // SKU is now per variant
-      size: null, // Size is now per variant
-      color: null, // Color is now per variant
-      stock_quantity: totalStock, // Sum of all variants
+      sku: null,
+      size: null,
+      color: null,
+      stock_quantity: totalStock,
       min_stock_level: parseInt(form.min_stock_level) || 5,
       supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
       owner_id: user.id,
       group_id: null,
+      // Clear product-level images since they're now per-color
+      image_url: null,
+      image_url_2: null,
+      image_url_3: null,
     };
 
     try {
@@ -369,26 +487,15 @@ export function ProductFormDialog({
       
       if (editingProduct) {
         productId = editingProduct.id;
-        const allUrls = [...existingImageUrls, ...scrapedImageUrls];
         
-        if (productImages.length > 0) {
-          const newUrls = await uploadProductImages(editingProduct.id);
-          allUrls.push(...newUrls);
-        }
-
         const { error } = await supabase
           .from("products")
-          .update({
-            ...productData,
-            image_url: allUrls[0] || null,
-            image_url_2: allUrls[1] || null,
-            image_url_3: allUrls[2] || null,
-          })
+          .update(productData)
           .eq("id", editingProduct.id);
 
         if (error) throw error;
         
-        // Delete existing variants and recreate
+        // Delete existing variants
         await supabase
           .from("product_variants")
           .delete()
@@ -403,42 +510,31 @@ export function ProductFormDialog({
 
         if (error || !newProduct) throw error;
         productId = newProduct.id;
-        
-        if (productImages.length > 0) {
-          const urls = await uploadProductImages(newProduct.id);
-          if (urls.length > 0) {
-            await supabase
-              .from("products")
-              .update({
-                image_url: urls[0] || null,
-                image_url_2: urls[1] || null,
-                image_url_3: urls[2] || null,
-              })
-              .eq("id", newProduct.id);
-          }
-        }
-        
-        // Handle scraped images for new product
-        if (scrapedImageUrls.length > 0) {
-          await supabase
-            .from("products")
-            .update({
-              image_url: scrapedImageUrls[0] || null,
-              image_url_2: scrapedImageUrls[1] || null,
-              image_url_3: scrapedImageUrls[2] || null,
-            })
-            .eq("id", newProduct.id);
-        }
       }
       
-      // Insert all variants
-      const variantsToInsert = validVariants.map(v => ({
-        product_id: productId,
-        size: v.size || "Único",
-        color: v.color || null,
-        sku: v.sku || null,
-        stock_quantity: v.stock_quantity || 0
-      }));
+      // Upload images for each color and prepare variants
+      const colorImageUrls: { [color: string]: string[] } = {};
+      const uniqueColors = getUniqueColors();
+      
+      for (const color of uniqueColors) {
+        const urls = await uploadColorImages(productId, color);
+        colorImageUrls[color] = urls;
+      }
+      
+      // Insert all variants with their color's images
+      const variantsToInsert = validVariants.map(v => {
+        const urls = v.color ? (colorImageUrls[v.color] || []) : [];
+        return {
+          product_id: productId,
+          size: v.size || "Único",
+          color: v.color || null,
+          sku: v.sku || null,
+          stock_quantity: v.stock_quantity || 0,
+          image_url: urls[0] || null,
+          image_url_2: urls[1] || null,
+          image_url_3: urls[2] || null
+        };
+      });
       
       if (variantsToInsert.length > 0) {
         const { error: variantError } = await supabase
@@ -446,6 +542,20 @@ export function ProductFormDialog({
           .insert(variantsToInsert);
         
         if (variantError) throw variantError;
+      }
+
+      // Update product with first color's first image as main image
+      const firstColor = uniqueColors[0];
+      const firstColorUrls = firstColor ? colorImageUrls[firstColor] : [];
+      if (firstColorUrls.length > 0) {
+        await supabase
+          .from("products")
+          .update({
+            image_url: firstColorUrls[0] || null,
+            image_url_2: firstColorUrls[1] || null,
+            image_url_3: firstColorUrls[2] || null,
+          })
+          .eq("id", productId);
       }
 
       toast.success(editingProduct ? "Produto atualizado!" : "Produto criado!");
@@ -462,6 +572,84 @@ export function ProductFormDialog({
 
   const isMobileDevice = isMobile;
   const selectContentProps = isMobileDevice ? ({ portal: false } as const) : ({} as const);
+
+  // Render image section for a color
+  const renderColorImages = (color: string) => {
+    const images = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
+    const totalColorImages = images.existingUrls.length + images.newPreviewUrls.length;
+    
+    return (
+      <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          {images.existingUrls.map((url, idx) => (
+            <div key={`existing-${idx}`} className="relative w-14 h-14">
+              <img 
+                src={url} 
+                alt={`Foto ${idx + 1}`} 
+                className="w-full h-full object-cover rounded-lg border"
+              />
+              <button
+                type="button"
+                onClick={() => removeColorImage(color, idx, true)}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          
+          {images.newPreviewUrls.map((url, idx) => (
+            <div key={`new-${idx}`} className="relative w-14 h-14">
+              <img 
+                src={url} 
+                alt={`Nova foto ${idx + 1}`} 
+                className="w-full h-full object-cover rounded-lg border"
+              />
+              <button
+                type="button"
+                onClick={() => removeColorImage(color, idx, false)}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          
+          {totalColorImages < 3 && (
+            <>
+              <input
+                ref={el => { imageInputRefs.current[color] = el; }}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => handleColorImageUpload(color, e.target.files)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRefs.current[color]?.click()}
+                className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+              >
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[8px] text-muted-foreground mt-0.5">Foto</span>
+              </button>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {totalColorImages}/3 fotos para esta cor
+        </p>
+      </div>
+    );
+  };
+
+  // Group variants by color for display
+  const variantsByColor = productVariants.reduce((acc, variant, index) => {
+    const color = variant.color || "__no_color__";
+    if (!acc[color]) acc[color] = [];
+    acc[color].push({ variant, index });
+    return acc;
+  }, {} as { [color: string]: { variant: ProductVariant; index: number }[] });
 
   const formContent = (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -484,91 +672,12 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Image Upload Section */}
-      <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Fotos do Produto (máx. 3)</Label>
-        <div className="flex gap-3 items-center flex-wrap">
-          {existingImageUrls.map((url, idx) => (
-            <div key={`existing-${idx}`} className="relative w-16 h-16 sm:w-20 sm:h-20">
-              <img 
-                src={url} 
-                alt={`Foto ${idx + 1}`} 
-                className="w-full h-full object-cover rounded-lg border"
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(idx, true)}
-                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-
-          {scrapedImageUrls.map((url, idx) => (
-            <div key={`scraped-${idx}`} className="relative w-16 h-16 sm:w-20 sm:h-20">
-              <img 
-                src={url} 
-                alt={`Foto do fornecedor ${idx + 1}`} 
-                className="w-full h-full object-cover rounded-lg border border-primary/50"
-              />
-              <button
-                type="button"
-                onClick={() => removeScrapedImage(idx)}
-                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          
-          {productImageUrls.map((url, idx) => (
-            <div key={`new-${idx}`} className="relative w-16 h-16 sm:w-20 sm:h-20">
-              <img 
-                src={url} 
-                alt={`Nova foto ${idx + 1}`} 
-                className="w-full h-full object-cover rounded-lg border"
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(idx, false)}
-                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          
-          {totalImages < 3 && (
-            <>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => handleImageUpload(e.target.files)}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="w-16 h-16 sm:w-20 sm:h-20 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-              >
-                <ImageIcon className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
-                <span className="text-[10px] sm:text-xs text-muted-foreground mt-1">Adicionar</span>
-              </button>
-            </>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {totalImages}/3 fotos adicionadas
-        </p>
-        
-        {/* Supplier Image Scraper */}
+      {/* Supplier Image Scraper */}
+      <div className="col-span-1 sm:col-span-2">
         <SupplierImageScraper
           maxImages={3}
-          currentImageCount={totalImages}
-          onImagesSelected={handleScrapedImagesSelected}
+          currentImageCount={0}
+          onImagesSelected={() => {}}
           onProductDataImport={handleProductDataImport}
         />
       </div>
@@ -615,68 +724,104 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Variants Section (Size + Color) */}
+      {/* Variants Section grouped by Color */}
       <div className="col-span-1 sm:col-span-2 space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-medium">Variantes (Tamanho + Cor) *</Label>
+          <Label className="text-base font-medium">Variantes por Cor *</Label>
           <span className="text-sm text-muted-foreground">
             Total: {totalStock} un.
           </span>
         </div>
         
-        <div className="space-y-2">
-          {productVariants.map((variant, index) => (
-            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-              <Select
-                value={variant.size}
-                onValueChange={(value) => updateProductVariant(index, "size", value)}
-              >
-                <SelectTrigger className="w-20 sm:w-24">
-                  <SelectValue placeholder="Tam." />
-                </SelectTrigger>
-                <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-                  {availableSizes.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <ColorManager
-                value={variant.color}
-                onChange={(value) => updateProductVariant(index, "color", value)}
-                placeholder="Cor"
-              />
-              
-              <Input
-                type="number"
-                inputMode="numeric"
-                placeholder="Qtd"
-                className="w-16 sm:w-20"
-                value={variant.stock_quantity || ""}
-                onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
-              />
-              
-              <Input
-                placeholder="SKU"
-                className="flex-1 min-w-[80px]"
-                value={variant.sku}
-                onChange={(e) => updateProductVariant(index, "sku", e.target.value)}
-              />
-              
-              {productVariants.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
-                  onClick={() => removeProductVariant(index)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+        <div className="space-y-4">
+          {Object.entries(variantsByColor).map(([color, items]) => (
+            <Collapsible 
+              key={color} 
+              open={expandedColors[color] ?? true}
+              onOpenChange={() => toggleColorExpanded(color)}
+            >
+              <div className="border rounded-lg p-3 bg-muted/30">
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">
+                        {color === "__no_color__" ? "Sem cor definida" : color}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({items.length} variante{items.length > 1 ? 's' : ''})
+                      </span>
+                    </div>
+                    {expandedColors[color] ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </CollapsibleTrigger>
+                
+                <CollapsibleContent>
+                  {/* Images for this color */}
+                  {color !== "__no_color__" && renderColorImages(color)}
+                  
+                  {/* Variants for this color */}
+                  <div className="space-y-2 mt-3">
+                    {items.map(({ variant, index }) => (
+                      <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                        <Select
+                          value={variant.size}
+                          onValueChange={(value) => updateProductVariant(index, "size", value)}
+                        >
+                          <SelectTrigger className="w-20 sm:w-24">
+                            <SelectValue placeholder="Tam." />
+                          </SelectTrigger>
+                          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
+                            {availableSizes.map((size) => (
+                              <SelectItem key={size} value={size}>
+                                {size}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        
+                        <ColorManager
+                          value={variant.color}
+                          onChange={(value) => updateProductVariant(index, "color", value)}
+                          placeholder="Cor"
+                        />
+                        
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="Qtd"
+                          className="w-16 sm:w-20"
+                          value={variant.stock_quantity || ""}
+                          onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
+                        />
+                        
+                        <Input
+                          placeholder="SKU"
+                          className="flex-1 min-w-[80px]"
+                          value={variant.sku}
+                          onChange={(e) => updateProductVariant(index, "sku", e.target.value)}
+                        />
+                        
+                        {productVariants.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
+                            onClick={() => removeProductVariant(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </div>
+            </Collapsible>
           ))}
         </div>
         
