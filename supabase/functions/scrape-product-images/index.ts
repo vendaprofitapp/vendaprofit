@@ -5,6 +5,134 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function extractPrice(html: string, markdown: string): number | null {
+  // Try common price patterns in HTML
+  const pricePatterns = [
+    /R\$\s*([\d.,]+)/gi,
+    /class="[^"]*price[^"]*"[^>]*>.*?R\$\s*([\d.,]+)/gi,
+    /data-price="([\d.,]+)"/gi,
+    /"price":\s*"?(\d+[\d.,]*)"?/gi,
+    /itemprop="price"[^>]*content="([\d.,]+)"/gi,
+  ];
+
+  for (const pattern of pricePatterns) {
+    const matches = [...html.matchAll(pattern), ...markdown.matchAll(pattern)];
+    for (const match of matches) {
+      const priceStr = match[1].replace(/\./g, '').replace(',', '.');
+      const price = parseFloat(priceStr);
+      if (price > 0 && price < 100000) {
+        return price;
+      }
+    }
+  }
+  return null;
+}
+
+function extractDescription(html: string, markdown: string): string | null {
+  // Try to find product description
+  const descPatterns = [
+    /<meta[^>]+name="description"[^>]+content="([^"]+)"/i,
+    /<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i,
+    /class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\//gi,
+    /itemprop="description"[^>]*>([\s\S]*?)<\//gi,
+  ];
+
+  for (const pattern of descPatterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      const desc = match[1].replace(/<[^>]+>/g, '').trim();
+      if (desc.length > 10 && desc.length < 2000) {
+        return desc;
+      }
+    }
+  }
+
+  // Try to extract from markdown - look for description sections
+  const mdDescMatch = markdown.match(/(?:descrição|description|sobre|about)[:\s]*([\s\S]{20,500}?)(?:\n\n|\n#|$)/i);
+  if (mdDescMatch) {
+    return mdDescMatch[1].trim();
+  }
+
+  return null;
+}
+
+function extractColors(html: string, markdown: string): string[] {
+  const colors: string[] = [];
+  const colorPatterns = [
+    /(?:cor|color)[:\s]*([a-záàâãéèêíïóôõöúçñ\s]+)/gi,
+    /data-color="([^"]+)"/gi,
+    /class="[^"]*color[^"]*"[^>]*>([^<]+)</gi,
+  ];
+
+  const commonColors = [
+    'preto', 'branco', 'azul', 'vermelho', 'verde', 'amarelo', 'rosa', 
+    'roxo', 'laranja', 'marrom', 'cinza', 'bege', 'nude', 'vinho',
+    'black', 'white', 'blue', 'red', 'green', 'yellow', 'pink',
+    'purple', 'orange', 'brown', 'gray', 'grey', 'beige'
+  ];
+
+  const content = (html + ' ' + markdown).toLowerCase();
+  
+  for (const color of commonColors) {
+    if (content.includes(color) && !colors.includes(color)) {
+      colors.push(color);
+    }
+  }
+
+  return colors.slice(0, 5);
+}
+
+function extractSizes(html: string, markdown: string): string[] {
+  const sizes: string[] = [];
+  const content = (html + ' ' + markdown).toUpperCase();
+  
+  // Common size patterns
+  const sizePatterns = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XS', 'S', 'L', 'XL', 'XXL'];
+  
+  for (const size of sizePatterns) {
+    // Look for size in context (e.g., "Tamanho: M" or class="size-M")
+    const sizeRegex = new RegExp(`(?:tamanho|size|tam)[:\\s]*${size}(?:\\s|,|<|$)`, 'i');
+    if (sizeRegex.test(content) && !sizes.includes(size)) {
+      sizes.push(size);
+    }
+  }
+
+  // Also look for numeric sizes
+  const numericSizes = content.match(/(?:tamanho|size)[:\s]*(\d{1,2})/gi);
+  if (numericSizes) {
+    for (const match of numericSizes) {
+      const num = match.match(/\d+/)?.[0];
+      if (num && !sizes.includes(num)) {
+        sizes.push(num);
+      }
+    }
+  }
+
+  return sizes;
+}
+
+function extractCategory(html: string, markdown: string, productName: string): string | null {
+  const categories = [
+    'top', 'blusa', 'camiseta', 'camisa', 'regata',
+    'calça', 'legging', 'short', 'shorts', 'bermuda',
+    'vestido', 'saia', 'macacão', 'body',
+    'casaco', 'jaqueta', 'moletom', 'cardigan',
+    'tênis', 'sapato', 'sandália', 'bota',
+    'bolsa', 'mochila', 'carteira',
+    'acessório', 'cinto', 'chapéu', 'boné'
+  ];
+
+  const content = (productName + ' ' + html + ' ' + markdown).toLowerCase();
+  
+  for (const cat of categories) {
+    if (content.includes(cat)) {
+      return cat.charAt(0).toUpperCase() + cat.slice(1);
+    }
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -47,7 +175,7 @@ Deno.serve(async (req) => {
         url: formattedUrl,
         formats: ['html', 'markdown'],
         onlyMainContent: false,
-        waitFor: 2000, // Wait for images to load
+        waitFor: 2000,
       }),
     });
 
@@ -61,24 +189,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Extract images from HTML
     const html = data.data?.html || data.html || '';
+    const markdown = data.data?.markdown || data.markdown || '';
     const images: string[] = [];
     
-    // Match img tags and extract src
+    // Extract images from HTML
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
     let match;
     
     while ((match = imgRegex.exec(html)) !== null) {
       let imgUrl = match[1];
       
-      // Skip tiny icons, tracking pixels, and base64 images
       if (imgUrl.includes('data:image') && imgUrl.length < 200) continue;
       if (imgUrl.includes('pixel') || imgUrl.includes('tracking')) continue;
       if (imgUrl.includes('icon') && imgUrl.length < 50) continue;
       if (imgUrl.includes('logo') && !imgUrl.includes('product')) continue;
       
-      // Convert relative URLs to absolute
       if (imgUrl.startsWith('//')) {
         imgUrl = 'https:' + imgUrl;
       } else if (imgUrl.startsWith('/')) {
@@ -89,7 +215,6 @@ Deno.serve(async (req) => {
         imgUrl = urlObj.origin + '/' + imgUrl;
       }
       
-      // Check if it's likely a product image (larger images, common product image patterns)
       const isLikelyProductImage = 
         imgUrl.includes('product') ||
         imgUrl.includes('uploads') ||
@@ -105,7 +230,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Also look for srcset and data-src attributes
+    // Also look for data-src attributes
     const dataSrcRegex = /data-src=["']([^"']+)["']/gi;
     while ((match = dataSrcRegex.exec(html)) !== null) {
       let imgUrl = match[1];
@@ -141,14 +266,34 @@ Deno.serve(async (req) => {
     if (titleMatch) {
       productName = titleMatch[1].split('|')[0].split('-')[0].trim();
     }
+    
+    // Try og:title as well
+    const ogTitleMatch = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+    if (ogTitleMatch && ogTitleMatch[1].length > productName.length) {
+      productName = ogTitleMatch[1].split('|')[0].split('-')[0].trim();
+    }
 
-    console.log(`Found ${images.length} product images`);
+    // Extract additional product data
+    const price = extractPrice(html, markdown);
+    const description = extractDescription(html, markdown);
+    const colors = extractColors(html, markdown);
+    const sizes = extractSizes(html, markdown);
+    const category = extractCategory(html, markdown, productName);
+
+    console.log(`Found ${images.length} images, price: ${price}, colors: ${colors.join(', ')}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        images: images.slice(0, 20), // Limit to 20 images
-        productName,
+        images: images.slice(0, 20),
+        productData: {
+          name: productName,
+          price,
+          description,
+          colors,
+          sizes,
+          category,
+        },
         sourceUrl: formattedUrl
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
