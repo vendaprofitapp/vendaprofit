@@ -132,6 +132,15 @@ serve(async (req) => {
           if (!response.ok) {
             const errorText = await response.text();
             console.error("Gemini error:", response.status, errorText);
+            
+            // Check for quota/rate limit errors
+            if (response.status === 429 || errorText.includes("quota") || errorText.includes("RESOURCE_EXHAUSTED")) {
+              return new Response(
+                JSON.stringify({ error: "Cota da API Gemini esgotada. Verifique seu plano e faturamento no Google AI Studio." }),
+                { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            
             return new Response(
               JSON.stringify({ error: "Erro ao transcrever com Gemini. Verifique sua chave API." }),
               { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
