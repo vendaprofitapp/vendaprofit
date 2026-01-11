@@ -573,13 +573,47 @@ export function ProductFormDialog({
   const isMobileDevice = isMobile;
   const selectContentProps = isMobileDevice ? ({ portal: false } as const) : ({} as const);
 
+  // Handle images imported from supplier link for a specific color
+  const handleColorImagesFromSupplier = (color: string, urls: string[]) => {
+    const currentImages = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
+    const totalCurrent = currentImages.existingUrls.length + currentImages.newFiles.length;
+    const available = 3 - totalCurrent;
+    
+    if (available <= 0) {
+      toast.error("Máximo de 3 fotos por cor");
+      return;
+    }
+    
+    const urlsToAdd = urls.slice(0, available);
+    
+    setColorImages(prev => ({
+      ...prev,
+      [color]: {
+        existingUrls: [...currentImages.existingUrls, ...urlsToAdd],
+        newFiles: currentImages.newFiles,
+        newPreviewUrls: currentImages.newPreviewUrls
+      }
+    }));
+    
+    toast.success(`${urlsToAdd.length} imagem(ns) adicionada(s) para ${color}`);
+  };
+
   // Render image section for a color
   const renderColorImages = (color: string) => {
     const images = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
     const totalColorImages = images.existingUrls.length + images.newPreviewUrls.length;
     
     return (
-      <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2">
+      <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2 space-y-3">
+        {/* Supplier Import for this specific color */}
+        <SupplierImageScraper
+          maxImages={3}
+          currentImageCount={totalColorImages}
+          onImagesSelected={(urls) => handleColorImagesFromSupplier(color, urls)}
+          onProductDataImport={handleProductDataImport}
+        />
+        
+        {/* Current images for this color */}
         <div className="flex gap-2 items-center flex-wrap">
           {images.existingUrls.map((url, idx) => (
             <div key={`existing-${idx}`} className="relative w-14 h-14">
@@ -636,7 +670,7 @@ export function ProductFormDialog({
             </>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground">
           {totalColorImages}/3 fotos para esta cor
         </p>
       </div>
@@ -672,15 +706,6 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Supplier Image Scraper */}
-      <div className="col-span-1 sm:col-span-2">
-        <SupplierImageScraper
-          maxImages={3}
-          currentImageCount={0}
-          onImagesSelected={() => {}}
-          onProductDataImport={handleProductDataImport}
-        />
-      </div>
 
       <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Categoria *</Label>
