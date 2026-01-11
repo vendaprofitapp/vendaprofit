@@ -80,6 +80,9 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiConfig, setAiConfig] = useState<{ provider: string; apiKey: string | null } | null>(null);
   
+  // Track if we're using backend to control stop behavior
+  const isUsingBackendRef = useRef(false);
+  
   // Recognition is created lazily on user interaction - NOT in useEffect
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -352,12 +355,21 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
 
   // Start listening - called ONLY on user click
   const startListening = useCallback(async () => {
+    // If already listening, do nothing (use stopListening instead)
+    if (isListening) {
+      console.log('Already listening, ignoring start');
+      return;
+    }
+    
     // Check if we should use backend
     if (shouldUseBackend()) {
+      isUsingBackendRef.current = true;
       await startBackendRecording();
       return;
     }
 
+    isUsingBackendRef.current = false;
+    
     // Request microphone permission first
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -371,7 +383,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
     // Create recognition instance lazily (only on user click)
     try {
       // Stop any existing recognition
-      if (recognitionRef.current && isListening) {
+      if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {}
@@ -384,6 +396,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       if (!recognition) {
         // Fall back to backend if creation fails
         console.log('Falling back to backend transcription');
+        isUsingBackendRef.current = true;
         await startBackendRecording();
         return;
       }
@@ -396,12 +409,15 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
       
       // Fall back to backend
       console.log('Falling back to backend transcription');
+      isUsingBackendRef.current = true;
       await startBackendRecording();
     }
   }, [shouldUseBackend, isListening, createRecognition, startBackendRecording]);
 
   const stopListening = useCallback(() => {
-    if (shouldUseBackend()) {
+    console.log('stopListening called, isUsingBackend:', isUsingBackendRef.current);
+    
+    if (isUsingBackendRef.current) {
       stopBackendRecording();
     } else if (recognitionRef.current) {
       try {
@@ -410,7 +426,8 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
         console.error('Error stopping recognition:', e);
       }
     }
-  }, [shouldUseBackend, stopBackendRecording]);
+    // Note: setIsListening(false) is handled by the onend/onstop callbacks
+  }, [stopBackendRecording]);
 
   // isSupported is always true because we have backend fallback
   return {
