@@ -51,6 +51,14 @@ interface VoiceStockDialogProps {
 
 type DialogStep = 'searching' | 'exact_match' | 'similar_matches' | 'no_match' | 'confirming' | 'success';
 
+// Map to track quantities for each size variant
+interface SizeQuantity {
+  productId: string;
+  size: string | null;
+  currentStock: number;
+  quantity: number;
+}
+
 export function VoiceStockDialog({
   open,
   onOpenChange,
@@ -66,15 +74,13 @@ export function VoiceStockDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   
   // Editable fields
-  const [editableQuantity, setEditableQuantity] = useState(1);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [sizeQuantities, setSizeQuantities] = useState<SizeQuantity[]>([]);
 
   // Search for products when command changes
   useEffect(() => {
     if (open && command) {
       searchProducts(command.productSearch);
-      setEditableQuantity(command.quantity);
     } else {
       // Reset state when dialog closes
       setStep('searching');
@@ -82,7 +88,7 @@ export function VoiceStockDialog({
       setSimilarProducts([]);
       setAllVariants([]);
       setSelectedColor(null);
-      setSelectedSize(null);
+      setSizeQuantities([]);
     }
   }, [open, command]);
 
@@ -162,7 +168,7 @@ export function VoiceStockDialog({
         const product = matches[0].product;
         setMatchedProduct(product);
         setSelectedColor(product.color);
-        setSelectedSize(product.size);
+        initializeSizeQuantities(product, products, product.color, command?.quantity || 1);
         setStep('exact_match');
       } else {
         // Show similar matches
@@ -177,63 +183,147 @@ export function VoiceStockDialog({
     }
   };
 
-  // Get available colors and sizes for the matched product name
-  const { availableColors, availableSizes } = useMemo(() => {
-    if (!matchedProduct) return { availableColors: [], availableSizes: [] };
+  // Initialize size quantities when product/color changes
+  const initializeSizeQuantities = (product: Product, variants: Product[], color: string | null, defaultQty: number) => {
+    const baseName = normalizeText(product.name);
+    
+    // Find all variants with same name and color
+    const colorVariants = variants.filter(p => 
+      normalizeText(p.name) === baseName && p.color === color
+    );
+    
+    // Get unique sizes for this color
+    const uniqueSizes = [...new Set(colorVariants.map(p => p.size))];
+    
+    // If only one size or no size variations, create a single entry
+    if (uniqueSizes.length <= 1) {
+      const variant = colorVariants[0] || product;
+      setSizeQuantities([{
+        productId: variant.id,
+        size: variant.size,
+        currentStock: variant.stock_quantity,
+        quantity: defaultQty,
+      }]);
+    } else {
+      // Create entries for all sizes, sorted
+      const sizeOrder = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG'];
+      const sorted = uniqueSizes.sort((a, b) => {
+        const idxA = sizeOrder.indexOf(a?.toUpperCase() || '');
+        const idxB = sizeOrder.indexOf(b?.toUpperCase() || '');
+        if (idxA >= 0 && idxB >= 0) return idxA - idxB;
+        if (idxA >= 0) return -1;
+        if (idxB >= 0) return 1;
+        return (a || '').localeCompare(b || '');
+      });
+      
+      const quantities = sorted.map(size => {
+        const variant = colorVariants.find(p => p.size === size);
+        return {
+          productId: variant?.id || product.id,
+          size: size,
+          currentStock: variant?.stock_quantity || 0,
+          quantity: 0, // Start with 0, user will fill in
+        };
+      });
+      
+      setSizeQuantities(quantities);
+    }
+  };
+
+  // Get available colors for the matched product name
+  const availableColors = useMemo(() => {
+    if (!matchedProduct) return [];
     
     // Find all products with the same base name
     const baseName = normalizeText(matchedProduct.name);
     const variants = allVariants.filter(p => normalizeText(p.name) === baseName);
     
-    const colors = [...new Set(variants.map(p => p.color).filter(Boolean))] as string[];
-    const sizes = [...new Set(variants.map(p => p.size).filter(Boolean))] as string[];
-    
-    return { availableColors: colors, availableSizes: sizes };
+    return [...new Set(variants.map(p => p.color).filter(Boolean))] as string[];
   }, [matchedProduct, allVariants]);
 
-  // Find the actual product based on selected color/size
-  const actualProduct = useMemo(() => {
+  // When color changes, reinitialize size quantities
+  useEffect(() => {
+    if (matchedProduct && selectedColor !== undefined) {
+      initializeSizeQuantities(matchedProduct, allVariants, selectedColor, command?.quantity || 1);
+    }
+  }, [selectedColor]);
+
+  // Find sample product image for display
+  const displayProduct = useMemo(() => {
     if (!matchedProduct) return null;
     
     const baseName = normalizeText(matchedProduct.name);
     const variant = allVariants.find(p => 
-      normalizeText(p.name) === baseName &&
-      p.color === selectedColor &&
-      p.size === selectedSize
+      normalizeText(p.name) === baseName && p.color === selectedColor
     );
     
     return variant || matchedProduct;
-  }, [matchedProduct, allVariants, selectedColor, selectedSize]);
+  }, [matchedProduct, allVariants, selectedColor]);
 
   const handleSelectProduct = (product: Product) => {
     setMatchedProduct(product);
     setSelectedColor(product.color);
-    setSelectedSize(product.size);
+    initializeSizeQuantities(product, allVariants, product.color, command?.quantity || 1);
     setStep('confirming');
   };
 
+  const handleSizeQuantityChange = (index: number, delta: number) => {
+    setSizeQuantities(prev => prev.map((sq, i) => 
+      i === index ? { ...sq, quantity: Math.max(0, sq.quantity + delta) } : sq
+    ));
+  };
+
+  const handleSizeQuantityInputChange = (index: number, value: string) => {
+    const numValue = Math.max(0, parseInt(value) || 0);
+    setSizeQuantities(prev => prev.map((sq, i) => 
+      i === index ? { ...sq, quantity: numValue } : sq
+    ));
+  };
+
+  const totalQuantity = useMemo(() => {
+    return sizeQuantities.reduce((sum, sq) => sum + sq.quantity, 0);
+  }, [sizeQuantities]);
+
   const handleConfirmOperation = async () => {
-    if (!actualProduct || !command) return;
+    if (!command) return;
+
+    // Filter only sizes with quantity > 0
+    const toUpdate = sizeQuantities.filter(sq => sq.quantity > 0);
+    
+    if (toUpdate.length === 0) {
+      toast.error('Informe a quantidade de pelo menos um tamanho');
+      return;
+    }
 
     setIsProcessing(true);
 
     try {
-      const newQuantity = command.operation === 'entry'
-        ? actualProduct.stock_quantity + editableQuantity
-        : Math.max(0, actualProduct.stock_quantity - editableQuantity);
+      // Update all products in parallel
+      const updates = toUpdate.map(async (sq) => {
+        const newQuantity = command.operation === 'entry'
+          ? sq.currentStock + sq.quantity
+          : Math.max(0, sq.currentStock - sq.quantity);
 
-      const { error } = await supabase
-        .from('products')
-        .update({ stock_quantity: newQuantity })
-        .eq('id', actualProduct.id);
+        return supabase
+          .from('products')
+          .update({ stock_quantity: newQuantity })
+          .eq('id', sq.productId);
+      });
 
-      if (error) throw error;
+      const results = await Promise.all(updates);
+      
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        throw new Error('Erro ao atualizar alguns produtos');
+      }
 
       setStep('success');
+      
+      const sizesUpdated = toUpdate.map(sq => sq.size || 'Único').join(', ');
       toast.success(
         command.operation === 'entry'
-          ? `Entrada de ${editableQuantity} unidade(s) registrada!`
-          : `Saída de ${editableQuantity} unidade(s) registrada!`
+          ? `Entrada registrada! Total: ${totalQuantity} un. (${sizesUpdated})`
+          : `Saída registrada! Total: ${totalQuantity} un. (${sizesUpdated})`
       );
 
       // Close dialog after success message
@@ -248,10 +338,6 @@ export function VoiceStockDialog({
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const handleQuantityChange = (delta: number) => {
-    setEditableQuantity(prev => Math.max(1, prev + delta));
   };
 
   const handleCreateNew = () => {
@@ -272,6 +358,53 @@ export function VoiceStockDialog({
       ? <ArrowDown className="h-4 w-4 text-green-500" />
       : <ArrowUp className="h-4 w-4 text-red-500" />;
   };
+
+  const renderSizeQuantityRow = (sq: SizeQuantity, index: number) => (
+    <div key={sq.productId} className="flex items-center gap-2 py-2 border-b last:border-b-0">
+      <div className="w-16 font-medium text-sm">
+        {sq.size || 'Único'}
+      </div>
+      <div className="text-xs text-muted-foreground w-16">
+        Est: {sq.currentStock}
+      </div>
+      <div className="flex items-center gap-1 ml-auto">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => handleSizeQuantityChange(index, -1)}
+          disabled={sq.quantity <= 0}
+        >
+          <Minus className="h-3 w-3" />
+        </Button>
+        <Input
+          type="number"
+          min={0}
+          value={sq.quantity}
+          onChange={(e) => handleSizeQuantityInputChange(index, e.target.value)}
+          className="text-center w-14 h-7 text-sm"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => handleSizeQuantityChange(index, 1)}
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+      {sq.quantity > 0 && (
+        <div className="text-xs text-muted-foreground w-16 text-right">
+          → {command?.operation === 'entry' 
+            ? sq.currentStock + sq.quantity
+            : Math.max(0, sq.currentStock - sq.quantity)
+          }
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -297,13 +430,13 @@ export function VoiceStockDialog({
         )}
 
         {/* Exact Match - Confirm with editable options */}
-        {step === 'exact_match' && matchedProduct && actualProduct && command && (
+        {step === 'exact_match' && matchedProduct && displayProduct && command && (
           <div className="py-4 space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-secondary/50">
-              {actualProduct.image_url ? (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+              {displayProduct.image_url ? (
                 <img 
-                  src={actualProduct.image_url} 
-                  alt={actualProduct.name}
+                  src={displayProduct.image_url} 
+                  alt={displayProduct.name}
                   className="h-12 w-12 rounded-lg object-cover"
                 />
               ) : (
@@ -312,10 +445,10 @@ export function VoiceStockDialog({
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{actualProduct.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Estoque atual: {actualProduct.stock_quantity} un.
-                </p>
+                <p className="font-medium truncate">{displayProduct.name}</p>
+                {selectedColor && (
+                  <p className="text-sm text-muted-foreground">Cor: {selectedColor}</p>
+                )}
               </div>
             </div>
 
@@ -338,70 +471,25 @@ export function VoiceStockDialog({
               </div>
             )}
 
-            {/* Editable Size */}
-            {availableSizes.length > 1 && (
-              <div className="space-y-2">
-                <Label>Tamanho</Label>
-                <Select value={selectedSize || ''} onValueChange={setSelectedSize}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tamanho" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSizes.map((size) => (
-                      <SelectItem key={size} value={size}>
-                        {size}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Editable Quantity */}
+            {/* Size Quantities */}
             <div className="space-y-2">
-              <Label>Quantidade</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(-1)}
-                  disabled={editableQuantity <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editableQuantity}
-                  onChange={(e) => setEditableQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="text-center w-20"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(1)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+              <Label>
+                {sizeQuantities.length > 1 ? 'Quantidade por Tamanho' : 'Quantidade'}
+              </Label>
+              <div className="border rounded-lg p-2 bg-background">
+                <ScrollArea className={sizeQuantities.length > 4 ? 'max-h-[200px]' : ''}>
+                  {sizeQuantities.map((sq, index) => renderSizeQuantityRow(sq, index))}
+                </ScrollArea>
               </div>
             </div>
             
-            <div className="text-center space-y-2 pt-2 border-t">
-              <p className="text-lg font-semibold">
-                {command.operation === 'entry' ? '+' : '-'}{editableQuantity} unidade(s)
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Estoque: {actualProduct.stock_quantity} → 
-                <span className="font-medium ml-1">
-                  {command.operation === 'entry' 
-                    ? actualProduct.stock_quantity + editableQuantity
-                    : Math.max(0, actualProduct.stock_quantity - editableQuantity)
-                  }
-                </span>
-              </p>
-            </div>
+            {totalQuantity > 0 && (
+              <div className="text-center space-y-1 pt-2 border-t">
+                <p className="text-lg font-semibold">
+                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s) total
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -483,13 +571,13 @@ export function VoiceStockDialog({
         )}
 
         {/* Confirming (from similar selection) with editable options */}
-        {step === 'confirming' && matchedProduct && actualProduct && command && (
+        {step === 'confirming' && matchedProduct && displayProduct && command && (
           <div className="py-4 space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-secondary/50">
-              {actualProduct.image_url ? (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+              {displayProduct.image_url ? (
                 <img 
-                  src={actualProduct.image_url} 
-                  alt={actualProduct.name}
+                  src={displayProduct.image_url} 
+                  alt={displayProduct.name}
                   className="h-12 w-12 rounded-lg object-cover"
                 />
               ) : (
@@ -498,10 +586,10 @@ export function VoiceStockDialog({
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{actualProduct.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Estoque atual: {actualProduct.stock_quantity} un.
-                </p>
+                <p className="font-medium truncate">{displayProduct.name}</p>
+                {selectedColor && (
+                  <p className="text-sm text-muted-foreground">Cor: {selectedColor}</p>
+                )}
               </div>
             </div>
 
@@ -524,70 +612,25 @@ export function VoiceStockDialog({
               </div>
             )}
 
-            {/* Editable Size */}
-            {availableSizes.length > 1 && (
-              <div className="space-y-2">
-                <Label>Tamanho</Label>
-                <Select value={selectedSize || ''} onValueChange={setSelectedSize}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tamanho" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSizes.map((size) => (
-                      <SelectItem key={size} value={size}>
-                        {size}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Editable Quantity */}
+            {/* Size Quantities */}
             <div className="space-y-2">
-              <Label>Quantidade</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(-1)}
-                  disabled={editableQuantity <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editableQuantity}
-                  onChange={(e) => setEditableQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="text-center w-20"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(1)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+              <Label>
+                {sizeQuantities.length > 1 ? 'Quantidade por Tamanho' : 'Quantidade'}
+              </Label>
+              <div className="border rounded-lg p-2 bg-background">
+                <ScrollArea className={sizeQuantities.length > 4 ? 'max-h-[200px]' : ''}>
+                  {sizeQuantities.map((sq, index) => renderSizeQuantityRow(sq, index))}
+                </ScrollArea>
               </div>
             </div>
             
-            <div className="text-center space-y-2 pt-2 border-t">
-              <p className="text-lg font-semibold">
-                {command.operation === 'entry' ? '+' : '-'}{editableQuantity} unidade(s)
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Estoque: {actualProduct.stock_quantity} → 
-                <span className="font-medium ml-1">
-                  {command.operation === 'entry' 
-                    ? actualProduct.stock_quantity + editableQuantity
-                    : Math.max(0, actualProduct.stock_quantity - editableQuantity)
-                  }
-                </span>
-              </p>
-            </div>
+            {totalQuantity > 0 && (
+              <div className="text-center space-y-1 pt-2 border-t">
+                <p className="text-lg font-semibold">
+                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s) total
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -607,7 +650,10 @@ export function VoiceStockDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleConfirmOperation} disabled={isProcessing}>
+            <Button 
+              onClick={handleConfirmOperation} 
+              disabled={isProcessing || totalQuantity === 0}
+            >
               {isProcessing ? 'Processando...' : 'Confirmar'}
             </Button>
           </DialogFooter>
