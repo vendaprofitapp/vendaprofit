@@ -1,24 +1,54 @@
 import { Mic, MicOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useCallback, useRef } from 'react';
 
 interface VoiceCommandButtonProps {
   isListening: boolean;
   isSupported: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  onStart?: () => void;
+  onStop?: () => void;
   size?: 'default' | 'sm' | 'lg' | 'icon';
   className?: string;
   showLabel?: boolean;
+  holdToSpeak?: boolean;
 }
 
 export function VoiceCommandButton({
   isListening,
   isSupported,
   onClick,
+  onStart,
+  onStop,
   size = 'icon',
   className,
   showLabel = false,
+  holdToSpeak = false,
 }: VoiceCommandButtonProps) {
+  const isHoldingRef = useRef(false);
+
+  const handlePressStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!holdToSpeak) return;
+    e.preventDefault();
+    isHoldingRef.current = true;
+    onStart?.();
+  }, [holdToSpeak, onStart]);
+
+  const handlePressEnd = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!holdToSpeak) return;
+    e.preventDefault();
+    if (isHoldingRef.current) {
+      isHoldingRef.current = false;
+      onStop?.();
+    }
+  }, [holdToSpeak, onStop]);
+
+  const handleClick = useCallback(() => {
+    if (holdToSpeak) return; // Don't use click in hold mode
+    onClick?.();
+  }, [holdToSpeak, onClick]);
+
   if (!isSupported) {
     return null;
   }
@@ -28,13 +58,23 @@ export function VoiceCommandButton({
       type="button"
       variant={isListening ? 'default' : 'outline'}
       size={size}
-      onClick={onClick}
+      onClick={handleClick}
+      onMouseDown={handlePressStart}
+      onMouseUp={handlePressEnd}
+      onMouseLeave={handlePressEnd}
+      onTouchStart={handlePressStart}
+      onTouchEnd={handlePressEnd}
+      onTouchCancel={handlePressEnd}
       className={cn(
-        'relative transition-all duration-200',
+        'relative transition-all duration-200 select-none',
         isListening && 'bg-red-500 hover:bg-red-600 animate-pulse',
+        holdToSpeak && 'touch-none',
         className
       )}
-      title={isListening ? 'Parar gravação' : 'Comando por voz'}
+      title={holdToSpeak 
+        ? 'Segure para falar' 
+        : (isListening ? 'Parar gravação' : 'Comando por voz')
+      }
     >
       {isListening ? (
         <>
@@ -45,7 +85,7 @@ export function VoiceCommandButton({
       ) : (
         <>
           <Mic className="h-5 w-5" />
-          {showLabel && <span className="ml-2">Voz</span>}
+          {showLabel && <span className="ml-2">{holdToSpeak ? 'Segure p/ falar' : 'Voz'}</span>}
         </>
       )}
     </Button>
