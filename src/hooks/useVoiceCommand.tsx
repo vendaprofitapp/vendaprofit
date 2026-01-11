@@ -75,18 +75,18 @@ interface UseVoiceCommandOptions {
 export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   const { onResult, onSmartSaleResult, onError, language = 'pt-BR', smartSaleMode = false, userId } = options;
   const { user } = useAuth();
+  
+  // All useState hooks first (in consistent order)
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiConfig, setAiConfig] = useState<{ provider: string; apiKey: string | null } | null>(null);
   
-  // Track if we're using backend to control stop behavior
-  const isUsingBackendRef = useRef(false);
-  
-  // Recognition is created lazily on user interaction - NOT in useEffect
+  // All useRef hooks next (in consistent order)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const isUsingBackendRef = useRef(false);
 
   // Fetch user's AI configuration
   useEffect(() => {
