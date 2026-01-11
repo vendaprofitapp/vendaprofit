@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Search, Edit, Trash2, Users, 
-  ArrowRightLeft, Check, X, Clock, Upload, Package
+  ArrowRightLeft, Check, X, Clock, Upload, Package, Copy
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,9 @@ export default function StockControl() {
   const [voiceStockDialogOpen, setVoiceStockDialogOpen] = useState(false);
   const [voiceCommand, setVoiceCommand] = useState<StockVoiceCommand | null>(null);
   const [initialProductName, setInitialProductName] = useState<string>("");
+  
+  // Duplicate product state
+  const [duplicatingProduct, setDuplicatingProduct] = useState<Product | null>(null);
 
   // Voice command hook
   const {
@@ -274,6 +277,15 @@ export default function StockControl() {
 
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
+    setDuplicatingProduct(null);
+    setProductDialogOpen(true);
+  };
+
+  const handleDuplicateProduct = (product: Product) => {
+    // Create a copy of the product for duplication (without id)
+    setDuplicatingProduct(product);
+    setEditingProduct(null);
+    setInitialProductName("");
     setProductDialogOpen(true);
   };
 
@@ -482,7 +494,17 @@ export default function StockControl() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              onClick={() => handleDuplicateProduct(product)}
+                              title="Duplicar produto"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
                               onClick={() => handleEditProduct(product)}
+                              title="Editar produto"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -491,6 +513,7 @@ export default function StockControl() {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => handleDeleteProduct(product.id)}
+                              title="Excluir produto"
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -725,10 +748,12 @@ export default function StockControl() {
           setProductDialogOpen(open);
           if (!open) {
             setEditingProduct(null);
+            setDuplicatingProduct(null);
             setInitialProductName("");
           }
         }}
         editingProduct={editingProduct}
+        duplicatingProduct={duplicatingProduct}
         onSuccess={fetchProducts}
         initialProductName={initialProductName}
       />

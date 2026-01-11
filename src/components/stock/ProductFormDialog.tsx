@@ -65,6 +65,7 @@ interface ProductFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingProduct: Product | null;
+  duplicatingProduct?: Product | null;
   onSuccess: () => void;
   initialProductName?: string;
 }
@@ -75,6 +76,7 @@ export function ProductFormDialog({
   open, 
   onOpenChange, 
   editingProduct,
+  duplicatingProduct,
   onSuccess,
   initialProductName = ""
 }: ProductFormDialogProps) {
@@ -110,6 +112,7 @@ export function ProductFormDialog({
 
   useEffect(() => {
     if (editingProduct) {
+      // Editing existing product
       setForm({
         name: editingProduct.name,
         description: editingProduct.description || "",
@@ -129,6 +132,28 @@ export function ProductFormDialog({
       if (editingProduct.image_url_2) existing.push(editingProduct.image_url_2);
       if (editingProduct.image_url_3) existing.push(editingProduct.image_url_3);
       setExistingImageUrls(existing);
+    } else if (duplicatingProduct) {
+      // Duplicating product - copy all data except images and start fresh stock
+      setForm({
+        name: duplicatingProduct.name,
+        description: duplicatingProduct.description || "",
+        category: duplicatingProduct.category,
+        price: duplicatingProduct.price.toString(),
+        cost_price: duplicatingProduct.cost_price?.toString() || "",
+        sku: "", // Clear SKU for duplicate
+        size: duplicatingProduct.size || "",
+        color: duplicatingProduct.color || "",
+        stock_quantity: "0", // Start with 0 stock for new variant
+        min_stock_level: duplicatingProduct.min_stock_level.toString(),
+        supplier_id: duplicatingProduct.supplier_id || ""
+      });
+      
+      // Copy images from duplicated product
+      const existing: string[] = [];
+      if (duplicatingProduct.image_url) existing.push(duplicatingProduct.image_url);
+      if (duplicatingProduct.image_url_2) existing.push(duplicatingProduct.image_url_2);
+      if (duplicatingProduct.image_url_3) existing.push(duplicatingProduct.image_url_3);
+      setExistingImageUrls(existing);
     } else {
       resetForm();
       // Apply initial product name from voice command
@@ -136,7 +161,7 @@ export function ProductFormDialog({
         setForm(prev => ({ ...prev, name: initialProductName }));
       }
     }
-  }, [editingProduct, open, initialProductName]);
+  }, [editingProduct, duplicatingProduct, open, initialProductName]);
 
   const fetchSuppliers = async () => {
     if (!user) return;
@@ -497,13 +522,24 @@ export function ProductFormDialog({
     </div>
   );
 
+  const getDialogTitle = () => {
+    if (editingProduct) return "Editar Produto";
+    if (duplicatingProduct) return "Duplicar Produto";
+    return "Novo Produto";
+  };
+
+  const getDialogDescription = () => {
+    if (duplicatingProduct) return "Altere os dados para criar uma variação do produto";
+    return "Preencha os dados do produto";
+  };
+
   const FooterButtons = () => (
     <>
       <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
         Cancelar
       </Button>
       <Button onClick={handleSave} disabled={saving}>
-        {saving ? "Salvando..." : editingProduct ? "Salvar" : "Criar Produto"}
+        {saving ? "Salvando..." : editingProduct ? "Salvar" : duplicatingProduct ? "Criar Variação" : "Criar Produto"}
       </Button>
     </>
   );
@@ -513,9 +549,9 @@ export function ProductFormDialog({
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[90vh]">
           <DrawerHeader className="text-left">
-            <DrawerTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</DrawerTitle>
+            <DrawerTitle>{getDialogTitle()}</DrawerTitle>
             <DrawerDescription>
-              Preencha os dados do produto
+              {getDialogDescription()}
             </DrawerDescription>
           </DrawerHeader>
           <ScrollArea className="flex-1 px-4 overflow-y-auto max-h-[60vh]">
@@ -535,9 +571,9 @@ export function ProductFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</DialogTitle>
+          <DialogTitle>{getDialogTitle()}</DialogTitle>
           <DialogDescription>
-            Preencha os dados do produto
+            {getDialogDescription()}
           </DialogDescription>
         </DialogHeader>
         {formContent}
