@@ -33,6 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { CategoryManager } from "@/components/products/CategoryManager";
+import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 
 interface Product {
   id: string;
@@ -88,6 +89,7 @@ export function ProductFormDialog({
   const [productImages, setProductImages] = useState<File[]>([]);
   const [productImageUrls, setProductImageUrls] = useState<string[]>([]);
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
+  const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   
   const [form, setForm] = useState({
@@ -191,6 +193,19 @@ export function ProductFormDialog({
     setProductImages([]);
     setProductImageUrls([]);
     setExistingImageUrls([]);
+    setScrapedImageUrls([]);
+  };
+
+  const handleScrapedImagesSelected = (urls: string[]) => {
+    // Add scraped images up to the 3 image limit
+    const totalExisting = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
+    const available = 3 - totalExisting;
+    const toAdd = urls.slice(0, available);
+    setScrapedImageUrls(prev => [...prev, ...toAdd]);
+  };
+
+  const removeScrapedImage = (index: number) => {
+    setScrapedImageUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleImageUpload = (files: FileList | null) => {
@@ -239,6 +254,8 @@ export function ProductFormDialog({
     return urls;
   };
 
+  const totalImages = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
+
   const handleSave = async () => {
     if (!user) return;
     if (!form.name.trim()) {
@@ -270,7 +287,7 @@ export function ProductFormDialog({
 
     try {
       if (editingProduct) {
-        const allUrls = [...existingImageUrls];
+        const allUrls = [...existingImageUrls, ...scrapedImageUrls];
         
         if (productImages.length > 0) {
           const newUrls = await uploadProductImages(editingProduct.id);
@@ -326,7 +343,7 @@ export function ProductFormDialog({
     }
   };
 
-  const totalImages = existingImageUrls.length + productImageUrls.length;
+  
 
   // On iOS inside Drawer, portals can cause blank screen/glitches.
   // Render SelectContent inline on mobile.
@@ -367,6 +384,23 @@ export function ProductFormDialog({
               <button
                 type="button"
                 onClick={() => removeImage(idx, true)}
+                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          {scrapedImageUrls.map((url, idx) => (
+            <div key={`scraped-${idx}`} className="relative w-16 h-16 sm:w-20 sm:h-20">
+              <img 
+                src={url} 
+                alt={`Foto do fornecedor ${idx + 1}`} 
+                className="w-full h-full object-cover rounded-lg border border-primary/50"
+              />
+              <button
+                type="button"
+                onClick={() => removeScrapedImage(idx)}
                 className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
               >
                 ×
@@ -415,6 +449,13 @@ export function ProductFormDialog({
         <p className="text-xs text-muted-foreground">
           {totalImages}/3 fotos adicionadas
         </p>
+        
+        {/* Supplier Image Scraper */}
+        <SupplierImageScraper
+          maxImages={3}
+          currentImageCount={totalImages}
+          onImagesSelected={handleScrapedImagesSelected}
+        />
       </div>
 
       <div className="col-span-1 sm:col-span-2 space-y-2">
