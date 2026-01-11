@@ -62,9 +62,10 @@ interface Supplier {
   cnpj: string | null;
 }
 
-interface SizeVariant {
+interface ProductVariant {
   id?: string;
   size: string;
+  color: string;
   sku: string;
   stock_quantity: number;
 }
@@ -79,6 +80,7 @@ interface ProductFormDialogProps {
 }
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
+const availableColors = ["Preto", "Branco", "Azul", "Vermelho", "Verde", "Amarelo", "Rosa", "Roxo", "Laranja", "Marrom", "Cinza", "Bege", "Nude", "Dourado", "Prata", "Multicolor"];
 
 export function ProductFormDialog({ 
   open, 
@@ -98,7 +100,7 @@ export function ProductFormDialog({
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [sizeVariants, setSizeVariants] = useState<SizeVariant[]>([]);
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
   
   const [form, setForm] = useState({
     name: "",
@@ -106,7 +108,6 @@ export function ProductFormDialog({
     category: "",
     price: "",
     cost_price: "",
-    color: "",
     min_stock_level: "5",
     supplier_id: ""
   });
@@ -125,7 +126,6 @@ export function ProductFormDialog({
         category: editingProduct.category,
         price: editingProduct.price.toString(),
         cost_price: editingProduct.cost_price?.toString() || "",
-        color: editingProduct.color || "",
         min_stock_level: editingProduct.min_stock_level.toString(),
         supplier_id: editingProduct.supplier_id || ""
       });
@@ -145,7 +145,6 @@ export function ProductFormDialog({
         category: duplicatingProduct.category,
         price: duplicatingProduct.price.toString(),
         cost_price: duplicatingProduct.cost_price?.toString() || "",
-        color: duplicatingProduct.color || "",
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
         supplier_id: duplicatingProduct.supplier_id || ""
       });
@@ -157,7 +156,7 @@ export function ProductFormDialog({
       setExistingImageUrls(existing);
       
       // Start with empty variants for duplicate
-      setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
+      setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
     } else {
       resetForm();
       if (initialProductName) {
@@ -174,15 +173,16 @@ export function ProductFormDialog({
       .order("size");
     
     if (!error && data && data.length > 0) {
-      setSizeVariants(data.map(v => ({
+      setProductVariants(data.map(v => ({
         id: v.id,
         size: v.size,
+        color: v.color || "",
         sku: v.sku || "",
         stock_quantity: v.stock_quantity
       })));
     } else {
       // If no variants, add default one
-      setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
+      setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
     }
   };
 
@@ -203,7 +203,6 @@ export function ProductFormDialog({
       category: "",
       price: "",
       cost_price: "",
-      color: "",
       min_stock_level: "5",
       supplier_id: ""
     });
@@ -212,7 +211,7 @@ export function ProductFormDialog({
     setProductImageUrls([]);
     setExistingImageUrls([]);
     setScrapedImageUrls([]);
-    setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
+    setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
   };
 
   const handleScrapedImagesSelected = (urls: string[]) => {
@@ -235,17 +234,27 @@ export function ProductFormDialog({
       ...(data.name && { name: data.name }),
       ...(data.price && { price: data.price.toString() }),
       ...(data.description && { description: data.description }),
-      ...(data.colors?.length && { color: data.colors[0] }),
       ...(data.category && { category: data.category }),
     }));
     
-    // Auto-populate size variants if sizes are extracted
-    if (data.sizes && data.sizes.length > 0) {
-      setSizeVariants(data.sizes.map(size => ({
-        size: size.toUpperCase(),
-        sku: "",
-        stock_quantity: 0
-      })));
+    // Auto-populate variants if sizes and/or colors are extracted
+    const sizes = data.sizes && data.sizes.length > 0 ? data.sizes : [""];
+    const colors = data.colors && data.colors.length > 0 ? data.colors : [""];
+    
+    const newVariants: ProductVariant[] = [];
+    sizes.forEach(size => {
+      colors.forEach(color => {
+        newVariants.push({
+          size: size.toUpperCase(),
+          color: color,
+          sku: "",
+          stock_quantity: 0
+        });
+      });
+    });
+    
+    if (newVariants.length > 0) {
+      setProductVariants(newVariants);
     }
   };
 
@@ -299,17 +308,17 @@ export function ProductFormDialog({
     return urls;
   };
 
-  // Size variant handlers
-  const addSizeVariant = () => {
-    setSizeVariants(prev => [...prev, { size: "", sku: "", stock_quantity: 0 }]);
+  // Variant handlers
+  const addProductVariant = () => {
+    setProductVariants(prev => [...prev, { size: "", color: "", sku: "", stock_quantity: 0 }]);
   };
 
-  const removeSizeVariant = (index: number) => {
-    setSizeVariants(prev => prev.filter((_, i) => i !== index));
+  const removeProductVariant = (index: number) => {
+    setProductVariants(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateSizeVariant = (index: number, field: keyof SizeVariant, value: string | number) => {
-    setSizeVariants(prev => prev.map((v, i) => 
+  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number) => {
+    setProductVariants(prev => prev.map((v, i) => 
       i === index ? { ...v, [field]: value } : v
     ));
   };
@@ -317,7 +326,7 @@ export function ProductFormDialog({
   const totalImages = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
   
   // Calculate total stock from all variants
-  const totalStock = sizeVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
+  const totalStock = productVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
 
   const handleSave = async () => {
     if (!user) return;
@@ -330,10 +339,10 @@ export function ProductFormDialog({
       return;
     }
     
-    // Validate that at least one variant has a size
-    const validVariants = sizeVariants.filter(v => v.size.trim());
+    // Validate that at least one variant has a size or color
+    const validVariants = productVariants.filter(v => v.size.trim() || v.color.trim());
     if (validVariants.length === 0) {
-      toast.error("Adicione pelo menos um tamanho");
+      toast.error("Adicione pelo menos uma variante com tamanho ou cor");
       return;
     }
 
@@ -347,7 +356,7 @@ export function ProductFormDialog({
       cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
       sku: null, // SKU is now per variant
       size: null, // Size is now per variant
-      color: form.color || null,
+      color: null, // Color is now per variant
       stock_quantity: totalStock, // Sum of all variants
       min_stock_level: parseInt(form.min_stock_level) || 5,
       supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
@@ -422,10 +431,11 @@ export function ProductFormDialog({
         }
       }
       
-      // Insert all size variants
+      // Insert all variants
       const variantsToInsert = validVariants.map(v => ({
         product_id: productId,
-        size: v.size,
+        size: v.size || "Único",
+        color: v.color || null,
         sku: v.sku || null,
         stock_quantity: v.stock_quantity || 0
       }));
@@ -595,16 +605,6 @@ export function ProductFormDialog({
       </div>
       
       <div className="space-y-2">
-        <Label>Cor</Label>
-        <Input
-          value={form.color}
-          onChange={(e) => setForm({ ...form, color: e.target.value })}
-          placeholder="Ex: Preto"
-          autoComplete="off"
-        />
-      </div>
-      
-      <div className="space-y-2">
         <Label>Estoque Mínimo</Label>
         <Input
           type="number"
@@ -615,33 +615,45 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Size Variants Section */}
+      {/* Variants Section (Size + Color) */}
       <div className="col-span-1 sm:col-span-2 space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-medium">Tamanhos e Estoque *</Label>
+          <Label className="text-base font-medium">Variantes (Tamanho + Cor) *</Label>
           <span className="text-sm text-muted-foreground">
             Total: {totalStock} un.
           </span>
         </div>
         
         <div className="space-y-2">
-          {sizeVariants.map((variant, index) => (
-            <div key={index} className="flex gap-2 items-center">
+          {productVariants.map((variant, index) => (
+            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
               <Select
                 value={variant.size}
-                onValueChange={(value) => updateSizeVariant(index, "size", value)}
+                onValueChange={(value) => updateProductVariant(index, "size", value)}
               >
-                <SelectTrigger className="w-24">
+                <SelectTrigger className="w-20 sm:w-24">
                   <SelectValue placeholder="Tam." />
                 </SelectTrigger>
                 <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
                   {availableSizes.map((size) => (
-                    <SelectItem 
-                      key={size} 
-                      value={size}
-                      disabled={sizeVariants.some((v, i) => i !== index && v.size === size)}
-                    >
+                    <SelectItem key={size} value={size}>
                       {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select
+                value={variant.color}
+                onValueChange={(value) => updateProductVariant(index, "color", value)}
+              >
+                <SelectTrigger className="w-24 sm:w-28">
+                  <SelectValue placeholder="Cor" />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
+                  {availableColors.map((color) => (
+                    <SelectItem key={color} value={color}>
+                      {color}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -651,25 +663,25 @@ export function ProductFormDialog({
                 type="number"
                 inputMode="numeric"
                 placeholder="Qtd"
-                className="w-20"
+                className="w-16 sm:w-20"
                 value={variant.stock_quantity || ""}
-                onChange={(e) => updateSizeVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
+                onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
               />
               
               <Input
-                placeholder="SKU (opcional)"
-                className="flex-1"
+                placeholder="SKU"
+                className="flex-1 min-w-[80px]"
                 value={variant.sku}
-                onChange={(e) => updateSizeVariant(index, "sku", e.target.value)}
+                onChange={(e) => updateProductVariant(index, "sku", e.target.value)}
               />
               
-              {sizeVariants.length > 1 && (
+              {productVariants.length > 1 && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-destructive hover:text-destructive"
-                  onClick={() => removeSizeVariant(index)}
+                  className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
+                  onClick={() => removeProductVariant(index)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -682,11 +694,11 @@ export function ProductFormDialog({
           type="button"
           variant="outline"
           size="sm"
-          onClick={addSizeVariant}
+          onClick={addProductVariant}
           className="w-full"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Adicionar Tamanho
+          Adicionar Variante
         </Button>
       </div>
       

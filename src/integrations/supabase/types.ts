@@ -640,6 +640,7 @@ export type Database = {
       }
       product_variants: {
         Row: {
+          color: string | null
           created_at: string
           id: string
           product_id: string
@@ -649,6 +650,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          color?: string | null
           created_at?: string
           id?: string
           product_id: string
@@ -658,6 +660,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          color?: string | null
           created_at?: string
           id?: string
           product_id?: string
