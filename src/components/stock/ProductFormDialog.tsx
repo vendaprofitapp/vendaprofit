@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +62,13 @@ interface Supplier {
   cnpj: string | null;
 }
 
+interface SizeVariant {
+  id?: string;
+  size: string;
+  sku: string;
+  stock_quantity: number;
+}
+
 interface ProductFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -71,7 +78,7 @@ interface ProductFormDialogProps {
   initialProductName?: string;
 }
 
-const sizes = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
+const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
 export function ProductFormDialog({ 
   open, 
@@ -91,6 +98,7 @@ export function ProductFormDialog({
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [sizeVariants, setSizeVariants] = useState<SizeVariant[]>([]);
   
   const [form, setForm] = useState({
     name: "",
@@ -98,10 +106,7 @@ export function ProductFormDialog({
     category: "",
     price: "",
     cost_price: "",
-    sku: "",
-    size: "",
     color: "",
-    stock_quantity: "",
     min_stock_level: "5",
     supplier_id: ""
   });
@@ -114,17 +119,13 @@ export function ProductFormDialog({
 
   useEffect(() => {
     if (editingProduct) {
-      // Editing existing product
       setForm({
         name: editingProduct.name,
         description: editingProduct.description || "",
         category: editingProduct.category,
         price: editingProduct.price.toString(),
         cost_price: editingProduct.cost_price?.toString() || "",
-        sku: editingProduct.sku || "",
-        size: editingProduct.size || "",
         color: editingProduct.color || "",
-        stock_quantity: editingProduct.stock_quantity.toString(),
         min_stock_level: editingProduct.min_stock_level.toString(),
         supplier_id: editingProduct.supplier_id || ""
       });
@@ -134,36 +135,56 @@ export function ProductFormDialog({
       if (editingProduct.image_url_2) existing.push(editingProduct.image_url_2);
       if (editingProduct.image_url_3) existing.push(editingProduct.image_url_3);
       setExistingImageUrls(existing);
+      
+      // Fetch existing variants
+      fetchProductVariants(editingProduct.id);
     } else if (duplicatingProduct) {
-      // Duplicating product - copy all data except images and start fresh stock
       setForm({
         name: duplicatingProduct.name,
         description: duplicatingProduct.description || "",
         category: duplicatingProduct.category,
         price: duplicatingProduct.price.toString(),
         cost_price: duplicatingProduct.cost_price?.toString() || "",
-        sku: "", // Clear SKU for duplicate
-        size: duplicatingProduct.size || "",
         color: duplicatingProduct.color || "",
-        stock_quantity: "0", // Start with 0 stock for new variant
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
         supplier_id: duplicatingProduct.supplier_id || ""
       });
       
-      // Copy images from duplicated product
       const existing: string[] = [];
       if (duplicatingProduct.image_url) existing.push(duplicatingProduct.image_url);
       if (duplicatingProduct.image_url_2) existing.push(duplicatingProduct.image_url_2);
       if (duplicatingProduct.image_url_3) existing.push(duplicatingProduct.image_url_3);
       setExistingImageUrls(existing);
+      
+      // Start with empty variants for duplicate
+      setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
     } else {
       resetForm();
-      // Apply initial product name from voice command
       if (initialProductName) {
         setForm(prev => ({ ...prev, name: initialProductName }));
       }
     }
   }, [editingProduct, duplicatingProduct, open, initialProductName]);
+
+  const fetchProductVariants = async (productId: string) => {
+    const { data, error } = await supabase
+      .from("product_variants")
+      .select("*")
+      .eq("product_id", productId)
+      .order("size");
+    
+    if (!error && data && data.length > 0) {
+      setSizeVariants(data.map(v => ({
+        id: v.id,
+        size: v.size,
+        sku: v.sku || "",
+        stock_quantity: v.stock_quantity
+      })));
+    } else {
+      // If no variants, add default one
+      setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
+    }
+  };
 
   const fetchSuppliers = async () => {
     if (!user) return;
@@ -182,10 +203,7 @@ export function ProductFormDialog({
       category: "",
       price: "",
       cost_price: "",
-      sku: "",
-      size: "",
       color: "",
-      stock_quantity: "",
       min_stock_level: "5",
       supplier_id: ""
     });
@@ -194,10 +212,10 @@ export function ProductFormDialog({
     setProductImageUrls([]);
     setExistingImageUrls([]);
     setScrapedImageUrls([]);
+    setSizeVariants([{ size: "", sku: "", stock_quantity: 0 }]);
   };
 
   const handleScrapedImagesSelected = (urls: string[]) => {
-    // Add scraped images up to the 3 image limit
     const totalExisting = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
     const available = 3 - totalExisting;
     const toAdd = urls.slice(0, available);
@@ -218,9 +236,17 @@ export function ProductFormDialog({
       ...(data.price && { price: data.price.toString() }),
       ...(data.description && { description: data.description }),
       ...(data.colors?.length && { color: data.colors[0] }),
-      ...(data.sizes?.length && { size: data.sizes[0] }),
       ...(data.category && { category: data.category }),
     }));
+    
+    // Auto-populate size variants if sizes are extracted
+    if (data.sizes && data.sizes.length > 0) {
+      setSizeVariants(data.sizes.map(size => ({
+        size: size.toUpperCase(),
+        sku: "",
+        stock_quantity: 0
+      })));
+    }
   };
 
   const removeScrapedImage = (index: number) => {
@@ -273,7 +299,25 @@ export function ProductFormDialog({
     return urls;
   };
 
+  // Size variant handlers
+  const addSizeVariant = () => {
+    setSizeVariants(prev => [...prev, { size: "", sku: "", stock_quantity: 0 }]);
+  };
+
+  const removeSizeVariant = (index: number) => {
+    setSizeVariants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateSizeVariant = (index: number, field: keyof SizeVariant, value: string | number) => {
+    setSizeVariants(prev => prev.map((v, i) => 
+      i === index ? { ...v, [field]: value } : v
+    ));
+  };
+
   const totalImages = existingImageUrls.length + productImageUrls.length + scrapedImageUrls.length;
+  
+  // Calculate total stock from all variants
+  const totalStock = sizeVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
 
   const handleSave = async () => {
     if (!user) return;
@@ -285,6 +329,13 @@ export function ProductFormDialog({
       toast.error("Categoria é obrigatória");
       return;
     }
+    
+    // Validate that at least one variant has a size
+    const validVariants = sizeVariants.filter(v => v.size.trim());
+    if (validVariants.length === 0) {
+      toast.error("Adicione pelo menos um tamanho");
+      return;
+    }
 
     setSaving(true);
 
@@ -294,10 +345,10 @@ export function ProductFormDialog({
       category: form.category,
       price: parseFloat(form.price) || 0,
       cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
-      sku: form.sku || null,
-      size: form.size || null,
+      sku: null, // SKU is now per variant
+      size: null, // Size is now per variant
       color: form.color || null,
-      stock_quantity: parseInt(form.stock_quantity) || 0,
+      stock_quantity: totalStock, // Sum of all variants
       min_stock_level: parseInt(form.min_stock_level) || 5,
       supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
       owner_id: user.id,
@@ -305,7 +356,10 @@ export function ProductFormDialog({
     };
 
     try {
+      let productId: string;
+      
       if (editingProduct) {
+        productId = editingProduct.id;
         const allUrls = [...existingImageUrls, ...scrapedImageUrls];
         
         if (productImages.length > 0) {
@@ -325,7 +379,12 @@ export function ProductFormDialog({
 
         if (error) throw error;
         
-        toast.success("Produto atualizado!");
+        // Delete existing variants and recreate
+        await supabase
+          .from("product_variants")
+          .delete()
+          .eq("product_id", productId);
+        
       } else {
         const { data: newProduct, error } = await supabase
           .from("products")
@@ -334,6 +393,7 @@ export function ProductFormDialog({
           .single();
 
         if (error || !newProduct) throw error;
+        productId = newProduct.id;
         
         if (productImages.length > 0) {
           const urls = await uploadProductImages(newProduct.id);
@@ -349,24 +409,49 @@ export function ProductFormDialog({
           }
         }
         
-        toast.success("Produto criado!");
+        // Handle scraped images for new product
+        if (scrapedImageUrls.length > 0) {
+          await supabase
+            .from("products")
+            .update({
+              image_url: scrapedImageUrls[0] || null,
+              image_url_2: scrapedImageUrls[1] || null,
+              image_url_3: scrapedImageUrls[2] || null,
+            })
+            .eq("id", newProduct.id);
+        }
+      }
+      
+      // Insert all size variants
+      const variantsToInsert = validVariants.map(v => ({
+        product_id: productId,
+        size: v.size,
+        sku: v.sku || null,
+        stock_quantity: v.stock_quantity || 0
+      }));
+      
+      if (variantsToInsert.length > 0) {
+        const { error: variantError } = await supabase
+          .from("product_variants")
+          .insert(variantsToInsert);
+        
+        if (variantError) throw variantError;
       }
 
+      toast.success(editingProduct ? "Produto atualizado!" : "Produto criado!");
       onOpenChange(false);
       resetForm();
       onSuccess();
     } catch (error) {
+      console.error("Error saving product:", error);
       toast.error(editingProduct ? "Erro ao atualizar produto" : "Erro ao criar produto");
     } finally {
       setSaving(false);
     }
   };
 
-  
-
-  // On iOS inside Drawer, portals can cause blank screen/glitches.
-  // Render SelectContent inline on mobile.
-  const selectContentProps = isMobile ? ({ portal: false } as const) : ({} as const);
+  const isMobileDevice = isMobile;
+  const selectContentProps = isMobileDevice ? ({ portal: false } as const) : ({} as const);
 
   const formContent = (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -485,15 +570,7 @@ export function ProductFormDialog({
           onChange={(value) => setForm({ ...form, category: value })}
         />
       </div>
-      <div className="space-y-2">
-        <Label>SKU</Label>
-        <Input
-          value={form.sku}
-          onChange={(e) => setForm({ ...form, sku: e.target.value })}
-          placeholder="Código do produto"
-          autoComplete="off"
-        />
-      </div>
+      
       <div className="space-y-2">
         <Label>Preço de Venda *</Label>
         <Input
@@ -516,22 +593,7 @@ export function ProductFormDialog({
           placeholder="0.00"
         />
       </div>
-      <div className="space-y-2">
-        <Label>Tamanho</Label>
-        <Select
-          value={form.size}
-          onValueChange={(value) => setForm({ ...form, size: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione" />
-          </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-            {sizes.map((size) => (
-              <SelectItem key={size} value={size}>{size}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      
       <div className="space-y-2">
         <Label>Cor</Label>
         <Input
@@ -541,16 +603,7 @@ export function ProductFormDialog({
           autoComplete="off"
         />
       </div>
-      <div className="space-y-2">
-        <Label>Quantidade em Estoque *</Label>
-        <Input
-          type="number"
-          inputMode="numeric"
-          value={form.stock_quantity}
-          onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
-          placeholder="0"
-        />
-      </div>
+      
       <div className="space-y-2">
         <Label>Estoque Mínimo</Label>
         <Input
@@ -561,6 +614,82 @@ export function ProductFormDialog({
           placeholder="5"
         />
       </div>
+      
+      {/* Size Variants Section */}
+      <div className="col-span-1 sm:col-span-2 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-medium">Tamanhos e Estoque *</Label>
+          <span className="text-sm text-muted-foreground">
+            Total: {totalStock} un.
+          </span>
+        </div>
+        
+        <div className="space-y-2">
+          {sizeVariants.map((variant, index) => (
+            <div key={index} className="flex gap-2 items-center">
+              <Select
+                value={variant.size}
+                onValueChange={(value) => updateSizeVariant(index, "size", value)}
+              >
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="Tam." />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
+                  {availableSizes.map((size) => (
+                    <SelectItem 
+                      key={size} 
+                      value={size}
+                      disabled={sizeVariants.some((v, i) => i !== index && v.size === size)}
+                    >
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Qtd"
+                className="w-20"
+                value={variant.stock_quantity || ""}
+                onChange={(e) => updateSizeVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
+              />
+              
+              <Input
+                placeholder="SKU (opcional)"
+                className="flex-1"
+                value={variant.sku}
+                onChange={(e) => updateSizeVariant(index, "sku", e.target.value)}
+              />
+              
+              {sizeVariants.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-destructive hover:text-destructive"
+                  onClick={() => removeSizeVariant(index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addSizeVariant}
+          className="w-full"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Adicionar Tamanho
+        </Button>
+      </div>
+      
       <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Fornecedor</Label>
         <Select
@@ -605,7 +734,7 @@ export function ProductFormDialog({
     </>
   );
 
-  if (isMobile) {
+  if (isMobileDevice) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[90vh]">
