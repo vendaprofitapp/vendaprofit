@@ -431,7 +431,8 @@ export default function StockControl() {
                 <TableRow>
                   <TableHead>Produto</TableHead>
                   <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                  <TableHead className="hidden sm:table-cell">Tam/Cor</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tamanho</TableHead>
+                  <TableHead className="hidden sm:table-cell">Cor</TableHead>
                   <TableHead>Preço</TableHead>
                   <TableHead>Estoque</TableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
@@ -441,13 +442,13 @@ export default function StockControl() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Carregando...
                     </TableCell>
                   </TableRow>
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Nenhum produto encontrado
                     </TableCell>
                   </TableRow>
@@ -479,7 +480,10 @@ export default function StockControl() {
                         </TableCell>
                         <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">
-                          {product.size || "-"} / {product.color || "-"}
+                          {product.size || "-"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
+                          {product.color || "-"}
                         </TableCell>
                         <TableCell className="font-medium whitespace-nowrap">
                           R$ {product.price.toFixed(2).replace(".", ",")}
