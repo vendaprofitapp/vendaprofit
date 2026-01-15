@@ -1067,34 +1067,129 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
     for (const product of selectedProducts) {
       if (product.existingProduct) {
-        // Update existing product stock
-        const newQuantity = product.existingProduct.stock_quantity + product.quantity;
+        // Update existing product stock - need to handle variants properly
+        const productId = product.existingProduct.id;
         
-        const { error } = await supabase
-          .from("products")
-          .update({ 
-            stock_quantity: newQuantity,
-            cost_price: product.cost_price || undefined,
-            supplier_id: finalSupplierId,
-          })
-          .eq("id", product.existingProduct.id);
-        
-        if (!error) {
-          // Upload images if any
-          if (product.images.length > 0) {
-            const urls = await uploadProductImages(product.existingProduct.id, product.images);
-            if (urls.length > 0) {
-              await supabase
-                .from("products")
-                .update({
-                  image_url: urls[0] || null,
-                  image_url_2: urls[1] || null,
-                  image_url_3: urls[2] || null,
-                })
-                .eq("id", product.existingProduct.id);
+        // Check if this product has variants that we need to update
+        if (product.variants.length > 0) {
+          // Fetch existing variants for this product
+          const { data: existingVariants } = await supabase
+            .from("product_variants")
+            .select("id, color, size, stock_quantity")
+            .eq("product_id", productId);
+          
+          let variantUpdated = false;
+          
+          for (const variant of product.variants) {
+            // Normalize for comparison
+            const variantColor = (variant.color || '').toLowerCase().trim();
+            const variantSize = (variant.size || '').toLowerCase().trim();
+            
+            // Find matching existing variant by color AND size
+            const matchingVariant = existingVariants?.find(ev => {
+              const existingColor = (ev.color || '').toLowerCase().trim();
+              const existingSize = (ev.size || '').toLowerCase().trim();
+              return existingColor === variantColor && existingSize === variantSize;
+            });
+            
+            if (matchingVariant) {
+              // Update existing variant's stock
+              const newVariantQty = matchingVariant.stock_quantity + variant.quantity;
+              const { error: variantError } = await supabase
+                .from("product_variants")
+                .update({ stock_quantity: newVariantQty })
+                .eq("id", matchingVariant.id);
+              
+              if (!variantError) {
+                variantUpdated = true;
+                console.log(`Variante atualizada: ${variant.color}/${variant.size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
+              }
+            } else {
+              // Create new variant for this color/size combination
+              // Get color images if available
+              const colorUrls: string[] = [];
+              if (variant.color && product.colorImages[variant.color]) {
+                const colorData = product.colorImages[variant.color];
+                // Upload files first
+                if (colorData.files.length > 0) {
+                  const uploaded = await uploadProductImages(productId, colorData.files, variant.color.replace(/\s+/g, '_'));
+                  colorUrls.push(...uploaded);
+                }
+                colorUrls.push(...colorData.urls);
+              }
+              
+              const { error: insertError } = await supabase
+                .from("product_variants")
+                .insert({
+                  product_id: productId,
+                  color: variant.color,
+                  size: variant.size || "ÚNICO",
+                  stock_quantity: variant.quantity,
+                  sku: variant.sku,
+                  image_url: colorUrls[0] || null,
+                  image_url_2: colorUrls[1] || null,
+                  image_url_3: colorUrls[2] || null,
+                });
+              
+              if (!insertError) {
+                variantUpdated = true;
+                console.log(`Nova variante criada: ${variant.color}/${variant.size} com ${variant.quantity} unidades`);
+              }
             }
           }
-          updateCount++;
+          
+          // Also update the main product stock_quantity to reflect total
+          if (variantUpdated) {
+            // Recalculate total from all variants
+            const { data: allVariants } = await supabase
+              .from("product_variants")
+              .select("stock_quantity")
+              .eq("product_id", productId);
+            
+            const totalVariantStock = allVariants?.reduce((sum, v) => sum + (v.stock_quantity || 0), 0) || 0;
+            
+            await supabase
+              .from("products")
+              .update({ 
+                stock_quantity: totalVariantStock,
+                cost_price: product.cost_price || undefined,
+                supplier_id: finalSupplierId,
+              })
+              .eq("id", productId);
+            
+            updateCount++;
+          }
+        } else {
+          // No variants - update main product directly (old behavior)
+          const newQuantity = product.existingProduct.stock_quantity + product.quantity;
+          
+          const { error } = await supabase
+            .from("products")
+            .update({ 
+              stock_quantity: newQuantity,
+              cost_price: product.cost_price || undefined,
+              supplier_id: finalSupplierId,
+            })
+            .eq("id", productId);
+          
+          if (!error) {
+            updateCount++;
+          }
+        }
+        
+        // Upload images if any (for main product)
+        if (product.images.length > 0) {
+          const urls = await uploadProductImages(productId, product.images);
+          if (urls.length > 0) {
+            await supabase
+              .from("products")
+              .update({
+                image_url: urls[0] || null,
+                image_url_2: urls[1] || null,
+                image_url_3: urls[2] || null,
+              })
+              .eq("id", productId);
+          }
         }
       } else {
         // Insert new product
