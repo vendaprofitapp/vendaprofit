@@ -74,9 +74,10 @@ async function callLovableAI(imageBase64: string, mimeType: string, apiKey: stri
 }
 
 async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: string) {
-  console.log("Using Gemini direct API");
+  console.log("Using Gemini direct API with gemini-1.5-flash");
   
-  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+  // Using gemini-1.5-flash which has higher rate limits
+  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -85,7 +86,11 @@ async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: s
           { text: INVOICE_PROMPT },
           { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
         ]
-      }]
+      }],
+      generationConfig: {
+        maxOutputTokens: 4096,
+        temperature: 0.1
+      }
     }),
   });
 }
