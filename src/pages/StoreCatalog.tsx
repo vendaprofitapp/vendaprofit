@@ -6,8 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { Search, MessageCircle, Store, Package, Sparkles } from "lucide-react";
+import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Minus, Trash2, X } from "lucide-react";
 import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 interface ProductVariant {
   id: string;
@@ -48,6 +52,13 @@ interface CatalogDisplayItem {
   owner_id: string;
 }
 
+// Cart item with selected size
+interface CartItem {
+  displayItem: CatalogDisplayItem;
+  selectedSize: string;
+  quantity: number;
+}
+
 interface StoreSettings {
   id: string;
   owner_id: string;
@@ -67,11 +78,59 @@ export default function StoreCatalog() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [fittingRoomOpen, setFittingRoomOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogDisplayItem | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
 
   const handleOpenFittingRoom = (item: CatalogDisplayItem) => {
     setSelectedProduct(item);
     setFittingRoomOpen(true);
   };
+
+  // Cart functions
+  const addToCart = (item: CatalogDisplayItem, size: string) => {
+    setCart(prev => {
+      const existingIndex = prev.findIndex(
+        c => c.displayItem.id === item.id && c.selectedSize === size
+      );
+      
+      if (existingIndex >= 0) {
+        // Increment quantity
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: updated[existingIndex].quantity + 1
+        };
+        return updated;
+      }
+      
+      // Add new item
+      return [...prev, { displayItem: item, selectedSize: size, quantity: 1 }];
+    });
+    toast.success(`${item.name} adicionado ao carrinho`);
+  };
+
+  const updateCartQuantity = (index: number, delta: number) => {
+    setCart(prev => {
+      const updated = [...prev];
+      const newQty = updated[index].quantity + delta;
+      if (newQty <= 0) {
+        return prev.filter((_, i) => i !== index);
+      }
+      updated[index] = { ...updated[index], quantity: newQty };
+      return updated;
+    });
+  };
+
+  const removeFromCart = (index: number) => {
+    setCart(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + item.displayItem.price * item.quantity, 0);
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Fetch store settings
   const { data: store, isLoading: storeLoading, error: storeError } = useQuery({
@@ -258,15 +317,29 @@ export default function StoreCatalog() {
     }).format(price);
   };
 
-  const handleWhatsApp = (item: CatalogDisplayItem) => {
-    if (!store?.whatsapp_number) return;
-    const colorInfo = item.color ? ` - Cor: ${item.color}` : "";
-    const sizesInfo = item.sizes.length > 0 ? ` - Tamanhos: ${item.sizes.join(", ")}` : "";
-    const message = encodeURIComponent(
-      `Olá! Tenho interesse no produto: ${item.name}${colorInfo}${sizesInfo}\nPreço: ${formatPrice(item.price)}`
-    );
+  const sendCartViaWhatsApp = () => {
+    if (!store?.whatsapp_number || cart.length === 0) return;
+    
+    let message = "Olá! Gostaria de fazer o seguinte pedido:\n\n";
+    
+    cart.forEach((item, index) => {
+      const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
+      message += `${index + 1}. ${item.displayItem.name}${colorInfo}\n`;
+      message += `   Tamanho: ${item.selectedSize}\n`;
+      message += `   Quantidade: ${item.quantity}\n`;
+      message += `   Preço unitário: ${formatPrice(item.displayItem.price)}\n`;
+      message += `   Subtotal: ${formatPrice(item.displayItem.price * item.quantity)}\n\n`;
+    });
+    
+    message += `*TOTAL: ${formatPrice(cartTotal)}*`;
+    
     const phone = store.whatsapp_number.replace(/\D/g, "");
-    window.open(`https://wa.me/55${phone}?text=${message}`, "_blank");
+    window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
+    
+    // Clear cart after sending
+    clearCart();
+    setCartOpen(false);
+    toast.success("Pedido enviado pelo WhatsApp!");
   };
 
   if (storeLoading) {
@@ -296,7 +369,7 @@ export default function StoreCatalog() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header 
-        className="py-8 px-4"
+        className="py-8 px-4 relative"
         style={{ backgroundColor: primaryColor }}
       >
         <div className="max-w-6xl mx-auto">
@@ -308,12 +381,141 @@ export default function StoreCatalog() {
                 className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-full object-cover bg-white shadow-lg flex-shrink-0"
               />
             )}
-            <div className="text-white">
+            <div className="text-white flex-1">
               <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold">{store.store_name}</h1>
               {store.store_description && (
                 <p className="text-white/80 mt-1 text-sm md:text-base">{store.store_description}</p>
               )}
             </div>
+            
+            {/* Cart Button in Header */}
+            <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+              <SheetTrigger asChild>
+                <Button 
+                  variant="secondary" 
+                  size="icon" 
+                  className="relative h-12 w-12 rounded-full shadow-lg"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {cartItemCount > 0 && (
+                    <span 
+                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full text-xs flex items-center justify-center text-white font-bold"
+                      style={{ backgroundColor: "#e11d48" }}
+                    >
+                      {cartItemCount > 9 ? "9+" : cartItemCount}
+                    </span>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full sm:max-w-md flex flex-col">
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    <ShoppingCart className="h-5 w-5" />
+                    Meu Carrinho ({cartItemCount})
+                  </SheetTitle>
+                </SheetHeader>
+                
+                {cart.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+                    <ShoppingCart className="h-16 w-16 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Seu carrinho está vazio</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Adicione produtos para continuar
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <ScrollArea className="flex-1 -mx-6 px-6">
+                      <div className="space-y-4 py-4">
+                        {cart.map((item, index) => (
+                          <div key={`${item.displayItem.id}-${item.selectedSize}`} className="flex gap-3 p-3 border rounded-lg">
+                            {item.displayItem.image_url ? (
+                              <img 
+                                src={item.displayItem.image_url} 
+                                alt={item.displayItem.name}
+                                className="w-16 h-16 object-cover rounded-md flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
+                                <Package className="h-6 w-6 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm line-clamp-1">{item.displayItem.name}</h4>
+                              {item.displayItem.color && (
+                                <p className="text-xs text-muted-foreground">Cor: {item.displayItem.color}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground">Tam: {item.selectedSize}</p>
+                              <p className="text-sm font-bold mt-1" style={{ color: primaryColor }}>
+                                {formatPrice(item.displayItem.price * item.quantity)}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive hover:text-destructive"
+                                onClick={() => removeFromCart(index)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateCartQuantity(index, -1)}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateCartQuantity(index, 1)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                    
+                    <div className="border-t pt-4 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">Total:</span>
+                        <span className="text-xl font-bold" style={{ color: primaryColor }}>
+                          {formatPrice(cartTotal)}
+                        </span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={clearCart}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Limpar
+                        </Button>
+                        <Button 
+                          className="flex-1 gap-2"
+                          style={{ backgroundColor: "#25D366" }}
+                          onClick={sendCartViaWhatsApp}
+                          disabled={!store.whatsapp_number}
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          Enviar Pedido
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
@@ -373,84 +575,37 @@ export default function StoreCatalog() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredItems.map(item => (
-              <Card key={item.id} className="overflow-hidden group">
-                <div className="aspect-square bg-muted relative overflow-hidden">
-                  {item.image_url ? (
-                    <img
-                      src={item.image_url}
-                      alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Package className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                  )}
-                  {item.totalStock <= 3 && (
-                    <Badge className="absolute top-2 right-2" variant="destructive">
-                      Últimas unidades
-                    </Badge>
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <h3 className="font-medium text-foreground line-clamp-2 mb-1">
-                    {item.name}
-                  </h3>
-                  
-                  {/* Color and sizes info */}
-                  <div className="space-y-1 mb-2">
-                    {item.color && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Cor:</span> {item.color}
-                      </p>
-                    )}
-                    {item.sizes.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {item.sizes.map(size => (
-                          <Badge key={size} variant="secondary" className="text-xs">
-                            {size}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <p 
-                    className="text-lg font-bold mb-3"
-                    style={{ color: primaryColor }}
-                  >
-                    {formatPrice(item.price)}
-                  </p>
-                  <div className="space-y-2">
-                    {item.image_url && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                        onClick={() => handleOpenFittingRoom(item)}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Provador I.A.
-                      </Button>
-                    )}
-                    {store.whatsapp_number && (
-                      <Button
-                        size="sm"
-                        className="w-full gap-2"
-                        style={{ backgroundColor: "#25D366" }}
-                        onClick={() => handleWhatsApp(item)}
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        Comprar
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <ProductCard 
+                key={item.id}
+                item={item}
+                primaryColor={primaryColor}
+                onAddToCart={addToCart}
+                onOpenFittingRoom={handleOpenFittingRoom}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Floating Cart Button (Mobile) */}
+      {cartItemCount > 0 && (
+        <div className="fixed bottom-4 right-4 md:hidden z-50">
+          <Button
+            size="lg"
+            className="rounded-full h-14 w-14 shadow-xl"
+            style={{ backgroundColor: primaryColor }}
+            onClick={() => setCartOpen(true)}
+          >
+            <ShoppingCart className="h-6 w-6" />
+            <span 
+              className="absolute -top-1 -right-1 h-5 w-5 rounded-full text-xs flex items-center justify-center text-white font-bold"
+              style={{ backgroundColor: "#e11d48" }}
+            >
+              {cartItemCount > 9 ? "9+" : cartItemCount}
+            </span>
+          </Button>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="py-6 px-4 border-t mt-8">
@@ -470,5 +625,115 @@ export default function StoreCatalog() {
         } : null}
       />
     </div>
+  );
+}
+
+// Separate component for product card with size selection
+interface ProductCardProps {
+  item: CatalogDisplayItem;
+  primaryColor: string;
+  onAddToCart: (item: CatalogDisplayItem, size: string) => void;
+  onOpenFittingRoom: (item: CatalogDisplayItem) => void;
+}
+
+function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: ProductCardProps) {
+  const [selectedSize, setSelectedSize] = useState<string>("");
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(price);
+  };
+
+  const handleAddToCart = () => {
+    if (item.sizes.length > 0 && !selectedSize) {
+      toast.error("Selecione um tamanho");
+      return;
+    }
+    onAddToCart(item, selectedSize || "Único");
+  };
+
+  return (
+    <Card className="overflow-hidden group">
+      <div className="aspect-square bg-muted relative overflow-hidden">
+        {item.image_url ? (
+          <img
+            src={item.image_url}
+            alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Package className="h-12 w-12 text-muted-foreground" />
+          </div>
+        )}
+        {item.totalStock <= 3 && (
+          <Badge className="absolute top-2 right-2" variant="destructive">
+            Últimas unidades
+          </Badge>
+        )}
+      </div>
+      <CardContent className="p-4">
+        <h3 className="font-medium text-foreground line-clamp-2 mb-1">
+          {item.name}
+        </h3>
+        
+        {/* Color info */}
+        {item.color && (
+          <p className="text-sm text-muted-foreground mb-2">
+            <span className="font-medium">Cor:</span> {item.color}
+          </p>
+        )}
+
+        <p 
+          className="text-lg font-bold mb-3"
+          style={{ color: primaryColor }}
+        >
+          {formatPrice(item.price)}
+        </p>
+
+        {/* Size selector */}
+        {item.sizes.length > 0 && (
+          <div className="mb-3">
+            <Select value={selectedSize} onValueChange={setSelectedSize}>
+              <SelectTrigger className="w-full h-9">
+                <SelectValue placeholder="Selecione o tamanho" />
+              </SelectTrigger>
+              <SelectContent>
+                {item.sizes.map(size => (
+                  <SelectItem key={size} value={size}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {item.image_url && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+              onClick={() => onOpenFittingRoom(item)}
+            >
+              <Sparkles className="h-4 w-4" />
+              Provador I.A.
+            </Button>
+          )}
+          <Button
+            size="sm"
+            className="w-full gap-2"
+            style={{ backgroundColor: primaryColor }}
+            onClick={handleAddToCart}
+          >
+            <ShoppingCart className="h-4 w-4" />
+            Adicionar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
