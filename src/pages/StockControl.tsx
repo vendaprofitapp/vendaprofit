@@ -227,7 +227,7 @@ export default function StockControl() {
     if (!error) {
       setPartnerProducts((data || []) as Product[]);
     }
-
+  };
   const fetchRequests = async () => {
     const { data: myReqs } = await supabase
       .from("stock_requests")
