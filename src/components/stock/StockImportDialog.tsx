@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit } from "lucide-react";
+import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -21,10 +22,12 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SupplierSelect } from "./SupplierSelect";
+import { SupplierImageScraper } from "./SupplierImageScraper";
 
 interface ImportedProduct {
   name: string;
@@ -35,6 +38,8 @@ interface ImportedProduct {
   price: number;
   quantity: number;
   category: string;
+  description: string;
+  min_stock_level: number;
   selected: boolean;
   existingProduct: ExistingProduct | null;
   images: File[];
@@ -137,11 +142,13 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     onOpenChange(false);
   };
 
-  const processProducts = (parsedProducts: Omit<ImportedProduct, "selected" | "existingProduct" | "images" | "imageUrls" | "isEditing" | "hasErrors">[]) => {
+  const processProducts = (parsedProducts: Omit<ImportedProduct, "selected" | "existingProduct" | "images" | "imageUrls" | "isEditing" | "hasErrors" | "description" | "min_stock_level">[]) => {
     const processed = parsedProducts.map(p => {
       const existing = findDuplicate(p.name, p.sku);
       const product: ImportedProduct = {
         ...p,
+        description: "",
+        min_stock_level: 5,
         selected: true,
         existingProduct: existing,
         images: [],
@@ -232,6 +239,19 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Formato inválido. Use imagem (JPG, PNG) ou PDF");
+      return;
+    }
+
+    // Max 20MB
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Arquivo muito grande. Máximo 20MB");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -285,6 +305,17 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     }
     
     if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const handleScrapedImages = (productIndex: number, urls: string[]) => {
+    // Convert scraped URLs to image URLs for the product
+    setProducts(prev => prev.map((p, i) => {
+      if (i !== productIndex) return p;
+      return {
+        ...p,
+        imageUrls: [...p.imageUrls, ...urls].slice(0, 3),
+      };
+    }));
   };
 
   const toggleProduct = (index: number) => {
@@ -425,10 +456,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         }
       } else {
         // Insert new product
+        // Prepare image URLs (handle both uploaded files and external URLs)
+        const allImageUrls = [...product.imageUrls];
+        
         const { data: newProduct, error } = await supabase
           .from("products")
           .insert({
             name: product.name.trim(),
+            description: product.description || null,
             sku: product.sku,
             size: product.size,
             color: product.color,
@@ -436,24 +471,29 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             price: product.price,
             stock_quantity: product.quantity,
             category: product.category || "Outros",
-            min_stock_level: 5,
+            min_stock_level: product.min_stock_level || 5,
             owner_id: user.id,
             supplier_id: finalSupplierId,
+            image_url: allImageUrls[0] || null,
+            image_url_2: allImageUrls[1] || null,
+            image_url_3: allImageUrls[2] || null,
           })
           .select("id")
           .single();
 
         if (!error && newProduct) {
-          // Upload images if any
+          // Upload local images if any (and update URLs)
           if (product.images.length > 0) {
-            const urls = await uploadProductImages(newProduct.id, product.images);
-            if (urls.length > 0) {
+            const uploadedUrls = await uploadProductImages(newProduct.id, product.images);
+            // Combine with existing external URLs, prioritizing uploaded ones
+            const finalUrls = [...uploadedUrls, ...product.imageUrls].slice(0, 3);
+            if (finalUrls.length > 0) {
               await supabase
                 .from("products")
                 .update({
-                  image_url: urls[0] || null,
-                  image_url_2: urls[1] || null,
-                  image_url_3: urls[2] || null,
+                  image_url: finalUrls[0] || null,
+                  image_url_2: finalUrls[1] || null,
+                  image_url_3: finalUrls[2] || null,
                 })
                 .eq("id", newProduct.id);
             }
@@ -526,22 +566,28 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
             <TabsContent value="invoice" className="space-y-4 py-4">
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                <Camera className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="font-medium mb-2">Foto da Nota Fiscal</h3>
+                <div className="flex justify-center gap-2 mb-4">
+                  <Camera className="h-10 w-10 text-muted-foreground" />
+                  <FileText className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium mb-2">Foto ou PDF da Nota Fiscal</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   A IA irá extrair automaticamente os dados dos produtos
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Suporta: JPG, PNG, PDF (máx. 20MB)
                 </p>
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   capture="environment"
                   onChange={handleInvoiceUpload}
                   className="hidden"
                 />
                 <Button onClick={() => imageInputRef.current?.click()} disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-                  {loading ? "Processando..." : "Tirar Foto / Carregar"}
+                  {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                  {loading ? "Processando..." : "Selecionar Arquivo"}
                 </Button>
               </div>
             </TabsContent>
@@ -719,132 +765,177 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         {/* Edit Product Dialog */}
         {editingIndex !== null && (
           <Dialog open={true} onOpenChange={() => setEditingIndex(null)}>
-            <DialogContent>
+            <DialogContent className="max-w-2xl max-h-[90vh]">
               <DialogHeader>
                 <DialogTitle>Editar Produto</DialogTitle>
                 <DialogDescription>Preencha ou corrija os dados do produto</DialogDescription>
               </DialogHeader>
               
-              <div className="grid gap-4 py-2">
-                <div className="grid gap-2">
-                  <Label>Nome *</Label>
-                  <Input 
-                    value={products[editingIndex].name}
-                    onChange={(e) => updateProduct(editingIndex, { name: e.target.value })}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label>Categoria *</Label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={products[editingIndex].category}
-                    onChange={(e) => updateProduct(editingIndex, { category: e.target.value })}
-                  >
-                    <option value="">Selecione...</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                    <option value="Outros">Outros</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              <ScrollArea className="max-h-[60vh] pr-4">
+                <div className="grid gap-4 py-2">
                   <div className="grid gap-2">
-                    <Label>SKU</Label>
+                    <Label>Nome *</Label>
                     <Input 
-                      value={products[editingIndex].sku || ""}
-                      onChange={(e) => updateProduct(editingIndex, { sku: e.target.value || null })}
+                      value={products[editingIndex].name}
+                      onChange={(e) => updateProduct(editingIndex, { name: e.target.value })}
                     />
                   </div>
+
                   <div className="grid gap-2">
-                    <Label>Quantidade</Label>
+                    <Label>Descrição</Label>
+                    <Textarea 
+                      value={products[editingIndex].description || ""}
+                      onChange={(e) => updateProduct(editingIndex, { description: e.target.value })}
+                      placeholder="Descrição do produto..."
+                      rows={2}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label>Categoria *</Label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={products[editingIndex].category}
+                      onChange={(e) => updateProduct(editingIndex, { category: e.target.value })}
+                    >
+                      <option value="">Selecione...</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                      <option value="Outros">Outros</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>SKU</Label>
+                      <Input 
+                        value={products[editingIndex].sku || ""}
+                        onChange={(e) => updateProduct(editingIndex, { sku: e.target.value || null })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Quantidade</Label>
+                      <Input 
+                        type="number"
+                        value={products[editingIndex].quantity}
+                        onChange={(e) => updateProduct(editingIndex, { quantity: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>Cor</Label>
+                      <Input 
+                        value={products[editingIndex].color || ""}
+                        onChange={(e) => updateProduct(editingIndex, { color: e.target.value || null })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Tamanho</Label>
+                      <Input 
+                        value={products[editingIndex].size || ""}
+                        onChange={(e) => updateProduct(editingIndex, { size: e.target.value || null })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>Preço de Custo</Label>
+                      <Input 
+                        type="number"
+                        step="0.01"
+                        value={products[editingIndex].cost_price}
+                        onChange={(e) => updateProduct(editingIndex, { cost_price: parseFloat(e.target.value) || 0 })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Preço de Venda</Label>
+                      <Input 
+                        type="number"
+                        step="0.01"
+                        value={products[editingIndex].price}
+                        onChange={(e) => updateProduct(editingIndex, { price: parseFloat(e.target.value) || 0 })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>Estoque Mínimo</Label>
                     <Input 
                       type="number"
-                      value={products[editingIndex].quantity}
-                      onChange={(e) => updateProduct(editingIndex, { quantity: parseInt(e.target.value) || 1 })}
+                      value={products[editingIndex].min_stock_level}
+                      onChange={(e) => updateProduct(editingIndex, { min_stock_level: parseInt(e.target.value) || 5 })}
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label>Cor</Label>
-                    <Input 
-                      value={products[editingIndex].color || ""}
-                      onChange={(e) => updateProduct(editingIndex, { color: e.target.value || null })}
-                    />
+                    <Label>Fotos (máx. 3)</Label>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      {products[editingIndex].imageUrls.map((url, imgIdx) => (
+                        <div key={imgIdx} className="relative w-16 h-16">
+                          <img 
+                            src={url} 
+                            alt={`Foto ${imgIdx + 1}`} 
+                            className="w-full h-full object-cover rounded"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeProductImage(editingIndex, imgIdx)}
+                            className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {(products[editingIndex].images.length + products[editingIndex].imageUrls.length) < 3 && (
+                        <>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handleProductImageUpload(editingIndex, e.target.files)}
+                            className="hidden"
+                            id={`edit-image-${editingIndex}`}
+                          />
+                          <label 
+                            htmlFor={`edit-image-${editingIndex}`}
+                            className="w-16 h-16 border-2 border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                          >
+                            <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                          </label>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label>Tamanho</Label>
-                    <Input 
-                      value={products[editingIndex].size || ""}
-                      onChange={(e) => updateProduct(editingIndex, { size: e.target.value || null })}
-                    />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label>Preço de Custo</Label>
-                    <Input 
-                      type="number"
-                      step="0.01"
-                      value={products[editingIndex].cost_price}
-                      onChange={(e) => updateProduct(editingIndex, { cost_price: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Preço de Venda</Label>
-                    <Input 
-                      type="number"
-                      step="0.01"
-                      value={products[editingIndex].price}
-                      onChange={(e) => updateProduct(editingIndex, { price: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
+                  {/* Supplier Image Scraper */}
+                  {(products[editingIndex].images.length + products[editingIndex].imageUrls.length) < 3 && (
+                    <div className="grid gap-2">
+                      <Label className="flex items-center gap-2">
+                        <Link className="h-4 w-4" />
+                        Buscar Fotos do Fornecedor
+                      </Label>
+                      <SupplierImageScraper
+                        onImagesSelected={(urls) => {
+                          const currentProduct = products[editingIndex];
+                          const currentTotal = currentProduct.images.length + currentProduct.imageUrls.length;
+                          const available = 3 - currentTotal;
+                          const newUrls = urls.slice(0, available);
+                          
+                          updateProduct(editingIndex, {
+                            imageUrls: [...currentProduct.imageUrls, ...newUrls].slice(0, 3)
+                          });
+                        }}
+                        maxImages={3}
+                        currentImageCount={products[editingIndex].images.length + products[editingIndex].imageUrls.length}
+                      />
+                    </div>
+                  )}
                 </div>
-
-                <div className="grid gap-2">
-                  <Label>Fotos (máx. 3)</Label>
-                  <div className="flex gap-2 items-center">
-                    {products[editingIndex].imageUrls.map((url, imgIdx) => (
-                      <div key={imgIdx} className="relative w-16 h-16">
-                        <img 
-                          src={url} 
-                          alt={`Foto ${imgIdx + 1}`} 
-                          className="w-full h-full object-cover rounded"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeProductImage(editingIndex, imgIdx)}
-                          className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {products[editingIndex].images.length < 3 && (
-                      <>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => handleProductImageUpload(editingIndex, e.target.files)}
-                          className="hidden"
-                          id={`edit-image-${editingIndex}`}
-                        />
-                        <label 
-                          htmlFor={`edit-image-${editingIndex}`}
-                          className="w-16 h-16 border-2 border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
-                        >
-                          <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+              </ScrollArea>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setEditingIndex(null)}>
