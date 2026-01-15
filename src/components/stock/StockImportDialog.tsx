@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText } from "lucide-react";
+import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -28,6 +40,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SupplierSelect } from "./SupplierSelect";
 import { SupplierImageScraper } from "./SupplierImageScraper";
+import { CategoryManager } from "@/components/products/CategoryManager";
+import { ColorManager } from "@/components/products/ColorManager";
+
+const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
 interface ProductVariant {
   color: string | null;
@@ -68,6 +84,325 @@ interface StockImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImportComplete: () => void;
+}
+
+// Sub-component for editing product with variants
+interface EditProductWithVariantsDialogProps {
+  product: ImportedProduct;
+  categories: { id: string; name: string }[];
+  onClose: () => void;
+  onUpdateProduct: (updates: Partial<ImportedProduct>) => void;
+  onUpdateVariants: (variants: ProductVariant[]) => void;
+  removeProductImage: (imgIdx: number) => void;
+  handleProductImageUpload: (files: FileList | null) => void;
+}
+
+function EditProductWithVariantsDialog({
+  product,
+  categories,
+  onClose,
+  onUpdateProduct,
+  onUpdateVariants,
+  removeProductImage,
+  handleProductImageUpload,
+}: EditProductWithVariantsDialogProps) {
+  const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
+  const [localVariants, setLocalVariants] = useState<ProductVariant[]>(() => {
+    // Initialize with existing variants or create one from product data
+    if (product.variants.length > 0) {
+      return product.variants;
+    }
+    // Create initial variant from product color/size/quantity
+    return [{
+      color: product.color,
+      size: product.size,
+      quantity: product.quantity,
+      sku: product.sku,
+    }];
+  });
+
+  // Keep parent in sync
+  useEffect(() => {
+    onUpdateVariants(localVariants);
+  }, [localVariants]);
+
+  // Group variants by color
+  const variantsByColor = localVariants.reduce((acc, variant, index) => {
+    const color = variant.color || "__no_color__";
+    if (!acc[color]) acc[color] = [];
+    acc[color].push({ variant, index });
+    return acc;
+  }, {} as { [color: string]: { variant: ProductVariant; index: number }[] });
+
+  const totalStock = localVariants.reduce((sum, v) => sum + (v.quantity || 0), 0);
+
+  const addVariant = () => {
+    setLocalVariants(prev => [...prev, { color: null, size: null, quantity: 0, sku: null }]);
+  };
+
+  const removeVariant = (index: number) => {
+    setLocalVariants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateVariant = (index: number, field: keyof ProductVariant, value: string | number | null) => {
+    setLocalVariants(prev => prev.map((v, i) => 
+      i === index ? { ...v, [field]: value } : v
+    ));
+  };
+
+  const toggleColorExpanded = (color: string) => {
+    setExpandedColors(prev => ({ ...prev, [color]: !prev[color] }));
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>Editar Produto</DialogTitle>
+          <DialogDescription>Preencha os dados e variantes do produto</DialogDescription>
+        </DialogHeader>
+        
+        <ScrollArea className="max-h-[60vh] pr-4">
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Nome *</Label>
+              <Input 
+                value={product.name}
+                onChange={(e) => onUpdateProduct({ name: e.target.value })}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Descrição</Label>
+              <Textarea 
+                value={product.description || ""}
+                onChange={(e) => onUpdateProduct({ description: e.target.value })}
+                placeholder="Descrição do produto..."
+                rows={2}
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label>Categoria *</Label>
+              <CategoryManager
+                value={product.category}
+                onChange={(value) => onUpdateProduct({ category: value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Preço de Venda *</Label>
+                <Input 
+                  type="number"
+                  step="0.01"
+                  value={product.price}
+                  onChange={(e) => onUpdateProduct({ price: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Preço de Custo</Label>
+                <Input 
+                  type="number"
+                  step="0.01"
+                  value={product.cost_price}
+                  onChange={(e) => onUpdateProduct({ cost_price: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Estoque Mínimo</Label>
+              <Input 
+                type="number"
+                value={product.min_stock_level}
+                onChange={(e) => onUpdateProduct({ min_stock_level: parseInt(e.target.value) || 5 })}
+              />
+            </div>
+
+            {/* Variants Section grouped by Color */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Variantes por Cor *</Label>
+                <span className="text-sm text-muted-foreground">
+                  Total: {totalStock} un.
+                </span>
+              </div>
+              
+              <div className="space-y-4">
+                {Object.entries(variantsByColor).map(([color, items]) => (
+                  <Collapsible 
+                    key={color} 
+                    open={expandedColors[color] ?? true}
+                    onOpenChange={() => toggleColorExpanded(color)}
+                  >
+                    <div className="border rounded-lg p-3 bg-muted/30">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between cursor-pointer">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">
+                              {color === "__no_color__" ? "Sem cor definida" : color}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({items.length} variante{items.length > 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          {expandedColors[color] ? (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </CollapsibleTrigger>
+                      
+                      <CollapsibleContent>
+                        {/* Variants for this color */}
+                        <div className="space-y-2 mt-3">
+                          {items.map(({ variant, index }) => (
+                            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                              <Select
+                                value={variant.size || ""}
+                                onValueChange={(value) => updateVariant(index, "size", value || null)}
+                              >
+                                <SelectTrigger className="w-20 sm:w-24">
+                                  <SelectValue placeholder="Tam." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableSizes.map((size) => (
+                                    <SelectItem key={size} value={size}>
+                                      {size}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              
+                              <ColorManager
+                                value={variant.color || ""}
+                                onChange={(value) => updateVariant(index, "color", value || null)}
+                                placeholder="Cor"
+                              />
+                              
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="Qtd"
+                                className="w-16 sm:w-20"
+                                value={variant.quantity || ""}
+                                onChange={(e) => updateVariant(index, "quantity", parseInt(e.target.value) || 0)}
+                              />
+                              
+                              <Input
+                                placeholder="SKU"
+                                className="flex-1 min-w-[80px]"
+                                value={variant.sku || ""}
+                                onChange={(e) => updateVariant(index, "sku", e.target.value || null)}
+                              />
+                              
+                              {localVariants.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
+                                  onClick={() => removeVariant(index)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                ))}
+              </div>
+              
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addVariant}
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Variante
+              </Button>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Fotos (máx. 3)</Label>
+              <div className="flex gap-2 items-center flex-wrap">
+                {product.imageUrls.map((url, imgIdx) => (
+                  <div key={imgIdx} className="relative w-16 h-16">
+                    <img 
+                      src={url} 
+                      alt={`Foto ${imgIdx + 1}`} 
+                      className="w-full h-full object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeProductImage(imgIdx)}
+                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {(product.images.length + product.imageUrls.length) < 3 && (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => handleProductImageUpload(e.target.files)}
+                      className="hidden"
+                      id="edit-variant-image"
+                    />
+                    <label 
+                      htmlFor="edit-variant-image"
+                      className="w-16 h-16 border-2 border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                    >
+                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Supplier Image Scraper */}
+            {(product.images.length + product.imageUrls.length) < 3 && (
+              <div className="grid gap-2">
+                <Label className="flex items-center gap-2">
+                  <Link className="h-4 w-4" />
+                  Buscar Fotos do Fornecedor
+                </Label>
+                <SupplierImageScraper
+                  onImagesSelected={(urls) => {
+                    const currentTotal = product.images.length + product.imageUrls.length;
+                    const available = 3 - currentTotal;
+                    const newUrls = urls.slice(0, available);
+                    
+                    onUpdateProduct({
+                      imageUrls: [...product.imageUrls, ...newUrls].slice(0, 3)
+                    });
+                  }}
+                  maxImages={3}
+                  currentImageCount={product.images.length + product.imageUrls.length}
+                />
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function StockImportDialog({ open, onOpenChange, onImportComplete }: StockImportDialogProps) {
@@ -885,188 +1220,26 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           </div>
         )}
 
-        {/* Edit Product Dialog */}
+        {/* Edit Product Dialog with Variant Editor */}
         {editingIndex !== null && (
-          <Dialog open={true} onOpenChange={() => setEditingIndex(null)}>
-            <DialogContent className="max-w-2xl max-h-[90vh]">
-              <DialogHeader>
-                <DialogTitle>Editar Produto</DialogTitle>
-                <DialogDescription>Preencha ou corrija os dados do produto</DialogDescription>
-              </DialogHeader>
-              
-              <ScrollArea className="max-h-[60vh] pr-4">
-                <div className="grid gap-4 py-2">
-                  <div className="grid gap-2">
-                    <Label>Nome *</Label>
-                    <Input 
-                      value={products[editingIndex].name}
-                      onChange={(e) => updateProduct(editingIndex, { name: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Descrição</Label>
-                    <Textarea 
-                      value={products[editingIndex].description || ""}
-                      onChange={(e) => updateProduct(editingIndex, { description: e.target.value })}
-                      placeholder="Descrição do produto..."
-                      rows={2}
-                    />
-                  </div>
-                  
-                  <div className="grid gap-2">
-                    <Label>Categoria *</Label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={products[editingIndex].category}
-                      onChange={(e) => updateProduct(editingIndex, { category: e.target.value })}
-                    >
-                      <option value="">Selecione...</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.name}>{c.name}</option>
-                      ))}
-                      <option value="Outros">Outros</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>SKU</Label>
-                      <Input 
-                        value={products[editingIndex].sku || ""}
-                        onChange={(e) => updateProduct(editingIndex, { sku: e.target.value || null })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Quantidade</Label>
-                      <Input 
-                        type="number"
-                        value={products[editingIndex].quantity}
-                        onChange={(e) => updateProduct(editingIndex, { quantity: parseInt(e.target.value) || 1 })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Cor</Label>
-                      <Input 
-                        value={products[editingIndex].color || ""}
-                        onChange={(e) => updateProduct(editingIndex, { color: e.target.value || null })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Tamanho</Label>
-                      <Input 
-                        value={products[editingIndex].size || ""}
-                        onChange={(e) => updateProduct(editingIndex, { size: e.target.value || null })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Preço de Custo</Label>
-                      <Input 
-                        type="number"
-                        step="0.01"
-                        value={products[editingIndex].cost_price}
-                        onChange={(e) => updateProduct(editingIndex, { cost_price: parseFloat(e.target.value) || 0 })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Preço de Venda</Label>
-                      <Input 
-                        type="number"
-                        step="0.01"
-                        value={products[editingIndex].price}
-                        onChange={(e) => updateProduct(editingIndex, { price: parseFloat(e.target.value) || 0 })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Estoque Mínimo</Label>
-                    <Input 
-                      type="number"
-                      value={products[editingIndex].min_stock_level}
-                      onChange={(e) => updateProduct(editingIndex, { min_stock_level: parseInt(e.target.value) || 5 })}
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Fotos (máx. 3)</Label>
-                    <div className="flex gap-2 items-center flex-wrap">
-                      {products[editingIndex].imageUrls.map((url, imgIdx) => (
-                        <div key={imgIdx} className="relative w-16 h-16">
-                          <img 
-                            src={url} 
-                            alt={`Foto ${imgIdx + 1}`} 
-                            className="w-full h-full object-cover rounded"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeProductImage(editingIndex, imgIdx)}
-                            className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      {(products[editingIndex].images.length + products[editingIndex].imageUrls.length) < 3 && (
-                        <>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => handleProductImageUpload(editingIndex, e.target.files)}
-                            className="hidden"
-                            id={`edit-image-${editingIndex}`}
-                          />
-                          <label 
-                            htmlFor={`edit-image-${editingIndex}`}
-                            className="w-16 h-16 border-2 border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
-                          >
-                            <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Supplier Image Scraper */}
-                  {(products[editingIndex].images.length + products[editingIndex].imageUrls.length) < 3 && (
-                    <div className="grid gap-2">
-                      <Label className="flex items-center gap-2">
-                        <Link className="h-4 w-4" />
-                        Buscar Fotos do Fornecedor
-                      </Label>
-                      <SupplierImageScraper
-                        onImagesSelected={(urls) => {
-                          const currentProduct = products[editingIndex];
-                          const currentTotal = currentProduct.images.length + currentProduct.imageUrls.length;
-                          const available = 3 - currentTotal;
-                          const newUrls = urls.slice(0, available);
-                          
-                          updateProduct(editingIndex, {
-                            imageUrls: [...currentProduct.imageUrls, ...newUrls].slice(0, 3)
-                          });
-                        }}
-                        maxImages={3}
-                        currentImageCount={products[editingIndex].images.length + products[editingIndex].imageUrls.length}
-                      />
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditingIndex(null)}>
-                  Fechar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <EditProductWithVariantsDialog
+            product={products[editingIndex]}
+            categories={categories}
+            onClose={() => setEditingIndex(null)}
+            onUpdateProduct={(updates) => updateProduct(editingIndex, updates)}
+            onUpdateVariants={(variants) => {
+              const totalQuantity = variants.reduce((sum, v) => sum + v.quantity, 0);
+              updateProduct(editingIndex, { 
+                variants, 
+                quantity: totalQuantity,
+                // Update main color/size from first variant if available
+                color: variants[0]?.color || null,
+                size: variants[0]?.size || null,
+              });
+            }}
+            removeProductImage={(imgIdx) => removeProductImage(editingIndex, imgIdx)}
+            handleProductImageUpload={(files) => handleProductImageUpload(editingIndex, files)}
+          />
         )}
 
         <DialogFooter>
