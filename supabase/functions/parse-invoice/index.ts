@@ -56,23 +56,6 @@ async function callLovableAI(imageBase64: string, mimeType: string, apiKey: stri
   });
 }
 
-async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: string) {
-  console.log("Using Gemini direct API");
-  
-  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: INVOICE_PROMPT },
-          { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
-        ]
-      }]
-    }),
-  });
-}
-
 async function callOpenAI(imageBase64: string, mimeType: string, apiKey: string) {
   console.log("Using OpenAI API for image analysis");
   
@@ -124,7 +107,8 @@ serve(async (req) => {
         if (userProvider === "openai") {
           response = await callOpenAI(imageBase64, mimeType, userKey);
         } else {
-          response = await callGeminiDirect(imageBase64, mimeType, userKey);
+          // For gemini, use Lovable AI gateway with user's model preference
+          response = await callLovableAI(imageBase64, mimeType, userKey);
         }
 
         if (!response.ok) {
@@ -142,7 +126,7 @@ serve(async (req) => {
         if (userProvider === "openai") {
           content = data.choices?.[0]?.message?.content;
         } else {
-          content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          content = data.choices?.[0]?.message?.content;
         }
 
         if (!content) {
@@ -168,75 +152,50 @@ serve(async (req) => {
       }
     }
 
-    // Fallback to system keys
+    // Use Lovable AI (system key)
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
     
-    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) {
-      console.error('No API key configured');
+    if (!LOVABLE_API_KEY) {
+      console.error('LOVABLE_API_KEY not configured');
       return new Response(
-        JSON.stringify({ success: false, error: 'Configure sua chave de IA nas configurações para usar este recurso.' }),
+        JSON.stringify({ success: false, error: 'Serviço de IA não configurado. Entre em contato com o suporte.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Processing invoice image...');
+    console.log('Processing invoice image with Lovable AI...');
 
-    let response;
-    let useGeminiFallback = false;
+    const response = await callLovableAI(imageBase64, mimeType, LOVABLE_API_KEY);
 
-    // Try Lovable AI first
-    if (LOVABLE_API_KEY) {
-      response = await callLovableAI(imageBase64, mimeType, LOVABLE_API_KEY);
-      
-      if (response.status === 402 && GEMINI_API_KEY) {
-        console.log("Lovable credits exhausted, using Gemini fallback...");
-        useGeminiFallback = true;
-      }
-    } else {
-      useGeminiFallback = true;
-    }
-
-    // Use Gemini direct API as fallback
-    if (useGeminiFallback && GEMINI_API_KEY) {
-      response = await callGeminiDirect(imageBase64, mimeType, GEMINI_API_KEY);
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Gemini API error:', errorData);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Erro ao processar imagem com IA' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const data = await response.json();
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!content) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Resposta vazia da IA' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Gemini response:', content);
-
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsedData = JSON.parse(cleanContent);
-
+    // Handle rate limiting errors
+    if (response.status === 429) {
+      console.error('Rate limit exceeded');
       return new Response(
-        JSON.stringify({ success: true, data: parsedData }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: false, 
+          error: 'Limite de requisições excedido. Aguarde alguns segundos e tente novamente.' 
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Handle Lovable AI response
-    if (!response || !response.ok) {
-      const errorData = response ? await response.text() : "No response";
-      console.error('AI API error:', errorData);
+    // Handle payment required (credits exhausted)
+    if (response.status === 402) {
+      console.error('Lovable AI credits exhausted');
       return new Response(
-        JSON.stringify({ success: false, error: 'Erro ao processar imagem com IA' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'Créditos de IA esgotados. Configure sua própria chave de IA nas configurações ou entre em contato com o suporte.' 
+        }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Lovable AI error:', response.status, errorData);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Erro ao processar imagem. Tente novamente.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -245,21 +204,31 @@ serve(async (req) => {
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
+      console.error('Empty AI response');
       return new Response(
-        JSON.stringify({ success: false, error: 'Resposta vazia da IA' }),
+        JSON.stringify({ success: false, error: 'Resposta vazia da IA. Tente novamente com uma imagem mais clara.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('AI response:', content);
+    console.log('AI response received, parsing...');
 
     const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsedData = JSON.parse(cleanContent);
-
-    return new Response(
-      JSON.stringify({ success: true, data: parsedData }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    
+    try {
+      const parsedData = JSON.parse(cleanContent);
+      
+      return new Response(
+        JSON.stringify({ success: true, data: parsedData }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', cleanContent);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Não foi possível interpretar a nota fiscal. Tente uma imagem mais clara.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   } catch (error) {
     console.error('Error processing invoice:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro interno';
