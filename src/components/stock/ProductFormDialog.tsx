@@ -245,49 +245,6 @@ export function ProductFormDialog({
     setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
   };
 
-  const handleProductDataImport = (data: {
-    name?: string;
-    price?: number;
-    description?: string;
-    colors?: string[];
-    sizes?: string[];
-    category?: string;
-  }) => {
-    setForm(prev => ({
-      ...prev,
-      ...(data.name && { name: data.name }),
-      ...(data.price && { price: data.price.toString() }),
-      ...(data.description && { description: data.description }),
-      ...(data.category && { category: data.category }),
-    }));
-    
-    const sizes = data.sizes && data.sizes.length > 0 ? data.sizes : [""];
-    const colors = data.colors && data.colors.length > 0 ? data.colors : [""];
-    
-    const newVariants: ProductVariant[] = [];
-    sizes.forEach(size => {
-      colors.forEach(color => {
-        newVariants.push({
-          size: size.toUpperCase(),
-          color: color,
-          sku: "",
-          stock_quantity: 0
-        });
-      });
-    });
-    
-    if (newVariants.length > 0) {
-      setProductVariants(newVariants);
-      // Initialize color images for new colors
-      const newColorImages: { [color: string]: ColorImages } = {};
-      colors.forEach(color => {
-        if (color && !newColorImages[color]) {
-          newColorImages[color] = { existingUrls: [], newFiles: [], newPreviewUrls: [] };
-        }
-      });
-      setColorImages(prev => ({ ...prev, ...newColorImages }));
-    }
-  };
 
   // Get unique colors from variants
   const getUniqueColors = (): string[] => {
@@ -610,7 +567,6 @@ export function ProductFormDialog({
           maxImages={3}
           currentImageCount={totalColorImages}
           onImagesSelected={(urls) => handleColorImagesFromSupplier(color, urls)}
-          onProductDataImport={handleProductDataImport}
         />
         
         {/* Current images for this color */}
