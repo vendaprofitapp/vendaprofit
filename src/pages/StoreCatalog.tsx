@@ -8,6 +8,18 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Search, MessageCircle, Store, Package, Sparkles } from "lucide-react";
 import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
+
+interface ProductVariant {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string;
+  stock_quantity: number;
+  image_url: string | null;
+  image_url_2: string | null;
+  image_url_3: string | null;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -18,6 +30,21 @@ interface Product {
   color: string | null;
   image_url: string | null;
   stock_quantity: number;
+  owner_id: string;
+}
+
+// A display item represents one card in the catalog (either a product or a color variant)
+interface CatalogDisplayItem {
+  id: string; // unique key for React
+  productId: string;
+  name: string;
+  description: string | null;
+  price: number;
+  category: string;
+  color: string | null;
+  sizes: string[];
+  image_url: string | null;
+  totalStock: number;
   owner_id: string;
 }
 
@@ -39,10 +66,10 @@ export default function StoreCatalog() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [fittingRoomOpen, setFittingRoomOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<CatalogDisplayItem | null>(null);
 
-  const handleOpenFittingRoom = (product: Product) => {
-    setSelectedProduct(product);
+  const handleOpenFittingRoom = (item: CatalogDisplayItem) => {
+    setSelectedProduct(item);
     setFittingRoomOpen(true);
   };
 
@@ -78,9 +105,9 @@ export default function StoreCatalog() {
     enabled: !!store?.id,
   });
 
-  // Fetch products
-  const { data: products = [], isLoading: productsLoading } = useQuery({
-    queryKey: ["catalog-products", store?.id, store?.owner_id, store?.show_own_products, partnerships],
+  // Fetch products with their variants
+  const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
+    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, partnerships],
     queryFn: async () => {
       const productIds = new Set<string>();
       const allProducts: Product[] = [];
@@ -127,19 +154,99 @@ export default function StoreCatalog() {
         }
       }
 
-      return allProducts;
+      if (allProducts.length === 0) return [];
+
+      // Fetch variants for all products
+      const { data: variants } = await supabase
+        .from("product_variants")
+        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3")
+        .in("product_id", allProducts.map(p => p.id))
+        .gt("stock_quantity", 0);
+
+      // Group variants by product and color
+      const variantsByProductColor = new Map<string, ProductVariant[]>();
+      
+      variants?.forEach(v => {
+        const key = `${v.product_id}_${v.color || '__no_color__'}`;
+        if (!variantsByProductColor.has(key)) {
+          variantsByProductColor.set(key, []);
+        }
+        variantsByProductColor.get(key)!.push(v);
+      });
+
+      // Create display items
+      const displayItems: CatalogDisplayItem[] = [];
+
+      for (const product of allProducts) {
+        // Get all variants for this product
+        const productVariants = variants?.filter(v => v.product_id === product.id) || [];
+        
+        if (productVariants.length > 0) {
+          // Group variants by color
+          const colorGroups = new Map<string, ProductVariant[]>();
+          
+          productVariants.forEach(v => {
+            const color = v.color || '__no_color__';
+            if (!colorGroups.has(color)) {
+              colorGroups.set(color, []);
+            }
+            colorGroups.get(color)!.push(v);
+          });
+
+          // Create one display item per color
+          for (const [color, colorVariants] of colorGroups) {
+            const sizes = colorVariants.map(v => v.size).filter(Boolean);
+            const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
+            
+            // Use the first variant's image, or fall back to product image
+            const variantImage = colorVariants.find(v => v.image_url)?.image_url || product.image_url;
+
+            displayItems.push({
+              id: `${product.id}_${color}`,
+              productId: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              category: product.category,
+              color: color === '__no_color__' ? null : color,
+              sizes: [...new Set(sizes)], // Remove duplicates
+              image_url: variantImage,
+              totalStock,
+              owner_id: product.owner_id,
+            });
+          }
+        } else {
+          // No variants, show product as-is
+          displayItems.push({
+            id: product.id,
+            productId: product.id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            color: product.color,
+            sizes: product.size ? [product.size] : [],
+            image_url: product.image_url,
+            totalStock: product.stock_quantity,
+            owner_id: product.owner_id,
+          });
+        }
+      }
+
+      return displayItems;
     },
     enabled: !!store,
   });
 
   // Get unique categories
-  const categories = [...new Set(products.map(p => p.category))].filter(Boolean);
+  const categories = [...new Set(catalogItems.map(p => p.category))].filter(Boolean);
 
   // Filter products
-  const filteredProducts = products.filter(p => {
+  const filteredItems = catalogItems.filter(p => {
     const matchesSearch = search === "" || 
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.description && p.description.toLowerCase().includes(search.toLowerCase()));
+      (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
+      (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
     const matchesCategory = !selectedCategory || p.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -151,10 +258,12 @@ export default function StoreCatalog() {
     }).format(price);
   };
 
-  const handleWhatsApp = (product: Product) => {
+  const handleWhatsApp = (item: CatalogDisplayItem) => {
     if (!store?.whatsapp_number) return;
+    const colorInfo = item.color ? ` - Cor: ${item.color}` : "";
+    const sizesInfo = item.sizes.length > 0 ? ` - Tamanhos: ${item.sizes.join(", ")}` : "";
     const message = encodeURIComponent(
-      `Olá! Tenho interesse no produto: ${product.name}\nPreço: ${formatPrice(product.price)}`
+      `Olá! Tenho interesse no produto: ${item.name}${colorInfo}${sizesInfo}\nPreço: ${formatPrice(item.price)}`
     );
     const phone = store.whatsapp_number.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${message}`, "_blank");
@@ -255,7 +364,7 @@ export default function StoreCatalog() {
               </Card>
             ))}
           </div>
-        ) : filteredProducts.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <div className="text-center py-12">
             <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground mb-1">Nenhum produto encontrado</h3>
@@ -263,13 +372,13 @@ export default function StoreCatalog() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredProducts.map(product => (
-              <Card key={product.id} className="overflow-hidden group">
+            {filteredItems.map(item => (
+              <Card key={item.id} className="overflow-hidden group">
                 <div className="aspect-square bg-muted relative overflow-hidden">
-                  {product.image_url ? (
+                  {item.image_url ? (
                     <img
-                      src={product.image_url}
-                      alt={product.name}
+                      src={item.image_url}
+                      alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
                   ) : (
@@ -277,7 +386,7 @@ export default function StoreCatalog() {
                       <Package className="h-12 w-12 text-muted-foreground" />
                     </div>
                   )}
-                  {product.stock_quantity <= 3 && (
+                  {item.totalStock <= 3 && (
                     <Badge className="absolute top-2 right-2" variant="destructive">
                       Últimas unidades
                     </Badge>
@@ -285,33 +394,40 @@ export default function StoreCatalog() {
                 </div>
                 <CardContent className="p-4">
                   <h3 className="font-medium text-foreground line-clamp-2 mb-1">
-                    {product.name}
+                    {item.name}
                   </h3>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {product.size && (
-                      <Badge variant="secondary" className="text-xs">
-                        {product.size}
-                      </Badge>
+                  
+                  {/* Color and sizes info */}
+                  <div className="space-y-1 mb-2">
+                    {item.color && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Cor:</span> {item.color}
+                      </p>
                     )}
-                    {product.color && (
-                      <Badge variant="secondary" className="text-xs">
-                        {product.color}
-                      </Badge>
+                    {item.sizes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {item.sizes.map(size => (
+                          <Badge key={size} variant="secondary" className="text-xs">
+                            {size}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
                   </div>
+
                   <p 
                     className="text-lg font-bold mb-3"
                     style={{ color: primaryColor }}
                   >
-                    {formatPrice(product.price)}
+                    {formatPrice(item.price)}
                   </p>
                   <div className="space-y-2">
-                    {product.image_url && (
+                    {item.image_url && (
                       <Button
                         size="sm"
                         variant="outline"
                         className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                        onClick={() => handleOpenFittingRoom(product)}
+                        onClick={() => handleOpenFittingRoom(item)}
                       >
                         <Sparkles className="h-4 w-4" />
                         Provador I.A.
@@ -322,7 +438,7 @@ export default function StoreCatalog() {
                         size="sm"
                         className="w-full gap-2"
                         style={{ backgroundColor: "#25D366" }}
-                        onClick={() => handleWhatsApp(product)}
+                        onClick={() => handleWhatsApp(item)}
                       >
                         <MessageCircle className="h-4 w-4" />
                         Comprar
@@ -347,7 +463,11 @@ export default function StoreCatalog() {
       <AIFittingRoomDialog
         open={fittingRoomOpen}
         onOpenChange={setFittingRoomOpen}
-        product={selectedProduct}
+        product={selectedProduct ? {
+          id: selectedProduct.productId,
+          name: selectedProduct.name,
+          image_url: selectedProduct.image_url,
+        } : null}
       />
     </div>
   );
