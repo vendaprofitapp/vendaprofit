@@ -519,9 +519,21 @@ export function ProductFormDialog({
       onOpenChange(false);
       resetForm();
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving product:", error);
-      toast.error(editingProduct ? "Erro ao atualizar produto" : "Erro ao criar produto");
+      const msg =
+        typeof error?.message === "string"
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : "Erro desconhecido";
+      const details =
+        typeof error?.details === "string" && error.details
+          ? ` (${error.details})`
+          : "";
+      toast.error(
+        `${editingProduct ? "Erro ao atualizar produto" : "Erro ao criar produto"}: ${msg}${details}`
+      );
     } finally {
       setSaving(false);
     }
