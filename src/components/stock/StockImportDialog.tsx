@@ -29,8 +29,16 @@ import { toast } from "sonner";
 import { SupplierSelect } from "./SupplierSelect";
 import { SupplierImageScraper } from "./SupplierImageScraper";
 
+interface ProductVariant {
+  color: string | null;
+  size: string | null;
+  quantity: number;
+  sku: string | null;
+}
+
 interface ImportedProduct {
   name: string;
+  original_name: string;
   sku: string | null;
   size: string | null;
   color: string | null;
@@ -46,6 +54,7 @@ interface ImportedProduct {
   imageUrls: string[];
   isEditing: boolean;
   hasErrors: boolean;
+  variants: ProductVariant[];
 }
 
 interface ExistingProduct {
@@ -142,11 +151,45 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     onOpenChange(false);
   };
 
-  const processProducts = (parsedProducts: Omit<ImportedProduct, "selected" | "existingProduct" | "images" | "imageUrls" | "isEditing" | "hasErrors" | "description" | "min_stock_level">[]) => {
-    const processed = parsedProducts.map(p => {
-      const existing = findDuplicate(p.name, p.sku);
+  const processProducts = (parsedProducts: { name: string; original_name?: string; sku: string | null; size: string | null; color: string | null; cost_price: number; price?: number; quantity: number; category?: string }[]) => {
+    // Group products by cleaned name to create variants
+    const productGroups = new Map<string, typeof parsedProducts>();
+    
+    for (const p of parsedProducts) {
+      const cleanName = p.name.toLowerCase().trim();
+      const existing = productGroups.get(cleanName) || [];
+      existing.push(p);
+      productGroups.set(cleanName, existing);
+    }
+
+    const processed: ImportedProduct[] = [];
+
+    for (const [, items] of productGroups) {
+      // Use the first item as the base product
+      const baseItem = items[0];
+      const existing = findDuplicate(baseItem.name, baseItem.sku);
+      
+      // Create variants from all items in the group
+      const variants: ProductVariant[] = items.map(item => ({
+        color: item.color,
+        size: item.size,
+        quantity: item.quantity,
+        sku: item.sku,
+      }));
+
+      // Calculate total quantity
+      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+
       const product: ImportedProduct = {
-        ...p,
+        name: baseItem.name,
+        original_name: items.map(i => i.original_name || i.name).join(", "),
+        sku: baseItem.sku,
+        size: variants.length === 1 ? variants[0].size : null,
+        color: variants.length === 1 ? variants[0].color : null,
+        cost_price: baseItem.cost_price,
+        price: baseItem.price || 0,
+        quantity: totalQuantity,
+        category: baseItem.category || "",
         description: "",
         min_stock_level: 5,
         selected: true,
@@ -155,10 +198,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         imageUrls: [],
         isEditing: false,
         hasErrors: false,
+        variants: variants.length > 1 ? variants : [],
       };
       product.hasErrors = checkProductErrors(product);
-      return product;
-    });
+      processed.push(product);
+    }
     
     setProducts(processed);
     setStep("review");
@@ -498,6 +542,26 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 .eq("id", newProduct.id);
             }
           }
+
+          // Create variants if there are multiple
+          if (product.variants.length > 0) {
+            const variantsToInsert = product.variants.map(v => ({
+              product_id: newProduct.id,
+              color: v.color,
+              size: v.size || "ÚNICO",
+              stock_quantity: v.quantity,
+              sku: v.sku,
+            }));
+
+            const { error: variantError } = await supabase
+              .from("product_variants")
+              .insert(variantsToInsert);
+
+            if (variantError) {
+              console.error("Error creating variants:", variantError);
+            }
+          }
+
           successCount++;
         }
       }
@@ -669,6 +733,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                           {product.sku && (
                             <span className="text-xs text-muted-foreground block">{product.sku}</span>
                           )}
+                          {product.variants.length > 0 && (
+                            <span className="text-xs text-muted-foreground block mt-1">
+                              {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -677,7 +746,13 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {product.color || "-"} / {product.size || "-"}
+                        {product.variants.length > 0 ? (
+                          <span className="text-xs">
+                            {product.variants.length} variantes
+                          </span>
+                        ) : (
+                          <span>{product.color || "-"} / {product.size || "-"}</span>
+                        )}
                       </TableCell>
                       <TableCell>R$ {product.cost_price.toFixed(2)}</TableCell>
                       <TableCell>{product.quantity}</TableCell>
