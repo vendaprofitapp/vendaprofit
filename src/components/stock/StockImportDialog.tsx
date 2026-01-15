@@ -1027,21 +1027,38 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
     setLoading(true);
 
-    // Create supplier if needed
+    // Create supplier if needed (but first check if it already exists)
     let finalSupplierId = supplierId === "none" ? null : supplierId;
     
     if (!finalSupplierId && supplierName.trim()) {
-      const { data: newSupplier, error: supplierError } = await supabase
+      // Check if supplier with this name already exists
+      const normalizedSupplierName = supplierName.trim().toLowerCase();
+      const { data: existingSupplier } = await supabase
         .from("suppliers")
-        .insert({
-          name: supplierName.trim(),
-          owner_id: user.id
-        })
-        .select("id")
-        .single();
+        .select("id, name")
+        .eq("owner_id", user.id);
+      
+      const matchingSupplier = existingSupplier?.find(s => 
+        s.name.toLowerCase().trim() === normalizedSupplierName
+      );
+      
+      if (matchingSupplier) {
+        // Use existing supplier
+        finalSupplierId = matchingSupplier.id;
+      } else {
+        // Create new supplier
+        const { data: newSupplier, error: supplierError } = await supabase
+          .from("suppliers")
+          .insert({
+            name: supplierName.trim(),
+            owner_id: user.id
+          })
+          .select("id")
+          .single();
 
-      if (!supplierError && newSupplier) {
-        finalSupplierId = newSupplier.id;
+        if (!supplierError && newSupplier) {
+          finalSupplierId = newSupplier.id;
+        }
       }
     }
 
