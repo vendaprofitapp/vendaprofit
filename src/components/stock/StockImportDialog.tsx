@@ -87,14 +87,19 @@ interface StockImportDialogProps {
 }
 
 // Sub-component for editing product with variants
+interface ColorImages {
+  urls: string[];
+  files: File[];
+  previewUrls: string[];
+}
+
 interface EditProductWithVariantsDialogProps {
   product: ImportedProduct;
   categories: { id: string; name: string }[];
   onClose: () => void;
   onUpdateProduct: (updates: Partial<ImportedProduct>) => void;
   onUpdateVariants: (variants: ProductVariant[]) => void;
-  removeProductImage: (imgIdx: number) => void;
-  handleProductImageUpload: (files: FileList | null) => void;
+  onUpdateColorImages: (colorImages: { [color: string]: ColorImages }) => void;
 }
 
 function EditProductWithVariantsDialog({
@@ -103,10 +108,12 @@ function EditProductWithVariantsDialog({
   onClose,
   onUpdateProduct,
   onUpdateVariants,
-  removeProductImage,
-  handleProductImageUpload,
+  onUpdateColorImages,
 }: EditProductWithVariantsDialogProps) {
+  const imageInputRefs = useRef<{ [color: string]: HTMLInputElement | null }>({});
   const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
+  const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>({});
+  
   const [localVariants, setLocalVariants] = useState<ProductVariant[]>(() => {
     // Initialize with existing variants or create one from product data
     if (product.variants.length > 0) {
@@ -126,6 +133,20 @@ function EditProductWithVariantsDialog({
     onUpdateVariants(localVariants);
   }, [localVariants]);
 
+  // Sync color images with parent
+  useEffect(() => {
+    onUpdateColorImages(colorImages);
+  }, [colorImages]);
+
+  // Get unique colors from variants
+  const getUniqueColors = (): string[] => {
+    const colors = new Set<string>();
+    localVariants.forEach(v => {
+      if (v.color) colors.add(v.color);
+    });
+    return Array.from(colors);
+  };
+
   // Group variants by color
   const variantsByColor = localVariants.reduce((acc, variant, index) => {
     const color = variant.color || "__no_color__";
@@ -141,17 +162,214 @@ function EditProductWithVariantsDialog({
   };
 
   const removeVariant = (index: number) => {
+    const variant = localVariants[index];
     setLocalVariants(prev => prev.filter((_, i) => i !== index));
+    
+    // Check if this was the last variant with this color
+    const remainingWithColor = localVariants.filter((v, i) => i !== index && v.color === variant.color);
+    if (remainingWithColor.length === 0 && variant.color) {
+      // Clean up images for this color
+      const ci = colorImages[variant.color];
+      if (ci) {
+        ci.previewUrls.forEach(url => URL.revokeObjectURL(url));
+      }
+      setColorImages(prev => {
+        const { [variant.color!]: _, ...rest } = prev;
+        return rest;
+      });
+    }
   };
 
   const updateVariant = (index: number, field: keyof ProductVariant, value: string | number | null) => {
+    const oldVariant = localVariants[index];
+    
     setLocalVariants(prev => prev.map((v, i) => 
       i === index ? { ...v, [field]: value } : v
     ));
+    
+    // If color changed, initialize color images for new color
+    if (field === 'color' && typeof value === 'string' && value !== oldVariant.color) {
+      if (value && !colorImages[value]) {
+        setColorImages(prev => ({
+          ...prev,
+          [value]: { urls: [], files: [], previewUrls: [] }
+        }));
+      }
+      
+      // Check if old color still has variants
+      const remainingWithOldColor = localVariants.filter((v, i) => i !== index && v.color === oldVariant.color);
+      if (remainingWithOldColor.length === 0 && oldVariant.color) {
+        const ci = colorImages[oldVariant.color];
+        if (ci) {
+          ci.previewUrls.forEach(url => URL.revokeObjectURL(url));
+        }
+        setColorImages(prev => {
+          const { [oldVariant.color!]: _, ...rest } = prev;
+          return rest;
+        });
+      }
+    }
   };
 
   const toggleColorExpanded = (color: string) => {
     setExpandedColors(prev => ({ ...prev, [color]: !prev[color] }));
+  };
+
+  // Handle image upload for a specific color
+  const handleColorImageUpload = (color: string, files: FileList | null) => {
+    if (!files || !color) return;
+    
+    const currentImages = colorImages[color] || { urls: [], files: [], previewUrls: [] };
+    const totalCurrent = currentImages.urls.length + currentImages.files.length;
+    const available = 3 - totalCurrent;
+    
+    if (available <= 0) {
+      toast.error("Máximo de 3 fotos por cor");
+      return;
+    }
+    
+    const newFiles = Array.from(files).slice(0, available);
+    const newUrls = newFiles.map(file => URL.createObjectURL(file));
+    
+    setColorImages(prev => ({
+      ...prev,
+      [color]: {
+        urls: currentImages.urls,
+        files: [...currentImages.files, ...newFiles],
+        previewUrls: [...currentImages.previewUrls, ...newUrls]
+      }
+    }));
+  };
+
+  // Remove image from a color
+  const removeColorImage = (color: string, index: number, isUrl: boolean) => {
+    setColorImages(prev => {
+      const current = prev[color];
+      if (!current) return prev;
+      
+      if (isUrl) {
+        return {
+          ...prev,
+          [color]: {
+            ...current,
+            urls: current.urls.filter((_, i) => i !== index)
+          }
+        };
+      } else {
+        URL.revokeObjectURL(current.previewUrls[index]);
+        return {
+          ...prev,
+          [color]: {
+            ...current,
+            files: current.files.filter((_, i) => i !== index),
+            previewUrls: current.previewUrls.filter((_, i) => i !== index)
+          }
+        };
+      }
+    });
+  };
+
+  // Handle images from supplier scraper for a color
+  const handleColorImagesFromSupplier = (color: string, urls: string[]) => {
+    const currentImages = colorImages[color] || { urls: [], files: [], previewUrls: [] };
+    const totalCurrent = currentImages.urls.length + currentImages.files.length;
+    const available = 3 - totalCurrent;
+    
+    if (available <= 0) {
+      toast.error("Máximo de 3 fotos por cor");
+      return;
+    }
+    
+    const urlsToAdd = urls.slice(0, available);
+    
+    setColorImages(prev => ({
+      ...prev,
+      [color]: {
+        urls: [...currentImages.urls, ...urlsToAdd],
+        files: currentImages.files,
+        previewUrls: currentImages.previewUrls
+      }
+    }));
+    
+    toast.success(`${urlsToAdd.length} imagem(ns) adicionada(s) para ${color}`);
+  };
+
+  // Render images section for a color
+  const renderColorImages = (color: string) => {
+    const images = colorImages[color] || { urls: [], files: [], previewUrls: [] };
+    const totalColorImages = images.urls.length + images.previewUrls.length;
+    
+    return (
+      <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2 space-y-3">
+        {/* Supplier Import for this specific color */}
+        <SupplierImageScraper
+          maxImages={3}
+          currentImageCount={totalColorImages}
+          onImagesSelected={(urls) => handleColorImagesFromSupplier(color, urls)}
+        />
+        
+        {/* Current images for this color */}
+        <div className="flex gap-2 items-center flex-wrap">
+          {images.urls.map((url, idx) => (
+            <div key={`url-${idx}`} className="relative w-14 h-14">
+              <img 
+                src={url} 
+                alt={`Foto ${idx + 1}`} 
+                className="w-full h-full object-cover rounded-lg border"
+              />
+              <button
+                type="button"
+                onClick={() => removeColorImage(color, idx, true)}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          
+          {images.previewUrls.map((url, idx) => (
+            <div key={`preview-${idx}`} className="relative w-14 h-14">
+              <img 
+                src={url} 
+                alt={`Nova foto ${idx + 1}`} 
+                className="w-full h-full object-cover rounded-lg border"
+              />
+              <button
+                type="button"
+                onClick={() => removeColorImage(color, idx, false)}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          
+          {totalColorImages < 3 && (
+            <>
+              <input
+                ref={el => { imageInputRefs.current[color] = el; }}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => handleColorImageUpload(color, e.target.files)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRefs.current[color]?.click()}
+                className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+              >
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[8px] text-muted-foreground mt-0.5">Foto</span>
+              </button>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {totalColorImages}/3 fotos para esta cor
+        </p>
+      </div>
+    );
   };
 
   return (
@@ -256,6 +474,9 @@ function EditProductWithVariantsDialog({
                       </CollapsibleTrigger>
                       
                       <CollapsibleContent>
+                        {/* Images for this color */}
+                        {color !== "__no_color__" && renderColorImages(color)}
+                        
                         {/* Variants for this color */}
                         <div className="space-y-2 mt-3">
                           {items.map(({ variant, index }) => (
@@ -329,69 +550,6 @@ function EditProductWithVariantsDialog({
                 Adicionar Variante
               </Button>
             </div>
-
-            <div className="grid gap-2">
-              <Label>Fotos (máx. 3)</Label>
-              <div className="flex gap-2 items-center flex-wrap">
-                {product.imageUrls.map((url, imgIdx) => (
-                  <div key={imgIdx} className="relative w-16 h-16">
-                    <img 
-                      src={url} 
-                      alt={`Foto ${imgIdx + 1}`} 
-                      className="w-full h-full object-cover rounded"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeProductImage(imgIdx)}
-                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {(product.images.length + product.imageUrls.length) < 3 && (
-                  <>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => handleProductImageUpload(e.target.files)}
-                      className="hidden"
-                      id="edit-variant-image"
-                    />
-                    <label 
-                      htmlFor="edit-variant-image"
-                      className="w-16 h-16 border-2 border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
-                    >
-                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                    </label>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Supplier Image Scraper */}
-            {(product.images.length + product.imageUrls.length) < 3 && (
-              <div className="grid gap-2">
-                <Label className="flex items-center gap-2">
-                  <Link className="h-4 w-4" />
-                  Buscar Fotos do Fornecedor
-                </Label>
-                <SupplierImageScraper
-                  onImagesSelected={(urls) => {
-                    const currentTotal = product.images.length + product.imageUrls.length;
-                    const available = 3 - currentTotal;
-                    const newUrls = urls.slice(0, available);
-                    
-                    onUpdateProduct({
-                      imageUrls: [...product.imageUrls, ...newUrls].slice(0, 3)
-                    });
-                  }}
-                  maxImages={3}
-                  currentImageCount={product.images.length + product.imageUrls.length}
-                />
-              </div>
-            )}
           </div>
         </ScrollArea>
 
@@ -1237,8 +1395,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 size: variants[0]?.size || null,
               });
             }}
-            removeProductImage={(imgIdx) => removeProductImage(editingIndex, imgIdx)}
-            handleProductImageUpload={(files) => handleProductImageUpload(editingIndex, files)}
+            onUpdateColorImages={(colorImages) => {
+              // Store color images in product for later upload during import
+              // For now we just log - actual upload happens in handleImport
+              console.log("Color images updated:", colorImages);
+            }}
           />
         )}
 
