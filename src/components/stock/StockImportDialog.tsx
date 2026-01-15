@@ -52,6 +52,12 @@ interface ProductVariant {
   sku: string | null;
 }
 
+interface ColorImages {
+  urls: string[];
+  files: File[];
+  previewUrls: string[];
+}
+
 interface ImportedProduct {
   name: string;
   original_name: string;
@@ -71,6 +77,7 @@ interface ImportedProduct {
   isEditing: boolean;
   hasErrors: boolean;
   variants: ProductVariant[];
+  colorImages: { [color: string]: ColorImages };
 }
 
 interface ExistingProduct {
@@ -87,11 +94,6 @@ interface StockImportDialogProps {
 }
 
 // Sub-component for editing product with variants
-interface ColorImages {
-  urls: string[];
-  files: File[];
-  previewUrls: string[];
-}
 
 interface EditProductWithVariantsDialogProps {
   product: ImportedProduct;
@@ -112,7 +114,10 @@ function EditProductWithVariantsDialog({
 }: EditProductWithVariantsDialogProps) {
   const imageInputRefs = useRef<{ [color: string]: HTMLInputElement | null }>({});
   const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
-  const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>({});
+  // Initialize colorImages from product.colorImages if available
+  const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>(() => {
+    return product.colorImages || {};
+  });
   
   const [localVariants, setLocalVariants] = useState<ProductVariant[]>(() => {
     // Initialize with existing variants or create one from product data
@@ -682,8 +687,12 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     // Group products by cleaned name to create variants
     const productGroups = new Map<string, typeof parsedProducts>();
     
+    // Normalize name: lowercase, trim, and collapse multiple spaces to single space
+    const normalizeName = (name: string) => 
+      name.toLowerCase().trim().replace(/\s+/g, ' ');
+
     for (const p of expandedProducts) {
-      const cleanName = p.name.toLowerCase().trim();
+      const cleanName = normalizeName(p.name);
       const existing = productGroups.get(cleanName) || [];
       existing.push(p);
       productGroups.set(cleanName, existing);
@@ -716,7 +725,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       console.log(`Produto "${groupName}": ${items.length} item(s), hasVariantInfo: ${hasVariantInfo}, variants:`, variants);
 
       const product: ImportedProduct = {
-        name: baseItem.name,
+        name: baseItem.name.trim().replace(/\s+/g, ' '), // Normalize name spaces
         original_name: items.map(i => i.original_name || i.name).join(", "),
         sku: baseItem.sku,
         // Always populate color/size from first variant
@@ -736,6 +745,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         hasErrors: false,
         // Store variants if more than 1 item OR if we have variant info
         variants: items.length > 1 ? variants : (hasVariantInfo ? variants : []),
+        colorImages: {},
       };
       product.hasErrors = checkProductErrors(product);
       processed.push(product);
@@ -944,15 +954,18 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     }));
   };
 
-  const uploadProductImages = async (productId: string, images: File[]): Promise<string[]> => {
+  const uploadProductImages = async (productId: string, images: File[], subfolder?: string): Promise<string[]> => {
     if (!user || images.length === 0) return [];
     
     const urls: string[] = [];
+    const pathPrefix = subfolder 
+      ? `${user.id}/${productId}/${subfolder}` 
+      : `${user.id}/${productId}`;
     
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
       const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${productId}/${i + 1}.${fileExt}`;
+      const fileName = `${pathPrefix}/${i + 1}.${fileExt}`;
       
       const { error } = await supabase.storage
         .from('product-images')
@@ -1086,13 +1099,37 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
           // Create variants if there are multiple
           if (product.variants.length > 0) {
-            const variantsToInsert = product.variants.map(v => ({
-              product_id: newProduct.id,
-              color: v.color,
-              size: v.size || "ÚNICO",
-              stock_quantity: v.quantity,
-              sku: v.sku,
-            }));
+            // First, upload color images and collect URLs by color
+            const colorImageUrls: { [color: string]: string[] } = {};
+            
+            for (const [color, colorData] of Object.entries(product.colorImages)) {
+              const uploadedUrls: string[] = [];
+              
+              // Upload file images for this color
+              if (colorData.files.length > 0) {
+                const uploaded = await uploadProductImages(newProduct.id, colorData.files, color.replace(/\s+/g, '_'));
+                uploadedUrls.push(...uploaded);
+              }
+              
+              // Add external URLs
+              uploadedUrls.push(...colorData.urls);
+              
+              colorImageUrls[color] = uploadedUrls.slice(0, 3);
+            }
+
+            const variantsToInsert = product.variants.map(v => {
+              const colorUrls = v.color ? (colorImageUrls[v.color] || []) : [];
+              return {
+                product_id: newProduct.id,
+                color: v.color,
+                size: v.size || "ÚNICO",
+                stock_quantity: v.quantity,
+                sku: v.sku,
+                image_url: colorUrls[0] || null,
+                image_url_2: colorUrls[1] || null,
+                image_url_3: colorUrls[2] || null,
+              };
+            });
 
             const { error: variantError } = await supabase
               .from("product_variants")
@@ -1100,6 +1137,19 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
             if (variantError) {
               console.error("Error creating variants:", variantError);
+            }
+            
+            // Also use first variant's image as main product image if not set
+            const firstColorWithImages = Object.values(colorImageUrls).find(urls => urls.length > 0);
+            if (firstColorWithImages && firstColorWithImages.length > 0 && !product.imageUrls.length && !product.images.length) {
+              await supabase
+                .from("products")
+                .update({
+                  image_url: firstColorWithImages[0] || null,
+                  image_url_2: firstColorWithImages[1] || null,
+                  image_url_3: firstColorWithImages[2] || null,
+                })
+                .eq("id", newProduct.id);
             }
           }
 
@@ -1397,8 +1447,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             }}
             onUpdateColorImages={(colorImages) => {
               // Store color images in product for later upload during import
-              // For now we just log - actual upload happens in handleImport
-              console.log("Color images updated:", colorImages);
+              updateProduct(editingIndex, { colorImages });
             }}
           />
         )}
