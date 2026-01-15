@@ -152,12 +152,44 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   };
 
   const processProducts = (parsedProducts: { name: string; original_name?: string; sku: string | null; size: string | null; color: string | null; cost_price: number; price?: number; quantity: number; category?: string }[]) => {
-    console.log("Processando produtos:", parsedProducts);
+    // Expand items that contain multiple colors in a single line (e.g. "ROSA, NAVY BLUE E PRETA")
+    const splitColors = (raw: string) => {
+      const cleaned = raw
+        .replace(/\s+e\s+/gi, ",")
+        .replace(/\s+&\s+/g, ",")
+        .replace(/\s+ou\s+/gi, ",")
+        .replace(/\//g, ",");
+
+      return cleaned
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean)
+        // remove duplicates while keeping order
+        .filter((c, idx, arr) => arr.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === idx);
+    };
+
+    const expandedProducts = parsedProducts.flatMap((p) => {
+      const colors = p.color ? splitColors(p.color) : [];
+      if (colors.length <= 1) return [p];
+
+      // Distribute quantity across colors (keeps total quantity the same)
+      const base = Math.floor((p.quantity || 0) / colors.length);
+      let remainder = (p.quantity || 0) - base * colors.length;
+
+      return colors.map((color) => {
+        const q = base + (remainder > 0 ? 1 : 0);
+        remainder = Math.max(0, remainder - 1);
+        return { ...p, color, quantity: q };
+      });
+    }).filter((p) => (p.quantity || 0) > 0);
+
+    console.log("Processando produtos (original):", parsedProducts);
+    console.log("Processando produtos (expandido):", expandedProducts);
     
     // Group products by cleaned name to create variants
     const productGroups = new Map<string, typeof parsedProducts>();
     
-    for (const p of parsedProducts) {
+    for (const p of expandedProducts) {
       const cleanName = p.name.toLowerCase().trim();
       const existing = productGroups.get(cleanName) || [];
       existing.push(p);
