@@ -591,15 +591,24 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     }
   }, [user, open]);
 
+  // Extended interface for existing products with category
+  interface ExistingProductWithCategory extends ExistingProduct {
+    category: string;
+  }
+  
+  const [existingProductsFull, setExistingProductsFull] = useState<ExistingProductWithCategory[]>([]);
+
   const fetchExistingProducts = async () => {
     if (!user) return;
     
     const { data } = await supabase
       .from("products")
-      .select("id, name, sku, stock_quantity")
+      .select("id, name, sku, stock_quantity, category")
       .eq("owner_id", user.id);
     
-    setExistingProducts(data || []);
+    // Also set for backward compatibility
+    setExistingProducts(data?.map(p => ({ id: p.id, name: p.name, sku: p.sku, stock_quantity: p.stock_quantity })) || []);
+    setExistingProductsFull(data || []);
   };
 
   const fetchCategories = async () => {
@@ -614,24 +623,31 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     setCategories(data || []);
   };
 
-  const findDuplicate = (name: string, sku: string | null): ExistingProduct | null => {
+  // Normalize name: lowercase, trim, and collapse multiple spaces to single space
+  const normalizeName = (name: string) => 
+    name.toLowerCase().trim().replace(/\s+/g, ' ');
+
+  const findDuplicate = (name: string, sku: string | null): ExistingProductWithCategory | null => {
     // Check by SKU first (more reliable)
     if (sku) {
-      const skuMatch = existingProducts.find(p => 
+      const skuMatch = existingProductsFull.find(p => 
         p.sku?.toLowerCase() === sku.toLowerCase()
       );
       if (skuMatch) return skuMatch;
     }
     
-    // Check by name (case insensitive, trimmed)
-    const nameMatch = existingProducts.find(p => 
-      p.name.toLowerCase().trim() === name.toLowerCase().trim()
+    // Check by name (normalized - case insensitive, trimmed, collapsed spaces)
+    const normalizedName = normalizeName(name);
+    const nameMatch = existingProductsFull.find(p => 
+      normalizeName(p.name) === normalizedName
     );
     
     return nameMatch || null;
   };
 
   const checkProductErrors = (product: ImportedProduct): boolean => {
+    // Products matching existing ones don't need category
+    if (product.existingProduct) return !product.name.trim();
     return !product.name.trim() || !product.category;
   };
 
@@ -686,10 +702,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     
     // Group products by cleaned name to create variants
     const productGroups = new Map<string, typeof parsedProducts>();
-    
-    // Normalize name: lowercase, trim, and collapse multiple spaces to single space
-    const normalizeName = (name: string) => 
-      name.toLowerCase().trim().replace(/\s+/g, ' ');
 
     for (const p of expandedProducts) {
       const cleanName = normalizeName(p.name);
@@ -724,6 +736,9 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       
       console.log(`Produto "${groupName}": ${items.length} item(s), hasVariantInfo: ${hasVariantInfo}, variants:`, variants);
 
+      // Inherit category from existing product if available
+      const inheritedCategory = existing?.category || baseItem.category || "";
+
       const product: ImportedProduct = {
         name: baseItem.name.trim().replace(/\s+/g, ' '), // Normalize name spaces
         original_name: items.map(i => i.original_name || i.name).join(", "),
@@ -734,7 +749,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         cost_price: baseItem.cost_price,
         price: baseItem.price || 0,
         quantity: totalQuantity,
-        category: baseItem.category || "",
+        category: inheritedCategory,
         description: "",
         min_stock_level: 5,
         selected: true,
@@ -923,6 +938,18 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     setProducts(prev => prev.map((p, i) => {
       if (i !== index) return p;
       const updated = { ...p, ...updates };
+      
+      // If name was changed, re-check for existing product
+      if (updates.name !== undefined && updates.name !== p.name) {
+        const existingMatch = findDuplicate(updates.name, updated.sku);
+        updated.existingProduct = existingMatch;
+        
+        // If we found an existing product, inherit its category
+        if (existingMatch && existingMatch.category) {
+          updated.category = existingMatch.category;
+        }
+      }
+      
       updated.hasErrors = checkProductErrors(updated);
       return updated;
     }));
