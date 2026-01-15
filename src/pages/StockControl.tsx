@@ -45,6 +45,7 @@ interface Product {
   price: number;
   cost_price: number | null;
   sku: string | null;
+  // OBS: tamanho/cor principais ficam nas variantes
   size: string | null;
   color: string | null;
   stock_quantity: number;
@@ -56,6 +57,10 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
+  product_variants?: Array<{
+    size: string;
+    color: string | null;
+  }>;
 }
 
 interface StockRequest {
@@ -156,14 +161,17 @@ export default function StockControl() {
   const fetchProducts = async () => {
     const { data, error } = await supabase
       .from("products")
-      .select("*")
+      .select(`
+        *,
+        product_variants ( size, color )
+      `)
       .eq("owner_id", user?.id)
       .order("created_at", { ascending: false });
-    
+
     if (error) {
       toast.error("Erro ao carregar produtos");
     } else {
-      setProducts(data || []);
+      setProducts((data || []) as Product[]);
     }
   };
 
@@ -208,15 +216,17 @@ export default function StockControl() {
     // 3) carrega dados dos produtos (exceto meus)
     const { data, error } = await supabase
       .from("products")
-      .select("*")
+      .select(`
+        *,
+        product_variants ( size, color )
+      `)
       .in("id", productIds)
       .neq("owner_id", user.id)
       .order("created_at", { ascending: false });
 
     if (!error) {
-      setPartnerProducts(data || []);
+      setPartnerProducts((data || []) as Product[]);
     }
-  };
 
   const fetchRequests = async () => {
     const { data: myReqs } = await supabase
@@ -336,6 +346,28 @@ export default function StockControl() {
     if (quantity === 0) return { label: "Esgotado", variant: "destructive" as const };
     if (quantity <= minLevel) return { label: "Baixo", variant: "secondary" as const };
     return { label: "OK", variant: "default" as const };
+  };
+
+  const getProductSizesLabel = (product: Product) => {
+    const sizes = new Set(
+      (product.product_variants || [])
+        .map((v) => (v.size || "").trim())
+        .filter(Boolean)
+    );
+
+    if (sizes.size > 0) return Array.from(sizes).join(", ");
+    return product.size || "-";
+  };
+
+  const getProductColorsLabel = (product: Product) => {
+    const colors = new Set(
+      (product.product_variants || [])
+        .map((v) => (v.color || "").trim())
+        .filter(Boolean)
+    );
+
+    if (colors.size > 0) return Array.from(colors).join(", ");
+    return product.color || "-";
   };
 
   const getRequestStatus = (status: string) => {
@@ -480,10 +512,10 @@ export default function StockControl() {
                         </TableCell>
                         <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">
-                          {product.size || "-"}
+                          {getProductSizesLabel(product)}
                         </TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">
-                          {product.color || "-"}
+                          {getProductColorsLabel(product)}
                         </TableCell>
                         <TableCell className="font-medium whitespace-nowrap">
                           R$ {product.price.toFixed(2).replace(".", ",")}
@@ -540,7 +572,8 @@ export default function StockControl() {
                 <TableRow>
                   <TableHead>Produto</TableHead>
                   <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                  <TableHead className="hidden sm:table-cell">Tam/Cor</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tamanho</TableHead>
+                  <TableHead className="hidden sm:table-cell">Cor</TableHead>
                   <TableHead>Estoque</TableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -549,13 +582,13 @@ export default function StockControl() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Carregando...
                     </TableCell>
                   </TableRow>
                 ) : filteredPartnerProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Nenhum produto de parceiro disponível
                     </TableCell>
                   </TableRow>
@@ -587,7 +620,10 @@ export default function StockControl() {
                         </TableCell>
                         <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">
-                          {product.size || "-"} / {product.color || "-"}
+                          {getProductSizesLabel(product)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground hidden sm:table-cell">
+                          {getProductColorsLabel(product)}
                         </TableCell>
                         <TableCell>{product.stock_quantity}</TableCell>
                         <TableCell className="hidden sm:table-cell">
