@@ -152,6 +152,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   };
 
   const processProducts = (parsedProducts: { name: string; original_name?: string; sku: string | null; size: string | null; color: string | null; cost_price: number; price?: number; quantity: number; category?: string }[]) => {
+    console.log("Processando produtos:", parsedProducts);
+    
     // Group products by cleaned name to create variants
     const productGroups = new Map<string, typeof parsedProducts>();
     
@@ -162,14 +164,17 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       productGroups.set(cleanName, existing);
     }
 
+    console.log("Grupos de produtos:", Array.from(productGroups.entries()));
+
     const processed: ImportedProduct[] = [];
 
-    for (const [, items] of productGroups) {
+    for (const [groupName, items] of productGroups) {
       // Use the first item as the base product
       const baseItem = items[0];
       const existing = findDuplicate(baseItem.name, baseItem.sku);
       
       // Create variants from all items in the group
+      // Always create variants if we have color OR size detected
       const variants: ProductVariant[] = items.map(item => ({
         color: item.color,
         size: item.size,
@@ -180,12 +185,18 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       // Calculate total quantity
       const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
+      // Check if any variant has color or size
+      const hasVariantInfo = variants.some(v => v.color || v.size);
+      
+      console.log(`Produto "${groupName}": ${items.length} item(s), hasVariantInfo: ${hasVariantInfo}, variants:`, variants);
+
       const product: ImportedProduct = {
         name: baseItem.name,
         original_name: items.map(i => i.original_name || i.name).join(", "),
         sku: baseItem.sku,
-        size: variants.length === 1 ? variants[0].size : null,
-        color: variants.length === 1 ? variants[0].color : null,
+        // Always populate color/size from first variant
+        size: variants[0]?.size || null,
+        color: variants[0]?.color || null,
         cost_price: baseItem.cost_price,
         price: baseItem.price || 0,
         quantity: totalQuantity,
@@ -198,12 +209,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         imageUrls: [],
         isEditing: false,
         hasErrors: false,
-        variants: variants.length > 1 ? variants : [],
+        // Store variants if more than 1 item OR if we have variant info
+        variants: items.length > 1 ? variants : (hasVariantInfo ? variants : []),
       };
       product.hasErrors = checkProductErrors(product);
       processed.push(product);
     }
     
+    console.log("Produtos processados finais:", processed);
     setProducts(processed);
     setStep("review");
   };
@@ -321,6 +334,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
         const parsedProducts = (invoiceData.products || []).map((p: any) => ({
           name: p.name || "Produto sem nome",
+          original_name: p.original_name || p.name || "Produto sem nome",
           sku: p.sku || null,
           size: p.size || null,
           color: p.color || null,
@@ -329,6 +343,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           quantity: parseInt(p.quantity) || 1,
           category: p.category || "",
         }));
+        
+        console.log("Produtos parseados da IA:", parsedProducts);
 
         if (parsedProducts.length === 0) {
           toast.error("Nenhum produto identificado na nota fiscal");
