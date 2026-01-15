@@ -11,6 +11,7 @@ import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 interface ProductVariant {
@@ -638,6 +639,7 @@ interface ProductCardProps {
 
 function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: ProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
+  const [imageOpen, setImageOpen] = useState(false);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -655,85 +657,117 @@ function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: Pro
   };
 
   return (
-    <Card className="overflow-hidden group">
-      <div className="aspect-square bg-muted relative overflow-hidden">
-        {item.image_url ? (
-          <img
-            src={item.image_url}
-            alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Package className="h-12 w-12 text-muted-foreground" />
-          </div>
-        )}
-        {item.totalStock <= 3 && (
-          <Badge className="absolute top-2 right-2" variant="destructive">
-            Últimas unidades
-          </Badge>
-        )}
-      </div>
-      <CardContent className="p-4">
-        <h3 className="font-medium text-foreground line-clamp-2 mb-1">
-          {item.name}
-        </h3>
-        
-        {/* Color info */}
-        {item.color && (
-          <p className="text-sm text-muted-foreground mb-2">
-            <span className="font-medium">Cor:</span> {item.color}
-          </p>
-        )}
-
-        <p 
-          className="text-lg font-bold mb-3"
-          style={{ color: primaryColor }}
+    <>
+      <Card className="overflow-hidden group">
+        <div 
+          className="aspect-square bg-muted relative overflow-hidden cursor-pointer"
+          onClick={() => item.image_url && setImageOpen(true)}
         >
-          {formatPrice(item.price)}
-        </p>
+          {item.image_url ? (
+            <img
+              src={item.image_url}
+              alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Package className="h-12 w-12 text-muted-foreground" />
+            </div>
+          )}
+          {item.totalStock <= 3 && (
+            <Badge className="absolute top-2 right-2" variant="destructive">
+              Últimas unidades
+            </Badge>
+          )}
+        </div>
+        <CardContent className="p-4">
+          <h3 className="font-medium text-foreground line-clamp-2 mb-1">
+            {item.name}
+          </h3>
+          
+          {/* Color info */}
+          {item.color && (
+            <p className="text-sm text-muted-foreground mb-2">
+              <span className="font-medium">Cor:</span> {item.color}
+            </p>
+          )}
 
-        {/* Size selector */}
-        {item.sizes.length > 0 && (
-          <div className="mb-3">
-            <Select value={selectedSize} onValueChange={setSelectedSize}>
-              <SelectTrigger className="w-full h-9">
-                <SelectValue placeholder="Selecione o tamanho" />
-              </SelectTrigger>
-              <SelectContent>
-                {item.sizes.map(size => (
-                  <SelectItem key={size} value={size}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+          <p 
+            className="text-lg font-bold mb-3"
+            style={{ color: primaryColor }}
+          >
+            {formatPrice(item.price)}
+          </p>
 
-        <div className="space-y-2">
-          {item.image_url && (
+          {/* Size selector */}
+          {item.sizes.length > 0 && (
+            <div className="mb-3">
+              <Select value={selectedSize} onValueChange={setSelectedSize}>
+                <SelectTrigger className="w-full h-9">
+                  <SelectValue placeholder="Selecione o tamanho" />
+                </SelectTrigger>
+                <SelectContent>
+                  {item.sizes.map(size => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {item.image_url && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                onClick={() => onOpenFittingRoom(item)}
+              >
+                <Sparkles className="h-4 w-4" />
+                Provador I.A.
+              </Button>
+            )}
             <Button
               size="sm"
-              variant="outline"
-              className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-              onClick={() => onOpenFittingRoom(item)}
+              className="w-full gap-2"
+              style={{ backgroundColor: primaryColor }}
+              onClick={handleAddToCart}
             >
-              <Sparkles className="h-4 w-4" />
-              Provador I.A.
+              <ShoppingCart className="h-4 w-4" />
+              Adicionar
             </Button>
-          )}
-          <Button
-            size="sm"
-            className="w-full gap-2"
-            style={{ backgroundColor: primaryColor }}
-            onClick={handleAddToCart}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Image Lightbox Dialog */}
+      <Dialog open={imageOpen} onOpenChange={setImageOpen}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none">
+          <button
+            onClick={() => setImageOpen(false)}
+            className="absolute top-3 right-3 z-10 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
           >
-            <ShoppingCart className="h-4 w-4" />
-            Adicionar
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            <X className="h-6 w-6" />
+          </button>
+          {item.image_url && (
+            <div className="flex items-center justify-center p-4 min-h-[50vh]">
+              <img
+                src={item.image_url}
+                alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              />
+            </div>
+          )}
+          <div className="absolute bottom-4 left-0 right-0 text-center">
+            <p className="text-white font-medium text-lg drop-shadow-lg">
+              {item.name}
+              {item.color && <span className="text-white/80"> - {item.color}</span>}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
