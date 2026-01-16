@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   Plus, Search, Edit, Trash2, Users, 
-  ArrowRightLeft, Check, X, Clock, Upload, Package, Copy, Filter
+  ArrowRightLeft, Check, X, Clock, Upload, Package, Copy, Filter, Globe
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { StockImportDialog } from "@/components/stock/StockImportDialog";
 import { ProductFormDialog } from "@/components/stock/ProductFormDialog";
+import { SupplierBulkImportDialog } from "@/components/stock/SupplierBulkImportDialog";
 import { VoiceStockDialog } from "@/components/stock/VoiceStockDialog";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
@@ -116,6 +117,7 @@ export default function StockControl() {
 
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [supplierImportDialogOpen, setSupplierImportDialogOpen] = useState(false);
 
   // Request form state
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
@@ -538,6 +540,12 @@ export default function StockControl() {
             showLabel
             className="gap-2"
           />
+          
+          <Button variant="outline" size="sm" onClick={() => setSupplierImportDialogOpen(true)}>
+            <Globe className="h-4 w-4 mr-2" />
+            <span className="hidden sm:inline">Importar do Site</span>
+            <span className="sm:hidden">Site</span>
+          </Button>
           
           <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -995,6 +1003,13 @@ export default function StockControl() {
       <StockImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
+        onImportComplete={fetchProducts}
+      />
+
+      {/* Supplier Bulk Import Dialog */}
+      <SupplierBulkImportDialog
+        open={supplierImportDialogOpen}
+        onOpenChange={setSupplierImportDialogOpen}
         onImportComplete={fetchProducts}
       />
     </MainLayout>
