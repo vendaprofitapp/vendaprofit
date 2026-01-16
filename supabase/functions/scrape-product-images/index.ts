@@ -133,6 +133,52 @@ function extractCategory(html: string, markdown: string, productName: string): s
   return null;
 }
 
+// Helper function to make request with retry
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // If we get a 502/503/504, retry after a delay
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        console.log(`Attempt ${attempt + 1}/${maxRetries} failed with ${response.status}, retrying...`);
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // exponential backoff, max 5s
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      if (lastError.name === 'AbortError') {
+        console.log(`Attempt ${attempt + 1}/${maxRetries} timed out, retrying...`);
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      // For other errors, throw immediately
+      throw error;
+    }
+  }
+  
+  throw lastError || new Error('Max retries reached');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -165,13 +211,9 @@ Deno.serve(async (req) => {
 
     console.log('Scraping product page:', formattedUrl);
 
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
-
     let response;
     try {
-      response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      response = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -183,25 +225,22 @@ Deno.serve(async (req) => {
           onlyMainContent: true,
           waitFor: 1000,
         }),
-        signal: controller.signal,
       });
     } catch (fetchError: unknown) {
-      clearTimeout(timeoutId);
       const error = fetchError as Error;
-      if (error.name === 'AbortError') {
-        console.error('Request timed out for:', formattedUrl);
+      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+        console.error('Request timed out after retries for:', formattedUrl);
         return new Response(
-          JSON.stringify({ success: false, error: 'Tempo limite excedido ao acessar a página' }),
+          JSON.stringify({ success: false, error: 'Tempo limite excedido. Tente novamente.' }),
           { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      console.error('Fetch error:', error.message);
+      console.error('Fetch error after retries:', error.message);
       return new Response(
-        JSON.stringify({ success: false, error: 'Erro de conexão com o serviço de scraping' }),
+        JSON.stringify({ success: false, error: 'Erro de conexão. Tente novamente em alguns segundos.' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    clearTimeout(timeoutId);
 
     // Check for non-OK responses before trying to parse JSON
     if (!response.ok) {
@@ -211,7 +250,7 @@ Deno.serve(async (req) => {
       // Handle common error statuses
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Serviço temporariamente indisponível. Tente novamente.' }),
+          JSON.stringify({ success: false, error: 'Serviço temporariamente indisponível. Tente novamente em alguns segundos.' }),
           { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
