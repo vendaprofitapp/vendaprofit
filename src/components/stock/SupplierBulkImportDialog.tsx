@@ -401,6 +401,11 @@ export function SupplierBulkImportDialog({
     return filter.charAt(0).toUpperCase() + filter.slice(1);
   };
 
+  // Helper to remove accents from string for comparison
+  const removeAccents = (str: string): string => {
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  };
+
   // Helper to normalize base name for consistent comparison
   const normalizeBaseName = (name: string): string => {
     // Convert to title case for consistent display
@@ -418,8 +423,8 @@ export function SupplierBulkImportDialog({
 
     for (const product of successProducts) {
       const { baseName, color, size } = extractBaseName(product.name || "");
-      // Use lowercase key for grouping (case-insensitive)
-      const key = baseName.toLowerCase().trim();
+      // Use lowercase + remove accents for grouping (case-insensitive and accent-insensitive)
+      const key = removeAccents(baseName.toLowerCase().trim());
       // Normalize the display name to title case
       const normalizedBaseName = normalizeBaseName(baseName);
 
