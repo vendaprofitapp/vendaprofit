@@ -17,6 +17,7 @@ import {
   Tag,
   Palette,
   Ruler,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,6 +173,10 @@ export function SupplierBulkImportDialog({
   const [newSizeInput, setNewSizeInput] = useState<string>("");
   // Maximum photos per product (1-3)
   const [maxPhotosPerProduct, setMaxPhotosPerProduct] = useState<number>(3);
+  // Default prices for all products (can be changed individually in review)
+  const [defaultCostPrice, setDefaultCostPrice] = useState<number>(0);
+  const [defaultSalePrice, setDefaultSalePrice] = useState<number>(0);
+  const [useDefaultPrices, setUseDefaultPrices] = useState<boolean>(false);
 
   useEffect(() => {
     if (open && user) {
@@ -433,8 +438,8 @@ export function SupplierBulkImportDialog({
           id: crypto.randomUUID(),
           baseName: normalizedBaseName,
           category: categoryFromFilter,
-          costPrice: product.price || 0,
-          salePrice: Math.round((product.price || 0) * markupPercentage * 100) / 100,
+          costPrice: useDefaultPrices && defaultCostPrice > 0 ? defaultCostPrice : (product.price || 0),
+          salePrice: useDefaultPrices && defaultSalePrice > 0 ? defaultSalePrice : Math.round((product.price || 0) * markupPercentage * 100) / 100,
           description: product.description || "",
           images: allImages,
           selectedImageIndices: allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx), // Select first N by config
@@ -770,6 +775,9 @@ export function SupplierBulkImportDialog({
     setAvailableSizes(["P", "M", "G", "GG"]);
     setNewSizeInput("");
     setMaxPhotosPerProduct(3);
+    setDefaultCostPrice(0);
+    setDefaultSalePrice(0);
+    setUseDefaultPrices(false);
     onOpenChange(false);
   };
 
@@ -976,25 +984,76 @@ export function SupplierBulkImportDialog({
                       </div>
 
                       <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-                        <h4 className="font-medium text-sm">Markup / Margem</h4>
+                        <h4 className="font-medium text-sm flex items-center gap-2">
+                          <DollarSign className="h-4 w-4" />
+                          Preços
+                        </h4>
+                        
                         <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="1"
-                            value={markupPercentage}
-                            onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
-                            className="h-8 text-sm w-20"
+                          <Checkbox
+                            id="useDefaultPrices"
+                            checked={useDefaultPrices}
+                            onCheckedChange={(checked) => setUseDefaultPrices(!!checked)}
                           />
-                          <span className="text-sm text-muted-foreground">
-                            = {((markupPercentage - 1) * 100).toFixed(0)}% de margem
-                          </span>
+                          <Label htmlFor="useDefaultPrices" className="text-sm">
+                            Definir preços padrão para todos
+                          </Label>
                         </div>
-                        {previewSamples[0]?.price && (
-                          <p className="text-xs text-muted-foreground">
-                            Ex: R$ {previewSamples[0].price.toFixed(2)} → R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
-                          </p>
+
+                        {useDefaultPrices ? (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Preço de Custo (R$)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={defaultCostPrice || ""}
+                                onChange={(e) => setDefaultCostPrice(parseFloat(e.target.value) || 0)}
+                                placeholder="0,00"
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Preço de Venda (R$)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={defaultSalePrice || ""}
+                                onChange={(e) => setDefaultSalePrice(parseFloat(e.target.value) || 0)}
+                                placeholder="0,00"
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Label className="text-xs">Multiplicador de Markup</Label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="1"
+                                value={markupPercentage}
+                                onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
+                                className="h-8 text-sm w-20"
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                = {((markupPercentage - 1) * 100).toFixed(0)}% de margem
+                              </span>
+                            </div>
+                            {previewSamples[0]?.price && (
+                              <p className="text-xs text-muted-foreground">
+                                Ex: R$ {previewSamples[0].price.toFixed(2)} → R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
+                              </p>
+                            )}
+                          </div>
                         )}
+                        
+                        <p className="text-[10px] text-muted-foreground">
+                          Você poderá ajustar os preços individualmente na etapa de revisão.
+                        </p>
                       </div>
 
                       <div className="bg-muted/50 rounded-lg p-3 space-y-3">
