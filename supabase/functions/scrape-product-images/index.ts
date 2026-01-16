@@ -191,21 +191,53 @@ Deno.serve(async (req) => {
       if (error.name === 'AbortError') {
         console.error('Request timed out for:', formattedUrl);
         return new Response(
-          JSON.stringify({ success: false, error: 'Scrape timed out' }),
+          JSON.stringify({ success: false, error: 'Tempo limite excedido ao acessar a página' }),
           { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      throw fetchError;
+      console.error('Fetch error:', error.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Erro de conexão com o serviço de scraping' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     clearTimeout(timeoutId);
 
-    const data = await response.json();
-
+    // Check for non-OK responses before trying to parse JSON
     if (!response.ok) {
-      console.error('Firecrawl API error:', data);
+      const responseText = await response.text();
+      console.error('Firecrawl API error:', response.status, responseText);
+      
+      // Handle common error statuses
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Serviço temporariamente indisponível. Tente novamente.' }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Limite de requisições atingido. Aguarde um momento.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       return new Response(
-        JSON.stringify({ success: false, error: data.error || `Erro ao acessar a página` }),
+        JSON.stringify({ success: false, error: `Erro ao acessar a página (${response.status})` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Now safely parse JSON for successful responses
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      console.error('Failed to parse JSON response:', jsonError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Resposta inválida do serviço de scraping' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
