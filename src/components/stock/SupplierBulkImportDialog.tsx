@@ -126,6 +126,10 @@ export function SupplierBulkImportDialog({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [editingProduct, setEditingProduct] = useState<GroupedProduct | null>(null);
+  
+  // Photo selection - which photo indices to import (1-based for user)
+  const [selectedPhotoIndices, setSelectedPhotoIndices] = useState<number[]>([1, 2, 3]);
+  const [maxPhotosAvailable] = useState([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
   useEffect(() => {
     if (open && user) {
@@ -214,23 +218,42 @@ export function SupplierBulkImportDialog({
     return { baseName: name, color: detectedColor, size: detectedSize };
   };
 
+  // Filter images based on selected indices (convert from 1-based to 0-based)
+  const filterImagesBySelectedIndices = (images: string[]): string[] => {
+    return selectedPhotoIndices
+      .map(idx => images[idx - 1]) // Convert 1-based to 0-based
+      .filter(Boolean) as string[];
+  };
+
+  // Get category from search filter
+  const getCategoryFromFilter = (): string => {
+    const filter = searchFilter.trim().toLowerCase();
+    if (!filter) return "Geral";
+    // Capitalize first letter
+    return filter.charAt(0).toUpperCase() + filter.slice(1);
+  };
+
   const groupScrapedProducts = (scrapedProducts: ScrapedProduct[]): GroupedProduct[] => {
     const successProducts = scrapedProducts.filter(p => p.status === "success" && p.name);
     const productMap = new Map<string, GroupedProduct>();
+    const categoryFromFilter = getCategoryFromFilter();
 
     for (const product of successProducts) {
       const { baseName, color, size } = extractBaseName(product.name || "");
       const key = baseName.toLowerCase();
 
       if (!productMap.has(key)) {
+        // Filter images based on user selection
+        const filteredImages = filterImagesBySelectedIndices(product.images);
+        
         productMap.set(key, {
           id: crypto.randomUUID(),
           baseName,
-          category: product.category || "Top",
+          category: categoryFromFilter, // Use filter as category
           costPrice: product.price || 0,
           salePrice: Math.round((product.price || 0) * MARKUP_PERCENTAGE * 100) / 100,
           description: product.description || "",
-          images: [...product.images],
+          images: filteredImages,
           variants: [],
           selected: true,
           expanded: false,
@@ -239,8 +262,9 @@ export function SupplierBulkImportDialog({
 
       const grouped = productMap.get(key)!;
       
-      // Add images if new
-      for (const img of product.images) {
+      // Add filtered images if new
+      const filteredProductImages = filterImagesBySelectedIndices(product.images);
+      for (const img of filteredProductImages) {
         if (!grouped.images.includes(img)) {
           grouped.images.push(img);
         }
@@ -528,6 +552,7 @@ export function SupplierBulkImportDialog({
     setScrapingProgress(0);
     setImportProgress(0);
     setEditingProduct(null);
+    setSelectedPhotoIndices([1, 2, 3]);
     onOpenChange(false);
   };
 
@@ -564,14 +589,14 @@ export function SupplierBulkImportDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Filtro de Busca (opcional)</Label>
+                <Label>Filtro de Busca / Categoria</Label>
                 <Input
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
                   placeholder="top, vestido, calça..."
                 />
                 <p className="text-xs text-muted-foreground">
-                  Filtra URLs que contêm esta palavra
+                  Filtra URLs que contêm esta palavra e define a categoria dos produtos
                 </p>
               </div>
               <div className="space-y-2">
@@ -588,6 +613,39 @@ export function SupplierBulkImportDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fotos a Importar</Label>
+                <div className="flex flex-wrap gap-2">
+                  {maxPhotosAvailable.map((photoNum) => (
+                    <label
+                      key={photoNum}
+                      className={cn(
+                        "flex items-center justify-center w-10 h-10 rounded-lg border-2 cursor-pointer transition-all",
+                        selectedPhotoIndices.includes(photoNum)
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted border-muted-foreground/30"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={selectedPhotoIndices.includes(photoNum)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPhotoIndices([...selectedPhotoIndices, photoNum].sort((a, b) => a - b));
+                          } else {
+                            setSelectedPhotoIndices(selectedPhotoIndices.filter((i) => i !== photoNum));
+                          }
+                        }}
+                      />
+                      <span className="font-medium">{photoNum}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selecione quais fotos importar (ex: apenas 1, 2 e 3). Fotos não selecionadas serão ignoradas.
+                </p>
               </div>
             </div>
           )}
