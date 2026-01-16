@@ -170,6 +170,8 @@ export function SupplierBulkImportDialog({
   // Available sizes for the product - will create all combinations
   const [availableSizes, setAvailableSizes] = useState<string[]>(["P", "M", "G", "GG"]);
   const [newSizeInput, setNewSizeInput] = useState<string>("");
+  // Maximum photos per product (1-3)
+  const [maxPhotosPerProduct, setMaxPhotosPerProduct] = useState<number>(3);
 
   useEffect(() => {
     if (open && user) {
@@ -435,7 +437,7 @@ export function SupplierBulkImportDialog({
           salePrice: Math.round((product.price || 0) * markupPercentage * 100) / 100,
           description: product.description || "",
           images: allImages,
-          selectedImageIndices: allImages.slice(0, 3).map((_, idx) => idx), // Select first 3 by default
+          selectedImageIndices: allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx), // Select first N by config
           variants: [],
           selected: true,
           expanded: false,
@@ -654,9 +656,9 @@ export function SupplierBulkImportDialog({
           // Remove image
           return { ...p, selectedImageIndices: currentSelected.filter(i => i !== imageIndex) };
         } else {
-          // Add image (max 3)
-          if (currentSelected.length >= 3) {
-            toast.warning("Máximo de 3 imagens por produto");
+          // Add image (respects maxPhotosPerProduct)
+          if (currentSelected.length >= maxPhotosPerProduct) {
+            toast.warning(`Máximo de ${maxPhotosPerProduct} ${maxPhotosPerProduct === 1 ? 'imagem' : 'imagens'} por produto`);
             return p;
           }
           return { ...p, selectedImageIndices: [...currentSelected, imageIndex].sort((a, b) => a - b) };
@@ -767,6 +769,7 @@ export function SupplierBulkImportDialog({
     setBaseNameWordCount(2);
     setAvailableSizes(["P", "M", "G", "GG"]);
     setNewSizeInput("");
+    setMaxPhotosPerProduct(3);
     onOpenChange(false);
   };
 
@@ -1069,11 +1072,29 @@ export function SupplierBulkImportDialog({
                       <div className="bg-muted/50 rounded-lg p-3 space-y-3">
                         <h4 className="font-medium text-sm flex items-center gap-2">
                           <Image className="h-4 w-4" />
-                          Fotos
+                          Fotos por Produto
                         </h4>
-                        <p className="text-[10px] text-muted-foreground">
-                          As fotos serão selecionadas individualmente na etapa de revisão.
-                        </p>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Quantas fotos importar por produto?</Label>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={maxPhotosPerProduct.toString()}
+                              onValueChange={(val) => setMaxPhotosPerProduct(parseInt(val))}
+                            >
+                              <SelectTrigger className="w-24 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 foto</SelectItem>
+                                <SelectItem value="2">2 fotos</SelectItem>
+                                <SelectItem value="3">3 fotos</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Você poderá escolher quais fotos na etapa de revisão.
+                          </p>
+                        </div>
                       </div>
                     </div>
 
