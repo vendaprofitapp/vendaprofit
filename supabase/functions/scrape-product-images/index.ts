@@ -165,19 +165,39 @@ Deno.serve(async (req) => {
 
     console.log('Scraping product page:', formattedUrl);
 
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: formattedUrl,
-        formats: ['html', 'markdown'],
-        onlyMainContent: false,
-        waitFor: 2000,
-      }),
-    });
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+
+    let response;
+    try {
+      response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: formattedUrl,
+          formats: ['html'],
+          onlyMainContent: true,
+          waitFor: 1000,
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchError: unknown) {
+      clearTimeout(timeoutId);
+      const error = fetchError as Error;
+      if (error.name === 'AbortError') {
+        console.error('Request timed out for:', formattedUrl);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Scrape timed out' }),
+          { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw fetchError;
+    }
+    clearTimeout(timeoutId);
 
     const data = await response.json();
 
@@ -190,7 +210,7 @@ Deno.serve(async (req) => {
     }
 
     const html = data.data?.html || data.html || '';
-    const markdown = data.data?.markdown || data.markdown || '';
+    const markdown = data.data?.markdown || data.markdown || html;
     const images: string[] = [];
     
     // Extract images from HTML
