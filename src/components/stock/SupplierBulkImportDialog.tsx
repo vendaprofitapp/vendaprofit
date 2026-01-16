@@ -93,7 +93,8 @@ interface GroupedProduct {
   costPrice: number;
   salePrice: number;
   description: string;
-  images: string[];
+  images: string[]; // All available images
+  selectedImageIndices: number[]; // Which images are selected (0-based indices)
   variants: ProductVariant[];
   selected: boolean;
   expanded: boolean;
@@ -156,10 +157,6 @@ export function SupplierBulkImportDialog({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [editingProduct, setEditingProduct] = useState<GroupedProduct | null>(null);
-  
-  // Photo selection - which photo indices to import (1-based for user)
-  const [selectedPhotoIndices, setSelectedPhotoIndices] = useState<number[]>([1, 2, 3]);
-  const [maxPhotosAvailable] = useState([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
   // Preview configuration
   const [previewSamples, setPreviewSamples] = useState<PreviewSample[]>([]);
@@ -386,11 +383,9 @@ export function SupplierBulkImportDialog({
     );
   };
 
-  // Filter images based on selected indices (convert from 1-based to 0-based)
+  // Filter images to show first 3 by default
   const filterImagesBySelectedIndices = (images: string[]): string[] => {
-    return selectedPhotoIndices
-      .map(idx => images[idx - 1]) // Convert 1-based to 0-based
-      .filter(Boolean) as string[];
+    return images.slice(0, 3);
   };
 
   // Get category from search filter
@@ -429,17 +424,18 @@ export function SupplierBulkImportDialog({
       const normalizedBaseName = normalizeBaseName(baseName);
 
       if (!productMap.has(key)) {
-        // Filter images based on user selection
-        const filteredImages = filterImagesBySelectedIndices(product.images);
+        // Keep ALL images - user will select in review step
+        const allImages = [...product.images];
         
         productMap.set(key, {
           id: crypto.randomUUID(),
           baseName: normalizedBaseName,
-          category: categoryFromFilter, // Use filter as category
+          category: categoryFromFilter,
           costPrice: product.price || 0,
           salePrice: Math.round((product.price || 0) * markupPercentage * 100) / 100,
           description: product.description || "",
-          images: filteredImages,
+          images: allImages,
+          selectedImageIndices: allImages.slice(0, 3).map((_, idx) => idx), // Select first 3 by default
           variants: [],
           selected: true,
           expanded: false,
@@ -448,9 +444,8 @@ export function SupplierBulkImportDialog({
 
       const grouped = productMap.get(key)!;
       
-      // Add filtered images if new
-      const filteredProductImages = filterImagesBySelectedIndices(product.images);
-      for (const img of filteredProductImages) {
+      // Add all images if new
+      for (const img of product.images) {
         if (!grouped.images.includes(img)) {
           grouped.images.push(img);
         }
@@ -650,6 +645,26 @@ export function SupplierBulkImportDialog({
     );
   };
 
+  const toggleProductImage = (productId: string, imageIndex: number) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) => {
+        if (p.id !== productId) return p;
+        const currentSelected = p.selectedImageIndices;
+        if (currentSelected.includes(imageIndex)) {
+          // Remove image
+          return { ...p, selectedImageIndices: currentSelected.filter(i => i !== imageIndex) };
+        } else {
+          // Add image (max 3)
+          if (currentSelected.length >= 3) {
+            toast.warning("Máximo de 3 imagens por produto");
+            return p;
+          }
+          return { ...p, selectedImageIndices: [...currentSelected, imageIndex].sort((a, b) => a - b) };
+        }
+      })
+    );
+  };
+
   const handleImport = async () => {
     if (!user) return;
 
@@ -673,6 +688,11 @@ export function SupplierBulkImportDialog({
 
     for (const product of selectedProducts) {
       try {
+        // Get selected images for this product
+        const selectedImages = product.selectedImageIndices
+          .map(idx => product.images[idx])
+          .filter(Boolean);
+
         // Create main product
         const { data: newProduct, error: productError } = await supabase
           .from("products")
@@ -686,9 +706,9 @@ export function SupplierBulkImportDialog({
             min_stock_level: 2,
             owner_id: user.id,
             supplier_id: selectedSupplierId,
-            image_url: product.images[0] || null,
-            image_url_2: product.images[1] || null,
-            image_url_3: product.images[2] || null,
+            image_url: selectedImages[0] || null,
+            image_url_2: selectedImages[1] || null,
+            image_url_3: selectedImages[2] || null,
           })
           .select("id")
           .single();
@@ -702,7 +722,7 @@ export function SupplierBulkImportDialog({
             color: v.color,
             size: v.size,
             stock_quantity: v.quantity,
-            image_url: product.images[0] || null,
+            image_url: selectedImages[0] || null,
           }));
 
           await supabase.from("product_variants").insert(variants);
@@ -739,7 +759,6 @@ export function SupplierBulkImportDialog({
     setScrapingProgress(0);
     setImportProgress(0);
     setEditingProduct(null);
-    setSelectedPhotoIndices([1, 2, 3]);
     setPreviewSamples([]);
     setExtractColorFromName(true);
     setExtractSizeFromName(true);
@@ -811,36 +830,9 @@ export function SupplierBulkImportDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Fotos a Importar</Label>
-                <div className="flex flex-wrap gap-2">
-                  {maxPhotosAvailable.map((photoNum) => (
-                    <label
-                      key={photoNum}
-                      className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg border-2 cursor-pointer transition-all",
-                        selectedPhotoIndices.includes(photoNum)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-background hover:bg-muted border-muted-foreground/30"
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={selectedPhotoIndices.includes(photoNum)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedPhotoIndices([...selectedPhotoIndices, photoNum].sort((a, b) => a - b));
-                          } else {
-                            setSelectedPhotoIndices(selectedPhotoIndices.filter((i) => i !== photoNum));
-                          }
-                        }}
-                      />
-                      <span className="font-medium">{photoNum}</span>
-                    </label>
-                  ))}
-                </div>
+                <Label>Fotos</Label>
                 <p className="text-xs text-muted-foreground">
-                  Selecione quais fotos importar (ex: apenas 1, 2 e 3). Fotos não selecionadas serão ignoradas.
+                  As fotos serão selecionadas individualmente na etapa de revisão final.
                 </p>
               </div>
             </div>
@@ -1077,35 +1069,11 @@ export function SupplierBulkImportDialog({
                       <div className="bg-muted/50 rounded-lg p-3 space-y-3">
                         <h4 className="font-medium text-sm flex items-center gap-2">
                           <Image className="h-4 w-4" />
-                          Fotos a Importar
+                          Fotos
                         </h4>
-                        <div className="flex flex-wrap gap-1.5">
-                          {maxPhotosAvailable.map((photoNum) => (
-                            <label
-                              key={photoNum}
-                              className={cn(
-                                "flex items-center justify-center w-8 h-8 rounded border-2 cursor-pointer transition-all text-sm",
-                                selectedPhotoIndices.includes(photoNum)
-                                  ? "bg-primary text-primary-foreground border-primary"
-                                  : "bg-background hover:bg-muted border-muted-foreground/30"
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                className="sr-only"
-                                checked={selectedPhotoIndices.includes(photoNum)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedPhotoIndices([...selectedPhotoIndices, photoNum].sort((a, b) => a - b));
-                                  } else {
-                                    setSelectedPhotoIndices(selectedPhotoIndices.filter((i) => i !== photoNum));
-                                  }
-                                }}
-                              />
-                              {photoNum}
-                            </label>
-                          ))}
-                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          As fotos serão selecionadas individualmente na etapa de revisão.
+                        </p>
                       </div>
                     </div>
 
@@ -1336,6 +1304,58 @@ export function SupplierBulkImportDialog({
 
                         <CollapsibleContent>
                           <div className="px-3 pb-3 space-y-3 border-t pt-3">
+                            {/* Image Selection */}
+                            <div>
+                              <Label className="text-xs flex items-center gap-2 mb-2">
+                                <Image className="h-3 w-3" />
+                                Fotos (selecione até 3)
+                              </Label>
+                              <div className="flex flex-wrap gap-2">
+                                {product.images.slice(0, 10).map((img, imgIdx) => (
+                                  <button
+                                    key={imgIdx}
+                                    type="button"
+                                    onClick={() => toggleProductImage(product.id, imgIdx)}
+                                    className={cn(
+                                      "relative h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
+                                      product.selectedImageIndices.includes(imgIdx)
+                                        ? "border-primary ring-2 ring-primary/20"
+                                        : "border-border hover:border-primary/50"
+                                    )}
+                                  >
+                                    <img
+                                      src={img}
+                                      alt={`Foto ${imgIdx + 1}`}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                      }}
+                                    />
+                                    {product.selectedImageIndices.includes(imgIdx) && (
+                                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                        <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                                          {product.selectedImageIndices.indexOf(imgIdx) + 1}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                                {product.images.length === 0 && (
+                                  <p className="text-xs text-muted-foreground">Nenhuma imagem disponível</p>
+                                )}
+                                {product.images.length > 10 && (
+                                  <span className="text-xs text-muted-foreground self-center">
+                                    +{product.images.length - 10} fotos
+                                  </span>
+                                )}
+                              </div>
+                              {product.selectedImageIndices.length === 0 && product.images.length > 0 && (
+                                <p className="text-xs text-amber-600 mt-1">⚠️ Selecione ao menos 1 foto</p>
+                              )}
+                            </div>
+
+                            <Separator />
+
                             <div className="grid grid-cols-2 gap-3">
                               <div>
                                 <Label className="text-xs">Nome do Produto</Label>
