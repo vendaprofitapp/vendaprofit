@@ -85,6 +85,14 @@ interface ProductVariant {
   color: string;
   size: string;
   quantity: number;
+  imageUrl?: string; // Image specific for this color variant
+}
+
+// Images grouped by color for selection
+interface ColorImages {
+  color: string;
+  images: string[];
+  selectedIndex: number; // Which image is selected for this color (-1 = none)
 }
 
 interface GroupedProduct {
@@ -94,8 +102,9 @@ interface GroupedProduct {
   costPrice: number;
   salePrice: number;
   description: string;
-  images: string[]; // All available images
-  selectedImageIndices: number[]; // Which images are selected (0-based indices)
+  images: string[]; // All available images (for fallback)
+  selectedImageIndices: number[]; // Which images are selected for main product
+  colorImages: ColorImages[]; // Images grouped by color
   variants: ProductVariant[];
   selected: boolean;
   expanded: boolean;
@@ -430,9 +439,24 @@ export function SupplierBulkImportDialog({
       // Normalize the display name to title case
       const normalizedBaseName = normalizeBaseName(baseName);
 
+      // Determine the color for this product's images
+      const productColor = color || (product.colors.length > 0 ? product.colors[0] : "Sem cor");
+      // Normalize color for display
+      const normalizedColor = productColor
+        .split(" ")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+
       if (!productMap.has(key)) {
         // Keep ALL images - user will select in review step
         const allImages = [...product.images];
+        
+        // Initialize colorImages with the first color
+        const initialColorImages: ColorImages[] = product.images.length > 0 ? [{
+          color: normalizedColor,
+          images: [...product.images],
+          selectedIndex: 0, // Select first image by default
+        }] : [];
         
         productMap.set(key, {
           id: crypto.randomUUID(),
@@ -443,34 +467,70 @@ export function SupplierBulkImportDialog({
           description: product.description || "",
           images: allImages,
           selectedImageIndices: allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx), // Select first N by config
+          colorImages: initialColorImages,
           variants: [],
           selected: true,
           expanded: false,
         });
-      }
+      } else {
+        const grouped = productMap.get(key)!;
+        
+        // Add images to existing grouped product
+        for (const img of product.images) {
+          if (!grouped.images.includes(img)) {
+            grouped.images.push(img);
+          }
+        }
 
-      const grouped = productMap.get(key)!;
-      
-      // Add all images if new
-      for (const img of product.images) {
-        if (!grouped.images.includes(img)) {
-          grouped.images.push(img);
+        // Add or update colorImages for this color
+        const existingColorEntry = grouped.colorImages.find(
+          ci => removeAccents(ci.color.toLowerCase()) === removeAccents(normalizedColor.toLowerCase())
+        );
+        
+        if (existingColorEntry) {
+          // Add new images to this color
+          for (const img of product.images) {
+            if (!existingColorEntry.images.includes(img)) {
+              existingColorEntry.images.push(img);
+            }
+          }
+        } else if (product.images.length > 0) {
+          // Create new color entry
+          grouped.colorImages.push({
+            color: normalizedColor,
+            images: [...product.images],
+            selectedIndex: 0, // Select first image by default
+          });
         }
       }
 
+      const grouped = productMap.get(key)!;
+
       // Add variant - use availableSizes to create all combinations
       const colors = color ? [color] : (product.colors.length > 0 ? product.colors : ["Sem cor"]);
+      // Normalize colors for display
+      const normalizedColors = colors.map(c => 
+        c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+      );
       // Use availableSizes from preview configuration instead of extracted sizes
       const sizesToUse = availableSizes.length > 0 ? availableSizes : (size ? [size] : (product.sizes.length > 0 ? product.sizes : ["U"]));
 
-      for (const c of colors) {
+      for (const c of normalizedColors) {
         for (const s of sizesToUse) {
           const exists = grouped.variants.some(v => 
-            v.color.toLowerCase() === c.toLowerCase() && 
+            removeAccents(v.color.toLowerCase()) === removeAccents(c.toLowerCase()) && 
             v.size.toLowerCase() === s.toLowerCase()
           );
           if (!exists) {
-            grouped.variants.push({ color: c, size: s, quantity: 0 });
+            // Find the image for this color
+            const colorEntry = grouped.colorImages.find(
+              ci => removeAccents(ci.color.toLowerCase()) === removeAccents(c.toLowerCase())
+            );
+            const imageUrl = colorEntry && colorEntry.selectedIndex >= 0 
+              ? colorEntry.images[colorEntry.selectedIndex] 
+              : undefined;
+            
+            grouped.variants.push({ color: c, size: s, quantity: 0, imageUrl });
           }
         }
       }
@@ -672,6 +732,33 @@ export function SupplierBulkImportDialog({
     );
   };
 
+  // Update selected image for a specific color
+  const updateColorImage = (productId: string, colorIndex: number, imageIndex: number) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) => {
+        if (p.id !== productId) return p;
+        
+        const updatedColorImages = p.colorImages.map((ci, idx) =>
+          idx === colorIndex ? { ...ci, selectedIndex: imageIndex } : ci
+        );
+        
+        // Also update the imageUrl for all variants with this color
+        const colorEntry = p.colorImages[colorIndex];
+        if (colorEntry) {
+          const newImageUrl = colorEntry.images[imageIndex] || undefined;
+          const updatedVariants = p.variants.map(v => 
+            removeAccents(v.color.toLowerCase()) === removeAccents(colorEntry.color.toLowerCase())
+              ? { ...v, imageUrl: newImageUrl }
+              : v
+          );
+          return { ...p, colorImages: updatedColorImages, variants: updatedVariants };
+        }
+        
+        return { ...p, colorImages: updatedColorImages };
+      })
+    );
+  };
+
   const handleImport = async () => {
     if (!user) return;
 
@@ -722,15 +809,25 @@ export function SupplierBulkImportDialog({
 
         if (productError) throw productError;
 
-        // Create variants
+        // Create variants with correct image per color
         if (newProduct && product.variants.length > 0) {
-          const variants = product.variants.map((v) => ({
-            product_id: newProduct.id,
-            color: v.color,
-            size: v.size,
-            stock_quantity: v.quantity,
-            image_url: selectedImages[0] || null,
-          }));
+          const variants = product.variants.map((v) => {
+            // Find the correct image for this variant's color
+            const colorEntry = product.colorImages.find(
+              ci => removeAccents(ci.color.toLowerCase()) === removeAccents(v.color.toLowerCase())
+            );
+            const variantImage = colorEntry && colorEntry.selectedIndex >= 0
+              ? colorEntry.images[colorEntry.selectedIndex]
+              : (v.imageUrl || selectedImages[0] || null);
+            
+            return {
+              product_id: newProduct.id,
+              color: v.color,
+              size: v.size,
+              stock_quantity: v.quantity,
+              image_url: variantImage,
+            };
+          });
 
           await supabase.from("product_variants").insert(variants);
         }
@@ -1341,17 +1438,40 @@ export function SupplierBulkImportDialog({
                             onClick={(e) => e.stopPropagation()}
                           />
 
-                          {product.images[0] ? (
-                            <img
-                              src={product.images[0]}
-                              alt={product.baseName}
-                              className="h-14 w-14 rounded object-cover"
-                            />
-                          ) : (
-                            <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
-                              <Package className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                          )}
+                          {/* Show thumbnails for each color */}
+                          <div className="flex gap-1">
+                            {product.colorImages.length > 0 ? (
+                              product.colorImages.slice(0, 3).map((colorEntry, idx) => (
+                                <img
+                                  key={idx}
+                                  src={colorEntry.images[colorEntry.selectedIndex] || colorEntry.images[0]}
+                                  alt={`${product.baseName} - ${colorEntry.color}`}
+                                  className={cn(
+                                    "rounded object-cover",
+                                    product.colorImages.length === 1 ? "h-14 w-14" : "h-10 w-10"
+                                  )}
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                  }}
+                                />
+                              ))
+                            ) : product.images[0] ? (
+                              <img
+                                src={product.images[0]}
+                                alt={product.baseName}
+                                className="h-14 w-14 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
+                                <Package className="h-6 w-6 text-muted-foreground" />
+                              </div>
+                            )}
+                            {product.colorImages.length > 3 && (
+                              <div className="h-10 w-10 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                                +{product.colorImages.length - 3}
+                              </div>
+                            )}
+                          </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="font-medium">{product.baseName}</div>
@@ -1363,6 +1483,11 @@ export function SupplierBulkImportDialog({
                               </span>
                             </div>
                             <div className="flex flex-wrap gap-1 mt-1">
+                              {product.colorImages.length > 1 && (
+                                <Badge variant="default" className="text-xs">
+                                  {product.colorImages.length} cores
+                                </Badge>
+                              )}
                               <Badge variant="secondary" className="text-xs">
                                 {product.variants.length} variantes
                               </Badge>
@@ -1385,55 +1510,115 @@ export function SupplierBulkImportDialog({
 
                         <CollapsibleContent>
                           <div className="px-3 pb-3 space-y-3 border-t pt-3">
-                            {/* Image Selection */}
-                            <div>
-                              <Label className="text-xs flex items-center gap-2 mb-2">
-                                <Image className="h-3 w-3" />
-                                Fotos (selecione até 3)
-                              </Label>
-                              <div className="flex flex-wrap gap-2">
-                                {product.images.slice(0, 10).map((img, imgIdx) => (
-                                  <button
-                                    key={imgIdx}
-                                    type="button"
-                                    onClick={() => toggleProductImage(product.id, imgIdx)}
-                                    className={cn(
-                                      "relative h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
-                                      product.selectedImageIndices.includes(imgIdx)
-                                        ? "border-primary ring-2 ring-primary/20"
-                                        : "border-border hover:border-primary/50"
-                                    )}
-                                  >
-                                    <img
-                                      src={img}
-                                      alt={`Foto ${imgIdx + 1}`}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).src = '/placeholder.svg';
-                                      }}
-                                    />
-                                    {product.selectedImageIndices.includes(imgIdx) && (
-                                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                        <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
-                                          {product.selectedImageIndices.indexOf(imgIdx) + 1}
-                                        </div>
+                            {/* Images by Color Section */}
+                            {product.colorImages.length > 0 && (
+                              <div>
+                                <Label className="text-xs flex items-center gap-2 mb-2">
+                                  <Palette className="h-3 w-3" />
+                                  Fotos por Cor (selecione 1 foto para cada cor)
+                                </Label>
+                                <div className="space-y-3">
+                                  {product.colorImages.map((colorEntry, colorIdx) => (
+                                    <div key={colorIdx} className="bg-muted/50 rounded-lg p-2">
+                                      <p className="text-xs font-medium mb-2 flex items-center gap-2">
+                                        <span className="px-2 py-0.5 bg-primary/10 rounded text-primary">
+                                          {colorEntry.color}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                          ({colorEntry.images.length} {colorEntry.images.length === 1 ? 'foto' : 'fotos'})
+                                        </span>
+                                      </p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {colorEntry.images.slice(0, 6).map((img, imgIdx) => (
+                                          <button
+                                            key={imgIdx}
+                                            type="button"
+                                            onClick={() => updateColorImage(product.id, colorIdx, imgIdx)}
+                                            className={cn(
+                                              "relative h-12 w-12 rounded-lg overflow-hidden border-2 transition-all",
+                                              colorEntry.selectedIndex === imgIdx
+                                                ? "border-primary ring-2 ring-primary/20"
+                                                : "border-border hover:border-primary/50"
+                                            )}
+                                          >
+                                            <img
+                                              src={img}
+                                              alt={`${colorEntry.color} - Foto ${imgIdx + 1}`}
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                              }}
+                                            />
+                                            {colorEntry.selectedIndex === imgIdx && (
+                                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                                <Check className="h-4 w-4 text-primary" />
+                                              </div>
+                                            )}
+                                          </button>
+                                        ))}
+                                        {colorEntry.images.length > 6 && (
+                                          <span className="text-xs text-muted-foreground self-center">
+                                            +{colorEntry.images.length - 6}
+                                          </span>
+                                        )}
                                       </div>
-                                    )}
-                                  </button>
-                                ))}
-                                {product.images.length === 0 && (
-                                  <p className="text-xs text-muted-foreground">Nenhuma imagem disponível</p>
-                                )}
-                                {product.images.length > 10 && (
-                                  <span className="text-xs text-muted-foreground self-center">
-                                    +{product.images.length - 10} fotos
-                                  </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fallback: General Image Selection (if no color-specific images) */}
+                            {product.colorImages.length === 0 && (
+                              <div>
+                                <Label className="text-xs flex items-center gap-2 mb-2">
+                                  <Image className="h-3 w-3" />
+                                  Fotos (selecione até 3)
+                                </Label>
+                                <div className="flex flex-wrap gap-2">
+                                  {product.images.slice(0, 10).map((img, imgIdx) => (
+                                    <button
+                                      key={imgIdx}
+                                      type="button"
+                                      onClick={() => toggleProductImage(product.id, imgIdx)}
+                                      className={cn(
+                                        "relative h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
+                                        product.selectedImageIndices.includes(imgIdx)
+                                          ? "border-primary ring-2 ring-primary/20"
+                                          : "border-border hover:border-primary/50"
+                                      )}
+                                    >
+                                      <img
+                                        src={img}
+                                        alt={`Foto ${imgIdx + 1}`}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                        }}
+                                      />
+                                      {product.selectedImageIndices.includes(imgIdx) && (
+                                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                          <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                                            {product.selectedImageIndices.indexOf(imgIdx) + 1}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </button>
+                                  ))}
+                                  {product.images.length === 0 && (
+                                    <p className="text-xs text-muted-foreground">Nenhuma imagem disponível</p>
+                                  )}
+                                  {product.images.length > 10 && (
+                                    <span className="text-xs text-muted-foreground self-center">
+                                      +{product.images.length - 10} fotos
+                                    </span>
+                                  )}
+                                </div>
+                                {product.selectedImageIndices.length === 0 && product.images.length > 0 && (
+                                  <p className="text-xs text-amber-600 mt-1">⚠️ Selecione ao menos 1 foto</p>
                                 )}
                               </div>
-                              {product.selectedImageIndices.length === 0 && product.images.length > 0 && (
-                                <p className="text-xs text-amber-600 mt-1">⚠️ Selecione ao menos 1 foto</p>
-                              )}
-                            </div>
+                            )}
 
                             <Separator />
 
