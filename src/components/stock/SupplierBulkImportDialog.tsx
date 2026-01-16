@@ -899,263 +899,264 @@ export function SupplierBulkImportDialog({
 
                   <div className="grid grid-cols-2 gap-4">
                     {/* Left: Configuration */}
-                    <div className="space-y-4">
-                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <Tag className="h-4 w-4" />
-                          Estrutura do Nome
-                        </h4>
-                        
-                        <div className="space-y-2">
-                          <Label className="text-xs">Quantas palavras formam o nome do produto?</Label>
+                    <ScrollArea className="h-[400px]">
+                      <div className="space-y-4 pr-3">
+                        <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <Tag className="h-4 w-4" />
+                            Estrutura do Nome
+                          </h4>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Quantas palavras formam o nome do produto?</Label>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={baseNameWordCount.toString()}
+                                onValueChange={(val) => {
+                                  setBaseNameWordCount(parseInt(val));
+                                  setTimeout(reparsePreviewSamples, 0);
+                                }}
+                              >
+                                <SelectTrigger className="w-24 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">Auto</SelectItem>
+                                  <SelectItem value="1">1</SelectItem>
+                                  <SelectItem value="2">2</SelectItem>
+                                  <SelectItem value="3">3</SelectItem>
+                                  <SelectItem value="4">4</SelectItem>
+                                  <SelectItem value="5">5</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <span className="text-xs text-muted-foreground">
+                                palavras
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">
+                              Ex: "TOP LIVIA" = 2 palavras. O resto é cor/tamanho.
+                            </p>
+                          </div>
+
+                          <Separator />
+                          
                           <div className="flex items-center gap-2">
-                            <Select
-                              value={baseNameWordCount.toString()}
-                              onValueChange={(val) => {
-                                setBaseNameWordCount(parseInt(val));
+                            <Checkbox
+                              id="extractColor"
+                              checked={extractColorFromName}
+                              onCheckedChange={(checked) => {
+                                setExtractColorFromName(!!checked);
                                 setTimeout(reparsePreviewSamples, 0);
                               }}
-                            >
-                              <SelectTrigger className="w-24 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="0">Auto</SelectItem>
-                                <SelectItem value="1">1</SelectItem>
-                                <SelectItem value="2">2</SelectItem>
-                                <SelectItem value="3">3</SelectItem>
-                                <SelectItem value="4">4</SelectItem>
-                                <SelectItem value="5">5</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <span className="text-xs text-muted-foreground">
-                              palavras
-                            </span>
+                            />
+                            <Label htmlFor="extractColor" className="text-sm flex items-center gap-2">
+                              <Palette className="h-3 w-3" />
+                              Extrair cor
+                            </Label>
                           </div>
+
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="extractSize"
+                              checked={extractSizeFromName}
+                              onCheckedChange={(checked) => {
+                                setExtractSizeFromName(!!checked);
+                                setTimeout(reparsePreviewSamples, 0);
+                              }}
+                            />
+                            <Label htmlFor="extractSize" className="text-sm flex items-center gap-2">
+                              <Ruler className="h-3 w-3" />
+                              Extrair tamanho
+                            </Label>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs">Cores adicionais (vírgula)</Label>
+                            <Input
+                              value={customColorKeywords}
+                              onChange={(e) => {
+                                setCustomColorKeywords(e.target.value);
+                                setTimeout(reparsePreviewSamples, 100);
+                              }}
+                              placeholder="ex: flamingo, mirtilo"
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <DollarSign className="h-4 w-4" />
+                            Preços
+                          </h4>
+                        
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="useDefaultPrices"
+                              checked={useDefaultPrices}
+                              onCheckedChange={(checked) => setUseDefaultPrices(!!checked)}
+                            />
+                            <Label htmlFor="useDefaultPrices" className="text-sm">
+                              Definir preços padrão para todos
+                            </Label>
+                          </div>
+
+                          {useDefaultPrices ? (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Preço de Custo (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={defaultCostPrice || ""}
+                                  onChange={(e) => setDefaultCostPrice(parseFloat(e.target.value) || 0)}
+                                  placeholder="0,00"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Preço de Venda (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={defaultSalePrice || ""}
+                                  onChange={(e) => setDefaultSalePrice(parseFloat(e.target.value) || 0)}
+                                  placeholder="0,00"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <Label className="text-xs">Multiplicador de Markup</Label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="1"
+                                  value={markupPercentage}
+                                  onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
+                                  className="h-8 text-sm w-20"
+                                />
+                                <span className="text-sm text-muted-foreground">
+                                  = {((markupPercentage - 1) * 100).toFixed(0)}% de margem
+                                </span>
+                              </div>
+                              {previewSamples[0]?.price && (
+                                <p className="text-xs text-muted-foreground">
+                                  Ex: R$ {previewSamples[0].price.toFixed(2)} → R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        
                           <p className="text-[10px] text-muted-foreground">
-                            Ex: "TOP LIVIA" = 2 palavras. O resto é cor/tamanho.
+                            Você poderá ajustar os preços individualmente na etapa de revisão.
                           </p>
                         </div>
 
-                        <Separator />
-                        
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="extractColor"
-                            checked={extractColorFromName}
-                            onCheckedChange={(checked) => {
-                              setExtractColorFromName(!!checked);
-                              setTimeout(reparsePreviewSamples, 0);
-                            }}
-                          />
-                          <Label htmlFor="extractColor" className="text-sm flex items-center gap-2">
-                            <Palette className="h-3 w-3" />
-                            Extrair cor
-                          </Label>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="extractSize"
-                            checked={extractSizeFromName}
-                            onCheckedChange={(checked) => {
-                              setExtractSizeFromName(!!checked);
-                              setTimeout(reparsePreviewSamples, 0);
-                            }}
-                          />
-                          <Label htmlFor="extractSize" className="text-sm flex items-center gap-2">
-                            <Ruler className="h-3 w-3" />
-                            Extrair tamanho
-                          </Label>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Cores adicionais (vírgula)</Label>
-                          <Input
-                            value={customColorKeywords}
-                            onChange={(e) => {
-                              setCustomColorKeywords(e.target.value);
-                              setTimeout(reparsePreviewSamples, 100);
-                            }}
-                            placeholder="ex: flamingo, mirtilo"
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <DollarSign className="h-4 w-4" />
-                          Preços
-                        </h4>
-                        
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="useDefaultPrices"
-                            checked={useDefaultPrices}
-                            onCheckedChange={(checked) => setUseDefaultPrices(!!checked)}
-                          />
-                          <Label htmlFor="useDefaultPrices" className="text-sm">
-                            Definir preços padrão para todos
-                          </Label>
-                        </div>
-
-                        {useDefaultPrices ? (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Preço de Custo (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={defaultCostPrice || ""}
-                                onChange={(e) => setDefaultCostPrice(parseFloat(e.target.value) || 0)}
-                                placeholder="0,00"
-                                className="h-8 text-sm"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Preço de Venda (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={defaultSalePrice || ""}
-                                onChange={(e) => setDefaultSalePrice(parseFloat(e.target.value) || 0)}
-                                placeholder="0,00"
-                                className="h-8 text-sm"
-                              />
-                            </div>
+                        <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <Ruler className="h-4 w-4" />
+                            Tamanhos Disponíveis
+                          </h4>
+                          <p className="text-[10px] text-muted-foreground">
+                            Defina todos os tamanhos que este produto oferece. Variantes serão criadas para cada combinação cor + tamanho.
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {availableSizes.map((size) => (
+                              <Badge
+                                key={size}
+                                variant="secondary"
+                                className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                                onClick={() => setAvailableSizes(availableSizes.filter(s => s !== size))}
+                              >
+                                {size} <X className="h-3 w-3 ml-1" />
+                              </Badge>
+                            ))}
                           </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <Label className="text-xs">Multiplicador de Markup</Label>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="1"
-                                value={markupPercentage}
-                                onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
-                                className="h-8 text-sm w-20"
-                              />
-                              <span className="text-sm text-muted-foreground">
-                                = {((markupPercentage - 1) * 100).toFixed(0)}% de margem
-                              </span>
-                            </div>
-                            {previewSamples[0]?.price && (
-                              <p className="text-xs text-muted-foreground">
-                                Ex: R$ {previewSamples[0].price.toFixed(2)} → R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        
-                        <p className="text-[10px] text-muted-foreground">
-                          Você poderá ajustar os preços individualmente na etapa de revisão.
-                        </p>
-                      </div>
-
-                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <Ruler className="h-4 w-4" />
-                          Tamanhos Disponíveis
-                        </h4>
-                        <p className="text-[10px] text-muted-foreground">
-                          Defina todos os tamanhos que este produto oferece. Variantes serão criadas para cada combinação cor + tamanho.
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {availableSizes.map((size) => (
-                            <Badge
-                              key={size}
-                              variant="secondary"
-                              className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
-                              onClick={() => setAvailableSizes(availableSizes.filter(s => s !== size))}
-                            >
-                              {size} <X className="h-3 w-3 ml-1" />
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newSizeInput}
-                            onChange={(e) => setNewSizeInput(e.target.value.toUpperCase())}
-                            placeholder="Ex: PP, XG..."
-                            className="h-8 text-sm flex-1"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && newSizeInput.trim()) {
-                                e.preventDefault();
-                                if (!availableSizes.includes(newSizeInput.trim())) {
+                          <div className="flex gap-2">
+                            <Input
+                              value={newSizeInput}
+                              onChange={(e) => setNewSizeInput(e.target.value.toUpperCase())}
+                              placeholder="Ex: PP, XG..."
+                              className="h-8 text-sm flex-1"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && newSizeInput.trim()) {
+                                  e.preventDefault();
+                                  if (!availableSizes.includes(newSizeInput.trim())) {
+                                    setAvailableSizes([...availableSizes, newSizeInput.trim()]);
+                                  }
+                                  setNewSizeInput("");
+                                }
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (newSizeInput.trim() && !availableSizes.includes(newSizeInput.trim())) {
                                   setAvailableSizes([...availableSizes, newSizeInput.trim()]);
                                 }
                                 setNewSizeInput("");
-                              }
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (newSizeInput.trim() && !availableSizes.includes(newSizeInput.trim())) {
-                                setAvailableSizes([...availableSizes, newSizeInput.trim()]);
-                              }
-                              setNewSizeInput("");
-                            }}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <div className="flex gap-1">
-                          {["PP", "P", "M", "G", "GG", "XG", "U"].map((preset) => (
-                            <Button
-                              key={preset}
-                              type="button"
-                              size="sm"
-                              variant={availableSizes.includes(preset) ? "default" : "outline"}
-                              className="h-6 px-2 text-xs"
-                              onClick={() => {
-                                if (availableSizes.includes(preset)) {
-                                  setAvailableSizes(availableSizes.filter(s => s !== preset));
-                                } else {
-                                  setAvailableSizes([...availableSizes, preset]);
-                                }
                               }}
                             >
-                              {preset}
+                              <Plus className="h-3 w-3" />
                             </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <Image className="h-4 w-4" />
-                          Fotos por Produto
-                        </h4>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Quantas fotos importar por produto?</Label>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={maxPhotosPerProduct.toString()}
-                              onValueChange={(val) => setMaxPhotosPerProduct(parseInt(val))}
-                            >
-                              <SelectTrigger className="w-24 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 foto</SelectItem>
-                                <SelectItem value="2">2 fotos</SelectItem>
-                                <SelectItem value="3">3 fotos</SelectItem>
-                              </SelectContent>
-                            </Select>
                           </div>
-                          <p className="text-[10px] text-muted-foreground">
-                            Você poderá escolher quais fotos na etapa de revisão.
-                          </p>
+                          <div className="flex gap-1">
+                            {["PP", "P", "M", "G", "GG", "XG", "U"].map((preset) => (
+                              <Button
+                                key={preset}
+                                type="button"
+                                size="sm"
+                                variant={availableSizes.includes(preset) ? "default" : "outline"}
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  if (availableSizes.includes(preset)) {
+                                    setAvailableSizes(availableSizes.filter(s => s !== preset));
+                                  } else {
+                                    setAvailableSizes([...availableSizes, preset]);
+                                  }
+                                }}
+                              >
+                                {preset}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <Image className="h-4 w-4" />
+                            Fotos por Produto
+                          </h4>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Quantas fotos importar por produto?</Label>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={maxPhotosPerProduct.toString()}
+                                onValueChange={(val) => setMaxPhotosPerProduct(parseInt(val))}
+                              >
+                                <SelectTrigger className="w-24 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">1 foto</SelectItem>
+                                  <SelectItem value="2">2 fotos</SelectItem>
+                                  <SelectItem value="3">3 fotos</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">
+                              Você poderá escolher quais fotos na etapa de revisão.
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </ScrollArea>
 
                     {/* Right: Preview Results */}
                     <div className="space-y-3">
@@ -1164,7 +1165,7 @@ export function SupplierBulkImportDialog({
                         Pré-visualização ({previewSamples.length} exemplos)
                       </h4>
 
-                      <ScrollArea className="h-[320px]">
+                      <ScrollArea className="h-[350px]">
                         <div className="space-y-3 pr-2">
                           {previewSamples.map((sample, idx) => (
                             <div key={idx} className="border rounded-lg p-3 space-y-2">
