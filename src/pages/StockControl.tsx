@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Plus, Search, Edit, Trash2, Users, 
-  ArrowRightLeft, Check, X, Clock, Upload, Package, Copy
+  ArrowRightLeft, Check, X, Clock, Upload, Package, Copy, Filter
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,13 @@ import { VoiceStockDialog } from "@/components/stock/VoiceStockDialog";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
+import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
+import { Category } from "@/components/products/CategoryManager";
+
+interface Supplier {
+  id: string;
+  name: string;
+}
 
 interface Product {
   id: string;
@@ -86,6 +93,22 @@ export default function StockControl() {
   const [incomingRequests, setIncomingRequests] = useState<StockRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  
+  // Filter state
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<ProductFiltersState>({
+    category: "all",
+    status: "all",
+    supplier: "all",
+    color: "all",
+    size: "all",
+    minPrice: "",
+    maxPrice: "",
+    minStock: "",
+    maxStock: "",
+  });
   
   // Product form state
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -152,10 +175,32 @@ export default function StockControl() {
     await Promise.all([
       fetchProducts(),
       fetchPartnerProducts(),
-      fetchRequests()
+      fetchRequests(),
+      fetchSuppliers(),
+      fetchCategories()
     ]);
     
     setLoading(false);
+  };
+
+  const fetchSuppliers = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("suppliers")
+      .select("id, name")
+      .eq("owner_id", user.id)
+      .order("name");
+    setSuppliers(data ?? []);
+  };
+
+  const fetchCategories = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("categories")
+      .select("id, name, owner_id")
+      .eq("owner_id", user.id)
+      .order("name");
+    setCategories(data ?? []);
   };
 
   const fetchProducts = async () => {
@@ -379,10 +424,100 @@ export default function StockControl() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Extract unique colors and sizes from products
+  const { uniqueColors, uniqueSizes } = useMemo(() => {
+    const colors = new Set<string>();
+    const sizes = new Set<string>();
+
+    products.forEach((p) => {
+      if (p.color) colors.add(p.color);
+      if (p.size) sizes.add(p.size);
+      (p.product_variants || []).forEach((v) => {
+        if (v.color) colors.add(v.color);
+        if (v.size) sizes.add(v.size);
+      });
+    });
+
+    return {
+      uniqueColors: Array.from(colors).sort(),
+      uniqueSizes: Array.from(sizes).sort(),
+    };
+  }, [products]);
+
+  const getStockStatusKey = (stock: number, minLevel: number): StockStatusKey => {
+    if (stock <= 0) return "out";
+    if (stock <= minLevel) return "low";
+    return "available";
+  };
+
+  const filteredProducts = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return products.filter((p) => {
+      const statusKey = getStockStatusKey(p.stock_quantity, p.min_stock_level);
+      
+      // Search term
+      const matchesTerm = !term || 
+        p.name.toLowerCase().includes(term) ||
+        (p.sku && p.sku.toLowerCase().includes(term));
+      
+      // Category
+      const matchesCategory = filters.category === "all" || p.category === filters.category;
+      
+      // Status
+      const matchesStatus = filters.status === "all" || statusKey === filters.status;
+      
+      // Supplier
+      const matchesSupplier = filters.supplier === "all" || p.supplier_id === filters.supplier;
+      
+      // Color - check product color and variants
+      const productColors = [p.color, ...(p.product_variants || []).map(v => v.color)].filter(Boolean);
+      const matchesColor = filters.color === "all" || productColors.includes(filters.color);
+      
+      // Size - check product size and variants
+      const productSizes = [p.size, ...(p.product_variants || []).map(v => v.size)].filter(Boolean);
+      const matchesSize = filters.size === "all" || productSizes.includes(filters.size);
+      
+      // Price range
+      const minPrice = filters.minPrice ? Number(filters.minPrice) : null;
+      const maxPrice = filters.maxPrice ? Number(filters.maxPrice) : null;
+      const matchesMinPrice = minPrice === null || p.price >= minPrice;
+      const matchesMaxPrice = maxPrice === null || p.price <= maxPrice;
+      
+      // Stock range
+      const minStock = filters.minStock ? Number(filters.minStock) : null;
+      const maxStock = filters.maxStock ? Number(filters.maxStock) : null;
+      const matchesMinStock = minStock === null || p.stock_quantity >= minStock;
+      const matchesMaxStock = maxStock === null || p.stock_quantity <= maxStock;
+
+      return (
+        matchesTerm &&
+        matchesCategory &&
+        matchesStatus &&
+        matchesSupplier &&
+        matchesColor &&
+        matchesSize &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesMinStock &&
+        matchesMaxStock
+      );
+    });
+  }, [products, searchTerm, filters]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.category !== "all") count++;
+    if (filters.status !== "all") count++;
+    if (filters.supplier !== "all") count++;
+    if (filters.color !== "all") count++;
+    if (filters.size !== "all") count++;
+    if (filters.minPrice) count++;
+    if (filters.maxPrice) count++;
+    if (filters.minStock) count++;
+    if (filters.maxStock) count++;
+    return count;
+  }, [filters]);
 
   const filteredPartnerProducts = partnerProducts.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -426,7 +561,7 @@ export default function StockControl() {
       {/* Voice Feedback */}
       <VoiceCommandFeedback isListening={isListening} transcript={transcript} />
 
-      {/* Search */}
+      {/* Search and Filters */}
       <div className="flex items-center gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -438,7 +573,27 @@ export default function StockControl() {
             className="pl-10"
           />
         </div>
+        <Button variant="outline" onClick={() => setFiltersOpen(true)} className="relative">
+          <Filter className="h-4 w-4 mr-2" />
+          Filtros
+          {activeFiltersCount > 0 && (
+            <Badge variant="default" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+              {activeFiltersCount}
+            </Badge>
+          )}
+        </Button>
       </div>
+
+      <ProductFilters
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        filters={filters}
+        onFiltersChange={setFilters}
+        categories={categories}
+        suppliers={suppliers}
+        colors={uniqueColors}
+        sizes={uniqueSizes}
+      />
 
       <Tabs defaultValue="my-stock" className="space-y-6">
         <TabsList className="w-full sm:w-auto overflow-x-auto">
