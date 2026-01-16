@@ -47,6 +47,7 @@ interface Supplier {
   attendant_name: string | null;
   attendant_phone: string | null;
   purchase_rules: string | null;
+  website: string | null;
   created_at: string;
 }
 
@@ -60,6 +61,7 @@ const emptySupplier = {
   attendant_name: "",
   attendant_phone: "",
   purchase_rules: "",
+  website: "",
 };
 
 export default function Suppliers() {
@@ -107,6 +109,7 @@ export default function Suppliers() {
         attendant_name: supplier.attendant_name || "",
         attendant_phone: supplier.attendant_phone || "",
         purchase_rules: supplier.purchase_rules || "",
+        website: supplier.website || "",
       });
     } else {
       setEditingSupplier(null);
@@ -132,6 +135,7 @@ export default function Suppliers() {
       attendant_name: formData.attendant_name.trim() || null,
       attendant_phone: formData.attendant_phone.trim() || null,
       purchase_rules: formData.purchase_rules.trim() || null,
+      website: formData.website.trim() || null,
       owner_id: user.id,
     };
 
@@ -365,6 +369,17 @@ export default function Suppliers() {
                     setFormData({ ...formData, address: e.target.value })
                   }
                   placeholder="Endereço completo"
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-2">
+                <Label>Site do Fornecedor</Label>
+                <Input
+                  type="url"
+                  value={formData.website}
+                  onChange={(e) =>
+                    setFormData({ ...formData, website: e.target.value })
+                  }
+                  placeholder="https://www.fornecedor.com.br"
                 />
               </div>
               <div className="sm:col-span-2 space-y-2">
