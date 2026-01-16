@@ -48,7 +48,6 @@ interface Product {
   category: string;
   price: number;
   cost_price: number | null;
-  sku: string | null;
   size: string | null;
   color: string | null;
   stock_quantity: number;
@@ -72,7 +71,6 @@ interface ProductVariant {
   id?: string;
   size: string;
   color: string;
-  sku: string;
   stock_quantity: number;
   image_url?: string | null;
   image_url_2?: string | null;
@@ -158,7 +156,7 @@ export function ProductFormDialog({
       });
       
       // Start with empty variants for duplicate
-      setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
+      setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
       setColorImages({});
     } else {
       resetForm();
@@ -181,7 +179,6 @@ export function ProductFormDialog({
         id: v.id,
         size: v.size,
         color: v.color || "",
-        sku: v.sku || "",
         stock_quantity: v.stock_quantity,
         image_url: v.image_url,
         image_url_2: v.image_url_2,
@@ -212,7 +209,7 @@ export function ProductFormDialog({
       setColorImages(images);
       setExpandedColors(expanded);
     } else {
-      setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
+      setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
       setColorImages({});
     }
   };
@@ -243,7 +240,7 @@ export function ProductFormDialog({
     });
     setColorImages({});
     setExpandedColors({});
-    setProductVariants([{ size: "", color: "", sku: "", stock_quantity: 0 }]);
+    setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
   };
 
 
@@ -486,7 +483,6 @@ export function ProductFormDialog({
           product_id: productId,
           size: v.size || "Único",
           color: v.color || null,
-          sku: v.sku || null,
           stock_quantity: v.stock_quantity || 0,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
@@ -794,12 +790,6 @@ export function ProductFormDialog({
                           onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
                         />
                         
-                        <Input
-                          placeholder="SKU"
-                          className="flex-1 min-w-[80px]"
-                          value={variant.sku}
-                          onChange={(e) => updateProductVariant(index, "sku", e.target.value)}
-                        />
                         
                         {productVariants.length > 1 && (
                           <Button

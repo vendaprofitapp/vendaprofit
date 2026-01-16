@@ -25,7 +25,6 @@ Tamanhos comuns: PP, P, M, G, GG, XG, XXG, EXG, EXGG, ÚNICO, UN, 34, 36, 38, 40
 
 Para cada produto encontrado, extraia:
 - name: nome do produto SEM cor e SEM tamanho
-- sku: código SKU se disponível (pode ser código de barras, referência, etc)
 - size: tamanho extraído do nome ou do campo próprio
 - color: cor extraída do nome ou do campo próprio
 - cost_price: preço de custo/unitário (apenas números, sem símbolos de moeda)
@@ -40,7 +39,6 @@ Retorne APENAS um JSON válido no formato:
     {
       "name": "nome do produto LIMPO sem cor/tamanho",
       "original_name": "nome original completo",
-      "sku": "código ou null",
       "size": "tamanho ou null",
       "color": "cor ou null",
       "cost_price": 0.00,

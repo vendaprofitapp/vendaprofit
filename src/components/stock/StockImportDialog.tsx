@@ -41,7 +41,7 @@ import { toast } from "sonner";
 import { SupplierSelect } from "./SupplierSelect";
 import { SupplierImageScraper } from "./SupplierImageScraper";
 import { CategoryManager } from "@/components/products/CategoryManager";
-import { ColorManager } from "@/components/products/ColorManager";
+import { ColorManager, Color, findMatchingColor } from "@/components/products/ColorManager";
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
@@ -49,7 +49,6 @@ interface ProductVariant {
   color: string | null;
   size: string | null;
   quantity: number;
-  sku: string | null;
 }
 
 interface ColorImages {
@@ -61,7 +60,6 @@ interface ColorImages {
 interface ImportedProduct {
   name: string;
   original_name: string;
-  sku: string | null;
   size: string | null;
   color: string | null;
   cost_price: number;
@@ -83,7 +81,6 @@ interface ImportedProduct {
 interface ExistingProduct {
   id: string;
   name: string;
-  sku: string | null;
   stock_quantity: number;
 }
 
@@ -129,7 +126,6 @@ function EditProductWithVariantsDialog({
       color: product.color,
       size: product.size,
       quantity: product.quantity,
-      sku: product.sku,
     }];
   });
 
@@ -517,12 +513,6 @@ function EditProductWithVariantsDialog({
                                 onChange={(e) => updateVariant(index, "quantity", parseInt(e.target.value) || 0)}
                               />
                               
-                              <Input
-                                placeholder="SKU"
-                                className="flex-1 min-w-[80px]"
-                                value={variant.sku || ""}
-                                onChange={(e) => updateVariant(index, "sku", e.target.value || null)}
-                              />
                               
                               {localVariants.length > 1 && (
                                 <Button
@@ -582,14 +572,32 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const [step, setStep] = useState<"upload" | "review" | "edit">("upload");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [userColors, setUserColors] = useState<Color[]>([]);
 
-  // Fetch existing products and categories for duplicate detection
+  // Fetch existing products, categories and colors for duplicate detection
   useEffect(() => {
     if (user && open) {
       fetchExistingProducts();
       fetchCategories();
+      fetchUserColors();
     }
   }, [user, open]);
+
+  const fetchUserColors = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("colors")
+      .select("id, name, hex_code, owner_id")
+      .eq("owner_id", user.id);
+    setUserColors(data || []);
+  };
+
+  // Normalize color name to match existing colors (case-insensitive)
+  const normalizeColorToExisting = (colorName: string | null): string | null => {
+    if (!colorName) return null;
+    const matchingColor = findMatchingColor(colorName, userColors);
+    return matchingColor ? matchingColor.name : colorName;
+  };
 
   // Extended interface for existing products with category
   interface ExistingProductWithCategory extends ExistingProduct {
@@ -603,11 +611,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     
     const { data } = await supabase
       .from("products")
-      .select("id, name, sku, stock_quantity, category")
+      .select("id, name, stock_quantity, category")
       .eq("owner_id", user.id);
     
     // Also set for backward compatibility
-    setExistingProducts(data?.map(p => ({ id: p.id, name: p.name, sku: p.sku, stock_quantity: p.stock_quantity })) || []);
+    setExistingProducts(data?.map(p => ({ id: p.id, name: p.name, stock_quantity: p.stock_quantity })) || []);
     setExistingProductsFull(data || []);
   };
 
@@ -627,15 +635,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const normalizeName = (name: string) => 
     name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-  const findDuplicate = (name: string, sku: string | null): ExistingProductWithCategory | null => {
-    // Check by SKU first (more reliable)
-    if (sku) {
-      const skuMatch = existingProductsFull.find(p => 
-        p.sku?.toLowerCase() === sku.toLowerCase()
-      );
-      if (skuMatch) return skuMatch;
-    }
-    
+  const findDuplicate = (name: string): ExistingProductWithCategory | null => {
     // Check by name (normalized - case insensitive, trimmed, collapsed spaces)
     const normalizedName = normalizeName(name);
     const nameMatch = existingProductsFull.find(p => 
@@ -717,15 +717,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     for (const [groupName, items] of productGroups) {
       // Use the first item as the base product
       const baseItem = items[0];
-      const existing = findDuplicate(baseItem.name, baseItem.sku);
+      const existing = findDuplicate(baseItem.name);
       
       // Create variants from all items in the group
       // Always create variants if we have color OR size detected
       const variants: ProductVariant[] = items.map(item => ({
-        color: item.color,
+        color: normalizeColorToExisting(item.color),
         size: item.size,
         quantity: item.quantity,
-        sku: item.sku,
       }));
 
       // Calculate total quantity
@@ -742,7 +741,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const product: ImportedProduct = {
         name: baseItem.name.trim().replace(/\s+/g, ' '), // Normalize name spaces
         original_name: items.map(i => i.original_name || i.name).join(", "),
-        sku: baseItem.sku,
         // Always populate color/size from first variant
         size: variants[0]?.size || null,
         color: variants[0]?.color || null,
@@ -791,7 +789,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
       
       const nameIdx = headers.findIndex(h => h.includes('nome') || h.includes('name') || h.includes('produto'));
-      const skuIdx = headers.findIndex(h => h.includes('sku') || h.includes('codigo') || h.includes('código') || h.includes('ref'));
+      // SKU column removed - we no longer use SKU
       const sizeIdx = headers.findIndex(h => h.includes('tamanho') || h.includes('size') || h.includes('tam'));
       const colorIdx = headers.findIndex(h => h.includes('cor') || h.includes('color'));
       const costIdx = headers.findIndex(h => h.includes('custo') || h.includes('cost'));
@@ -815,7 +813,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
         parsedProducts.push({
           name,
-          sku: skuIdx >= 0 ? values[skuIdx] || null : null,
           size: sizeIdx >= 0 ? values[sizeIdx] || null : null,
           color: colorIdx >= 0 ? values[colorIdx] || null : null,
           cost_price: costIdx >= 0 ? parseFloat(values[costIdx]?.replace(',', '.')) || 0 : 0,
@@ -941,7 +938,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       
       // If name was changed, re-check for existing product
       if (updates.name !== undefined && updates.name !== p.name) {
-        const existingMatch = findDuplicate(updates.name, updated.sku);
+        const existingMatch = findDuplicate(updates.name);
         updated.existingProduct = existingMatch;
         
         // If we found an existing product, inherit its category
@@ -1125,7 +1122,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                   color: variant.color,
                   size: variant.size || "ÚNICO",
                   stock_quantity: variant.quantity,
-                  sku: variant.sku,
                   image_url: colorUrls[0] || null,
                   image_url_2: colorUrls[1] || null,
                   image_url_3: colorUrls[2] || null,
@@ -1201,7 +1197,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           .insert({
             name: product.name.trim(),
             description: product.description || null,
-            sku: product.sku,
             size: product.size,
             color: product.color,
             cost_price: product.cost_price,
@@ -1263,7 +1258,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 color: v.color,
                 size: v.size || "ÚNICO",
                 stock_quantity: v.quantity,
-                sku: v.sku,
                 image_url: colorUrls[0] || null,
                 image_url_2: colorUrls[1] || null,
                 image_url_3: colorUrls[2] || null,
@@ -1460,9 +1454,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                           <span className={`font-medium ${!product.name.trim() ? "text-destructive" : ""}`}>
                             {product.name || "(sem nome)"}
                           </span>
-                          {product.sku && (
-                            <span className="text-xs text-muted-foreground block">{product.sku}</span>
-                          )}
                           {product.variants.length > 0 && (
                             <span className="text-xs text-muted-foreground block mt-1">
                               {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
