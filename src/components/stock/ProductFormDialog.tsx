@@ -114,6 +114,7 @@ export function ProductFormDialog({
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
   const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>({});
   const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
+  const [colorRefreshKey, setColorRefreshKey] = useState(0);
   
   const [form, setForm] = useState({
     name: "",
@@ -777,9 +778,11 @@ export function ProductFormDialog({
                         </Select>
                         
                         <ColorManager
+                          key={`color-${index}-${colorRefreshKey}`}
                           value={variant.color}
                           onChange={(value) => updateProductVariant(index, "color", value)}
                           placeholder="Cor"
+                          onColorCreated={() => setColorRefreshKey(k => k + 1)}
                         />
                         
                         <Input

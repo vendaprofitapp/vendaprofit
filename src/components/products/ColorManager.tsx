@@ -33,6 +33,7 @@ interface ColorManagerProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  onColorCreated?: () => void;
 }
 
 const defaultColors = [
@@ -50,7 +51,7 @@ const defaultColors = [
   { name: "Bege", hex: "#D4B896" },
 ];
 
-export function ColorManager({ value, onChange, placeholder = "Cor" }: ColorManagerProps) {
+export function ColorManager({ value, onChange, placeholder = "Cor", onColorCreated }: ColorManagerProps) {
   const { user } = useAuth();
   const [colors, setColors] = useState<Color[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,6 +134,7 @@ export function ColorManager({ value, onChange, placeholder = "Cor" }: ColorMana
         return;
       }
       toast.success("Cor criada!");
+      onColorCreated?.();
     }
 
     resetColorForm();
