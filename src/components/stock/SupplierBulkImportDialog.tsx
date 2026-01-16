@@ -4,11 +4,14 @@ import {
   Loader2,
   Check,
   X,
-  ChevronRight,
-  ChevronDown,
   Package,
   AlertCircle,
   RefreshCw,
+  Edit2,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +39,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface ScrapedProduct {
   url: string;
@@ -51,6 +59,25 @@ interface ScrapedProduct {
   error?: string;
 }
 
+interface ProductVariant {
+  color: string;
+  size: string;
+  quantity: number;
+}
+
+interface GroupedProduct {
+  id: string;
+  baseName: string;
+  category: string;
+  costPrice: number;
+  salePrice: number;
+  description: string;
+  images: string[];
+  variants: ProductVariant[];
+  selected: boolean;
+  expanded: boolean;
+}
+
 interface Supplier {
   id: string;
   name: string;
@@ -62,7 +89,22 @@ interface SupplierBulkImportDialogProps {
   onImportComplete: () => void;
 }
 
-const MARKUP_PERCENTAGE = 1.67; // 40% markup
+const MARKUP_PERCENTAGE = 1.67;
+
+// Common color names to detect
+const COLOR_KEYWORDS = [
+  "preto", "branco", "azul", "vermelho", "verde", "amarelo", "rosa", "roxo", 
+  "laranja", "marrom", "bege", "cinza", "nude", "off white", "off-white",
+  "vinho", "burgundy", "navy", "caramelo", "terracota", "coral", "lilás",
+  "mostarda", "creme", "grafite", "chumbo", "areia", "chocolate", "café",
+  "menta", "lavanda", "pêssego", "salmão", "turquesa", "esmeralda", "oliva",
+  "ruby", "black", "white", "blue", "red", "green", "pink", "orange", "brown",
+  "grey", "gray", "cream", "gold", "silver", "bronze", "champagne", "ivory",
+  "marsala", "bordô", "ferrugem", "ocre", "camel", "taupe", "malva"
+];
+
+// Size patterns
+const SIZE_PATTERN = /\b(pp|p|m|g|gg|xg|xxg|xxxg|eg|exg|u|un|uni|único|unico|36|38|40|42|44|46|48|50)\b/i;
 
 export function SupplierBulkImportDialog({
   open,
@@ -70,18 +112,20 @@ export function SupplierBulkImportDialog({
   onImportComplete,
 }: SupplierBulkImportDialogProps) {
   const { user } = useAuth();
-  const [step, setStep] = useState<"url" | "discover" | "scrape" | "review" | "importing">("url");
+  const [step, setStep] = useState<"url" | "discover" | "scrape" | "group" | "review" | "importing">("url");
   const [siteUrl, setSiteUrl] = useState("https://inmoov.se");
   const [searchFilter, setSearchFilter] = useState("top");
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [productUrls, setProductUrls] = useState<string[]>([]);
   const [products, setProducts] = useState<ScrapedProduct[]>([]);
+  const [groupedProducts, setGroupedProducts] = useState<GroupedProduct[]>([]);
   const [scrapingProgress, setScrapingProgress] = useState(0);
   const [isScraping, setIsScraping] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [editingProduct, setEditingProduct] = useState<GroupedProduct | null>(null);
 
   useEffect(() => {
     if (open && user) {
@@ -98,7 +142,6 @@ export function SupplierBulkImportDialog({
       .order("name");
     setSuppliers(data ?? []);
     
-    // Auto-select Inmoov if exists
     const inmoov = data?.find(s => s.name.toLowerCase().includes("inmoov"));
     if (inmoov) {
       setSelectedSupplierId(inmoov.id);
@@ -139,6 +182,90 @@ export function SupplierBulkImportDialog({
     }
   };
 
+  const extractBaseName = (fullName: string): { baseName: string; color: string | null; size: string | null } => {
+    let name = fullName.trim();
+    let detectedColor: string | null = null;
+    let detectedSize: string | null = null;
+
+    // Extract size first
+    const sizeMatch = name.match(SIZE_PATTERN);
+    if (sizeMatch) {
+      detectedSize = sizeMatch[1].toUpperCase();
+      if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
+        detectedSize = "U";
+      }
+      name = name.replace(SIZE_PATTERN, "").trim();
+    }
+
+    // Extract color
+    const lowerName = name.toLowerCase();
+    for (const color of COLOR_KEYWORDS) {
+      const colorRegex = new RegExp(`\\b${color}\\b`, "i");
+      if (colorRegex.test(lowerName)) {
+        detectedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+        name = name.replace(colorRegex, "").trim();
+        break;
+      }
+    }
+
+    // Clean up extra spaces and dashes
+    name = name.replace(/\s+/g, " ").replace(/\s*-\s*$/, "").replace(/^\s*-\s*/, "").trim();
+
+    return { baseName: name, color: detectedColor, size: detectedSize };
+  };
+
+  const groupScrapedProducts = (scrapedProducts: ScrapedProduct[]): GroupedProduct[] => {
+    const successProducts = scrapedProducts.filter(p => p.status === "success" && p.name);
+    const productMap = new Map<string, GroupedProduct>();
+
+    for (const product of successProducts) {
+      const { baseName, color, size } = extractBaseName(product.name || "");
+      const key = baseName.toLowerCase();
+
+      if (!productMap.has(key)) {
+        productMap.set(key, {
+          id: crypto.randomUUID(),
+          baseName,
+          category: product.category || "Top",
+          costPrice: product.price || 0,
+          salePrice: Math.round((product.price || 0) * MARKUP_PERCENTAGE * 100) / 100,
+          description: product.description || "",
+          images: [...product.images],
+          variants: [],
+          selected: true,
+          expanded: false,
+        });
+      }
+
+      const grouped = productMap.get(key)!;
+      
+      // Add images if new
+      for (const img of product.images) {
+        if (!grouped.images.includes(img)) {
+          grouped.images.push(img);
+        }
+      }
+
+      // Add variant
+      const colors = color ? [color] : (product.colors.length > 0 ? product.colors : ["Sem cor"]);
+      const sizes = size ? [size] : (product.sizes.length > 0 ? product.sizes : ["U"]);
+
+      for (const c of colors) {
+        for (const s of sizes) {
+          const exists = grouped.variants.some(v => 
+            v.color.toLowerCase() === c.toLowerCase() && 
+            v.size.toLowerCase() === s.toLowerCase()
+          );
+          if (!exists) {
+            grouped.variants.push({ color: c, size: s, quantity: 0 });
+          }
+        }
+      }
+    }
+
+    return Array.from(productMap.values());
+  };
+
   const handleScrapeProducts = async () => {
     if (productUrls.length === 0) return;
 
@@ -160,7 +287,6 @@ export function SupplierBulkImportDialog({
     }));
     setProducts(scraped);
 
-    // Scrape in batches of 3 with retry
     const batchSize = 3;
     const maxRetries = 2;
 
@@ -201,7 +327,7 @@ export function SupplierBulkImportDialog({
         
         if (isTimeout && attempt < maxRetries) {
           console.log(`Retry ${attempt} for ${product.url}`);
-          await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+          await new Promise(r => setTimeout(r, 1000));
           return scrapeProduct(product, index, attempt + 1);
         }
 
@@ -221,18 +347,28 @@ export function SupplierBulkImportDialog({
 
     for (let i = 0; i < scraped.length; i += batchSize) {
       const batch = scraped.slice(i, i + batchSize);
-
       await Promise.all(
         batch.map((product, batchIndex) => scrapeProduct(product, i + batchIndex))
       );
-
       setScrapingProgress(Math.min(100, Math.round(((i + batchSize) / scraped.length) * 100)));
     }
 
     setIsScraping(false);
-    setStep("review");
-    toast.success("Produtos processados!");
+    
+    // Group products
+    const grouped = groupScrapedProducts(products);
+    setGroupedProducts(grouped);
+    setStep("group");
+    toast.success("Produtos agrupados! Revise antes de importar.");
   };
+
+  // Watch products changes to update grouped when scraping finishes
+  useEffect(() => {
+    if (step === "group" && products.length > 0) {
+      const grouped = groupScrapedProducts(products);
+      setGroupedProducts(grouped);
+    }
+  }, [step]);
 
   const extractNameFromUrl = (url: string): string => {
     try {
@@ -246,24 +382,67 @@ export function SupplierBulkImportDialog({
     }
   };
 
-  const toggleProductSelection = (index: number) => {
-    setProducts((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], selected: !updated[index].selected };
-      return updated;
-    });
+  const toggleProductSelection = (id: string) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p))
+    );
+  };
+
+  const toggleProductExpanded = (id: string) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, expanded: !p.expanded } : p))
+    );
   };
 
   const toggleSelectAll = (selected: boolean) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.status === "success" ? { ...p, selected } : p))
+    setGroupedProducts((prev) => prev.map((p) => ({ ...p, selected })));
+  };
+
+  const updateProduct = (id: string, updates: Partial<GroupedProduct>) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
+    );
+  };
+
+  const addVariant = (productId: string) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) =>
+        p.id === productId
+          ? { ...p, variants: [...p.variants, { color: "Nova cor", size: "M", quantity: 0 }] }
+          : p
+      )
+    );
+  };
+
+  const updateVariant = (productId: string, variantIndex: number, updates: Partial<ProductVariant>) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) =>
+        p.id === productId
+          ? {
+              ...p,
+              variants: p.variants.map((v, i) =>
+                i === variantIndex ? { ...v, ...updates } : v
+              ),
+            }
+          : p
+      )
+    );
+  };
+
+  const removeVariant = (productId: string, variantIndex: number) => {
+    setGroupedProducts((prev) =>
+      prev.map((p) =>
+        p.id === productId
+          ? { ...p, variants: p.variants.filter((_, i) => i !== variantIndex) }
+          : p
+      )
     );
   };
 
   const handleImport = async () => {
     if (!user) return;
 
-    const selectedProducts = products.filter((p) => p.selected && p.status === "success");
+    const selectedProducts = groupedProducts.filter((p) => p.selected);
     if (selectedProducts.length === 0) {
       toast.error("Selecione pelo menos um produto");
       return;
@@ -283,17 +462,14 @@ export function SupplierBulkImportDialog({
 
     for (const product of selectedProducts) {
       try {
-        const costPrice = product.price || 0;
-        const salePrice = Math.round(costPrice * MARKUP_PERCENTAGE * 100) / 100;
-
         // Create main product
         const { data: newProduct, error: productError } = await supabase
           .from("products")
           .insert({
-            name: product.name || "Produto",
-            category: product.category || "Top",
-            price: salePrice,
-            cost_price: costPrice,
+            name: product.baseName,
+            category: product.category,
+            price: product.salePrice,
+            cost_price: product.costPrice,
             description: product.description,
             stock_quantity: 0,
             min_stock_level: 2,
@@ -308,33 +484,23 @@ export function SupplierBulkImportDialog({
 
         if (productError) throw productError;
 
-        // Create variants for each color/size combination
-        if (newProduct && (product.colors.length > 0 || product.sizes.length > 0)) {
-          const colors = product.colors.length > 0 ? product.colors : [null];
-          const sizes = product.sizes.length > 0 ? product.sizes : ["P", "M", "G", "GG"];
+        // Create variants
+        if (newProduct && product.variants.length > 0) {
+          const variants = product.variants.map((v) => ({
+            product_id: newProduct.id,
+            color: v.color,
+            size: v.size,
+            stock_quantity: v.quantity,
+            image_url: product.images[0] || null,
+          }));
 
-          const variants = [];
-          for (const color of colors) {
-            for (const size of sizes) {
-              variants.push({
-                product_id: newProduct.id,
-                color: color,
-                size: size,
-                stock_quantity: 0,
-                image_url: product.images[0] || null,
-              });
-            }
-          }
-
-          if (variants.length > 0) {
-            await supabase.from("product_variants").insert(variants);
-          }
+          await supabase.from("product_variants").insert(variants);
         }
 
         imported++;
       } catch (error) {
         console.error("Error importing:", error);
-        errors.push(product.name || "Produto desconhecido");
+        errors.push(product.baseName);
       }
 
       setImportProgress(Math.round((imported / selectedProducts.length) * 100));
@@ -358,17 +524,19 @@ export function SupplierBulkImportDialog({
     setSearchFilter("top");
     setProductUrls([]);
     setProducts([]);
+    setGroupedProducts([]);
     setScrapingProgress(0);
     setImportProgress(0);
+    setEditingProduct(null);
     onOpenChange(false);
   };
 
-  const selectedCount = products.filter((p) => p.selected && p.status === "success").length;
-  const successCount = products.filter((p) => p.status === "success").length;
+  const selectedCount = groupedProducts.filter((p) => p.selected).length;
+  const totalVariants = groupedProducts.reduce((acc, p) => acc + p.variants.length, 0);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
@@ -378,7 +546,7 @@ export function SupplierBulkImportDialog({
             {step === "url" && "Digite a URL do site e um filtro para buscar produtos"}
             {step === "discover" && `${productUrls.length} produtos encontrados`}
             {step === "scrape" && "Buscando informações dos produtos..."}
-            {step === "review" && `${successCount} produtos prontos para importar`}
+            {step === "group" && `${groupedProducts.length} produtos agrupados com ${totalVariants} variantes`}
             {step === "importing" && "Importando produtos..."}
           </DialogDescription>
         </DialogHeader>
@@ -468,10 +636,7 @@ export function SupplierBulkImportDialog({
               <ScrollArea className="h-[200px]">
                 <div className="space-y-2">
                   {products.map((p, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 text-sm"
-                    >
+                    <div key={idx} className="flex items-center gap-2 text-sm">
                       {p.status === "loading" && (
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       )}
@@ -492,17 +657,17 @@ export function SupplierBulkImportDialog({
             </div>
           )}
 
-          {/* Step 4: Review Products */}
-          {step === "review" && (
+          {/* Step 4: Grouped Products Review */}
+          {step === "group" && (
             <div className="space-y-4 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={selectedCount === successCount && successCount > 0}
+                    checked={selectedCount === groupedProducts.length && groupedProducts.length > 0}
                     onCheckedChange={(checked) => toggleSelectAll(!!checked)}
                   />
                   <span className="text-sm">
-                    {selectedCount} de {successCount} selecionados
+                    {selectedCount} de {groupedProducts.length} selecionados
                   </span>
                 </div>
                 <Button
@@ -511,82 +676,184 @@ export function SupplierBulkImportDialog({
                   onClick={() => {
                     setStep("url");
                     setProducts([]);
+                    setGroupedProducts([]);
                   }}
                 >
                   Voltar
                 </Button>
               </div>
 
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <p className="font-medium text-primary">💡 Revise e edite antes de importar</p>
+                <p className="text-muted-foreground">
+                  Clique em um produto para expandir e editar o nome, variantes (cor/tamanho).
+                </p>
+              </div>
+
               <ScrollArea className="h-[350px]">
-                <div className="space-y-2">
-                  {products.map((product, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "flex items-start gap-3 p-3 rounded-lg border",
-                        product.status === "error" && "bg-destructive/5 border-destructive/20",
-                        product.selected && product.status === "success" && "bg-primary/5 border-primary/20"
-                      )}
+                <div className="space-y-2 pr-4">
+                  {groupedProducts.map((product) => (
+                    <Collapsible
+                      key={product.id}
+                      open={product.expanded}
+                      onOpenChange={() => toggleProductExpanded(product.id)}
                     >
-                      {product.status === "success" ? (
-                        <Checkbox
-                          checked={product.selected}
-                          onCheckedChange={() => toggleProductSelection(idx)}
-                        />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-destructive mt-1" />
-                      )}
-
-                      {product.images[0] ? (
-                        <img
-                          src={product.images[0]}
-                          alt={product.name || ""}
-                          className="h-12 w-12 rounded object-cover"
-                        />
-                      ) : (
-                        <div className="h-12 w-12 rounded bg-muted flex items-center justify-center">
-                          <Package className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      )}
-
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{product.name || "Sem nome"}</div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          {product.price && (
-                            <span>
-                              Custo: R$ {product.price.toFixed(2)} →{" "}
-                              <span className="text-foreground font-medium">
-                                R$ {(product.price * MARKUP_PERCENTAGE).toFixed(2)}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {product.colors.slice(0, 3).map((c, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">
-                              {c}
-                            </Badge>
-                          ))}
-                          {product.colors.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{product.colors.length - 3}
-                            </Badge>
-                          )}
-                          {product.sizes.slice(0, 4).map((s, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
-                              {s}
-                            </Badge>
-                          ))}
-                        </div>
-                        {product.status === "error" && (
-                          <p className="text-xs text-destructive mt-1">{product.error}</p>
+                      <div
+                        className={cn(
+                          "rounded-lg border",
+                          product.selected && "bg-primary/5 border-primary/20"
                         )}
-                      </div>
+                      >
+                        <div className="flex items-start gap-3 p-3">
+                          <Checkbox
+                            checked={product.selected}
+                            onCheckedChange={() => toggleProductSelection(product.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
 
-                      <div className="text-xs text-muted-foreground">
-                        {product.images.length} img
+                          {product.images[0] ? (
+                            <img
+                              src={product.images[0]}
+                              alt={product.baseName}
+                              className="h-14 w-14 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
+                              <Package className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium">{product.baseName}</div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span>Custo: R$ {product.costPrice.toFixed(2)}</span>
+                              <span>→</span>
+                              <span className="text-foreground font-medium">
+                                R$ {product.salePrice.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {product.variants.length} variantes
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {product.category}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              {product.expanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                        </div>
+
+                        <CollapsibleContent>
+                          <div className="px-3 pb-3 space-y-3 border-t pt-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">Nome do Produto</Label>
+                                <Input
+                                  value={product.baseName}
+                                  onChange={(e) => updateProduct(product.id, { baseName: e.target.value })}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Categoria</Label>
+                                <Input
+                                  value={product.category}
+                                  onChange={(e) => updateProduct(product.id, { category: e.target.value })}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">Preço de Custo (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={product.costPrice}
+                                  onChange={(e) => {
+                                    const cost = parseFloat(e.target.value) || 0;
+                                    updateProduct(product.id, { 
+                                      costPrice: cost,
+                                      salePrice: Math.round(cost * MARKUP_PERCENTAGE * 100) / 100
+                                    });
+                                  }}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Preço de Venda (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={product.salePrice}
+                                  onChange={(e) => updateProduct(product.id, { salePrice: parseFloat(e.target.value) || 0 })}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <Label className="text-xs">Variantes (Cor / Tamanho)</Label>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs"
+                                  onClick={() => addVariant(product.id)}
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Adicionar
+                                </Button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {product.variants.map((variant, vIdx) => (
+                                  <div key={vIdx} className="flex items-center gap-2">
+                                    <Input
+                                      value={variant.color}
+                                      onChange={(e) => updateVariant(product.id, vIdx, { color: e.target.value })}
+                                      placeholder="Cor"
+                                      className="h-7 text-xs flex-1"
+                                    />
+                                    <Input
+                                      value={variant.size}
+                                      onChange={(e) => updateVariant(product.id, vIdx, { size: e.target.value })}
+                                      placeholder="Tam"
+                                      className="h-7 text-xs w-16"
+                                    />
+                                    <Input
+                                      type="number"
+                                      value={variant.quantity}
+                                      onChange={(e) => updateVariant(product.id, vIdx, { quantity: parseInt(e.target.value) || 0 })}
+                                      placeholder="Qtd"
+                                      className="h-7 text-xs w-14"
+                                    />
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => removeVariant(product.id, vIdx)}
+                                    >
+                                      <Trash2 className="h-3 w-3 text-destructive" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </CollapsibleContent>
                       </div>
-                    </div>
+                    </Collapsible>
                   ))}
                 </div>
               </ScrollArea>
@@ -638,7 +905,7 @@ export function SupplierBulkImportDialog({
             </Button>
           )}
 
-          {step === "review" && (
+          {step === "group" && (
             <Button onClick={handleImport} disabled={selectedCount === 0}>
               <Check className="h-4 w-4 mr-2" />
               Importar {selectedCount} Produtos
