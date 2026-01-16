@@ -51,6 +51,15 @@ const defaultColors = [
   { name: "Bege", hex: "#D4B896" },
 ];
 
+// Helper to normalize color names for comparison (case-insensitive, trimmed)
+const normalizeColorName = (name: string) => name.toLowerCase().trim();
+
+// Find matching color from list (case-insensitive)
+export const findMatchingColor = (colorName: string, colors: Color[]): Color | null => {
+  const normalized = normalizeColorName(colorName);
+  return colors.find(c => normalizeColorName(c.name) === normalized) || null;
+};
+
 export function ColorManager({ value, onChange, placeholder = "Cor", onColorCreated }: ColorManagerProps) {
   const { user } = useAuth();
   const [colors, setColors] = useState<Color[]>([]);
@@ -113,7 +122,16 @@ export function ColorManager({ value, onChange, placeholder = "Cor", onColorCrea
       return;
     }
 
+    // Check if color already exists (case-insensitive)
+    const existingColor = findMatchingColor(colorName.trim(), colors);
+    
     if (editColor) {
+      // If editing, check if new name conflicts with another color
+      if (existingColor && existingColor.id !== editColor.id) {
+        toast.error("Já existe uma cor com esse nome");
+        return;
+      }
+      
       const { error } = await supabase
         .from("colors")
         .update({ name: colorName.trim(), hex_code: colorHex })
@@ -125,6 +143,15 @@ export function ColorManager({ value, onChange, placeholder = "Cor", onColorCrea
       }
       toast.success("Cor atualizada!");
     } else {
+      // If creating, check if color already exists
+      if (existingColor) {
+        // Instead of creating, just select the existing color
+        onChange(existingColor.name);
+        toast.info(`Cor "${existingColor.name}" já existe e foi selecionada`);
+        resetColorForm();
+        return;
+      }
+      
       const { error } = await supabase
         .from("colors")
         .insert({ name: colorName.trim(), hex_code: colorHex, owner_id: user.id });

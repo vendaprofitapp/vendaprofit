@@ -51,7 +51,7 @@ interface Product {
   category: string;
   price: number;
   cost_price: number | null;
-  sku: string | null;
+  
   // OBS: tamanho/cor principais ficam nas variantes
   size: string | null;
   color: string | null;
@@ -458,8 +458,7 @@ export default function StockControl() {
       
       // Search term
       const matchesTerm = !term || 
-        p.name.toLowerCase().includes(term) ||
-        (p.sku && p.sku.toLowerCase().includes(term));
+        p.name.toLowerCase().includes(term);
       
       // Category
       const matchesCategory = filters.category === "all" || p.category === filters.category;
@@ -520,8 +519,7 @@ export default function StockControl() {
   }, [filters]);
 
   const filteredPartnerProducts = partnerProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -659,9 +657,6 @@ export default function StockControl() {
                             )}
                             <div className="min-w-0">
                               <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
-                              {product.sku && (
-                                <span className="text-xs text-muted-foreground">{product.sku}</span>
-                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -767,9 +762,6 @@ export default function StockControl() {
                             )}
                             <div className="min-w-0">
                               <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
-                              {product.sku && (
-                                <span className="text-xs text-muted-foreground">{product.sku}</span>
-                              )}
                             </div>
                           </div>
                         </TableCell>
