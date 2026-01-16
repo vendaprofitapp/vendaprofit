@@ -63,10 +63,17 @@ Deno.serve(async (req) => {
     }
 
     const allLinks = data.links || [];
+    const searchTerm = (search || '').toLowerCase().trim();
     
     // Filter for product URLs - look for common product URL patterns
     const productUrls = allLinks.filter((link: string) => {
       const lowerLink = link.toLowerCase();
+      
+      // First, if there's a search term, the URL MUST contain it
+      if (searchTerm && !lowerLink.includes(searchTerm)) {
+        return false;
+      }
+      
       // Common product URL patterns
       const isProduct = 
         lowerLink.includes('/produto/') ||
@@ -98,7 +105,7 @@ Deno.serve(async (req) => {
       return isProduct;
     });
 
-    console.log(`Found ${allLinks.length} total links, ${productUrls.length} product URLs`);
+    console.log(`Found ${allLinks.length} total links, ${productUrls.length} product URLs matching "${searchTerm}"`);
 
     return new Response(
       JSON.stringify({ 
