@@ -113,6 +113,7 @@ interface GroupedProduct {
 interface Supplier {
   id: string;
   name: string;
+  website: string | null;
 }
 
 interface SupplierBulkImportDialogProps {
@@ -154,7 +155,6 @@ export function SupplierBulkImportDialog({
 }: SupplierBulkImportDialogProps) {
   const { user } = useAuth();
   const [step, setStep] = useState<"url" | "discover" | "preview" | "scrape" | "group" | "importing">("url");
-  const [siteUrl, setSiteUrl] = useState("https://inmoov.se");
   const [searchFilter, setSearchFilter] = useState("top");
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [productUrls, setProductUrls] = useState<string[]>([]);
@@ -166,6 +166,7 @@ export function SupplierBulkImportDialog({
   const [importProgress, setImportProgress] = useState(0);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [editingProduct, setEditingProduct] = useState<GroupedProduct | null>(null);
 
   // Preview configuration
@@ -197,20 +198,25 @@ export function SupplierBulkImportDialog({
     if (!user) return;
     const { data } = await supabase
       .from("suppliers")
-      .select("id, name")
+      .select("id, name, website")
       .eq("owner_id", user.id)
       .order("name");
     setSuppliers(data ?? []);
+  };
+
+  const handleSupplierChange = (supplierId: string) => {
+    setSelectedSupplierId(supplierId);
+    const supplier = suppliers.find(s => s.id === supplierId);
+    setSelectedSupplier(supplier || null);
     
-    const inmoov = data?.find(s => s.name.toLowerCase().includes("inmoov"));
-    if (inmoov) {
-      setSelectedSupplierId(inmoov.id);
+    if (supplier && !supplier.website) {
+      toast.warning("Este fornecedor não possui site cadastrado. Cadastre o site na tela de Fornecedores.");
     }
   };
 
   const handleDiscoverProducts = async () => {
-    if (!siteUrl.trim()) {
-      toast.error("Digite a URL do site");
+    if (!selectedSupplier?.website) {
+      toast.error("Este fornecedor não possui site cadastrado");
       return;
     }
 
@@ -219,7 +225,7 @@ export function SupplierBulkImportDialog({
 
     try {
       const { data, error } = await supabase.functions.invoke("map-supplier-site", {
-        body: { url: siteUrl.trim(), search: searchFilter.trim() },
+        body: { url: selectedSupplier.website.trim(), search: searchFilter.trim() },
       });
 
       if (error) throw new Error(error.message);
@@ -875,7 +881,6 @@ export function SupplierBulkImportDialog({
 
   const handleClose = () => {
     setStep("url");
-    setSiteUrl("https://inmoov.se");
     setSearchFilter("top");
     setProductUrls([]);
     setProducts([]);
@@ -895,6 +900,8 @@ export function SupplierBulkImportDialog({
     setDefaultCostPrice(0);
     setDefaultSalePrice(0);
     setUseDefaultPrices(false);
+    setSelectedSupplierId("");
+    setSelectedSupplier(null);
     onOpenChange(false);
   };
 
@@ -910,7 +917,7 @@ export function SupplierBulkImportDialog({
             Importar do Site do Fornecedor
           </DialogTitle>
           <DialogDescription>
-            {step === "url" && "Digite a URL do site e um filtro para buscar produtos"}
+            {step === "url" && "Selecione o fornecedor e um filtro para buscar produtos"}
             {step === "discover" && `${productUrls.length} produtos encontrados`}
             {step === "preview" && "Configure como os dados serão interpretados"}
             {step === "scrape" && "Buscando informações dos produtos..."}
@@ -920,16 +927,28 @@ export function SupplierBulkImportDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden">
-          {/* Step 1: URL Input */}
+          {/* Step 1: Supplier Selection */}
           {step === "url" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>URL do Site</Label>
-                <Input
-                  value={siteUrl}
-                  onChange={(e) => setSiteUrl(e.target.value)}
-                  placeholder="https://inmoov.se"
-                />
+                <Label>Fornecedor</Label>
+                <Select value={selectedSupplierId} onValueChange={handleSupplierChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o fornecedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} {!s.website && "(sem site)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedSupplier && !selectedSupplier.website && (
+                  <p className="text-xs text-destructive">
+                    Este fornecedor não possui site cadastrado. Vá em Fornecedores para adicionar.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Filtro de Busca / Categoria</Label>
@@ -941,21 +960,6 @@ export function SupplierBulkImportDialog({
                 <p className="text-xs text-muted-foreground">
                   Filtra URLs que contêm esta palavra e define a categoria dos produtos
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Fornecedor</Label>
-                <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o fornecedor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Fotos</Label>
@@ -1772,7 +1776,10 @@ export function SupplierBulkImportDialog({
           </Button>
 
           {step === "url" && (
-            <Button onClick={handleDiscoverProducts} disabled={isDiscovering}>
+            <Button 
+              onClick={handleDiscoverProducts} 
+              disabled={isDiscovering || !selectedSupplier?.website}
+            >
               {isDiscovering ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
