@@ -401,6 +401,16 @@ export function SupplierBulkImportDialog({
     return filter.charAt(0).toUpperCase() + filter.slice(1);
   };
 
+  // Helper to normalize base name for consistent comparison
+  const normalizeBaseName = (name: string): string => {
+    // Convert to title case for consistent display
+    return name
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const groupScrapedProducts = (scrapedProducts: ScrapedProduct[]): GroupedProduct[] => {
     const successProducts = scrapedProducts.filter(p => p.status === "success" && p.name);
     const productMap = new Map<string, GroupedProduct>();
@@ -408,7 +418,10 @@ export function SupplierBulkImportDialog({
 
     for (const product of successProducts) {
       const { baseName, color, size } = extractBaseName(product.name || "");
-      const key = baseName.toLowerCase();
+      // Use lowercase key for grouping (case-insensitive)
+      const key = baseName.toLowerCase().trim();
+      // Normalize the display name to title case
+      const normalizedBaseName = normalizeBaseName(baseName);
 
       if (!productMap.has(key)) {
         // Filter images based on user selection
@@ -416,7 +429,7 @@ export function SupplierBulkImportDialog({
         
         productMap.set(key, {
           id: crypto.randomUUID(),
-          baseName,
+          baseName: normalizedBaseName,
           category: categoryFromFilter, // Use filter as category
           costPrice: product.price || 0,
           salePrice: Math.round((product.price || 0) * markupPercentage * 100) / 100,
