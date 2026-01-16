@@ -7,11 +7,16 @@ import {
   Package,
   AlertCircle,
   RefreshCw,
-  Edit2,
   Plus,
   Trash2,
   ChevronDown,
   ChevronUp,
+  Eye,
+  Settings2,
+  Image,
+  Tag,
+  Palette,
+  Ruler,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +49,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Separator } from "@/components/ui/separator";
+
+// Preview sample data interface
+interface PreviewSample {
+  url: string;
+  rawName: string | null;
+  price: number | null;
+  description: string | null;
+  images: string[];
+  colors: string[];
+  sizes: string[];
+  // Parsed result
+  parsedBaseName: string;
+  parsedColor: string | null;
+  parsedSize: string | null;
+}
 
 interface ScrapedProduct {
   url: string;
@@ -112,7 +133,7 @@ export function SupplierBulkImportDialog({
   onImportComplete,
 }: SupplierBulkImportDialogProps) {
   const { user } = useAuth();
-  const [step, setStep] = useState<"url" | "discover" | "scrape" | "group" | "review" | "importing">("url");
+  const [step, setStep] = useState<"url" | "discover" | "preview" | "scrape" | "group" | "importing">("url");
   const [siteUrl, setSiteUrl] = useState("https://inmoov.se");
   const [searchFilter, setSearchFilter] = useState("top");
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -130,6 +151,14 @@ export function SupplierBulkImportDialog({
   // Photo selection - which photo indices to import (1-based for user)
   const [selectedPhotoIndices, setSelectedPhotoIndices] = useState<number[]>([1, 2, 3]);
   const [maxPhotosAvailable] = useState([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+  // Preview configuration
+  const [previewSamples, setPreviewSamples] = useState<PreviewSample[]>([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [extractColorFromName, setExtractColorFromName] = useState(true);
+  const [extractSizeFromName, setExtractSizeFromName] = useState(true);
+  const [customColorKeywords, setCustomColorKeywords] = useState<string>("");
+  const [markupPercentage, setMarkupPercentage] = useState(1.67);
 
   useEffect(() => {
     if (open && user) {
@@ -186,29 +215,43 @@ export function SupplierBulkImportDialog({
     }
   };
 
+  // Get all color keywords including custom ones
+  const getAllColorKeywords = (): string[] => {
+    const customColors = customColorKeywords
+      .split(",")
+      .map(c => c.trim().toLowerCase())
+      .filter(Boolean);
+    return [...COLOR_KEYWORDS, ...customColors];
+  };
+
   const extractBaseName = (fullName: string): { baseName: string; color: string | null; size: string | null } => {
     let name = fullName.trim();
     let detectedColor: string | null = null;
     let detectedSize: string | null = null;
 
-    // Extract size first
-    const sizeMatch = name.match(SIZE_PATTERN);
-    if (sizeMatch) {
-      detectedSize = sizeMatch[1].toUpperCase();
-      if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
-        detectedSize = "U";
+    // Extract size first (if enabled)
+    if (extractSizeFromName) {
+      const sizeMatch = name.match(SIZE_PATTERN);
+      if (sizeMatch) {
+        detectedSize = sizeMatch[1].toUpperCase();
+        if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
+          detectedSize = "U";
+        }
+        name = name.replace(SIZE_PATTERN, "").trim();
       }
-      name = name.replace(SIZE_PATTERN, "").trim();
     }
 
-    // Extract color
-    const lowerName = name.toLowerCase();
-    for (const color of COLOR_KEYWORDS) {
-      const colorRegex = new RegExp(`\\b${color}\\b`, "i");
-      if (colorRegex.test(lowerName)) {
-        detectedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
-        name = name.replace(colorRegex, "").trim();
-        break;
+    // Extract color (if enabled)
+    if (extractColorFromName) {
+      const lowerName = name.toLowerCase();
+      const allColors = getAllColorKeywords();
+      for (const color of allColors) {
+        const colorRegex = new RegExp(`\\b${color}\\b`, "i");
+        if (colorRegex.test(lowerName)) {
+          detectedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+          name = name.replace(colorRegex, "").trim();
+          break;
+        }
       }
     }
 
@@ -216,6 +259,70 @@ export function SupplierBulkImportDialog({
     name = name.replace(/\s+/g, " ").replace(/\s*-\s*$/, "").replace(/^\s*-\s*/, "").trim();
 
     return { baseName: name, color: detectedColor, size: detectedSize };
+  };
+
+  // Load preview samples from first few products
+  const handleLoadPreview = async () => {
+    if (productUrls.length === 0) return;
+
+    setIsLoadingPreview(true);
+    setPreviewSamples([]);
+    setStep("preview");
+
+    // Get up to 3 sample products
+    const sampleUrls = productUrls.slice(0, 3);
+    const samples: PreviewSample[] = [];
+
+    for (const url of sampleUrls) {
+      try {
+        const { data, error } = await supabase.functions.invoke("scrape-product-images", {
+          body: { url },
+        });
+
+        if (error || !data.success) continue;
+
+        const rawName = data.productData?.name || "";
+        const { baseName, color, size } = extractBaseName(rawName);
+
+        samples.push({
+          url,
+          rawName,
+          price: data.productData?.price || null,
+          description: data.productData?.description || null,
+          images: data.images || [],
+          colors: data.productData?.colors || [],
+          sizes: data.productData?.sizes || [],
+          parsedBaseName: baseName,
+          parsedColor: color,
+          parsedSize: size,
+        });
+      } catch (error) {
+        console.error("Error loading preview:", error);
+      }
+    }
+
+    setPreviewSamples(samples);
+    setIsLoadingPreview(false);
+
+    if (samples.length === 0) {
+      toast.error("Não foi possível carregar exemplos");
+      setStep("discover");
+    }
+  };
+
+  // Reparse preview samples when extraction settings change
+  const reparsePreviewSamples = () => {
+    setPreviewSamples(prev => 
+      prev.map(sample => {
+        const { baseName, color, size } = extractBaseName(sample.rawName || "");
+        return {
+          ...sample,
+          parsedBaseName: baseName,
+          parsedColor: color,
+          parsedSize: size,
+        };
+      })
+    );
   };
 
   // Filter images based on selected indices (convert from 1-based to 0-based)
@@ -251,7 +358,7 @@ export function SupplierBulkImportDialog({
           baseName,
           category: categoryFromFilter, // Use filter as category
           costPrice: product.price || 0,
-          salePrice: Math.round((product.price || 0) * MARKUP_PERCENTAGE * 100) / 100,
+          salePrice: Math.round((product.price || 0) * markupPercentage * 100) / 100,
           description: product.description || "",
           images: filteredImages,
           variants: [],
@@ -553,6 +660,11 @@ export function SupplierBulkImportDialog({
     setImportProgress(0);
     setEditingProduct(null);
     setSelectedPhotoIndices([1, 2, 3]);
+    setPreviewSamples([]);
+    setExtractColorFromName(true);
+    setExtractSizeFromName(true);
+    setCustomColorKeywords("");
+    setMarkupPercentage(1.67);
     onOpenChange(false);
   };
 
@@ -570,6 +682,7 @@ export function SupplierBulkImportDialog({
           <DialogDescription>
             {step === "url" && "Digite a URL do site e um filtro para buscar produtos"}
             {step === "discover" && `${productUrls.length} produtos encontrados`}
+            {step === "preview" && "Configure como os dados serão interpretados"}
             {step === "scrape" && "Buscando informações dos produtos..."}
             {step === "group" && `${groupedProducts.length} produtos agrupados com ${totalVariants} variantes`}
             {step === "importing" && "Importando produtos..."}
@@ -675,6 +788,228 @@ export function SupplierBulkImportDialog({
                   )}
                 </div>
               </ScrollArea>
+            </div>
+          )}
+
+          {/* Step 2.5: Preview Configuration */}
+          {step === "preview" && (
+            <div className="space-y-4 py-4">
+              {isLoadingPreview ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Carregando exemplos...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Settings2 className="h-4 w-4" />
+                      <span className="text-sm font-medium">Configurar Importação</span>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
+                      Voltar
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Left: Configuration */}
+                    <div className="space-y-4">
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                        <h4 className="font-medium text-sm flex items-center gap-2">
+                          <Tag className="h-4 w-4" />
+                          Extração de Nome
+                        </h4>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="extractColor"
+                            checked={extractColorFromName}
+                            onCheckedChange={(checked) => {
+                              setExtractColorFromName(!!checked);
+                              setTimeout(reparsePreviewSamples, 0);
+                            }}
+                          />
+                          <Label htmlFor="extractColor" className="text-sm flex items-center gap-2">
+                            <Palette className="h-3 w-3" />
+                            Extrair cor do nome
+                          </Label>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="extractSize"
+                            checked={extractSizeFromName}
+                            onCheckedChange={(checked) => {
+                              setExtractSizeFromName(!!checked);
+                              setTimeout(reparsePreviewSamples, 0);
+                            }}
+                          />
+                          <Label htmlFor="extractSize" className="text-sm flex items-center gap-2">
+                            <Ruler className="h-3 w-3" />
+                            Extrair tamanho do nome
+                          </Label>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Cores adicionais (separar por vírgula)</Label>
+                          <Input
+                            value={customColorKeywords}
+                            onChange={(e) => {
+                              setCustomColorKeywords(e.target.value);
+                              setTimeout(reparsePreviewSamples, 100);
+                            }}
+                            placeholder="ex: flamingo, mirtilo, goiaba"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                        <h4 className="font-medium text-sm">Markup / Margem</h4>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            value={markupPercentage}
+                            onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
+                            className="h-8 text-sm w-20"
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            = {((markupPercentage - 1) * 100).toFixed(0)}% de margem
+                          </span>
+                        </div>
+                        {previewSamples[0]?.price && (
+                          <p className="text-xs text-muted-foreground">
+                            Ex: R$ {previewSamples[0].price.toFixed(2)} → R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                        <h4 className="font-medium text-sm flex items-center gap-2">
+                          <Image className="h-4 w-4" />
+                          Fotos a Importar
+                        </h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {maxPhotosAvailable.map((photoNum) => (
+                            <label
+                              key={photoNum}
+                              className={cn(
+                                "flex items-center justify-center w-8 h-8 rounded border-2 cursor-pointer transition-all text-sm",
+                                selectedPhotoIndices.includes(photoNum)
+                                  ? "bg-primary text-primary-foreground border-primary"
+                                  : "bg-background hover:bg-muted border-muted-foreground/30"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={selectedPhotoIndices.includes(photoNum)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedPhotoIndices([...selectedPhotoIndices, photoNum].sort((a, b) => a - b));
+                                  } else {
+                                    setSelectedPhotoIndices(selectedPhotoIndices.filter((i) => i !== photoNum));
+                                  }
+                                }}
+                              />
+                              {photoNum}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Preview Results */}
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        Pré-visualização ({previewSamples.length} exemplos)
+                      </h4>
+
+                      <ScrollArea className="h-[320px]">
+                        <div className="space-y-3 pr-2">
+                          {previewSamples.map((sample, idx) => (
+                            <div key={idx} className="border rounded-lg p-3 space-y-2">
+                              {/* Images */}
+                              <div className="flex gap-1">
+                                {filterImagesBySelectedIndices(sample.images).slice(0, 3).map((img, imgIdx) => (
+                                  <img
+                                    key={imgIdx}
+                                    src={img}
+                                    alt=""
+                                    className="h-12 w-12 rounded object-cover"
+                                  />
+                                ))}
+                                {sample.images.length === 0 && (
+                                  <div className="h-12 w-12 rounded bg-muted flex items-center justify-center">
+                                    <Package className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Raw name */}
+                              <div>
+                                <p className="text-xs text-muted-foreground">Nome original:</p>
+                                <p className="text-sm font-mono bg-muted px-2 py-1 rounded">{sample.rawName || "—"}</p>
+                              </div>
+
+                              <Separator />
+
+                              {/* Parsed results */}
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground mb-1">Nome Base</p>
+                                  <Badge variant="secondary" className="font-medium">
+                                    {sample.parsedBaseName || "—"}
+                                  </Badge>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground mb-1">Cor</p>
+                                  <Badge variant={sample.parsedColor ? "default" : "outline"}>
+                                    {sample.parsedColor || "Não detectada"}
+                                  </Badge>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground mb-1">Tamanho</p>
+                                  <Badge variant={sample.parsedSize ? "default" : "outline"}>
+                                    {sample.parsedSize || "Não detectado"}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              {/* Price */}
+                              {sample.price && (
+                                <div className="text-xs">
+                                  <span className="text-muted-foreground">Preço: </span>
+                                  <span>R$ {sample.price.toFixed(2)}</span>
+                                  <span className="text-muted-foreground"> → </span>
+                                  <span className="font-medium text-primary">
+                                    R$ {(sample.price * markupPercentage).toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Additional colors/sizes from scrape */}
+                              {(sample.colors.length > 0 || sample.sizes.length > 0) && (
+                                <div className="text-xs text-muted-foreground">
+                                  {sample.colors.length > 0 && (
+                                    <span>Cores detectadas: {sample.colors.join(", ")} | </span>
+                                  )}
+                                  {sample.sizes.length > 0 && (
+                                    <span>Tamanhos: {sample.sizes.join(", ")}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -957,9 +1292,16 @@ export function SupplierBulkImportDialog({
           )}
 
           {step === "discover" && (
-            <Button onClick={handleScrapeProducts}>
+            <Button onClick={handleLoadPreview}>
+              <Eye className="h-4 w-4 mr-2" />
+              Pré-visualizar ({productUrls.length})
+            </Button>
+          )}
+
+          {step === "preview" && (
+            <Button onClick={handleScrapeProducts} disabled={isLoadingPreview}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Buscar Detalhes ({productUrls.length})
+              Importar Todos ({productUrls.length})
             </Button>
           )}
 
