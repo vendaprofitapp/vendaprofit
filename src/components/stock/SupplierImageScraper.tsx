@@ -86,6 +86,11 @@ export function SupplierImageScraper({
     setImages([]);
     setSelectedImages(new Set());
     setShowResults(false);
+
+    // Warn if supplier has no website
+    if (supplier && !supplier.website) {
+      toast.warning("Este fornecedor não possui site cadastrado. Cadastre o site na tela de Fornecedores.");
+    }
   };
 
   const handleScrape = async () => {
@@ -165,9 +170,6 @@ export function SupplierImageScraper({
     setSelectedImages(autoSelected);
   };
 
-  // Filter only suppliers with website
-  const suppliersWithWebsite = suppliers.filter(s => s.website);
-
   return (
     <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
       <div className="flex items-center gap-2">
@@ -175,9 +177,9 @@ export function SupplierImageScraper({
         <Label className="text-sm font-medium">Importar do Site do Fornecedor</Label>
       </div>
 
-      {suppliersWithWebsite.length === 0 ? (
+      {suppliers.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nenhum fornecedor com site cadastrado. Cadastre um fornecedor com o site dele primeiro.
+          Nenhum fornecedor cadastrado. Cadastre um fornecedor primeiro.
         </p>
       ) : (
         <>
@@ -190,9 +192,9 @@ export function SupplierImageScraper({
                   <SelectValue placeholder="Selecione o fornecedor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {suppliersWithWebsite.map((s) => (
+                  {suppliers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                      {s.name} {!s.website && "(sem site)"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -202,6 +204,7 @@ export function SupplierImageScraper({
                 variant="outline" 
                 onClick={handleScrape}
                 disabled={isLoading || !selectedSupplier?.website}
+                title={!selectedSupplier?.website ? "Fornecedor sem site cadastrado" : "Buscar imagens"}
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -210,11 +213,10 @@ export function SupplierImageScraper({
                 )}
               </Button>
             </div>
-            {selectedSupplier?.website && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Globe className="h-3 w-3" />
-                <span className="truncate">{selectedSupplier.website}</span>
-              </div>
+            {selectedSupplier && !selectedSupplier.website && (
+              <p className="text-xs text-destructive">
+                Este fornecedor não possui site cadastrado. Vá em Fornecedores para adicionar.
+              </p>
             )}
           </div>
 
