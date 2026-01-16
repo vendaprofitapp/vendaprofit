@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
-import Products from "./pages/Products";
+
 import Sales from "./pages/Sales";
 import Reports from "./pages/Reports";
 import PartnerReports from "./pages/PartnerReports";
@@ -49,7 +49,7 @@ const AppRoutes = () => (
     <Route path="/auth" element={<Auth />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/stock" element={<ProtectedRoute><StockControl /></ProtectedRoute>} />
-    <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+    
     <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
