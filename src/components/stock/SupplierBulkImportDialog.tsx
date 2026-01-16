@@ -804,10 +804,27 @@ export function SupplierBulkImportDialog({
 
     for (const product of selectedProducts) {
       try {
-        // Get selected images for this product
-        const selectedImages = product.selectedImageIndices
+        // Get selected images for this product - first try product-level selection
+        let selectedImages = product.selectedImageIndices
           .map(idx => product.images[idx])
           .filter(Boolean);
+
+        // If no product-level images, get from the first color with selected images
+        if (selectedImages.length === 0 && product.colorImages.length > 0) {
+          for (const colorEntry of product.colorImages) {
+            if (colorEntry.selectedIndices.length > 0) {
+              selectedImages = colorEntry.selectedIndices
+                .map(idx => colorEntry.images[idx])
+                .filter(Boolean);
+              break;
+            }
+          }
+        }
+
+        // Final fallback: use first available images from any source
+        if (selectedImages.length === 0 && product.images.length > 0) {
+          selectedImages = product.images.slice(0, maxPhotosPerProduct);
+        }
 
         // Create main product
         const { data: newProduct, error: productError } = await supabase
