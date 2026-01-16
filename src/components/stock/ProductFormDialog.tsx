@@ -576,6 +576,12 @@ export function ProductFormDialog({
           maxImages={3}
           currentImageCount={totalColorImages}
           onImagesSelected={(urls) => handleColorImagesFromSupplier(color, urls)}
+          onSupplierSelected={(supplierId) => {
+            setForm(prev => ({ ...prev, supplier_id: supplierId === "none" ? "" : supplierId }));
+            // Refresh suppliers list in case a new one was created
+            fetchSuppliers();
+          }}
+          currentSupplierId={form.supplier_id}
         />
         
         {/* Current images for this color */}
