@@ -92,7 +92,7 @@ interface ProductVariant {
 interface ColorImages {
   color: string;
   images: string[];
-  selectedIndex: number; // Which image is selected for this color (-1 = none)
+  selectedIndices: number[]; // Which images are selected for this color (up to 3)
 }
 
 interface GroupedProduct {
@@ -451,11 +451,12 @@ export function SupplierBulkImportDialog({
         // Keep ALL images - user will select in review step
         const allImages = [...product.images];
         
-        // Initialize colorImages with the first color
+        // Initialize colorImages with the first color - select first N images based on maxPhotosPerProduct
+        const initialSelectedIndices = product.images.slice(0, maxPhotosPerProduct).map((_, idx) => idx);
         const initialColorImages: ColorImages[] = product.images.length > 0 ? [{
           color: normalizedColor,
           images: [...product.images],
-          selectedIndex: 0, // Select first image by default
+          selectedIndices: initialSelectedIndices,
         }] : [];
         
         productMap.set(key, {
@@ -495,11 +496,12 @@ export function SupplierBulkImportDialog({
             }
           }
         } else if (product.images.length > 0) {
-          // Create new color entry
+          // Create new color entry with first N images selected
+          const selectedIndices = product.images.slice(0, maxPhotosPerProduct).map((_, idx) => idx);
           grouped.colorImages.push({
             color: normalizedColor,
             images: [...product.images],
-            selectedIndex: 0, // Select first image by default
+            selectedIndices,
           });
         }
       }
@@ -522,12 +524,12 @@ export function SupplierBulkImportDialog({
             v.size.toLowerCase() === s.toLowerCase()
           );
           if (!exists) {
-            // Find the image for this color
+            // Find the images for this color (first selected image as primary)
             const colorEntry = grouped.colorImages.find(
               ci => removeAccents(ci.color.toLowerCase()) === removeAccents(c.toLowerCase())
             );
-            const imageUrl = colorEntry && colorEntry.selectedIndex >= 0 
-              ? colorEntry.images[colorEntry.selectedIndex] 
+            const imageUrl = colorEntry && colorEntry.selectedIndices.length > 0 
+              ? colorEntry.images[colorEntry.selectedIndices[0]] 
               : undefined;
             
             grouped.variants.push({ color: c, size: s, quantity: 0, imageUrl });
@@ -732,29 +734,43 @@ export function SupplierBulkImportDialog({
     );
   };
 
-  // Update selected image for a specific color
-  const updateColorImage = (productId: string, colorIndex: number, imageIndex: number) => {
+  // Toggle selected image for a specific color (supports multiple selection)
+  const toggleColorImage = (productId: string, colorIndex: number, imageIndex: number) => {
     setGroupedProducts((prev) =>
       prev.map((p) => {
         if (p.id !== productId) return p;
         
-        const updatedColorImages = p.colorImages.map((ci, idx) =>
-          idx === colorIndex ? { ...ci, selectedIndex: imageIndex } : ci
-        );
-        
-        // Also update the imageUrl for all variants with this color
         const colorEntry = p.colorImages[colorIndex];
-        if (colorEntry) {
-          const newImageUrl = colorEntry.images[imageIndex] || undefined;
-          const updatedVariants = p.variants.map(v => 
-            removeAccents(v.color.toLowerCase()) === removeAccents(colorEntry.color.toLowerCase())
-              ? { ...v, imageUrl: newImageUrl }
-              : v
-          );
-          return { ...p, colorImages: updatedColorImages, variants: updatedVariants };
+        if (!colorEntry) return p;
+        
+        let newSelectedIndices: number[];
+        if (colorEntry.selectedIndices.includes(imageIndex)) {
+          // Remove if already selected
+          newSelectedIndices = colorEntry.selectedIndices.filter(i => i !== imageIndex);
+        } else {
+          // Add if not at max
+          if (colorEntry.selectedIndices.length >= maxPhotosPerProduct) {
+            toast.warning(`Máximo de ${maxPhotosPerProduct} ${maxPhotosPerProduct === 1 ? 'foto' : 'fotos'} por cor`);
+            return p;
+          }
+          newSelectedIndices = [...colorEntry.selectedIndices, imageIndex].sort((a, b) => a - b);
         }
         
-        return { ...p, colorImages: updatedColorImages };
+        const updatedColorImages = p.colorImages.map((ci, idx) =>
+          idx === colorIndex ? { ...ci, selectedIndices: newSelectedIndices } : ci
+        );
+        
+        // Update the primary imageUrl for all variants with this color (first selected image)
+        const newImageUrl = newSelectedIndices.length > 0 
+          ? colorEntry.images[newSelectedIndices[0]] 
+          : undefined;
+        const updatedVariants = p.variants.map(v => 
+          removeAccents(v.color.toLowerCase()) === removeAccents(colorEntry.color.toLowerCase())
+            ? { ...v, imageUrl: newImageUrl }
+            : v
+        );
+        
+        return { ...p, colorImages: updatedColorImages, variants: updatedVariants };
       })
     );
   };
@@ -809,23 +825,27 @@ export function SupplierBulkImportDialog({
 
         if (productError) throw productError;
 
-        // Create variants with correct image per color
+        // Create variants with correct images per color (up to 3 photos)
         if (newProduct && product.variants.length > 0) {
           const variants = product.variants.map((v) => {
-            // Find the correct image for this variant's color
+            // Find the correct images for this variant's color
             const colorEntry = product.colorImages.find(
               ci => removeAccents(ci.color.toLowerCase()) === removeAccents(v.color.toLowerCase())
             );
-            const variantImage = colorEntry && colorEntry.selectedIndex >= 0
-              ? colorEntry.images[colorEntry.selectedIndex]
-              : (v.imageUrl || selectedImages[0] || null);
+            
+            // Get selected images for this color (up to 3)
+            const variantImages = colorEntry && colorEntry.selectedIndices.length > 0
+              ? colorEntry.selectedIndices.map(idx => colorEntry.images[idx]).filter(Boolean)
+              : [v.imageUrl || selectedImages[0] || null];
             
             return {
               product_id: newProduct.id,
               color: v.color,
               size: v.size,
               stock_quantity: v.quantity,
-              image_url: variantImage,
+              image_url: variantImages[0] || null,
+              image_url_2: variantImages[1] || null,
+              image_url_3: variantImages[2] || null,
             };
           });
 
@@ -1444,7 +1464,7 @@ export function SupplierBulkImportDialog({
                               product.colorImages.slice(0, 3).map((colorEntry, idx) => (
                                 <img
                                   key={idx}
-                                  src={colorEntry.images[colorEntry.selectedIndex] || colorEntry.images[0]}
+                                  src={colorEntry.images[colorEntry.selectedIndices[0]] || colorEntry.images[0]}
                                   alt={`${product.baseName} - ${colorEntry.color}`}
                                   className={cn(
                                     "rounded object-cover",
@@ -1515,7 +1535,7 @@ export function SupplierBulkImportDialog({
                               <div>
                                 <Label className="text-xs flex items-center gap-2 mb-2">
                                   <Palette className="h-3 w-3" />
-                                  Fotos por Cor (selecione 1 foto para cada cor)
+                                  Fotos por Cor (selecione até {maxPhotosPerProduct} {maxPhotosPerProduct === 1 ? 'foto' : 'fotos'} para cada cor)
                                 </Label>
                                 <div className="space-y-3">
                                   {product.colorImages.map((colorEntry, colorIdx) => (
@@ -1525,18 +1545,18 @@ export function SupplierBulkImportDialog({
                                           {colorEntry.color}
                                         </span>
                                         <span className="text-muted-foreground">
-                                          ({colorEntry.images.length} {colorEntry.images.length === 1 ? 'foto' : 'fotos'})
+                                          ({colorEntry.selectedIndices.length}/{maxPhotosPerProduct} selecionadas)
                                         </span>
                                       </p>
                                       <div className="flex flex-wrap gap-2">
-                                        {colorEntry.images.slice(0, 6).map((img, imgIdx) => (
+                                        {colorEntry.images.slice(0, 9).map((img, imgIdx) => (
                                           <button
                                             key={imgIdx}
                                             type="button"
-                                            onClick={() => updateColorImage(product.id, colorIdx, imgIdx)}
+                                            onClick={() => toggleColorImage(product.id, colorIdx, imgIdx)}
                                             className={cn(
                                               "relative h-12 w-12 rounded-lg overflow-hidden border-2 transition-all",
-                                              colorEntry.selectedIndex === imgIdx
+                                              colorEntry.selectedIndices.includes(imgIdx)
                                                 ? "border-primary ring-2 ring-primary/20"
                                                 : "border-border hover:border-primary/50"
                                             )}
@@ -1549,16 +1569,18 @@ export function SupplierBulkImportDialog({
                                                 (e.target as HTMLImageElement).src = '/placeholder.svg';
                                               }}
                                             />
-                                            {colorEntry.selectedIndex === imgIdx && (
+                                            {colorEntry.selectedIndices.includes(imgIdx) && (
                                               <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                                <Check className="h-4 w-4 text-primary" />
+                                                <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium">
+                                                  {colorEntry.selectedIndices.indexOf(imgIdx) + 1}
+                                                </div>
                                               </div>
                                             )}
                                           </button>
                                         ))}
-                                        {colorEntry.images.length > 6 && (
+                                        {colorEntry.images.length > 9 && (
                                           <span className="text-xs text-muted-foreground self-center">
-                                            +{colorEntry.images.length - 6}
+                                            +{colorEntry.images.length - 9}
                                           </span>
                                         )}
                                       </div>
