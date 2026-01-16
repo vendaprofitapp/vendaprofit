@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.ai-fitting-room]
 verify_jwt = false
+
+[functions.scrape-product-images]
+verify_jwt = false
+
+[functions.map-supplier-site]
+verify_jwt = false

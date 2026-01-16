@@ -273,6 +273,50 @@ Deno.serve(async (req) => {
       productName = ogTitleMatch[1].split('|')[0].split('-')[0].trim();
     }
 
+    // Try h1 tag for product name
+    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+    if (h1Match && h1Match[1].trim().length > 3) {
+      productName = h1Match[1].trim();
+    }
+
+    // Try product name from JSON-LD
+    const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+    if (jsonLdMatch) {
+      for (const jsonLd of jsonLdMatch) {
+        try {
+          const jsonContent = jsonLd.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
+          const parsed = JSON.parse(jsonContent);
+          if (parsed.name) {
+            productName = parsed.name;
+            break;
+          }
+          if (parsed['@graph']) {
+            for (const item of parsed['@graph']) {
+              if (item['@type'] === 'Product' && item.name) {
+                productName = item.name;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+      }
+    }
+
+    // Fallback: extract from URL slug
+    if (!productName || productName.length < 3) {
+      const urlObj = new URL(formattedUrl);
+      const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
+      if (pathParts.length > 0) {
+        const slug = pathParts[pathParts.length - 1];
+        // Convert slug to title case (e.g., "top-alana-aloe-botanical" -> "Top Alana Aloe Botanical")
+        productName = slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        // Remove size indicators at the end (e.g., "G", "GG", "P", "M")
+        productName = productName.replace(/\s+(G|Gg|P|M|Pp|Xg|Xxg|U|Unico|\d+)\s*$/i, '').trim();
+      }
+    }
+
     // Extract additional product data
     const price = extractPrice(html, markdown);
     const description = extractDescription(html, markdown);
