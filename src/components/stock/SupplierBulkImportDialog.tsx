@@ -160,58 +160,70 @@ export function SupplierBulkImportDialog({
     }));
     setProducts(scraped);
 
-    // Scrape in batches of 3
+    // Scrape in batches of 3 with retry
     const batchSize = 3;
+    const maxRetries = 2;
+
+    const scrapeProduct = async (product: ScrapedProduct, index: number, attempt = 1): Promise<void> => {
+      try {
+        setProducts((prev) => {
+          const updated = [...prev];
+          updated[index] = { ...updated[index], status: "loading" };
+          return updated;
+        });
+
+        const { data, error } = await supabase.functions.invoke("scrape-product-images", {
+          body: { url: product.url },
+        });
+
+        if (error) throw new Error(error.message);
+        if (!data.success) throw new Error(data.error || "Erro");
+
+        setProducts((prev) => {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            name: data.productData?.name || extractNameFromUrl(product.url),
+            price: data.productData?.price || null,
+            description: data.productData?.description || null,
+            images: data.images || [],
+            colors: data.productData?.colors || [],
+            sizes: data.productData?.sizes || [],
+            category: data.productData?.category || "Top",
+            selected: true,
+            status: "success",
+          };
+          return updated;
+        });
+      } catch (error) {
+        const isTimeout = error instanceof Error && 
+          (error.message.includes('timeout') || error.message.includes('408'));
+        
+        if (isTimeout && attempt < maxRetries) {
+          console.log(`Retry ${attempt} for ${product.url}`);
+          await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+          return scrapeProduct(product, index, attempt + 1);
+        }
+
+        console.error(`Error scraping ${product.url}:`, error);
+        setProducts((prev) => {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            name: extractNameFromUrl(product.url),
+            status: "error",
+            error: error instanceof Error ? error.message : "Erro ao buscar",
+          };
+          return updated;
+        });
+      }
+    };
+
     for (let i = 0; i < scraped.length; i += batchSize) {
       const batch = scraped.slice(i, i + batchSize);
 
       await Promise.all(
-        batch.map(async (product, batchIndex) => {
-          const index = i + batchIndex;
-          try {
-            setProducts((prev) => {
-              const updated = [...prev];
-              updated[index] = { ...updated[index], status: "loading" };
-              return updated;
-            });
-
-            const { data, error } = await supabase.functions.invoke("scrape-product-images", {
-              body: { url: product.url },
-            });
-
-            if (error) throw new Error(error.message);
-            if (!data.success) throw new Error(data.error || "Erro");
-
-            setProducts((prev) => {
-              const updated = [...prev];
-              updated[index] = {
-                ...updated[index],
-                name: data.productName || extractNameFromUrl(product.url),
-                price: data.price || null,
-                description: data.description || null,
-                images: data.images || [],
-                colors: data.colors || [],
-                sizes: data.sizes || [],
-                category: data.category || "Top",
-                selected: true,
-                status: "success",
-              };
-              return updated;
-            });
-          } catch (error) {
-            console.error(`Error scraping ${product.url}:`, error);
-            setProducts((prev) => {
-              const updated = [...prev];
-              updated[index] = {
-                ...updated[index],
-                name: extractNameFromUrl(product.url),
-                status: "error",
-                error: error instanceof Error ? error.message : "Erro ao buscar",
-              };
-              return updated;
-            });
-          }
-        })
+        batch.map((product, batchIndex) => scrapeProduct(product, i + batchIndex))
       );
 
       setScrapingProgress(Math.min(100, Math.round(((i + batchSize) / scraped.length) * 100)));
