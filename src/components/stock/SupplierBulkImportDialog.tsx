@@ -112,16 +112,25 @@ interface SupplierBulkImportDialogProps {
 
 const MARKUP_PERCENTAGE = 1.67;
 
-// Common color names to detect
-const COLOR_KEYWORDS = [
+// Common color names to detect - includes compound colors (e.g., "verde militar")
+const COMPOUND_COLORS = [
+  "off white", "off-white", "verde militar", "verde menta", "verde oliva", "verde musgo",
+  "azul marinho", "azul royal", "azul bebê", "azul céu", "azul petróleo",
+  "rosa bebê", "rosa chá", "rosa claro", "rosa pink", "rosa chiclete",
+  "amarelo mostarda", "amarelo ouro", "vermelho queimado", "vermelho vinho",
+  "marrom café", "marrom chocolate", "cinza chumbo", "cinza grafite", "cinza claro",
+  "branco gelo", "preto fosco", "nude rosé", "rosa antigo", "rosa seco"
+];
+
+const SIMPLE_COLORS = [
   "preto", "branco", "azul", "vermelho", "verde", "amarelo", "rosa", "roxo", 
-  "laranja", "marrom", "bege", "cinza", "nude", "off white", "off-white",
-  "vinho", "burgundy", "navy", "caramelo", "terracota", "coral", "lilás",
-  "mostarda", "creme", "grafite", "chumbo", "areia", "chocolate", "café",
-  "menta", "lavanda", "pêssego", "salmão", "turquesa", "esmeralda", "oliva",
-  "ruby", "black", "white", "blue", "red", "green", "pink", "orange", "brown",
-  "grey", "gray", "cream", "gold", "silver", "bronze", "champagne", "ivory",
-  "marsala", "bordô", "ferrugem", "ocre", "camel", "taupe", "malva"
+  "laranja", "marrom", "bege", "cinza", "nude", "vinho", "burgundy", "navy", 
+  "caramelo", "terracota", "coral", "lilás", "mostarda", "creme", "grafite", 
+  "chumbo", "areia", "chocolate", "café", "menta", "lavanda", "pêssego", 
+  "salmão", "turquesa", "esmeralda", "oliva", "ruby", "black", "white", 
+  "blue", "red", "green", "pink", "orange", "brown", "grey", "gray", 
+  "cream", "gold", "silver", "bronze", "champagne", "ivory", "marsala", 
+  "bordô", "ferrugem", "ocre", "camel", "taupe", "malva", "militar"
 ];
 
 // Size patterns
@@ -159,6 +168,8 @@ export function SupplierBulkImportDialog({
   const [extractSizeFromName, setExtractSizeFromName] = useState(true);
   const [customColorKeywords, setCustomColorKeywords] = useState<string>("");
   const [markupPercentage, setMarkupPercentage] = useState(1.67);
+  // Number of words that form the product base name (e.g., "TOP LIVIA" = 2 words)
+  const [baseNameWordCount, setBaseNameWordCount] = useState<number>(2);
 
   useEffect(() => {
     if (open && user) {
@@ -215,19 +226,60 @@ export function SupplierBulkImportDialog({
     }
   };
 
-  // Get all color keywords including custom ones
+  // Get all color keywords including custom ones - compound colors first for better matching
   const getAllColorKeywords = (): string[] => {
     const customColors = customColorKeywords
       .split(",")
       .map(c => c.trim().toLowerCase())
       .filter(Boolean);
-    return [...COLOR_KEYWORDS, ...customColors];
+    // Put compound colors first, then simple colors, then custom
+    return [...COMPOUND_COLORS, ...SIMPLE_COLORS, ...customColors];
   };
 
   const extractBaseName = (fullName: string): { baseName: string; color: string | null; size: string | null } => {
-    let name = fullName.trim();
+    const words = fullName.trim().split(/\s+/);
     let detectedColor: string | null = null;
     let detectedSize: string | null = null;
+
+    // If baseNameWordCount is set, use that approach
+    if (baseNameWordCount > 0 && words.length > baseNameWordCount) {
+      // Take first N words as base name
+      const baseName = words.slice(0, baseNameWordCount).join(" ");
+      const remaining = words.slice(baseNameWordCount).join(" ");
+      
+      // Extract size from remaining
+      if (extractSizeFromName) {
+        const sizeMatch = remaining.match(SIZE_PATTERN);
+        if (sizeMatch) {
+          detectedSize = sizeMatch[1].toUpperCase();
+          if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
+            detectedSize = "U";
+          }
+        }
+      }
+
+      // Everything else after base name (excluding size) is the color
+      if (extractColorFromName) {
+        let colorPart = remaining;
+        if (detectedSize) {
+          colorPart = colorPart.replace(SIZE_PATTERN, "").trim();
+        }
+        // Clean up dashes and extra spaces
+        colorPart = colorPart.replace(/\s+/g, " ").replace(/\s*-\s*/g, " ").trim();
+        if (colorPart) {
+          // Capitalize each word
+          detectedColor = colorPart
+            .split(" ")
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ");
+        }
+      }
+
+      return { baseName, color: detectedColor, size: detectedSize };
+    }
+
+    // Fallback: Original logic using color detection
+    let name = fullName.trim();
 
     // Extract size first (if enabled)
     if (extractSizeFromName) {
@@ -241,14 +293,20 @@ export function SupplierBulkImportDialog({
       }
     }
 
-    // Extract color (if enabled)
+    // Extract color (if enabled) - try compound colors first
     if (extractColorFromName) {
       const lowerName = name.toLowerCase();
       const allColors = getAllColorKeywords();
       for (const color of allColors) {
-        const colorRegex = new RegExp(`\\b${color}\\b`, "i");
+        // Escape regex special chars and handle multi-word colors
+        const escapedColor = color.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const colorRegex = new RegExp(`\\b${escapedColor}\\b`, "i");
         if (colorRegex.test(lowerName)) {
-          detectedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+          // Capitalize properly
+          detectedColor = color
+            .split(" ")
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ");
           name = name.replace(colorRegex, "").trim();
           break;
         }
@@ -665,6 +723,7 @@ export function SupplierBulkImportDialog({
     setExtractSizeFromName(true);
     setCustomColorKeywords("");
     setMarkupPercentage(1.67);
+    setBaseNameWordCount(2);
     onOpenChange(false);
   };
 
@@ -817,8 +876,41 @@ export function SupplierBulkImportDialog({
                       <div className="bg-muted/50 rounded-lg p-3 space-y-3">
                         <h4 className="font-medium text-sm flex items-center gap-2">
                           <Tag className="h-4 w-4" />
-                          Extração de Nome
+                          Estrutura do Nome
                         </h4>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs">Quantas palavras formam o nome do produto?</Label>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={baseNameWordCount.toString()}
+                              onValueChange={(val) => {
+                                setBaseNameWordCount(parseInt(val));
+                                setTimeout(reparsePreviewSamples, 0);
+                              }}
+                            >
+                              <SelectTrigger className="w-24 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">Auto</SelectItem>
+                                <SelectItem value="1">1</SelectItem>
+                                <SelectItem value="2">2</SelectItem>
+                                <SelectItem value="3">3</SelectItem>
+                                <SelectItem value="4">4</SelectItem>
+                                <SelectItem value="5">5</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <span className="text-xs text-muted-foreground">
+                              palavras
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Ex: "TOP LIVIA" = 2 palavras. O resto é cor/tamanho.
+                          </p>
+                        </div>
+
+                        <Separator />
                         
                         <div className="flex items-center gap-2">
                           <Checkbox
@@ -831,7 +923,7 @@ export function SupplierBulkImportDialog({
                           />
                           <Label htmlFor="extractColor" className="text-sm flex items-center gap-2">
                             <Palette className="h-3 w-3" />
-                            Extrair cor do nome
+                            Extrair cor
                           </Label>
                         </div>
 
@@ -846,19 +938,19 @@ export function SupplierBulkImportDialog({
                           />
                           <Label htmlFor="extractSize" className="text-sm flex items-center gap-2">
                             <Ruler className="h-3 w-3" />
-                            Extrair tamanho do nome
+                            Extrair tamanho
                           </Label>
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Cores adicionais (separar por vírgula)</Label>
+                          <Label className="text-xs">Cores adicionais (vírgula)</Label>
                           <Input
                             value={customColorKeywords}
                             onChange={(e) => {
                               setCustomColorKeywords(e.target.value);
                               setTimeout(reparsePreviewSamples, 100);
                             }}
-                            placeholder="ex: flamingo, mirtilo, goiaba"
+                            placeholder="ex: flamingo, mirtilo"
                             className="h-8 text-sm"
                           />
                         </div>
