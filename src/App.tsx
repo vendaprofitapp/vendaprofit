@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Sales from "./pages/Sales";
 import Reports from "./pages/Reports";
 import PartnerReports from "./pages/PartnerReports";
+import Financial from "./pages/Financial";
 import Partnerships from "./pages/Partnerships";
 import Settings from "./pages/Settings";
 import StockControl from "./pages/StockControl";
@@ -56,6 +57,7 @@ const AppRoutes = () => (
     <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
     <Route path="/partner-reports" element={<ProtectedRoute><PartnerReports /></ProtectedRoute>} />
+    <Route path="/financial" element={<ProtectedRoute><Financial /></ProtectedRoute>} />
     <Route path="/partnerships" element={<ProtectedRoute><Partnerships /></ProtectedRoute>} />
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
