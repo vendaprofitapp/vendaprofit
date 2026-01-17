@@ -7,6 +7,11 @@ import { DollarSign, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { PaymentFeesSection } from "@/components/settings/PaymentFeesSection";
+import { CustomPaymentMethodsSection } from "@/components/settings/CustomPaymentMethodsSection";
+import { AISettingsSection } from "@/components/settings/AISettingsSection";
+import { PaymentRemindersSection } from "@/components/settings/PaymentRemindersSection";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -14,6 +19,22 @@ export default function Settings() {
   const [salePrice, setSalePrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Fetch user profile for AI settings
+  const { data: profile, refetch: refetchProfile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("preferred_ai_provider, gemini_api_key, openai_api_key")
+        .eq("id", user.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
 
   const handleUpdatePrices = async () => {
     if (!salePrice && !costPrice) {
@@ -54,23 +75,41 @@ export default function Settings() {
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
-        <p className="text-muted-foreground">Defina os preços padrão para todos os produtos</p>
+        <p className="text-muted-foreground">Gerencie taxas, formas de pagamento e configurações de IA</p>
       </div>
 
-      <div className="grid gap-6 max-w-3xl">
-        {/* Price Settings */}
+      <div className="grid gap-6 max-w-4xl">
+        {/* Payment Reminders Section - Show first if there are pending payments */}
+        {user?.id && <PaymentRemindersSection userId={user.id} />}
+
+        {/* Payment Fees Section */}
+        {user?.id && <PaymentFeesSection userId={user.id} />}
+
+        {/* Custom Payment Methods Section */}
+        {user?.id && <CustomPaymentMethodsSection userId={user.id} />}
+
+        {/* AI Settings Section */}
+        {user?.id && (
+          <AISettingsSection 
+            userId={user.id} 
+            profile={profile} 
+            onUpdate={refetchProfile} 
+          />
+        )}
+
+        {/* Bulk Price Update Section */}
         <div className="rounded-xl bg-card p-6 shadow-soft animate-fade-in">
           <div className="flex items-center gap-3 mb-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <DollarSign className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-card-foreground">Preços Padrão</h3>
-              <p className="text-sm text-muted-foreground">Defina os preços para todos os produtos cadastrados</p>
+              <h3 className="text-lg font-semibold text-card-foreground">Preços Padrão em Lote</h3>
+              <p className="text-sm text-muted-foreground">Aplique preços a todos os produtos de uma vez</p>
             </div>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="sale-price">Preço de Venda (R$)</Label>
               <Input 
@@ -97,7 +136,7 @@ export default function Settings() {
             <Button 
               onClick={handleUpdatePrices} 
               disabled={isUpdating}
-              className="w-full"
+              variant="secondary"
             >
               {isUpdating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Aplicar Preços a Todos os Produtos
