@@ -80,7 +80,11 @@ export interface SaleSplitResult {
     profitShareSeller: number;
     profitSharePartner: number;
     groupCommission: number;
+    partnershipCommission: number; // NEW: Commission for third-party sales of partnership stock
   };
+  
+  // NEW: Total payment due to partnership when third-party sells
+  partnershipPaymentDue: number;
   
   // Summary for financial_splits table
   splits: Array<{
@@ -93,10 +97,16 @@ export interface SaleSplitResult {
 
 /**
  * Get configuration values with fallbacks
- * IMPORTANT: For direct partnerships (1:1), group commission is ALWAYS 0
+ * 
+ * For DIRECT PARTNERSHIPS between partners (Scenario A):
+ * - Uses profit_share_seller and profit_share_partner for internal splits
+ * 
+ * For THIRD-PARTY sales of partnership stock (Scenario C):
+ * - Partnership receives: Cost + (Profit * Partnership_Commission)
+ * - This amount is then split between partners using their internal rules
  */
 function getConfigValues(input: SaleSplitInput) {
-  const { partnership, group, groupCommissionPercent, isDirectPartnership, isPartnershipStock } = input;
+  const { partnership, group, groupCommissionPercent, isPartnershipStock } = input;
   
   // Cost split ratio with fallback
   const costSplitRatio = partnership?.cost_split_ratio ?? DEFAULT_COST_SPLIT_RATIO;
@@ -105,17 +115,26 @@ function getConfigValues(input: SaleSplitInput) {
   const profitShareSeller = partnership?.profit_share_seller ?? DEFAULT_PROFIT_SHARE_SELLER;
   const profitSharePartner = partnership?.profit_share_partner ?? DEFAULT_PROFIT_SHARE_PARTNER;
   
-  // Group commission with fallback
-  // CRITICAL: For DIRECT PARTNERSHIPS, commission is ALWAYS 0
-  // Commission only applies to GROUP sales (Scenario B)
-  const isDirectPartnershipSale = isDirectPartnership || group?.is_direct || partnership?.is_direct || isPartnershipStock;
-  const groupCommission = isDirectPartnershipSale ? 0 : (group?.commission_percent ?? groupCommissionPercent ?? DEFAULT_GROUP_COMMISSION);
+  // For partnership stock sold by third-party (Scenario C):
+  // Use the partnership's commission_percent (stored in group table for direct partnerships)
+  // For regular group stock (Scenario B): Use group's commission_percent
+  const isDirectPartnership = group?.is_direct || partnership?.is_direct;
+  
+  // Partnership commission: Used when third-party sells partnership stock (Scenario C)
+  // Group commission: Used when third-party sells regular group stock (Scenario B)
+  const partnershipCommission = isDirectPartnership && isPartnershipStock 
+    ? (group?.commission_percent ?? DEFAULT_GROUP_COMMISSION)
+    : 0;
+  const groupCommission = !isPartnershipStock 
+    ? (group?.commission_percent ?? groupCommissionPercent ?? DEFAULT_GROUP_COMMISSION)
+    : 0;
   
   return {
     costSplitRatio,
     profitShareSeller,
     profitSharePartner,
-    groupCommission
+    groupCommission,
+    partnershipCommission
   };
 }
 
@@ -137,7 +156,7 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
 
   // Get configuration with fallbacks
   const config = getConfigValues(input);
-  const { costSplitRatio, profitShareSeller, profitSharePartner, groupCommission } = config;
+  const { costSplitRatio, profitShareSeller, profitSharePartner, groupCommission, partnershipCommission } = config;
 
   const totalProfit = Math.max(0, salePrice - costPrice);
 
@@ -155,9 +174,11 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
       costSplitRatio,
       profitShareSeller,
       profitSharePartner,
-      groupCommission
+      groupCommission,
+      partnershipCommission
     },
-    splits: []
+    splits: [],
+    partnershipPaymentDue: 0 // NEW: Total payment due to partnership for third-party sales
   };
 
   // Own stock sale - no splits needed
@@ -276,23 +297,31 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   }
 
   // Scenario C: Third party sells partnership stock
-  // Partnership receives: Cost + (TotalProfit * GroupCommission%)
-  // This amount is then split internally using partnership configuration
+  // Partnership receives: Cost + (TotalProfit * PartnershipCommission%)
+  // This amount is then split internally between the two partners using their partnership rules
   if (!sellerIsOwner && isPartnershipStock) {
     result.scenario = 'C';
-    result.scenarioDescription = `Terceiro vende peça da parceria - Parceria recebe custo + ${(groupCommission * 100).toFixed(0)}% comissão, split interno ${(costSplitRatio * 100).toFixed(0)}/${((1 - costSplitRatio) * 100).toFixed(0)} custo e ${(profitShareSeller * 100).toFixed(0)}/${(profitSharePartner * 100).toFixed(0)} lucro`;
     
     // What the external seller pays to the partnership
-    const partnershipCommission = totalProfit * groupCommission;
+    const partnershipCommissionAmount = totalProfit * partnershipCommission;
+    const partnershipTotalReceived = costPrice + partnershipCommissionAmount;
+    
+    // Store for display in sales interface
+    result.partnershipPaymentDue = partnershipTotalReceived;
+    
+    result.scenarioDescription = `Terceiro vende peça da Parceria - Pagamento devido à Sociedade: R$ ${partnershipTotalReceived.toFixed(2)} (custo + ${(partnershipCommission * 100).toFixed(0)}% do lucro)`;
     
     // What the seller keeps
-    const sellerProfit = totalProfit - partnershipCommission;
+    const sellerProfit = totalProfit - partnershipCommissionAmount;
     
-    // Internal partnership split using configurable ratios
+    // Internal partnership split of the received amount
+    // Cost is split according to costSplitRatio
     const ownerCostRecovery = costPrice * costSplitRatio;
     const partnerCostRecovery = costPrice * (1 - costSplitRatio);
-    const ownerProfitFromCommission = partnershipCommission * profitShareSeller;
-    const partnerProfitFromCommission = partnershipCommission * profitSharePartner;
+    
+    // The commission profit received by the partnership is split using profit shares
+    const ownerProfitFromCommission = partnershipCommissionAmount * profitShareSeller;
+    const partnerProfitFromCommission = partnershipCommissionAmount * profitSharePartner;
     
     // Owner (of the product within partnership) gets their cost share + their profit share from commission
     result.owner.costRecovery = ownerCostRecovery;
@@ -312,31 +341,31 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
       recipientType: 'owner',
       type: 'cost_recovery',
       amount: ownerCostRecovery,
-      description: `Recuperação de custo ${(costSplitRatio * 100).toFixed(0)}% - parceria interna`
+      description: `Recuperação de custo ${(costSplitRatio * 100).toFixed(0)}% - sócio 1`
     });
     result.splits.push({
       recipientType: 'owner',
       type: 'profit_share',
       amount: ownerProfitFromCommission,
-      description: `Lucro ${(profitShareSeller * 100).toFixed(0)}% dono - parceria interna`
+      description: `Lucro ${(profitShareSeller * 100).toFixed(0)}% da comissão - sócio 1`
     });
     result.splits.push({
       recipientType: 'partner',
       type: 'cost_recovery',
       amount: partnerCostRecovery,
-      description: `Recuperação de custo ${((1 - costSplitRatio) * 100).toFixed(0)}% - parceria interna`
+      description: `Recuperação de custo ${((1 - costSplitRatio) * 100).toFixed(0)}% - sócio 2`
     });
     result.splits.push({
       recipientType: 'partner',
       type: 'profit_share',
       amount: partnerProfitFromCommission,
-      description: `Lucro ${(profitSharePartner * 100).toFixed(0)}% sócia - parceria interna`
+      description: `Lucro ${(profitSharePartner * 100).toFixed(0)}% da comissão - sócio 2`
     });
     result.splits.push({
       recipientType: 'seller',
       type: 'profit_share',
       amount: sellerProfit,
-      description: 'Lucro vendedora terceira - após comissão parceria'
+      description: 'Lucro vendedor(a) - após pagamento à parceria'
     });
     
     return result;
