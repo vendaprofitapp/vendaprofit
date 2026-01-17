@@ -711,7 +711,7 @@ export function VoiceStockDialog({
       <button
         onClick={() => setSelectedOperation('entry')}
         className={cn(
-          "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
+          "flex-1 flex items-center justify-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
           selectedOperation === 'entry'
             ? "bg-green-500 text-white shadow-sm"
             : "text-muted-foreground hover:text-foreground"
@@ -723,7 +723,7 @@ export function VoiceStockDialog({
       <button
         onClick={() => setSelectedOperation('exit')}
         className={cn(
-          "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
+          "flex-1 flex items-center justify-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
           selectedOperation === 'exit'
             ? "bg-red-500 text-white shadow-sm"
             : "text-muted-foreground hover:text-foreground"
@@ -791,7 +791,7 @@ export function VoiceStockDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto p-4 sm:p-6 gap-3 sm:gap-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getOperationIcon()}
@@ -874,32 +874,32 @@ export function VoiceStockDialog({
 
         {/* Color Selection - Large touch-friendly color chips */}
         {step === 'color_selection' && matchedProduct && command && (
-          <div className="py-4 space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+          <div className="py-3 space-y-3">
+            <div className="flex items-center gap-3 p-2 sm:p-3 rounded-lg bg-secondary/50">
               {matchedProduct.image_url ? (
                 <img 
                   src={matchedProduct.image_url} 
                   alt={matchedProduct.name}
-                  className="h-14 w-14 rounded-lg object-cover"
+                  className="h-10 w-10 sm:h-14 sm:w-14 rounded-lg object-cover"
                 />
               ) : (
-                <div className="h-14 w-14 rounded-lg bg-secondary flex items-center justify-center">
-                  <Package className="h-7 w-7 text-muted-foreground" />
+                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-lg bg-secondary flex items-center justify-center">
+                  <Package className="h-5 w-5 sm:h-7 sm:w-7 text-muted-foreground" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-lg truncate">{matchedProduct.name}</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="font-semibold text-base sm:text-lg truncate">{matchedProduct.name}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Toque para selecionar a cor
                 </p>
               </div>
             </div>
 
             {/* Large color chips grid - optimized for one-hand use */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Qual cor?</Label>
-              <div className="max-h-[400px] overflow-y-auto">
-                <div className="grid grid-cols-2 gap-3 p-1">
+            <div className="space-y-2">
+              <Label className="text-sm sm:text-base font-medium">Qual cor?</Label>
+              <div className="max-h-[45dvh] sm:max-h-[400px] overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 p-1">
                   {availableColors.map((color) => {
                     // Get stock count for this color
                     const colorVariants = variantQuantities.filter(vq => 
@@ -912,13 +912,13 @@ export function VoiceStockDialog({
                       <button
                         key={color}
                         onClick={() => handleColorChipSelect(color)}
-                        className="flex flex-col items-start p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 active:scale-[0.98] transition-all text-left min-h-[88px] touch-manipulation"
+                        className="flex flex-col items-start p-3 sm:p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 active:scale-[0.98] transition-all text-left min-h-[72px] sm:min-h-[88px] touch-manipulation"
                       >
-                        <span className="font-semibold text-base">{color}</span>
-                        <span className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        <span className="font-semibold text-sm sm:text-base">{color}</span>
+                        <span className="text-[11px] sm:text-xs text-muted-foreground mt-1 line-clamp-2">
                           {sizesAvailable}
                         </span>
-                        <Badge variant="secondary" className="mt-2 text-xs">
+                        <Badge variant="secondary" className="mt-2 text-[11px] sm:text-xs">
                           {totalStock} em estoque
                         </Badge>
                       </button>
@@ -930,8 +930,8 @@ export function VoiceStockDialog({
 
             {/* Show detected size if any */}
             {command?.size && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-                <Badge variant="outline" className="text-sm">
+              <div className="flex items-center gap-2 p-2 sm:p-3 rounded-lg bg-muted/50">
+                <Badge variant="outline" className="text-xs sm:text-sm">
                   Tamanho detectado: {command.size}
                 </Badge>
               </div>
@@ -941,21 +941,21 @@ export function VoiceStockDialog({
 
         {/* Variant Selection - User needs to pick size/quantity */}
         {step === 'variant_selection' && matchedProduct && command && (
-          <div className="py-4 space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+          <div className="py-3 space-y-3">
+            <div className="flex items-center gap-3 p-2 sm:p-3 rounded-lg bg-secondary/50">
               {matchedProduct.image_url ? (
                 <img 
                   src={matchedProduct.image_url} 
                   alt={matchedProduct.name}
-                  className="h-14 w-14 rounded-lg object-cover"
+                  className="h-10 w-10 sm:h-14 sm:w-14 rounded-lg object-cover"
                 />
               ) : (
-                <div className="h-14 w-14 rounded-lg bg-secondary flex items-center justify-center">
-                  <Package className="h-7 w-7 text-muted-foreground" />
+                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-lg bg-secondary flex items-center justify-center">
+                  <Package className="h-5 w-5 sm:h-7 sm:w-7 text-muted-foreground" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-lg truncate">{matchedProduct.name}</p>
+                <p className="font-semibold text-base sm:text-lg truncate">{matchedProduct.name}</p>
                 {selectedColor && (
                   <Badge variant="default" className="mt-1">
                     {selectedColor}
@@ -978,15 +978,15 @@ export function VoiceStockDialog({
             {renderOperationToggle()}
 
             {/* Size selection with large touch targets */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Quantidade por tamanho</Label>
+            <div className="space-y-2">
+              <Label className="text-sm sm:text-base font-medium">Quantidade por tamanho</Label>
               <div className="border rounded-xl bg-background">
-                <div className="max-h-[400px] overflow-y-auto p-3 space-y-1">
+                <div className="max-h-[45dvh] sm:max-h-[400px] overflow-y-auto p-2 sm:p-3 space-y-1">
                   {filteredVariantQuantities.map(vq => (
-                    <div key={vq.variantId} className="flex items-center gap-3 py-3 border-b last:border-b-0">
+                    <div key={vq.variantId} className="flex items-center gap-3 py-2 sm:py-3 border-b last:border-b-0">
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-base">{vq.size}</span>
-                        <div className="text-xs text-muted-foreground">
+                        <span className="font-semibold text-sm sm:text-base">{vq.size}</span>
+                        <div className="text-[11px] sm:text-xs text-muted-foreground">
                           Estoque: {vq.currentStock}
                         </div>
                       </div>
@@ -995,27 +995,27 @@ export function VoiceStockDialog({
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-12 w-12 rounded-full touch-manipulation text-lg"
+                          className="h-10 w-10 sm:h-12 sm:w-12 rounded-full touch-manipulation"
                           onClick={() => handleVariantQuantityChange(vq.variantId, -1)}
                           disabled={vq.quantity <= 0}
                         >
-                          <Minus className="h-5 w-5" />
+                          <Minus className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                         <Input
                           type="number"
                           min={0}
                           value={vq.quantity}
                           onChange={(e) => handleVariantQuantityInputChange(vq.variantId, e.target.value)}
-                          className="text-center w-16 h-12 text-lg font-semibold"
+                          className="text-center w-14 sm:w-16 h-10 sm:h-12 text-base sm:text-lg font-semibold"
                         />
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-12 w-12 rounded-full touch-manipulation text-lg"
+                          className="h-10 w-10 sm:h-12 sm:w-12 rounded-full touch-manipulation"
                           onClick={() => handleVariantQuantityChange(vq.variantId, 1)}
                         >
-                          <Plus className="h-5 w-5" />
+                          <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                       </div>
                       {vq.quantity > 0 && (
@@ -1034,7 +1034,7 @@ export function VoiceStockDialog({
             
             {totalQuantity > 0 && (
               <div className="text-center space-y-1 pt-2 border-t">
-                <p className="text-xl font-bold">
+                <p className="text-lg sm:text-xl font-bold">
                   {selectedOperation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
                 </p>
               </div>
