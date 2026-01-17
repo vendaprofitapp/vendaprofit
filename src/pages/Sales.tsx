@@ -1617,6 +1617,12 @@ export default function Sales() {
                   currentUserId={user.id}
                   groupCommissionPercent={0.20}
                   hasActivePartnership={hasActivePartnership}
+                  paymentFeePercent={
+                    selectedPaymentMethodId
+                      ? (customPaymentMethods.find((m) => m.id === selectedPaymentMethodId)?.fee_percent || 0)
+                      : 0
+                  }
+                  saleNetMultiplier={subtotal > 0 ? total / subtotal : 1}
                 />
               )}
 
