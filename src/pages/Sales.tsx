@@ -988,30 +988,50 @@ export default function Sales() {
                       <p className="text-sm text-muted-foreground">Nenhum produto encontrado no seu estoque</p>
                       <Button 
                         variant="link" 
-                        className="p-0 h-auto text-sm"
-                        onClick={() => handleProductSearch(productSearch)}
+                        className="p-0 h-auto text-sm text-primary hover:text-primary/80"
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleProductSearch(productSearch);
+                        }}
                       >
                         Buscar nos estoques parceiros
                       </Button>
                     </div>
                   ) : (
-                    filteredOwnProducts.slice(0, 20).map((product) => (
-                      <button
-                        key={product.id}
-                        className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
-                        onClick={() => handleProductClick(product)}
-                      >
-                        <div>
-                          <p className="font-medium">{product.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Estoque: {product.stock_quantity} • Toque para selecionar variante
+                    <>
+                      {filteredOwnProducts.slice(0, 20).map((product) => (
+                        <button
+                          type="button"
+                          key={product.id}
+                          className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
+                          onClick={() => handleProductClick(product)}
+                        >
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Estoque: {product.stock_quantity} • Toque para selecionar variante
+                            </p>
+                          </div>
+                          <p className="font-semibold">
+                            R$ {product.price.toFixed(2).replace(".", ",")}
                           </p>
-                        </div>
-                        <p className="font-semibold">
-                          R$ {product.price.toFixed(2).replace(".", ",")}
-                        </p>
-                      </button>
-                    ))
+                        </button>
+                      ))}
+                      <div className="p-2 border-t">
+                        <Button 
+                          variant="link" 
+                          className="p-0 h-auto text-xs text-muted-foreground hover:text-primary"
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleProductSearch(productSearch);
+                          }}
+                        >
+                          Buscar também nos estoques parceiros
+                        </Button>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
