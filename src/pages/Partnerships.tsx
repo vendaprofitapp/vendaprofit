@@ -53,6 +53,7 @@ interface Group {
   created_by: string;
   created_at: string;
   is_direct?: boolean;
+  commission_percent?: number;
 }
 
 interface GroupMember {
@@ -114,11 +115,8 @@ export default function Partnerships() {
   const [newGroupDescription, setNewGroupDescription] = useState("");
   const [joinCode, setJoinCode] = useState("");
   
-  // Rules form
-  const [sellerCostPercent, setSellerCostPercent] = useState(50);
-  const [sellerProfitPercent, setSellerProfitPercent] = useState(70);
-  const [ownerCostPercent, setOwnerCostPercent] = useState(50);
-  const [ownerProfitPercent, setOwnerProfitPercent] = useState(30);
+  // Rules form - For GROUPS: only owner commission matters
+  const [ownerCommissionPercent, setOwnerCommissionPercent] = useState(20);
 
   // Fetch user's groups
   const { data: groupMemberships = [] } = useQuery({
@@ -354,44 +352,28 @@ export default function Partnerships() {
     },
   });
 
-  // Update rules mutation
-  const updateRulesMutation = useMutation({
+  // Update group commission mutation (for GROUPS only)
+  const updateCommissionMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedGroup) throw new Error("Nenhuma parceria selecionada");
+      if (!selectedGroup) throw new Error("Nenhum grupo selecionado");
 
-      const existingRule = partnershipRules.find(r => r.group_id === selectedGroup.id);
-
-      if (existingRule) {
-        const { error } = await supabase
-          .from("partnership_rules")
-          .update({
-            seller_cost_percent: sellerCostPercent,
-            seller_profit_percent: sellerProfitPercent,
-            owner_cost_percent: ownerCostPercent,
-            owner_profit_percent: ownerProfitPercent,
-          })
-          .eq("id", existingRule.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("partnership_rules")
-          .insert({
-            group_id: selectedGroup.id,
-            seller_cost_percent: sellerCostPercent,
-            seller_profit_percent: sellerProfitPercent,
-            owner_cost_percent: ownerCostPercent,
-            owner_profit_percent: ownerProfitPercent,
-          });
-        if (error) throw error;
-      }
+      // Update the group's commission_percent directly
+      const { error } = await supabase
+        .from("groups")
+        .update({
+          commission_percent: ownerCommissionPercent / 100,
+        })
+        .eq("id", selectedGroup.id);
+      
+      if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Regras atualizadas com sucesso!" });
+      toast({ title: "Comissão atualizada com sucesso!" });
       setIsRulesOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["partnership-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
     },
     onError: (error) => {
-      toast({ title: "Erro ao atualizar regras", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao atualizar comissão", description: error.message, variant: "destructive" });
     },
   });
 
@@ -441,20 +423,10 @@ export default function Partnerships() {
     },
   });
 
-  const openRulesDialog = (group: Group) => {
+  const openRulesDialog = (group: Group & { commission_percent?: number }) => {
     setSelectedGroup(group);
-    const rules = partnershipRules.find(r => r.group_id === group.id);
-    if (rules) {
-      setSellerCostPercent(Number(rules.seller_cost_percent));
-      setSellerProfitPercent(Number(rules.seller_profit_percent));
-      setOwnerCostPercent(Number(rules.owner_cost_percent));
-      setOwnerProfitPercent(Number(rules.owner_profit_percent));
-    } else {
-      setSellerCostPercent(50);
-      setSellerProfitPercent(70);
-      setOwnerCostPercent(50);
-      setOwnerProfitPercent(30);
-    }
+    // For groups, we only care about commission_percent
+    setOwnerCommissionPercent((group.commission_percent ?? 0.2) * 100);
     setIsRulesOpen(true);
   };
 
@@ -772,109 +744,69 @@ export default function Partnerships() {
         </DialogContent>
       </Dialog>
 
-      {/* Rules Dialog */}
+      {/* Rules Dialog - For GROUPS: Only owner commission */}
       <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Regras de Divisão - {selectedGroup?.name}</DialogTitle>
+            <DialogTitle>Comissão do Grupo - {selectedGroup?.name}</DialogTitle>
             <DialogDescription>
-              Configure como os ganhos serão divididos entre os parceiros quando uma venda é realizada.
+              Configure a comissão que o proprietário da peça recebe quando um membro do grupo vende.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
             {/* Explanation Card */}
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
-              <p className="font-medium mb-2">Como funciona a divisão?</p>
+              <p className="font-medium mb-2">Como funciona?</p>
               <p className="text-muted-foreground">
-                Quando um parceiro realiza uma venda, o valor é dividido em duas partes: 
-                <strong> custo</strong> (valor investido na peça) e <strong>lucro</strong> (diferença entre preço de venda e custo).
-                Cada parte pode ser dividida de forma diferente entre quem vende e quem cede.
+                Quando um membro do grupo vende uma peça de outro membro:
               </p>
+              <ul className="list-disc list-inside text-muted-foreground mt-2 space-y-1">
+                <li>O <strong>proprietário</strong> recebe o custo + comissão sobre o lucro</li>
+                <li>O <strong>vendedor</strong> fica com o lucro restante</li>
+              </ul>
             </div>
 
             <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-              <p className="text-sm font-medium mb-1">Quem Vende</p>
+              <Label htmlFor="ownerCommission" className="text-sm font-medium">
+                Comissão do Proprietário sobre o Lucro (%)
+              </Label>
               <p className="text-xs text-muted-foreground mb-3">
-                O parceiro que registra a venda no sistema
+                Quanto o dono da peça recebe do lucro quando outro membro vende
               </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="sellerCost">% do Custo</Label>
-                  <Input
-                    id="sellerCost"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={sellerCostPercent}
-                    onChange={(e) => setSellerCostPercent(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="sellerProfit">% do Lucro</Label>
-                  <Input
-                    id="sellerProfit"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={sellerProfitPercent}
-                    onChange={(e) => setSellerProfitPercent(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-secondary/50 border border-secondary rounded-lg p-4">
-              <p className="text-sm font-medium mb-1">Quem Cede</p>
-              <p className="text-xs text-muted-foreground mb-3">
-                Os outros parceiros do grupo (co-investidores)
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="ownerCost">% do Custo</Label>
-                  <Input
-                    id="ownerCost"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={ownerCostPercent}
-                    onChange={(e) => setOwnerCostPercent(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ownerProfit">% do Lucro</Label>
-                  <Input
-                    id="ownerProfit"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={ownerProfitPercent}
-                    onChange={(e) => setOwnerProfitPercent(Number(e.target.value))}
-                  />
-                </div>
-              </div>
+              <Input
+                id="ownerCommission"
+                type="number"
+                min={0}
+                max={100}
+                value={ownerCommissionPercent}
+                onChange={(e) => setOwnerCommissionPercent(Number(e.target.value))}
+                className="w-32"
+              />
             </div>
 
             {/* Live Preview */}
             <div className="bg-muted rounded-lg p-4">
               <p className="text-sm font-medium mb-2">Simulação:</p>
-              <p className="text-xs text-muted-foreground mb-2">Peça com custo R$50,00 vendida por R$100,00 (lucro R$50,00)</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Peça com custo R$50,00 vendida por R$100,00 (lucro R$50,00)
+              </p>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-primary/10 rounded p-2">
-                  <p className="font-medium text-primary">Quem vende</p>
-                  <p className="text-lg font-bold">
-                    R$ {((50 * sellerCostPercent/100) + (50 * sellerProfitPercent/100)).toFixed(2)}
+                <div className="bg-secondary/50 rounded p-3">
+                  <p className="font-medium">Proprietário recebe</p>
+                  <p className="text-lg font-bold text-primary">
+                    R$ {(50 + (50 * ownerCommissionPercent / 100)).toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    ({sellerCostPercent}% de R$50 + {sellerProfitPercent}% de R$50)
+                    R$50 (custo) + R${(50 * ownerCommissionPercent / 100).toFixed(2)} ({ownerCommissionPercent}% lucro)
                   </p>
                 </div>
-                <div className="bg-secondary/50 rounded p-2">
-                  <p className="font-medium">Quem cede</p>
+                <div className="bg-primary/10 rounded p-3">
+                  <p className="font-medium">Vendedor fica com</p>
                   <p className="text-lg font-bold">
-                    R$ {((50 * ownerCostPercent/100) + (50 * ownerProfitPercent/100)).toFixed(2)}
+                    R$ {(50 - (50 * ownerCommissionPercent / 100)).toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    ({ownerCostPercent}% de R$50 + {ownerProfitPercent}% de R$50)
+                    {100 - ownerCommissionPercent}% do lucro
                   </p>
                 </div>
               </div>
@@ -885,10 +817,10 @@ export default function Partnerships() {
               Cancelar
             </Button>
             <Button 
-              onClick={() => updateRulesMutation.mutate()}
-              disabled={updateRulesMutation.isPending}
+              onClick={() => updateCommissionMutation.mutate()}
+              disabled={updateCommissionMutation.isPending}
             >
-              {updateRulesMutation.isPending ? "Salvando..." : "Salvar Regras"}
+              {updateCommissionMutation.isPending ? "Salvando..." : "Salvar Comissão"}
             </Button>
           </DialogFooter>
         </DialogContent>
