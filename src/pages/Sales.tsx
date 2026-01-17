@@ -46,6 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialog";
 
 interface Product {
   id: string;
@@ -59,11 +60,21 @@ interface Product {
   size: string | null;
 }
 
+interface ProductVariant {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string;
+  stock_quantity: number;
+  image_url: string | null;
+}
+
 interface CartItem {
   product: Product;
   quantity: number;
   isPartnerStock: boolean;
   ownerName?: string;
+  variant?: ProductVariant | null;
 }
 
 interface Sale {
@@ -128,6 +139,10 @@ export default function Sales() {
   const [productSearch, setProductSearch] = useState("");
   const [dueDate, setDueDate] = useState<string>("");
   const [installments, setInstallments] = useState(1);
+
+  // Variant selection dialog
+  const [showVariantDialog, setShowVariantDialog] = useState(false);
+  const [selectedProductForVariant, setSelectedProductForVariant] = useState<Product | null>(null);
 
   // Partner stock dialog
   const [partnerProducts, setPartnerProducts] = useState<PartnerProduct[]>([]);
@@ -394,15 +409,24 @@ export default function Sales() {
         if (reminderError) console.error("Error creating reminder:", reminderError);
       }
 
-      // Create sale items
-      const itemsToInsert = ownStockItems.map((item) => ({
-        sale_id: sale.id,
-        product_id: item.product.id,
-        product_name: item.product.name,
-        quantity: item.quantity,
-        unit_price: item.product.price,
-        total: item.product.price * item.quantity,
-      }));
+      // Create sale items with variant info
+      const itemsToInsert = ownStockItems.map((item) => {
+        let productName = item.product.name;
+        if (item.variant) {
+          const parts = [];
+          if (item.variant.color) parts.push(item.variant.color);
+          if (item.variant.size) parts.push(item.variant.size);
+          if (parts.length > 0) productName += ` (${parts.join(' - ')})`;
+        }
+        return {
+          sale_id: sale.id,
+          product_id: item.product.id,
+          product_name: productName,
+          quantity: item.quantity,
+          unit_price: item.product.price,
+          total: item.product.price * item.quantity,
+        };
+      });
 
       const { error: itemsError } = await supabase
         .from("sale_items")
@@ -410,13 +434,37 @@ export default function Sales() {
 
       if (itemsError) throw itemsError;
 
-      // Update product stock
+      // Update stock: variant stock if variant selected, otherwise product stock
       for (const item of ownStockItems) {
-        const { error: stockError } = await supabase
-          .from("products")
-          .update({ stock_quantity: item.product.stock_quantity - item.quantity })
-          .eq("id", item.product.id);
-        if (stockError) console.error("Error updating stock:", stockError);
+        if (item.variant) {
+          // Update variant stock
+          const { error: variantStockError } = await supabase
+            .from("product_variants")
+            .update({ stock_quantity: item.variant.stock_quantity - item.quantity })
+            .eq("id", item.variant.id);
+          if (variantStockError) console.error("Error updating variant stock:", variantStockError);
+          
+          // Also recalculate total product stock from all variants
+          const { data: allVariants } = await supabase
+            .from("product_variants")
+            .select("stock_quantity")
+            .eq("product_id", item.product.id);
+          
+          if (allVariants) {
+            const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0) - item.quantity;
+            await supabase
+              .from("products")
+              .update({ stock_quantity: Math.max(0, totalVariantStock) })
+              .eq("id", item.product.id);
+          }
+        } else {
+          // Update product stock directly
+          const { error: stockError } = await supabase
+            .from("products")
+            .update({ stock_quantity: item.product.stock_quantity - item.quantity })
+            .eq("id", item.product.id);
+          if (stockError) console.error("Error updating stock:", stockError);
+        }
       }
 
       return sale;
@@ -465,13 +513,58 @@ export default function Sales() {
     }
   };
 
-  const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
+  // Opens variant selection dialog before adding to cart
+  const handleProductClick = (product: Product) => {
+    setSelectedProductForVariant(product);
+    setShowVariantDialog(true);
+    setProductSearch("");
+  };
+
+  // Called when variant is selected and confirmed
+  const handleVariantConfirm = (product: Product, variant: ProductVariant | null, quantity: number) => {
+    const cartKey = variant ? `${product.id}-${variant.id}` : product.id;
+    const stockLimit = variant ? variant.stock_quantity : product.stock_quantity;
+    
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
+      const existing = prev.find((item) => {
+        if (variant) {
+          return item.variant?.id === variant.id;
+        }
+        return item.product.id === product.id && !item.variant;
+      });
+      
+      if (existing) {
+        const newQty = existing.quantity + quantity;
+        if (newQty <= stockLimit) {
+          return prev.map((item) => {
+            if (variant && item.variant?.id === variant.id) {
+              return { ...item, quantity: newQty };
+            }
+            if (!variant && item.product.id === product.id && !item.variant) {
+              return { ...item, quantity: newQty };
+            }
+            return item;
+          });
+        }
+        toast({ title: "Estoque insuficiente", variant: "destructive" });
+        return prev;
+      }
+
+      return [...prev, { product, quantity, isPartnerStock: false, variant }];
+    });
+
+    setShowVariantDialog(false);
+    setSelectedProductForVariant(null);
+  };
+
+  const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
+    // For partner products, add directly without variant selection
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id && !item.variant);
       if (existing) {
         if (existing.quantity < product.stock_quantity) {
           return prev.map((item) =>
-            item.product.id === product.id
+            item.product.id === product.id && !item.variant
               ? { ...item, quantity: item.quantity + 1 }
               : item,
           );
@@ -486,14 +579,20 @@ export default function Sales() {
     setProductSearch("");
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
+  const updateQuantity = (itemKey: string, delta: number, variantId?: string) => {
     setCart((prev) =>
       prev.map((item) => {
-        if (item.product.id !== productId) return item;
+        // Match by variant id if exists, otherwise by product id
+        const isMatch = variantId 
+          ? item.variant?.id === variantId 
+          : item.product.id === itemKey && !item.variant;
+        
+        if (!isMatch) return item;
 
+        const stockLimit = item.variant ? item.variant.stock_quantity : item.product.stock_quantity;
         const newQty = item.quantity + delta;
         if (newQty <= 0) return item;
-        if (newQty > item.product.stock_quantity) {
+        if (newQty > stockLimit) {
           toast({ title: "Estoque insuficiente", variant: "destructive" });
           return item;
         }
@@ -502,8 +601,13 @@ export default function Sales() {
     );
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  const removeFromCart = (productId: string, variantId?: string) => {
+    setCart((prev) => prev.filter((item) => {
+      if (variantId) {
+        return item.variant?.id !== variantId;
+      }
+      return !(item.product.id === productId && !item.variant);
+    }));
   };
 
   const handleProductSearch = async (searchValue: string) => {
@@ -895,12 +999,12 @@ export default function Sales() {
                       <button
                         key={product.id}
                         className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
-                        onClick={() => addToCart(product, false)}
+                        onClick={() => handleProductClick(product)}
                       >
                         <div>
                           <p className="font-medium">{product.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            Estoque próprio: {product.stock_quantity}
+                            Estoque: {product.stock_quantity} • Toque para selecionar variante
                           </p>
                         </div>
                         <p className="font-semibold">
@@ -921,80 +1025,99 @@ export default function Sales() {
                       Adicione produtos ao carrinho
                     </p>
                   ) : (
-                    cart.map((item) => (
-                      <div
-                        key={item.product.id}
-                        className="p-3 flex items-center justify-between border-b last:border-b-0"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{item.product.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            R$ {item.product.price.toFixed(2).replace(".", ",")} x {item.quantity}
-                          </p>
-                          {item.isPartnerStock && (
-                            <Badge variant="outline" className="text-xs">
-                              <Users className="h-3 w-3 mr-1" />
-                              {item.ownerName}
-                            </Badge>
-                          )}
+                    cart.map((item) => {
+                      const itemKey = item.variant ? item.variant.id : item.product.id;
+                      const stockLimit = item.variant ? item.variant.stock_quantity : item.product.stock_quantity;
+                      
+                      // Build display name with variant info
+                      let displayName = item.product.name;
+                      if (item.variant) {
+                        const parts = [];
+                        if (item.variant.color) parts.push(item.variant.color);
+                        if (item.variant.size) parts.push(item.variant.size);
+                        if (parts.length > 0) displayName += ` (${parts.join(' - ')})`;
+                      }
+                      
+                      return (
+                        <div
+                          key={itemKey}
+                          className="p-3 flex items-center justify-between border-b last:border-b-0"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{displayName}</p>
+                            <p className="text-sm text-muted-foreground">
+                              R$ {item.product.price.toFixed(2).replace(".", ",")} x {item.quantity}
+                            </p>
+                            {item.isPartnerStock && (
+                              <Badge variant="outline" className="text-xs">
+                                <Users className="h-3 w-3 mr-1" />
+                                {item.ownerName}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.product.id, -1, item.variant?.id);
+                              }}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              max={stockLimit}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                const parsed = Number(next);
+                                const newQty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                                setCart((prev) =>
+                                  prev.map((c) => {
+                                    if (item.variant) {
+                                      if (c.variant?.id === item.variant.id) {
+                                        return { ...c, quantity: Math.min(Math.max(1, newQty), stockLimit) };
+                                      }
+                                    } else if (c.product.id === item.product.id && !c.variant) {
+                                      return { ...c, quantity: Math.min(Math.max(1, newQty), stockLimit) };
+                                    }
+                                    return c;
+                                  }),
+                                );
+                              }}
+                              className="w-14 h-10 text-center px-1"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.product.id, 1, item.variant?.id);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-10 w-10 text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromCart(item.product.id, item.variant?.id);
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                      <div className="flex items-center gap-1">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-10 w-10"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateQuantity(item.product.id, -1);
-                            }}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={item.product.stock_quantity}
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const next = e.target.value;
-                              const parsed = Number(next);
-                              const newQty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-                              setCart((prev) =>
-                                prev.map((c) =>
-                                  c.product.id === item.product.id
-                                    ? { ...c, quantity: Math.min(Math.max(1, newQty), item.product.stock_quantity) }
-                                    : c,
-                                ),
-                              );
-                            }}
-                            className="w-14 h-10 text-center px-1"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-10 w-10"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateQuantity(item.product.id, 1);
-                            }}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-10 w-10 text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromCart(item.product.id);
-                            }}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1392,6 +1515,14 @@ export default function Sales() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Variant Selection Dialog */}
+      <VariantSelectionDialog
+        open={showVariantDialog}
+        onOpenChange={setShowVariantDialog}
+        product={selectedProductForVariant}
+        onConfirm={handleVariantConfirm}
+      />
     </MainLayout>
   );
 }
