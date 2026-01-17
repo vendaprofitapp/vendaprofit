@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export interface StockVoiceCommand {
-  operation: 'entry' | 'exit';
+  operation: 'entry' | 'exit' | 'none';
   quantity: number;
   productSearch: string;
   matchedProduct?: string | null;
