@@ -11,6 +11,7 @@ export interface StockVoiceCommand {
   color?: string | null;
   size?: string | null;
   confidence?: number;
+  isAmbiguous?: boolean;
   rawText: string;
 }
 
@@ -66,19 +67,22 @@ export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoi
           color: data.command.color,
           size: data.command.size,
           confidence: data.command.confidence,
+          isAmbiguous: data.command.isAmbiguous || false,
           rawText: text,
         };
         
         setPendingCommand(command);
         onCommand(command);
         
-        // Show confidence feedback with color/size info
+        // Show feedback based on ambiguity and confidence
         const details = [
           data.command.color && `Cor: ${data.command.color}`,
           data.command.size && `Tamanho: ${data.command.size}`
         ].filter(Boolean).join(', ');
         
-        if (data.command.matchedProduct && data.command.confidence >= 0.7) {
+        if (data.command.isAmbiguous) {
+          toast.info('Selecione o produto correto', { duration: 2000 });
+        } else if (data.command.matchedProduct && data.command.confidence >= 0.7) {
           const msg = details 
             ? `Produto: ${data.command.matchedProduct} (${details})`
             : `Produto identificado: ${data.command.matchedProduct}`;

@@ -39,6 +39,8 @@ interface VoiceStockCommand {
   productSearch: string;
   color?: string | null;
   size?: string | null;
+  isAmbiguous?: boolean;
+  confidence?: number;
   rawText: string;
 }
 
@@ -150,14 +152,26 @@ export function VoiceStockDialog({
           if (normalizedName.includes(normalizedSearch)) {
             score += 15;
           }
+          
+          // Partial word matching for fuzzy search
+          for (const word of searchWords) {
+            if (word.length >= 3) {
+              const nameWords = normalizedName.split(/\s+/);
+              for (const nameWord of nameWords) {
+                if (nameWord.startsWith(word) || word.startsWith(nameWord)) {
+                  score += 10;
+                }
+              }
+            }
+          }
         }
 
         return { product, score };
       });
 
-      // Filter products with score > 30 and sort by score
+      // Filter products with score > 20 and sort by score
       const matches = scoredProducts
-        .filter(sp => sp.score > 30)
+        .filter(sp => sp.score > 20)
         .sort((a, b) => b.score - a.score);
 
       if (matches.length === 0) {
@@ -165,8 +179,27 @@ export function VoiceStockDialog({
         return;
       }
 
-      // If best match has very high score (>85), consider it exact
-      if (matches[0].score > 85) {
+      // Check if AI marked as ambiguous or low confidence
+      const isAmbiguous = command?.isAmbiguous || (command?.confidence && command.confidence < 0.6);
+      
+      // If ambiguous or multiple products with similar scores, show selection
+      if (isAmbiguous || (matches.length > 1 && matches[0].score < 85)) {
+        // Group by product name to avoid showing same product multiple times
+        const uniqueProducts = new Map<string, Product>();
+        for (const m of matches.slice(0, 8)) {
+          const baseName = normalizeText(m.product.name);
+          if (!uniqueProducts.has(baseName)) {
+            uniqueProducts.set(baseName, m.product);
+          }
+        }
+        
+        setSimilarProducts(Array.from(uniqueProducts.values()).slice(0, 5));
+        setStep('similar_matches');
+        return;
+      }
+
+      // Single best match with high confidence
+      if (matches[0].score >= 50) {
         const product = matches[0].product;
         setMatchedProduct(product);
         
@@ -179,7 +212,7 @@ export function VoiceStockDialog({
         initializeSizeQuantitiesWithPreselection(product, products, targetColor, command?.quantity || 1, targetSize);
         setStep('exact_match');
       } else {
-        // Show similar matches
+        // Low score matches - show as options
         setSimilarProducts(matches.slice(0, 5).map(m => m.product));
         setStep('similar_matches');
       }
@@ -301,8 +334,14 @@ export function VoiceStockDialog({
 
   const handleSelectProduct = (product: Product) => {
     setMatchedProduct(product);
-    setSelectedColor(product.color);
-    initializeSizeQuantities(product, allVariants, product.color, command?.quantity || 1);
+    
+    // Use AI-detected color if available and matches the product, otherwise use product's color
+    const targetColor = command?.color || product.color;
+    setSelectedColor(targetColor);
+    
+    // Use AI-detected size for pre-selection
+    const targetSize = command?.size?.toUpperCase();
+    initializeSizeQuantitiesWithPreselection(product, allVariants, targetColor, command?.quantity || 1, targetSize);
     setStep('confirming');
   };
 
@@ -535,9 +574,26 @@ export function VoiceStockDialog({
         {/* Similar Matches */}
         {step === 'similar_matches' && (
           <div className="py-2">
-            <p className="text-sm text-muted-foreground mb-3">
+            <p className="text-sm text-muted-foreground mb-2">
               Encontramos produtos similares. Selecione o correto:
             </p>
+            
+            {/* Show AI-detected info */}
+            {(command?.color || command?.size) && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {command?.color && (
+                  <Badge variant="secondary" className="text-xs">
+                    Cor detectada: {command.color}
+                  </Badge>
+                )}
+                {command?.size && (
+                  <Badge variant="secondary" className="text-xs">
+                    Tamanho detectado: {command.size}
+                  </Badge>
+                )}
+              </div>
+            )}
+            
             <ScrollArea className="max-h-[300px]">
               <div className="space-y-2">
                 {/* New Product Option */}
