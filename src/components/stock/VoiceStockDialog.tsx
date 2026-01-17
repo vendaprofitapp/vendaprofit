@@ -61,8 +61,8 @@ interface VoiceStockDialogProps {
   onCreateNewProduct: (productName: string) => void;
 }
 
-// Updated steps: variant_selection for when we need user to pick a variant
-type DialogStep = 'searching' | 'exact_match' | 'similar_matches' | 'variant_selection' | 'no_match' | 'confirming' | 'success';
+// Updated steps: color_selection for picking color, variant_selection for picking size
+type DialogStep = 'searching' | 'exact_match' | 'similar_matches' | 'color_selection' | 'variant_selection' | 'no_match' | 'confirming' | 'success';
 
 // Track quantities for each variant (from product_variants table)
 interface VariantQuantity {
@@ -218,7 +218,26 @@ export function VoiceStockDialog({
       return;
     }
 
-    // No exact match - need user to select
+    // No exact match - check if we need color selection first
+    const uniqueColors = [...new Set(variants.map(v => v.color).filter(Boolean))] as string[];
+    
+    // If multiple colors and no color detected, show color selection grid
+    if (uniqueColors.length > 1 && !normalizedDetectedColor) {
+      // Prepare all variants but don't pre-select any
+      const variantQtys = variants.map(v => ({
+        variantId: v.id,
+        productId: product.id,
+        color: v.color,
+        size: v.size,
+        currentStock: v.stock_quantity,
+        quantity: 0,
+        image_url: v.image_url,
+      }));
+      setVariantQuantities(sortVariantsBySize(variantQtys));
+      setStep('color_selection');
+      return;
+    }
+
     // If only color was detected, filter variants by that color
     if (normalizedDetectedColor) {
       const colorFilteredVariants = variants.filter(v => {
@@ -244,11 +263,25 @@ export function VoiceStockDialog({
         setVariantQuantities(sortVariantsBySize(variantQtys));
         setStep('variant_selection');
         return;
+      } else {
+        // Color not found in variants - show color selection
+        const variantQtys = variants.map(v => ({
+          variantId: v.id,
+          productId: product.id,
+          color: v.color,
+          size: v.size,
+          currentStock: v.stock_quantity,
+          quantity: 0,
+          image_url: v.image_url,
+        }));
+        setVariantQuantities(sortVariantsBySize(variantQtys));
+        setStep('color_selection');
+        return;
       }
     }
 
-    // If only size was detected, pre-select that size across all variants
-    if (normalizedDetectedSize) {
+    // If only size was detected but no color, show color selection first if multiple colors
+    if (normalizedDetectedSize && uniqueColors.length > 1) {
       const variantQtys = variants.map(v => ({
         variantId: v.id,
         productId: product.id,
@@ -259,18 +292,22 @@ export function VoiceStockDialog({
         image_url: v.image_url,
       }));
       setVariantQuantities(sortVariantsBySize(variantQtys));
-      setStep('variant_selection');
+      setStep('color_selection');
       return;
     }
 
-    // Nothing detected - show all variants for selection
+    // Single color or no colors - go straight to variant selection
+    if (uniqueColors.length === 1) {
+      setSelectedColor(uniqueColors[0]);
+    }
+    
     const variantQtys = variants.map(v => ({
       variantId: v.id,
       productId: product.id,
       color: v.color,
       size: v.size,
       currentStock: v.stock_quantity,
-      quantity: 0,
+      quantity: normalizedDetectedSize && normalizeText(v.size).includes(normalizedDetectedSize) ? quantity : 0,
       image_url: v.image_url,
     }));
     setVariantQuantities(sortVariantsBySize(variantQtys));
@@ -438,7 +475,7 @@ export function VoiceStockDialog({
     ));
   };
 
-  // Handle color selection change
+  // Handle color selection change (from dropdown)
   const handleColorChange = (color: string) => {
     setSelectedColor(color);
     // Reset quantities for the new color
@@ -446,6 +483,26 @@ export function VoiceStockDialog({
       ...vq,
       quantity: normalizeText(vq.color || '') === normalizeText(color) ? vq.quantity : 0
     })));
+  };
+
+  // Handle color chip selection - go to size selection after picking color
+  const handleColorChipSelect = (color: string) => {
+    setSelectedColor(color);
+    
+    // Filter variants for this color and set quantity for detected size if any
+    const detectedSize = command?.size ? normalizeText(command.size) : null;
+    
+    setVariantQuantities(prev => prev.map(vq => {
+      const isMatchingColor = normalizeText(vq.color || '') === normalizeText(color);
+      const isMatchingSize = detectedSize && normalizeText(vq.size).includes(detectedSize);
+      return {
+        ...vq,
+        quantity: isMatchingColor && isMatchingSize ? (command?.quantity || 1) : (isMatchingColor ? 0 : 0)
+      };
+    }));
+    
+    // Move to variant/size selection
+    setStep('variant_selection');
   };
 
   const totalQuantity = useMemo(() => {
@@ -672,7 +729,72 @@ export function VoiceStockDialog({
           </div>
         )}
 
-        {/* Variant Selection - User needs to pick variants */}
+        {/* Color Selection - Large touch-friendly color chips */}
+        {step === 'color_selection' && matchedProduct && command && (
+          <div className="py-4 space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+              {matchedProduct.image_url ? (
+                <img 
+                  src={matchedProduct.image_url} 
+                  alt={matchedProduct.name}
+                  className="h-14 w-14 rounded-lg object-cover"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-lg bg-secondary flex items-center justify-center">
+                  <Package className="h-7 w-7 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-lg truncate">{matchedProduct.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Toque para selecionar a cor
+                </p>
+              </div>
+            </div>
+
+            {/* Large color chips grid - optimized for one-hand use */}
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Qual cor?</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {availableColors.map((color) => {
+                  // Get stock count for this color
+                  const colorVariants = variantQuantities.filter(vq => 
+                    normalizeText(vq.color || '') === normalizeText(color)
+                  );
+                  const totalStock = colorVariants.reduce((sum, vq) => sum + vq.currentStock, 0);
+                  const sizesAvailable = colorVariants.map(vq => vq.size).join(', ');
+                  
+                  return (
+                    <button
+                      key={color}
+                      onClick={() => handleColorChipSelect(color)}
+                      className="flex flex-col items-start p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 active:scale-[0.98] transition-all text-left min-h-[80px] touch-manipulation"
+                    >
+                      <span className="font-semibold text-base">{color}</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        {sizesAvailable}
+                      </span>
+                      <Badge variant="secondary" className="mt-2 text-xs">
+                        {totalStock} em estoque
+                      </Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Show detected size if any */}
+            {command?.size && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+                <Badge variant="outline" className="text-sm">
+                  Tamanho detectado: {command.size}
+                </Badge>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Variant Selection - User needs to pick size/quantity */}
         {step === 'variant_selection' && matchedProduct && command && (
           <div className="py-4 space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
@@ -680,70 +802,92 @@ export function VoiceStockDialog({
                 <img 
                   src={matchedProduct.image_url} 
                   alt={matchedProduct.name}
-                  className="h-12 w-12 rounded-lg object-cover"
+                  className="h-14 w-14 rounded-lg object-cover"
                 />
               ) : (
-                <div className="h-12 w-12 rounded-lg bg-secondary flex items-center justify-center">
-                  <Package className="h-6 w-6 text-muted-foreground" />
+                <div className="h-14 w-14 rounded-lg bg-secondary flex items-center justify-center">
+                  <Package className="h-7 w-7 text-muted-foreground" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{matchedProduct.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Selecione a variante
-                </p>
+                <p className="font-semibold text-lg truncate">{matchedProduct.name}</p>
+                {selectedColor && (
+                  <Badge variant="default" className="mt-1">
+                    {selectedColor}
+                  </Badge>
+                )}
               </div>
             </div>
 
-            {/* Show detected info */}
-            {(command?.color || command?.size) && (
-              <div className="flex flex-wrap gap-2">
-                {command?.color && (
-                  <Badge variant="secondary" className="text-xs">
-                    Cor detectada: {command.color}
-                  </Badge>
-                )}
-                {command?.size && (
-                  <Badge variant="secondary" className="text-xs">
-                    Tamanho detectado: {command.size}
-                  </Badge>
-                )}
-              </div>
+            {/* Back to color selection if needed */}
+            {availableColors.length > 1 && selectedColor && (
+              <button
+                onClick={() => setStep('color_selection')}
+                className="text-sm text-primary hover:underline flex items-center gap-1"
+              >
+                ← Trocar cor
+              </button>
             )}
 
-            {/* Color filter if multiple colors */}
-            {availableColors.length > 1 && (
-              <div className="space-y-2">
-                <Label>Filtrar por Cor</Label>
-                <Select value={selectedColor || ''} onValueChange={handleColorChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas as cores" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableColors.map((color) => (
-                      <SelectItem key={color} value={color}>
-                        {color}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Variant list */}
-            <div className="space-y-2">
-              <Label>Quantidade por Variante</Label>
-              <div className="border rounded-lg p-2 bg-background">
-                <ScrollArea className={filteredVariantQuantities.length > 4 ? 'max-h-[200px]' : ''}>
-                  {filteredVariantQuantities.map(vq => renderVariantQuantityRow(vq))}
+            {/* Size selection with large touch targets */}
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Quantidade por tamanho</Label>
+              <div className="border rounded-xl p-3 bg-background space-y-1">
+                <ScrollArea className={filteredVariantQuantities.length > 5 ? 'max-h-[240px]' : ''}>
+                  {filteredVariantQuantities.map(vq => (
+                    <div key={vq.variantId} className="flex items-center gap-3 py-3 border-b last:border-b-0">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold text-base">{vq.size}</span>
+                        <div className="text-xs text-muted-foreground">
+                          Estoque: {vq.currentStock}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 rounded-full touch-manipulation"
+                          onClick={() => handleVariantQuantityChange(vq.variantId, -1)}
+                          disabled={vq.quantity <= 0}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={vq.quantity}
+                          onChange={(e) => handleVariantQuantityInputChange(vq.variantId, e.target.value)}
+                          className="text-center w-16 h-10 text-lg font-semibold"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 rounded-full touch-manipulation"
+                          onClick={() => handleVariantQuantityChange(vq.variantId, 1)}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {vq.quantity > 0 && (
+                        <div className="text-sm text-muted-foreground w-10 text-right">
+                          → {command?.operation === 'entry' 
+                            ? vq.currentStock + vq.quantity
+                            : Math.max(0, vq.currentStock - vq.quantity)
+                          }
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </ScrollArea>
               </div>
             </div>
             
             {totalQuantity > 0 && (
               <div className="text-center space-y-1 pt-2 border-t">
-                <p className="text-lg font-semibold">
-                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s) total
+                <p className="text-xl font-bold">
+                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
                 </p>
               </div>
             )}
@@ -863,8 +1007,17 @@ export function VoiceStockDialog({
             <Button 
               onClick={handleConfirmOperation} 
               disabled={isProcessing || totalQuantity === 0}
+              className="min-h-[44px] text-base"
             >
               {isProcessing ? 'Processando...' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        )}
+
+        {step === 'color_selection' && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="min-h-[44px]">
+              Cancelar
             </Button>
           </DialogFooter>
         )}
