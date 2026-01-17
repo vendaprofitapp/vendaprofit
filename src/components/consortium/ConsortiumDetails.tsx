@@ -92,24 +92,16 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
     },
   });
 
-  // Buscar clientes existentes para autocomplete
+  // Buscar clientes cadastrados para autocomplete
   const { data: existingCustomers = [] } = useQuery({
-    queryKey: ["existing-customers"],
+    queryKey: ["customers-for-consortium"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("sales")
-        .select("customer_name, customer_phone")
-        .not("customer_name", "is", null)
-        .order("customer_name");
+        .from("customers")
+        .select("name, phone")
+        .order("name");
       if (error) throw error;
-      // Unique customers
-      const unique = new Map<string, { name: string; phone: string | null }>();
-      data.forEach((s) => {
-        if (s.customer_name && !unique.has(s.customer_name)) {
-          unique.set(s.customer_name, { name: s.customer_name, phone: s.customer_phone });
-        }
-      });
-      return Array.from(unique.values());
+      return data.map((c) => ({ name: c.name, phone: c.phone }));
     },
   });
 
