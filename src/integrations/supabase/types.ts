@@ -537,6 +537,7 @@ export type Database = {
       groups: {
         Row: {
           commission_percent: number
+          cost_split_ratio: number
           created_at: string
           created_by: string
           description: string | null
@@ -544,10 +545,13 @@ export type Database = {
           invite_code: string | null
           is_direct: boolean
           name: string
+          profit_share_partner: number
+          profit_share_seller: number
           updated_at: string
         }
         Insert: {
           commission_percent?: number
+          cost_split_ratio?: number
           created_at?: string
           created_by: string
           description?: string | null
@@ -555,10 +559,13 @@ export type Database = {
           invite_code?: string | null
           is_direct?: boolean
           name: string
+          profit_share_partner?: number
+          profit_share_seller?: number
           updated_at?: string
         }
         Update: {
           commission_percent?: number
+          cost_split_ratio?: number
           created_at?: string
           created_by?: string
           description?: string | null
@@ -566,6 +573,8 @@ export type Database = {
           invite_code?: string | null
           is_direct?: boolean
           name?: string
+          profit_share_partner?: number
+          profit_share_seller?: number
           updated_at?: string
         }
         Relationships: []
