@@ -513,47 +513,136 @@ export default function Sales() {
           hasActivePartnership: userGroups.length > 0,
         });
 
-        // Add seller splits (current user)
-        if (splitResult.seller.total > 0) {
-          if (splitResult.seller.costRecovery > 0) {
-            financialSplitsToInsert.push({
-              sale_id: sale.id,
-              user_id: user.id,
-              amount: splitResult.seller.costRecovery,
-              type: 'cost_recovery',
-              description: `Recuperação de custo - ${item.product.name}`,
-            });
-          }
-          if (splitResult.seller.profitShare > 0) {
-            financialSplitsToInsert.push({
-              sale_id: sale.id,
-              user_id: user.id,
-              amount: splitResult.seller.profitShare,
-              type: 'profit_share',
-              description: `Lucro da venda - ${item.product.name}`,
-            });
-          }
-        }
+        // SCENARIO C: Third-party sells partnership stock
+        // Generate two financial_splits, one for each partner
+        if (splitResult.scenario === 'C' && isPartnershipStock) {
+          // Get the partnership group and members for this product
+          const { data: productPartnership } = await supabase
+            .from("product_partnerships")
+            .select("group_id")
+            .eq("product_id", item.product.id)
+            .limit(1)
+            .maybeSingle();
 
-        // Add owner splits (product owner, when different from seller)
-        if (splitResult.owner.total > 0 && item.product.owner_id !== user.id) {
-          if (splitResult.owner.costRecovery > 0) {
-            financialSplitsToInsert.push({
-              sale_id: sale.id,
-              user_id: item.product.owner_id,
-              amount: splitResult.owner.costRecovery,
-              type: 'cost_recovery',
-              description: `Recuperação de custo (dono) - ${item.product.name}`,
-            });
+          if (productPartnership?.group_id) {
+            // Get all members of this partnership group
+            const { data: groupMembers } = await supabase
+              .from("group_members")
+              .select("user_id")
+              .eq("group_id", productPartnership.group_id);
+
+            if (groupMembers && groupMembers.length >= 2) {
+              // Find the two partners (owner and the other member)
+              const ownerUserId = item.product.owner_id;
+              const partnerUserId = groupMembers.find(m => m.user_id !== ownerUserId)?.user_id;
+
+              // Add split for owner (sócio 1)
+              if (splitResult.owner.total > 0) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: ownerUserId,
+                  amount: splitResult.owner.total,
+                  type: 'cost_recovery',
+                  description: `Comissão de Cessão de Estoque (Peça vendida por terceiro) - ${item.product.name}`,
+                });
+              }
+
+              // Add split for partner (sócio 2)
+              if (partnerUserId && splitResult.partner.total > 0) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: partnerUserId,
+                  amount: splitResult.partner.total,
+                  type: 'cost_recovery',
+                  description: `Comissão de Cessão de Estoque (Peça vendida por terceiro) - ${item.product.name}`,
+                });
+              }
+
+              // Add seller split
+              if (splitResult.seller.profitShare > 0) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: user.id,
+                  amount: splitResult.seller.profitShare,
+                  type: 'profit_share',
+                  description: `Lucro da venda (após pagamento à parceria) - ${item.product.name}`,
+                });
+              }
+            }
           }
-          if (splitResult.owner.groupCommission > 0) {
-            financialSplitsToInsert.push({
-              sale_id: sale.id,
-              user_id: item.product.owner_id,
-              amount: splitResult.owner.groupCommission,
-              type: 'group_commission',
-              description: `Comissão de grupo - ${item.product.name}`,
-            });
+        } else {
+          // Other scenarios: seller splits (current user)
+          if (splitResult.seller.total > 0) {
+            if (splitResult.seller.costRecovery > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: user.id,
+                amount: splitResult.seller.costRecovery,
+                type: 'cost_recovery',
+                description: `Recuperação de custo - ${item.product.name}`,
+              });
+            }
+            if (splitResult.seller.profitShare > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: user.id,
+                amount: splitResult.seller.profitShare,
+                type: 'profit_share',
+                description: `Lucro da venda - ${item.product.name}`,
+              });
+            }
+          }
+
+          // Add owner splits (product owner, when different from seller)
+          if (splitResult.owner.total > 0 && item.product.owner_id !== user.id) {
+            if (splitResult.owner.costRecovery > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: item.product.owner_id,
+                amount: splitResult.owner.costRecovery,
+                type: 'cost_recovery',
+                description: `Recuperação de custo (dono) - ${item.product.name}`,
+              });
+            }
+            if (splitResult.owner.groupCommission > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: item.product.owner_id,
+                amount: splitResult.owner.groupCommission,
+                type: 'group_commission',
+                description: `Comissão de grupo - ${item.product.name}`,
+              });
+            }
+          }
+
+          // Add partner splits (Scenario A - partnership stock sold by partner)
+          if (splitResult.scenario === 'A' && splitResult.partner.total > 0) {
+            // Find the partner for this product's partnership
+            const { data: productPartnership } = await supabase
+              .from("product_partnerships")
+              .select("group_id")
+              .eq("product_id", item.product.id)
+              .limit(1)
+              .maybeSingle();
+
+            if (productPartnership?.group_id) {
+              const { data: groupMembers } = await supabase
+                .from("group_members")
+                .select("user_id")
+                .eq("group_id", productPartnership.group_id);
+
+              const partnerUserId = groupMembers?.find(m => m.user_id !== user.id)?.user_id;
+
+              if (partnerUserId) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: partnerUserId,
+                  amount: splitResult.partner.total,
+                  type: 'profit_share',
+                  description: `Participação na venda (parceria) - ${item.product.name}`,
+                });
+              }
+            }
           }
         }
       }

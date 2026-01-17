@@ -320,8 +320,10 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
     const partnerCostRecovery = costPrice * (1 - costSplitRatio);
     
     // The commission profit received by the partnership is split using profit shares
-    const ownerProfitFromCommission = partnershipCommissionAmount * profitShareSeller;
-    const partnerProfitFromCommission = partnershipCommissionAmount * profitSharePartner;
+    // For third-party sales, we use a 50/50 split on the commission by default
+    // since neither partner sold it - they both equally benefit from the external sale
+    const ownerProfitFromCommission = partnershipCommissionAmount * 0.5;
+    const partnerProfitFromCommission = partnershipCommissionAmount * 0.5;
     
     // Owner (of the product within partnership) gets their cost share + their profit share from commission
     result.owner.costRecovery = ownerCostRecovery;
@@ -337,29 +339,18 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
     result.seller.profitShare = sellerProfit;
     result.seller.total = sellerProfit;
     
+    // Generate splits with the specific description for cessão de estoque
     result.splits.push({
       recipientType: 'owner',
       type: 'cost_recovery',
-      amount: ownerCostRecovery,
-      description: `Recuperação de custo ${(costSplitRatio * 100).toFixed(0)}% - sócio 1`
-    });
-    result.splits.push({
-      recipientType: 'owner',
-      type: 'profit_share',
-      amount: ownerProfitFromCommission,
-      description: `Lucro ${(profitShareSeller * 100).toFixed(0)}% da comissão - sócio 1`
+      amount: ownerCostRecovery + ownerProfitFromCommission,
+      description: 'Comissão de Cessão de Estoque (Peça vendida por terceiro)'
     });
     result.splits.push({
       recipientType: 'partner',
       type: 'cost_recovery',
-      amount: partnerCostRecovery,
-      description: `Recuperação de custo ${((1 - costSplitRatio) * 100).toFixed(0)}% - sócio 2`
-    });
-    result.splits.push({
-      recipientType: 'partner',
-      type: 'profit_share',
-      amount: partnerProfitFromCommission,
-      description: `Lucro ${(profitSharePartner * 100).toFixed(0)}% da comissão - sócio 2`
+      amount: partnerCostRecovery + partnerProfitFromCommission,
+      description: 'Comissão de Cessão de Estoque (Peça vendida por terceiro)'
     });
     result.splits.push({
       recipientType: 'seller',
