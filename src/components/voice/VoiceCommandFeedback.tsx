@@ -14,7 +14,7 @@ export function VoiceCommandFeedback({ isListening, transcript }: VoiceCommandFe
   return (
     <div
       className={cn(
-        'fixed bottom-20 left-1/2 -translate-x-1/2 z-50 transition-all duration-300',
+        'fixed bottom-32 left-1/2 -translate-x-1/2 z-50 transition-all duration-300',
         'bg-background/95 backdrop-blur-lg border border-border rounded-2xl shadow-2xl',
         'px-6 py-4 max-w-md w-[90vw]',
         isListening ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
@@ -37,7 +37,7 @@ export function VoiceCommandFeedback({ isListening, transcript }: VoiceCommandFe
       
       <div className="mt-3 pt-3 border-t border-border/50">
         <p className="text-xs text-muted-foreground">
-          Exemplos: "Vender 2 camisetas para Maria" • "Entrada de 50 leggings"
+          Exemplos: "Top Carol" • "Entrada de 5 leggings" • "Retirar 2 blusas"
         </p>
       </div>
     </div>

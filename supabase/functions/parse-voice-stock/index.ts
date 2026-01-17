@@ -42,7 +42,7 @@ serve(async (req) => {
       return label;
     }).join("\n") || "Nenhum produto cadastrado";
 
-    const systemPrompt = `Você é um assistente inteligente de controle de estoque. Analise comandos de voz e extraia informações de forma flexível.
+const systemPrompt = `Você é um assistente inteligente de controle de estoque. Analise comandos de voz e extraia informações de forma flexível.
 
 PRODUTOS DISPONÍVEIS:
 ${productList}
@@ -52,10 +52,13 @@ REGRAS DE INTERPRETAÇÃO:
 1. AÇÃO (action):
    - "add": incluir, inserir, adicionar, entrada, entrar, receber, chegou, recebi, repor, repondo, colocar, guardando, guardar, acrescentar, somar, mais
    - "remove": retirar, saída, sair, baixa, baixar, saiu, remover, vender, vendido, tirando, tirar, excluir, removendo, menos, descontar, subtrair
+   - "none": QUANDO NÃO HOUVER NENHUMA PALAVRA INDICANDO AÇÃO - use "none" para só buscar o produto
+   
+   IMPORTANTE: Se o usuário falar APENAS o nome do produto (ex: "top carol", "legging", "blusa maria") SEM palavras de ação, use action: "none"
 
 2. QUANTIDADE (quantity):
    - Extraia números (1, 2, 10) ou por extenso (um=1, dois=2, três=3, quatro=4, cinco=5, seis=6, sete=7, oito=8, nove=9, dez=10)
-   - Se não houver número, use 1
+   - Se não houver número, use 0 (zero) para que o usuário escolha
 
 3. NOME DO PRODUTO (product_name):
    - Encontre o produto mais similar usando correspondência fuzzy
@@ -76,12 +79,13 @@ REGRAS DE INTERPRETAÇÃO:
 6. AMBIGUIDADE (is_ambiguous):
    - true: se o produto tem variantes e a cor/tamanho não ficaram claros
    - true: se há múltiplos produtos similares ao termo buscado
+   - true: se a ação é "none" (usuário vai escolher)
    - false: se conseguiu identificar produto, cor E tamanho com confiança
 
 RESPONDA APENAS em JSON:
 {
-  "action": "add" ou "remove",
-  "quantity": número,
+  "action": "add", "remove" ou "none",
+  "quantity": número (0 se não especificado),
   "product_name": "nome do produto encontrado ou termo buscado",
   "detected_color": "cor extraída ou null",
   "detected_size": "tamanho extraído ou null",
@@ -144,21 +148,28 @@ RESPONDA APENAS em JSON:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Map to new format
-    const action = parsed.action === "add" ? "entry" : "exit";
+    // Map to new format - "none" means no operation specified (search only)
+    let operation: "entry" | "exit" | "none";
+    if (parsed.action === "add") {
+      operation = "entry";
+    } else if (parsed.action === "remove") {
+      operation = "exit";
+    } else {
+      operation = "none";
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         command: {
-          operation: action,
-          quantity: parsed.quantity || 1,
+          operation,
+          quantity: parsed.quantity || 0,
           productSearch: parsed.product_name || voiceText,
           matchedProduct: parsed.product_name,
           color: parsed.detected_color || null,
           size: parsed.detected_size || null,
           confidence: parsed.confidence || 0,
-          isAmbiguous: parsed.is_ambiguous || false,
+          isAmbiguous: parsed.is_ambiguous === false ? false : true, // Default to ambiguous for search-only
           rawText: parsed.raw_text || voiceText,
         }
       }),

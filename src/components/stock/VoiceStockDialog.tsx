@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Check, Plus, Package, ArrowDown, ArrowUp, Minus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -42,7 +43,7 @@ interface Product {
 }
 
 interface VoiceStockCommand {
-  operation: 'entry' | 'exit';
+  operation: 'entry' | 'exit' | 'none';
   quantity: number;
   productSearch: string;
   color?: string | null;
@@ -90,10 +91,17 @@ export function VoiceStockDialog({
   const [variantQuantities, setVariantQuantities] = useState<VariantQuantity[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<'entry' | 'exit'>('entry');
 
   // Search for products when command changes
   useEffect(() => {
     if (open && command) {
+      // Set initial operation based on command (default to entry if none specified)
+      if (command.operation === 'entry' || command.operation === 'exit') {
+        setSelectedOperation(command.operation);
+      } else {
+        setSelectedOperation('entry');
+      }
       searchProducts(command.productSearch);
     } else {
       // Reset state when dialog closes
@@ -103,6 +111,7 @@ export function VoiceStockDialog({
       setProductVariants([]);
       setVariantQuantities([]);
       setSelectedColor(null);
+      setSelectedOperation('entry');
     }
   }, [open, command]);
 
@@ -528,7 +537,7 @@ export function VoiceStockDialog({
 
       console.log('[VoiceStock] Iniciando atualização de estoque:', {
         hasRealVariants,
-        operation: command.operation,
+        operation: selectedOperation,
         toUpdate: toUpdate.map(vq => ({
           variantId: vq.variantId,
           productId: vq.productId,
@@ -541,7 +550,7 @@ export function VoiceStockDialog({
 
       const results = await Promise.all(
         toUpdate.map(async (vq) => {
-          const newQuantity = command.operation === 'entry'
+          const newQuantity = selectedOperation === 'entry'
             ? vq.currentStock + vq.quantity
             : Math.max(0, vq.currentStock - vq.quantity);
 
@@ -660,7 +669,7 @@ export function VoiceStockDialog({
 
       const sizesUpdated = toUpdate.map(vq => `${vq.color || ''} ${vq.size}`.trim() || 'Único').join(', ');
       toast.success(
-        command.operation === 'entry'
+        selectedOperation === 'entry'
           ? `Entrada registrada! Total: ${totalQuantity} un. (${sizesUpdated})`
           : `Saída registrada! Total: ${totalQuantity} un. (${sizesUpdated})`
       );
@@ -687,16 +696,44 @@ export function VoiceStockDialog({
   };
 
   const getOperationLabel = () => {
-    if (!command) return '';
-    return command.operation === 'entry' ? 'Entrada' : 'Saída';
+    return selectedOperation === 'entry' ? 'Entrada' : 'Saída';
   };
 
   const getOperationIcon = () => {
-    if (!command) return null;
-    return command.operation === 'entry' 
+    return selectedOperation === 'entry' 
       ? <ArrowDown className="h-4 w-4 text-green-500" />
       : <ArrowUp className="h-4 w-4 text-red-500" />;
   };
+
+  // Helper to render operation toggle buttons
+  const renderOperationToggle = () => (
+    <div className="flex gap-2 p-1 bg-muted rounded-lg">
+      <button
+        onClick={() => setSelectedOperation('entry')}
+        className={cn(
+          "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
+          selectedOperation === 'entry'
+            ? "bg-green-500 text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <ArrowDown className="h-4 w-4" />
+        Entrada
+      </button>
+      <button
+        onClick={() => setSelectedOperation('exit')}
+        className={cn(
+          "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-md font-medium text-sm transition-all touch-manipulation",
+          selectedOperation === 'exit'
+            ? "bg-red-500 text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <ArrowUp className="h-4 w-4" />
+        Saída
+      </button>
+    </div>
+  );
 
   const renderVariantQuantityRow = (vq: VariantQuantity) => (
     <div key={vq.variantId} className="flex items-center gap-2 py-2 border-b last:border-b-0">
@@ -743,7 +780,7 @@ export function VoiceStockDialog({
       </div>
       {vq.quantity > 0 && (
         <div className="text-xs text-muted-foreground w-12 text-right">
-          → {command?.operation === 'entry' 
+          → {selectedOperation === 'entry' 
             ? vq.currentStock + vq.quantity
             : Math.max(0, vq.currentStock - vq.quantity)
           }
@@ -817,6 +854,9 @@ export function VoiceStockDialog({
               </div>
             )}
 
+            {/* Operation toggle */}
+            {renderOperationToggle()}
+
             {/* Quantity display */}
             <div className="border rounded-lg p-3 bg-background">
               {variantQuantities.map(vq => renderVariantQuantityRow(vq))}
@@ -825,7 +865,7 @@ export function VoiceStockDialog({
             {totalQuantity > 0 && (
               <div className="text-center space-y-1 pt-2 border-t">
                 <p className="text-lg font-semibold">
-                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
+                  {selectedOperation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
                 </p>
               </div>
             )}
@@ -934,6 +974,9 @@ export function VoiceStockDialog({
               </button>
             )}
 
+            {/* Operation toggle */}
+            {renderOperationToggle()}
+
             {/* Size selection with large touch targets */}
             <div className="space-y-3">
               <Label className="text-base font-medium">Quantidade por tamanho</Label>
@@ -977,7 +1020,7 @@ export function VoiceStockDialog({
                       </div>
                       {vq.quantity > 0 && (
                         <div className="text-sm text-muted-foreground w-12 text-right">
-                          → {command?.operation === 'entry' 
+                          → {selectedOperation === 'entry' 
                             ? vq.currentStock + vq.quantity
                             : Math.max(0, vq.currentStock - vq.quantity)
                           }
@@ -992,7 +1035,7 @@ export function VoiceStockDialog({
             {totalQuantity > 0 && (
               <div className="text-center space-y-1 pt-2 border-t">
                 <p className="text-xl font-bold">
-                  {command.operation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
+                  {selectedOperation === 'entry' ? '+' : '-'}{totalQuantity} unidade(s)
                 </p>
               </div>
             )}
