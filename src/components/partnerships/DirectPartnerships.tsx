@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle } from "lucide-react";
+import { PartnershipProposalCard } from "./PartnershipProposalCard";
 import {
   Tooltip,
   TooltipContent,
@@ -601,52 +602,14 @@ export function DirectPartnerships() {
                     </div>
                   </div>
                   
-                  {/* Proposed Terms Summary */}
-                  <div className="border-t pt-4">
-                    <p className="text-sm font-medium mb-3 flex items-center gap-2">
-                      <Percent className="h-4 w-4 text-primary" />
-                      Termos propostos por {getInviterName(invite.inviter_id)}:
-                    </p>
-                    
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Divisão de Custo:</span>
-                        <Badge variant="secondary" className="bg-blue-500/10 text-blue-700 border-blue-500/30">
-                          {inviteCostSplit}% / {100 - inviteCostSplit}%
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Lucro de quem vende:</span>
-                        <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/30">
-                          {inviteProfitSeller}%
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Lucro da dona da peça:</span>
-                        <Badge variant="secondary" className="bg-orange-500/10 text-orange-700 border-orange-500/30">
-                          {inviteProfitPartner}%
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Comissão do dono (terceiros):</span>
-                        <Badge variant="secondary" className="bg-purple-500/10 text-purple-700 border-purple-500/30">
-                          {inviteOwnerCommission}%
-                        </Badge>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                      <p className="text-xs text-muted-foreground">
-                        <strong>Resumo:</strong> Quando você vender uma peça de {getInviterName(invite.inviter_id)}, 
-                        você fica com <span className="text-green-600 font-medium">{inviteProfitSeller}%</span> do lucro 
-                        e ela recebe <span className="text-orange-600 font-medium">{inviteProfitPartner}%</span>. 
-                        O custo é dividido <span className="text-blue-600 font-medium">{inviteCostSplit}/{100 - inviteCostSplit}</span>.
-                      </p>
-                    </div>
-                  </div>
+                  {/* Partnership Proposal Card */}
+                  <PartnershipProposalCard
+                    costSplitPercent={inviteCostSplit}
+                    profitShareSeller={inviteProfitSeller}
+                    profitSharePartner={inviteProfitPartner}
+                    thirdPartyCommission={inviteOwnerCommission}
+                    inviterName={getInviterName(invite.inviter_id)}
+                  />
                   
                   <div className="flex justify-end gap-2 pt-2 border-t">
                     <Button
