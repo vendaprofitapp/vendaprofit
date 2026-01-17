@@ -42,40 +42,52 @@ serve(async (req) => {
       return label;
     }).join("\n") || "Nenhum produto cadastrado";
 
-    const systemPrompt = `Você é um assistente de controle de estoque. Analise o comando de voz do usuário e extraia as informações.
+    const systemPrompt = `Você é um assistente inteligente de controle de estoque. Analise comandos de voz e extraia informações de forma flexível.
 
-PRODUTOS DISPONÍVEIS NO ESTOQUE:
+PRODUTOS DISPONÍVEIS:
 ${productList}
 
-REGRAS IMPORTANTES:
-1. OPERAÇÃO: Identifique se é ENTRADA ou SAÍDA de estoque:
-   - ENTRADA (adicionar ao estoque): incluir, inserir, adicionar, entrada, entrar, receber, chegou, recebi, repor, repondo, colocar, guardando, guardar
-   - SAÍDA (remover do estoque): retirar, saída, sair, baixa, baixar, saiu, remover, vender, vendido, tirando, tirar, excluir, removendo
+REGRAS DE INTERPRETAÇÃO:
 
-2. QUANTIDADE: Extraia o número mencionado (pode ser por extenso: "dois" = 2, "três" = 3). Se não houver número, use 1.
+1. AÇÃO (action):
+   - "add": incluir, inserir, adicionar, entrada, entrar, receber, chegou, recebi, repor, repondo, colocar, guardando, guardar, acrescentar, somar, mais
+   - "remove": retirar, saída, sair, baixa, baixar, saiu, remover, vender, vendido, tirando, tirar, excluir, removendo, menos, descontar, subtrair
 
-3. PRODUTO: Encontre o produto mais similar na lista acima. Use correspondência fuzzy:
-   - Ignore acentos, maiúsculas/minúsculas
-   - "top carol" deve corresponder a "Top Carol" mesmo que tenha cor/tamanho depois
-   - Considere abreviações comuns
-   - Foque no NOME BASE do produto, não nas variantes
+2. QUANTIDADE (quantity):
+   - Extraia números (1, 2, 10) ou por extenso (um=1, dois=2, três=3, quatro=4, cinco=5, seis=6, sete=7, oito=8, nove=9, dez=10)
+   - Se não houver número, use 1
 
-4. COR: Se o usuário mencionar uma cor (preto, branco, azul, vermelho, rosa, verde, etc), extraia-a.
+3. NOME DO PRODUTO (product_name):
+   - Encontre o produto mais similar usando correspondência fuzzy
+   - Ignore acentos, maiúsculas/minúsculas, espaços extras
+   - "top carol" = "Top Carol", "blusa maria" = "Blusa Maria"
+   - Foque no NOME BASE, ignore cor/tamanho mencionados separadamente
+   - Se não encontrar correspondência clara, use o termo falado
 
-5. TAMANHO: Se o usuário mencionar um tamanho (PP, P, M, G, GG, XG, XXG, 36, 38, 40, 42, etc), extraia-o.
+4. COR DETECTADA (detected_color):
+   - Extraia qualquer cor mencionada: preto, branco, azul, vermelho, rosa, verde, amarelo, laranja, roxo, marrom, bege, cinza, nude, vinho, bordô, coral, lilás, dourado, prata, creme, off-white, etc.
+   - Considere variações: "pretinho" = "preto", "azulzinho" = "azul"
 
-6. Se não encontrar um produto similar com pelo menos 50% de certeza, retorne productSearch com o termo original.
+5. TAMANHO DETECTADO (detected_size):
+   - Tamanhos de roupa: PP, P, M, G, GG, XG, XXG, XGG, EXGG
+   - Tamanhos numéricos: 34, 36, 38, 40, 42, 44, 46, 48, 50
+   - Considere contexto: "tamanho médio" = "M", "grande" = "G", "pequeno" = "P"
 
-RESPONDA APENAS com JSON no formato:
+6. AMBIGUIDADE (is_ambiguous):
+   - true: se o produto tem variantes e a cor/tamanho não ficaram claros
+   - true: se há múltiplos produtos similares ao termo buscado
+   - false: se conseguiu identificar produto, cor E tamanho com confiança
+
+RESPONDA APENAS em JSON:
 {
-  "operation": "entry" ou "exit",
+  "action": "add" ou "remove",
   "quantity": número,
-  "productSearch": "nome base do produto (sem cor/tamanho)",
-  "matchedProduct": "nome do produto correspondente da lista ou null",
-  "color": "cor mencionada ou null",
-  "size": "tamanho mencionado ou null",
-  "confidence": número de 0 a 1 indicando certeza da correspondência,
-  "rawText": "texto original"
+  "product_name": "nome do produto encontrado ou termo buscado",
+  "detected_color": "cor extraída ou null",
+  "detected_size": "tamanho extraído ou null",
+  "is_ambiguous": boolean,
+  "confidence": número de 0 a 1,
+  "raw_text": "texto original"
 }`;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -132,18 +144,22 @@ RESPONDA APENAS com JSON no formato:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
+    // Map to new format
+    const action = parsed.action === "add" ? "entry" : "exit";
+
     return new Response(
       JSON.stringify({
         success: true,
         command: {
-          operation: parsed.operation,
+          operation: action,
           quantity: parsed.quantity || 1,
-          productSearch: parsed.productSearch || parsed.matchedProduct || voiceText,
-          matchedProduct: parsed.matchedProduct,
-          color: parsed.color || null,
-          size: parsed.size || null,
+          productSearch: parsed.product_name || voiceText,
+          matchedProduct: parsed.product_name,
+          color: parsed.detected_color || null,
+          size: parsed.detected_size || null,
           confidence: parsed.confidence || 0,
-          rawText: voiceText,
+          isAmbiguous: parsed.is_ambiguous || false,
+          rawText: parsed.raw_text || voiceText,
         }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
