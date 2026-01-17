@@ -136,6 +136,7 @@ export default function StockControl() {
   // Voice command hook
   const {
     isListening,
+    isProcessing: isVoiceProcessing,
     transcript,
     isSupported,
     startListening,
@@ -146,6 +147,7 @@ export default function StockControl() {
       setVoiceStockDialogOpen(true);
     },
     onError: (error) => toast.error(error),
+    userId: user?.id,
   });
 
   const handleVoiceClick = () => {

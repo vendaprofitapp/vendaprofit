@@ -1,32 +1,101 @@
 import { useState, useCallback } from 'react';
 import { useVoiceCommand, VoiceCommandResult } from './useVoiceCommand';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export interface StockVoiceCommand {
   operation: 'entry' | 'exit';
   quantity: number;
   productSearch: string;
+  matchedProduct?: string | null;
+  confidence?: number;
   rawText: string;
 }
 
 interface UseStockVoiceCommandOptions {
   onCommand: (command: StockVoiceCommand) => void;
   onError?: (error: string) => void;
+  userId?: string;
 }
 
-export function useStockVoiceCommand({ onCommand, onError }: UseStockVoiceCommandOptions) {
+export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoiceCommandOptions) {
   const [pendingCommand, setPendingCommand] = useState<StockVoiceCommand | null>(null);
+  const [isAIProcessing, setIsAIProcessing] = useState(false);
+
+  const processWithAI = useCallback(async (text: string) => {
+    if (!userId) {
+      onError?.('Usuário não identificado');
+      return;
+    }
+
+    setIsAIProcessing(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-voice-stock', {
+        body: { voiceText: text, userId }
+      });
+
+      if (error) {
+        console.error('AI parsing error:', error);
+        // Fallback to regex parsing
+        const fallbackCommand = parseStockCommand(text);
+        if (fallbackCommand) {
+          setPendingCommand(fallbackCommand);
+          onCommand(fallbackCommand);
+        } else {
+          onError?.('Não consegui entender o comando. Tente: "Incluir 2 Camiseta Preta" ou "Retirar 3 Calça Jeans"');
+        }
+        return;
+      }
+
+      if (data?.error) {
+        console.error('AI parsing error:', data.error);
+        toast.error(data.error);
+        onError?.(data.error);
+        return;
+      }
+
+      if (data?.success && data?.command) {
+        const command: StockVoiceCommand = {
+          operation: data.command.operation,
+          quantity: data.command.quantity || 1,
+          productSearch: data.command.matchedProduct || data.command.productSearch,
+          matchedProduct: data.command.matchedProduct,
+          confidence: data.command.confidence,
+          rawText: text,
+        };
+        
+        setPendingCommand(command);
+        onCommand(command);
+        
+        // Show confidence feedback
+        if (data.command.matchedProduct && data.command.confidence >= 0.7) {
+          toast.success(`Produto identificado: ${data.command.matchedProduct}`, { duration: 2000 });
+        } else if (data.command.matchedProduct && data.command.confidence < 0.7) {
+          toast.info(`Possível produto: ${data.command.matchedProduct}`, { duration: 2000 });
+        }
+      } else {
+        onError?.('Não consegui entender o comando. Tente: "Incluir 2 Camiseta Preta" ou "Retirar 3 Calça Jeans"');
+      }
+    } catch (err) {
+      console.error('AI processing error:', err);
+      // Fallback to regex
+      const fallbackCommand = parseStockCommand(text);
+      if (fallbackCommand) {
+        setPendingCommand(fallbackCommand);
+        onCommand(fallbackCommand);
+      } else {
+        onError?.('Erro ao processar comando de voz');
+      }
+    } finally {
+      setIsAIProcessing(false);
+    }
+  }, [userId, onCommand, onError]);
 
   const handleResult = useCallback((result: VoiceCommandResult) => {
-    // Parse the voice command for stock operations
-    const command = parseStockCommand(result.rawText);
-    
-    if (command) {
-      setPendingCommand(command);
-      onCommand(command);
-    } else {
-      onError?.('Comando não reconhecido. Tente: "Incluir 2 Camiseta Preta M" ou "Retirar 3 Calça Jeans"');
-    }
-  }, [onCommand, onError]);
+    // Use AI for intelligent parsing
+    processWithAI(result.rawText);
+  }, [processWithAI]);
 
   const {
     isListening,
@@ -43,7 +112,7 @@ export function useStockVoiceCommand({ onCommand, onError }: UseStockVoiceComman
 
   return {
     isListening,
-    isProcessing,
+    isProcessing: isProcessing || isAIProcessing,
     transcript,
     isSupported,
     startListening,
@@ -53,23 +122,20 @@ export function useStockVoiceCommand({ onCommand, onError }: UseStockVoiceComman
   };
 }
 
+// Fallback regex parsing (used when AI is unavailable)
 function parseStockCommand(text: string): StockVoiceCommand | null {
   const lowerText = text.toLowerCase().trim();
   
-  // Entry patterns - more flexible matching
+  // Entry patterns - expanded synonyms
   const entryPatterns = [
-    // "incluir X produto" or "incluir produto X"
-    /(?:incluir|adicionar|entrada|entrar|receber|chegou|recebi)\s*(?:de\s*)?(\d+)?\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
-    // "X produto incluir/chegou"
-    /(\d+)\s+(.+?)\s+(?:incluir|adicionar|entrada|chegou|recebido)/i,
+    /(?:incluir|inserir|adicionar|entrada|entrar|receber|chegou|recebi|repor|repondo|colocar|guardar|guardando)\s*(?:de\s*)?(\d+)?\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
+    /(\d+)\s+(.+?)\s+(?:incluir|inserir|adicionar|entrada|chegou|recebido|repor)/i,
   ];
 
-  // Exit patterns - more flexible matching
+  // Exit patterns - expanded synonyms
   const exitPatterns = [
-    // "retirar X produto" or "saida X produto"
-    /(?:retirar|saída|sair|baixa|baixar|saiu|remover)\s*(?:de\s*)?(\d+)?\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
-    // "X produto saiu/retirar"
-    /(\d+)\s+(.+?)\s+(?:retirar|saída|saiu|baixa)/i,
+    /(?:retirar|remover|saída|sair|baixa|baixar|saiu|excluir|vender|vendido|tirar|tirando|removendo)\s*(?:de\s*)?(\d+)?\s*(?:unidades?\s*(?:de\s*)?)?\s*(.+)/i,
+    /(\d+)\s+(.+?)\s+(?:retirar|remover|saída|saiu|baixa|excluir|vendido|tirar)/i,
   ];
 
   // Try entry patterns
@@ -114,7 +180,6 @@ function parseStockCommand(text: string): StockVoiceCommand | null {
 function cleanProductSearch(text: string): string {
   if (!text) return '';
   
-  // Remove common filler words and clean up
   const fillerWords = [
     'unidades', 'unidade', 'peças', 'peça', 
     'do', 'da', 'de', 'no', 'na', 
@@ -123,13 +188,11 @@ function cleanProductSearch(text: string): string {
   
   let cleaned = text.toLowerCase().trim();
   
-  // Remove filler words at the start
   for (const word of fillerWords) {
     const regex = new RegExp(`^${word}\\s+`, 'i');
     cleaned = cleaned.replace(regex, '');
   }
   
-  // Remove filler words at the end
   for (const word of fillerWords) {
     const regex = new RegExp(`\\s+${word}$`, 'i');
     cleaned = cleaned.replace(regex, '');
