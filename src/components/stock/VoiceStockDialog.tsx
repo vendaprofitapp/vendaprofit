@@ -526,33 +526,84 @@ export function VoiceStockDialog({
       // Check if we're updating product_variants or products table
       const hasRealVariants = productVariants.length > 0;
       
-      const updates = toUpdate.map(async (vq) => {
-        const newQuantity = command.operation === 'entry'
-          ? vq.currentStock + vq.quantity
-          : Math.max(0, vq.currentStock - vq.quantity);
-
-        if (hasRealVariants) {
-          // Update product_variants table
-          return supabase
-            .from('product_variants')
-            .update({ stock_quantity: newQuantity })
-            .eq('id', vq.variantId);
-        } else {
-          // Update products table (product without variants)
-          return supabase
-            .from('products')
-            .update({ stock_quantity: newQuantity })
-            .eq('id', vq.productId);
-        }
+      console.log('[VoiceStock] Iniciando atualização de estoque:', {
+        hasRealVariants,
+        operation: command.operation,
+        toUpdate: toUpdate.map(vq => ({
+          variantId: vq.variantId,
+          productId: vq.productId,
+          color: vq.color,
+          size: vq.size,
+          currentStock: vq.currentStock,
+          quantity: vq.quantity,
+        }))
       });
 
-      const results = await Promise.all(updates);
-      
+      const results = await Promise.all(
+        toUpdate.map(async (vq) => {
+          const newQuantity = command.operation === 'entry'
+            ? vq.currentStock + vq.quantity
+            : Math.max(0, vq.currentStock - vq.quantity);
+
+          console.log(`[VoiceStock] Atualizando ${hasRealVariants ? 'product_variants' : 'products'}:`, {
+            id: hasRealVariants ? vq.variantId : vq.productId,
+            newQuantity,
+          });
+
+          if (hasRealVariants) {
+            // Update product_variants table
+            const { data, error } = await supabase
+              .from('product_variants')
+              .update({ stock_quantity: newQuantity })
+              .eq('id', vq.variantId)
+              .select();
+            
+            if (error) {
+              console.error('[VoiceStock] Erro RLS/FK ao atualizar product_variants:', {
+                variantId: vq.variantId,
+                error: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+              });
+            } else {
+              console.log('[VoiceStock] Sucesso ao atualizar product_variants:', data);
+            }
+            
+            return { data, error, variantId: vq.variantId };
+          } else {
+            // Update products table (product without variants)
+            const { data, error } = await supabase
+              .from('products')
+              .update({ stock_quantity: newQuantity })
+              .eq('id', vq.productId)
+              .select();
+            
+            if (error) {
+              console.error('[VoiceStock] Erro RLS/FK ao atualizar products:', {
+                productId: vq.productId,
+                error: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+              });
+            } else {
+              console.log('[VoiceStock] Sucesso ao atualizar products:', data);
+            }
+            
+            return { data, error, productId: vq.productId };
+          }
+        })
+      );
+
+      // Check for errors in results
       const errors = results.filter(r => r.error);
       if (errors.length > 0) {
-        throw new Error('Erro ao atualizar alguns produtos');
+        console.error('[VoiceStock] Erros encontrados:', errors);
+        throw new Error(`Erro ao atualizar ${errors.length} item(s)`);
       }
 
+      // Only show success after database confirmation
       setStep('success');
       
       const sizesUpdated = toUpdate.map(vq => `${vq.color || ''} ${vq.size}`.trim() || 'Único').join(', ');
@@ -569,8 +620,8 @@ export function VoiceStockDialog({
       }, 1500);
 
     } catch (error) {
-      console.error('Error updating stock:', error);
-      toast.error('Erro ao atualizar estoque');
+      console.error('[VoiceStock] Erro geral na operação:', error);
+      toast.error('Erro ao atualizar estoque. Verifique o console para detalhes.');
     } finally {
       setIsProcessing(false);
     }
@@ -755,31 +806,33 @@ export function VoiceStockDialog({
             {/* Large color chips grid - optimized for one-hand use */}
             <div className="space-y-3">
               <Label className="text-base font-medium">Qual cor?</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {availableColors.map((color) => {
-                  // Get stock count for this color
-                  const colorVariants = variantQuantities.filter(vq => 
-                    normalizeText(vq.color || '') === normalizeText(color)
-                  );
-                  const totalStock = colorVariants.reduce((sum, vq) => sum + vq.currentStock, 0);
-                  const sizesAvailable = colorVariants.map(vq => vq.size).join(', ');
-                  
-                  return (
-                    <button
-                      key={color}
-                      onClick={() => handleColorChipSelect(color)}
-                      className="flex flex-col items-start p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 active:scale-[0.98] transition-all text-left min-h-[80px] touch-manipulation"
-                    >
-                      <span className="font-semibold text-base">{color}</span>
-                      <span className="text-xs text-muted-foreground mt-1">
-                        {sizesAvailable}
-                      </span>
-                      <Badge variant="secondary" className="mt-2 text-xs">
-                        {totalStock} em estoque
-                      </Badge>
-                    </button>
-                  );
-                })}
+              <div className="max-h-[400px] overflow-y-auto">
+                <div className="grid grid-cols-2 gap-3 p-1">
+                  {availableColors.map((color) => {
+                    // Get stock count for this color
+                    const colorVariants = variantQuantities.filter(vq => 
+                      normalizeText(vq.color || '') === normalizeText(color)
+                    );
+                    const totalStock = colorVariants.reduce((sum, vq) => sum + vq.currentStock, 0);
+                    const sizesAvailable = colorVariants.map(vq => vq.size).join(', ');
+                    
+                    return (
+                      <button
+                        key={color}
+                        onClick={() => handleColorChipSelect(color)}
+                        className="flex flex-col items-start p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 active:scale-[0.98] transition-all text-left min-h-[88px] touch-manipulation"
+                      >
+                        <span className="font-semibold text-base">{color}</span>
+                        <span className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {sizesAvailable}
+                        </span>
+                        <Badge variant="secondary" className="mt-2 text-xs">
+                          {totalStock} em estoque
+                        </Badge>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -832,8 +885,8 @@ export function VoiceStockDialog({
             {/* Size selection with large touch targets */}
             <div className="space-y-3">
               <Label className="text-base font-medium">Quantidade por tamanho</Label>
-              <div className="border rounded-xl p-3 bg-background space-y-1">
-                <ScrollArea className={filteredVariantQuantities.length > 5 ? 'max-h-[240px]' : ''}>
+              <div className="border rounded-xl bg-background">
+                <div className="max-h-[400px] overflow-y-auto p-3 space-y-1">
                   {filteredVariantQuantities.map(vq => (
                     <div key={vq.variantId} className="flex items-center gap-3 py-3 border-b last:border-b-0">
                       <div className="flex-1 min-w-0">
@@ -847,31 +900,31 @@ export function VoiceStockDialog({
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-10 w-10 rounded-full touch-manipulation"
+                          className="h-12 w-12 rounded-full touch-manipulation text-lg"
                           onClick={() => handleVariantQuantityChange(vq.variantId, -1)}
                           disabled={vq.quantity <= 0}
                         >
-                          <Minus className="h-4 w-4" />
+                          <Minus className="h-5 w-5" />
                         </Button>
                         <Input
                           type="number"
                           min={0}
                           value={vq.quantity}
                           onChange={(e) => handleVariantQuantityInputChange(vq.variantId, e.target.value)}
-                          className="text-center w-16 h-10 text-lg font-semibold"
+                          className="text-center w-16 h-12 text-lg font-semibold"
                         />
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-10 w-10 rounded-full touch-manipulation"
+                          className="h-12 w-12 rounded-full touch-manipulation text-lg"
                           onClick={() => handleVariantQuantityChange(vq.variantId, 1)}
                         >
-                          <Plus className="h-4 w-4" />
+                          <Plus className="h-5 w-5" />
                         </Button>
                       </div>
                       {vq.quantity > 0 && (
-                        <div className="text-sm text-muted-foreground w-10 text-right">
+                        <div className="text-sm text-muted-foreground w-12 text-right">
                           → {command?.operation === 'entry' 
                             ? vq.currentStock + vq.quantity
                             : Math.max(0, vq.currentStock - vq.quantity)
@@ -880,7 +933,7 @@ export function VoiceStockDialog({
                       )}
                     </div>
                   ))}
-                </ScrollArea>
+                </div>
               </div>
             </div>
             
