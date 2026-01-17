@@ -154,6 +154,10 @@ export default function Sales() {
   const [reserveNotes, setReserveNotes] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
+  // Auto partner lookup (when product is not in own stock)
+  const [autoPartnerLastQuery, setAutoPartnerLastQuery] = useState<string>("");
+  const [autoPartnerSearching, setAutoPartnerSearching] = useState(false);
+
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
     queryKey: ["sales"],
@@ -623,7 +627,13 @@ export default function Sales() {
     if (forcePartner || ownMatch.length === 0) {
       setSearchedProductName(searchValue);
       const partnerResults = await searchPartnerProducts(searchValue);
+      setAutoPartnerLastQuery(searchValue);
+
       if (partnerResults.length > 0) {
+        toast({
+          title: "Encontrado nos parceiros",
+          description: `${partnerResults.length} opção(ões) disponível(is) com estoque.`,
+        });
         setPartnerProducts(partnerResults);
         setShowPartnerDialog(true);
       } else {
@@ -635,6 +645,52 @@ export default function Sales() {
       }
     }
   };
+
+  useEffect(() => {
+    if (productSearch.length < 2) {
+      setAutoPartnerSearching(false);
+      return;
+    }
+
+    const ownMatch = ownProducts.some((p) =>
+      p.name.toLowerCase().includes(productSearch.toLowerCase())
+    );
+
+    // Only auto-search partners when the user has no match in own stock
+    if (ownMatch) return;
+
+    // Avoid repeating the same query (Enter key / manual partner search already handled)
+    if (productSearch === autoPartnerLastQuery) return;
+
+    // Avoid multiple concurrent searches
+    if (autoPartnerSearching) return;
+
+    const t = window.setTimeout(async () => {
+      setAutoPartnerSearching(true);
+      setSearchedProductName(productSearch);
+
+      const partnerResults = await searchPartnerProducts(productSearch);
+      setAutoPartnerLastQuery(productSearch);
+      setAutoPartnerSearching(false);
+
+      if (partnerResults.length > 0) {
+        toast({
+          title: "Encontrado nos parceiros",
+          description: `${partnerResults.length} opção(ões) disponível(is) com estoque.`,
+        });
+        setPartnerProducts(partnerResults);
+        setShowPartnerDialog(true);
+      } else {
+        toast({
+          title: "Não encontrado nos parceiros",
+          description: "Nenhum parceiro tem este produto com estoque disponível.",
+          variant: "destructive",
+        });
+      }
+    }, 500);
+
+    return () => window.clearTimeout(t);
+  }, [productSearch, ownProducts, autoPartnerLastQuery, autoPartnerSearching]);
 
   const handleRequestReserve = (product: PartnerProduct) => {
     setSelectedPartnerProduct(product);
