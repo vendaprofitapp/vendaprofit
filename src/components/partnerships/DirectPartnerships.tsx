@@ -788,6 +788,12 @@ export function DirectPartnerships() {
             const partnerProducts = productPartnerships.filter(
               (pp) => pp.group_id === partner.groupId
             );
+            
+            // Get the rules for this partnership
+            const rules = getRulesForGroup(partner.groupId);
+            const costSplit = Number(rules.seller_cost_percent);
+            const profitSeller = Number(rules.seller_profit_percent);
+            const profitPartner = Number(rules.owner_profit_percent);
 
             return (
               <Card key={partner.groupId}>
@@ -815,6 +821,32 @@ export function DirectPartnerships() {
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
+                      </div>
+                      
+                      {/* Financial Rules Summary */}
+                      <div className="mt-3 flex items-center gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5 text-xs">
+                                <Percent className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-muted-foreground">Regra:</span>
+                                <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 border-blue-500/30">
+                                  Custo {costSplit}/{100 - costSplit}
+                                </Badge>
+                                <span className="text-muted-foreground">|</span>
+                                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 border-green-500/30">
+                                  Lucro {profitSeller}/{profitPartner}
+                                </Badge>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="font-medium mb-1">Regras desta Parceria:</p>
+                              <p className="text-xs">• Custo dividido: {costSplit}% / {100 - costSplit}%</p>
+                              <p className="text-xs">• Lucro: {profitSeller}% vendedora / {profitPartner}% dona</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                     </CardHeader>
                   </CollapsibleTrigger>
