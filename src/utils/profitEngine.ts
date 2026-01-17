@@ -6,14 +6,16 @@
 
 // Partnership configuration from database
 export interface PartnershipConfig {
-  cost_split_ratio: number | null;      // e.g., 0.5 for 50/50
-  profit_share_seller: number | null;   // e.g., 0.7 for 70%
-  profit_share_partner: number | null;  // e.g., 0.3 for 30%
+  cost_split_ratio: number | null;          // e.g., 0.5 for 50/50
+  profit_share_seller: number | null;       // e.g., 0.7 for 70% (when you sell)
+  profit_share_partner: number | null;      // e.g., 0.3 for 30% (when partner sells)
+  is_direct?: boolean;                      // True for direct partnerships (1:1)
 }
 
 // Group configuration from database
 export interface GroupConfig {
-  commission_percent: number | null;    // e.g., 0.2 for 20%
+  commission_percent: number | null;        // e.g., 0.2 for 20% (ONLY for groups, not partnerships)
+  is_direct?: boolean;                      // True for direct partnerships
 }
 
 // Default values for fallback
@@ -29,6 +31,7 @@ export interface SaleSplitInput {
   isPartnershipStock: boolean;
   sellerIsOwner: boolean;
   hasActivePartnership: boolean;
+  isDirectPartnership?: boolean; // NEW: Flag to identify direct partnerships
   // New: Full objects from database
   partnership?: PartnershipConfig | null;
   group?: GroupConfig | null;
@@ -90,9 +93,10 @@ export interface SaleSplitResult {
 
 /**
  * Get configuration values with fallbacks
+ * IMPORTANT: For direct partnerships (1:1), group commission is ALWAYS 0
  */
 function getConfigValues(input: SaleSplitInput) {
-  const { partnership, group, groupCommissionPercent } = input;
+  const { partnership, group, groupCommissionPercent, isDirectPartnership, isPartnershipStock } = input;
   
   // Cost split ratio with fallback
   const costSplitRatio = partnership?.cost_split_ratio ?? DEFAULT_COST_SPLIT_RATIO;
@@ -101,8 +105,11 @@ function getConfigValues(input: SaleSplitInput) {
   const profitShareSeller = partnership?.profit_share_seller ?? DEFAULT_PROFIT_SHARE_SELLER;
   const profitSharePartner = partnership?.profit_share_partner ?? DEFAULT_PROFIT_SHARE_PARTNER;
   
-  // Group commission with fallback (support both new and legacy format)
-  const groupCommission = group?.commission_percent ?? groupCommissionPercent ?? DEFAULT_GROUP_COMMISSION;
+  // Group commission with fallback
+  // CRITICAL: For DIRECT PARTNERSHIPS, commission is ALWAYS 0
+  // Commission only applies to GROUP sales (Scenario B)
+  const isDirectPartnershipSale = isDirectPartnership || group?.is_direct || partnership?.is_direct || isPartnershipStock;
+  const groupCommission = isDirectPartnershipSale ? 0 : (group?.commission_percent ?? groupCommissionPercent ?? DEFAULT_GROUP_COMMISSION);
   
   return {
     costSplitRatio,

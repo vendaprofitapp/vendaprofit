@@ -96,42 +96,31 @@ export function DirectPartnerships() {
   const [selectedPartner, setSelectedPartner] = useState<DirectPartner | null>(null);
   const [expandedPartners, setExpandedPartners] = useState<Set<string>>(new Set());
   
-  // Partnership configuration state
-  const [ownerCommissionPercent, setOwnerCommissionPercent] = useState<number>(20);
+  // Partnership configuration state (NO owner commission for direct partnerships)
   const [costSplitRatio, setCostSplitRatio] = useState<number>(50);
-  const [profitShareSeller, setProfitShareSeller] = useState<number>(70);
-  const [profitSharePartner, setProfitSharePartner] = useState<number>(30);
+  const [profitShareWhenYouSell, setProfitShareWhenYouSell] = useState<number>(70);
+  const [profitShareWhenPartnerSells, setProfitShareWhenPartnerSells] = useState<number>(30);
   const [profitValidationError, setProfitValidationError] = useState<string | null>(null);
   
-  // Validate profit share sum
-  const validateProfitShares = (seller: number, partner: number) => {
-    const sum = seller + partner;
-    if (sum !== 100) {
-      setProfitValidationError(`A soma deve ser 100% (atual: ${sum}%)`);
+  // Validate profit share values (both must be valid percentages)
+  const validateProfitShares = () => {
+    if (profitShareWhenYouSell < 0 || profitShareWhenYouSell > 100) {
+      setProfitValidationError("Porcentagem deve estar entre 0% e 100%");
+      return false;
+    }
+    if (profitShareWhenPartnerSells < 0 || profitShareWhenPartnerSells > 100) {
+      setProfitValidationError("Porcentagem deve estar entre 0% e 100%");
       return false;
     }
     setProfitValidationError(null);
     return true;
   };
   
-  const handleProfitShareSellerChange = (value: number) => {
-    setProfitShareSeller(value);
-    setProfitSharePartner(100 - value);
-    validateProfitShares(value, 100 - value);
-  };
-  
-  const handleProfitSharePartnerChange = (value: number) => {
-    setProfitSharePartner(value);
-    setProfitShareSeller(100 - value);
-    validateProfitShares(100 - value, value);
-  };
-  
   // Reset partnership form
   const resetPartnershipForm = () => {
-    setOwnerCommissionPercent(20);
     setCostSplitRatio(50);
-    setProfitShareSeller(70);
-    setProfitSharePartner(30);
+    setProfitShareWhenYouSell(70);
+    setProfitShareWhenPartnerSells(30);
     setProfitValidationError(null);
   };
 
@@ -314,20 +303,20 @@ export function DirectPartnerships() {
       }
 
       // Validate profit shares before creating invite
-      if (!validateProfitShares(profitShareSeller, profitSharePartner)) {
-        throw new Error("A soma das partes de lucro deve ser 100%");
+      if (!validateProfitShares()) {
+        throw new Error("Porcentagens de lucro inválidas");
       }
 
-      // Create the invite with partnership configuration
+      // Create the invite with partnership configuration (NO owner commission for partnerships)
       const { data, error } = await supabase
         .from("direct_partnership_invites")
         .insert({
           inviter_id: user.id,
           invitee_email: inviteEmail.toLowerCase(),
           cost_split_ratio: costSplitRatio / 100,
-          profit_share_seller: profitShareSeller / 100,
-          profit_share_partner: profitSharePartner / 100,
-          owner_commission_percent: ownerCommissionPercent / 100,
+          profit_share_seller: profitShareWhenYouSell / 100,
+          profit_share_partner: profitShareWhenPartnerSells / 100,
+          owner_commission_percent: 0, // Not used for direct partnerships
         })
         .select()
         .single();
@@ -363,9 +352,9 @@ export function DirectPartnerships() {
       const inviteCostSplit = invite.cost_split_ratio ?? 0.5;
       const inviteProfitSeller = invite.profit_share_seller ?? 0.7;
       const inviteProfitPartner = invite.profit_share_partner ?? 0.3;
-      const inviteOwnerCommission = invite.owner_commission_percent ?? 0.2;
 
       // Create a direct group for this partnership with values from invite
+      // NOTE: commission_percent is NOT used for direct partnerships (set to 0)
       const { data: group, error: groupError } = await supabase
         .from("groups")
         .insert({
@@ -373,7 +362,7 @@ export function DirectPartnerships() {
           description: null,
           created_by: user.id,
           is_direct: true,
-          commission_percent: inviteOwnerCommission,
+          commission_percent: 0, // Not used for direct partnerships
           cost_split_ratio: inviteCostSplit,
           profit_share_seller: inviteProfitSeller,
           profit_share_partner: inviteProfitPartner,
@@ -863,40 +852,16 @@ export function DirectPartnerships() {
               <p className="text-sm font-medium mb-3">Configuração da Parceria</p>
               
               <TooltipProvider>
-                {/* Owner Commission */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="invite-commission">Comissão do Dono da Peça (%)</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p>Quanto o proprietário da peça ganha sobre o lucro quando outro membro vende</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Input
-                    id="invite-commission"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={ownerCommissionPercent}
-                    onChange={(e) => setOwnerCommissionPercent(Number(e.target.value))}
-                    className="w-32"
-                  />
-                </div>
-                
                 {/* Cost Split */}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="invite-cost-split">Divisão de Custo (%)</Label>
+                    <Label htmlFor="invite-cost-split">Divisão de Custo</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p>Quanto cada parte recebe do custo da peça. Ex: 50% significa que cada uma recebe metade do custo</p>
+                        <p>Como o custo da peça é dividido entre vocês. Ex: 50/50 significa que cada uma recupera metade do custo investido</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -908,58 +873,64 @@ export function DirectPartnerships() {
                       max={100}
                       value={costSplitRatio}
                       onChange={(e) => setCostSplitRatio(Number(e.target.value))}
-                      className="w-32"
+                      className="w-24"
                     />
-                    <span className="text-sm text-muted-foreground">/ {100 - costSplitRatio}%</span>
+                    <span className="text-sm text-muted-foreground">% você / {100 - costSplitRatio}% sócia</span>
                   </div>
                 </div>
                 
-                {/* Profit Share - Seller */}
+                {/* Profit Share - When YOU sell */}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="invite-profit-seller">Sua Parte no Lucro quando você vende (%)</Label>
+                    <Label htmlFor="invite-profit-you-sell">Sua participação no lucro quando VOCÊ vende</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p>Porcentagem do lucro que você recebe quando vende um produto da parceira</p>
+                        <p>Quando você vende uma peça da parceria, qual % do lucro fica com você?</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <Input
-                    id="invite-profit-seller"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={profitShareSeller}
-                    onChange={(e) => handleProfitShareSellerChange(Number(e.target.value))}
-                    className="w-32"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="invite-profit-you-sell"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={profitShareWhenYouSell}
+                      onChange={(e) => setProfitShareWhenYouSell(Number(e.target.value))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">% para você (sócia fica com {100 - profitShareWhenYouSell}%)</span>
+                  </div>
                 </div>
                 
-                {/* Profit Share - Partner */}
+                {/* Profit Share - When PARTNER sells */}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="invite-profit-partner">Parte da Sócia quando você vende (%)</Label>
+                    <Label htmlFor="invite-profit-partner-sell">Sua participação no lucro quando o SÓCIO vende</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p>Porcentagem do lucro que a dona da peça recebe quando você vende o produto dela</p>
+                        <p>Quando sua sócia vende uma peça sua da parceria, qual % do lucro fica com você?</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <Input
-                    id="invite-profit-partner"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={profitSharePartner}
-                    onChange={(e) => handleProfitSharePartnerChange(Number(e.target.value))}
-                    className="w-32"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="invite-profit-partner-sell"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={profitShareWhenPartnerSells}
+                      onChange={(e) => setProfitShareWhenPartnerSells(Number(e.target.value))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">% para você (sócia fica com {100 - profitShareWhenPartnerSells}%)</span>
+                  </div>
                 </div>
               </TooltipProvider>
               
@@ -967,11 +938,16 @@ export function DirectPartnerships() {
                 <p className="text-sm text-destructive">{profitValidationError}</p>
               )}
               
-              <div className="bg-muted/50 p-3 rounded-lg">
+              <div className="bg-muted/50 p-3 rounded-lg space-y-1">
+                <p className="text-xs font-medium">Resumo:</p>
                 <p className="text-xs text-muted-foreground">
-                  <strong>Resumo:</strong> Custo dividido {costSplitRatio}/{100 - costSplitRatio}. 
-                  Quando você vende: {profitShareSeller}% do lucro é seu, {profitSharePartner}% é da sócia.
-                  Comissão da dona: {ownerCommissionPercent}%.
+                  • Custo dividido: {costSplitRatio}% você / {100 - costSplitRatio}% sócia
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  • Quando você vende: {profitShareWhenYouSell}% lucro para você, {100 - profitShareWhenYouSell}% para sócia
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  • Quando sócia vende: {profitShareWhenPartnerSells}% lucro para você, {100 - profitShareWhenPartnerSells}% para sócia
                 </p>
               </div>
             </div>
