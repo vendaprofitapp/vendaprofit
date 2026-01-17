@@ -490,6 +490,9 @@ export default function Sales() {
       }
 
       // Create financial_splits using profitEngine
+      // Calculate the net multiplier (discount effect) to apply to each item proportionally
+      const saleNetMultiplier = subtotal > 0 ? total / subtotal : 1;
+      
       const financialSplitsToInsert: Array<{
         sale_id: string;
         user_id: string;
@@ -499,18 +502,22 @@ export default function Sales() {
       }> = [];
 
       for (const item of cart) {
-        const salePrice = item.product.price * item.quantity;
+        const salePriceGross = item.product.price * item.quantity;
+        // Apply discount multiplier to get proportional sale price after discount
+        const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
         const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
         const sellerIsOwner = item.product.owner_id === user.id;
         const isPartnershipStock = item.isPartnerStock;
 
+        // Pass payment method fee to profitEngine - it will deduct fee before calculating profit
         const splitResult = calculateSaleSplits({
-          salePrice,
+          salePrice: salePriceAfterDiscount,
           costPrice,
           groupCommissionPercent: 0.20, // Default group commission
           isPartnershipStock,
           sellerIsOwner,
           hasActivePartnership: userGroups.length > 0,
+          paymentMethodFee: feePercent, // Include payment fee in calculation
         });
 
         // SCENARIO C: Third-party sells partnership stock
