@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Check, X, DollarSign, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, addMonths, setDate } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface Props {
@@ -16,6 +16,8 @@ interface Props {
   participantName: string;
   installmentsCount: number;
   installmentValue: number;
+  paymentDueDay: number;
+  consortiumStartDate: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -28,6 +30,17 @@ interface Payment {
   paid_at: string | null;
   payment_method: string | null;
   notes: string | null;
+  due_date: string | null;
+}
+
+// Calcula a data de vencimento para cada parcela
+function calculateDueDate(startDate: string, installmentNumber: number, dueDay: number): Date {
+  const start = new Date(startDate);
+  // A primeira parcela vence no mês seguinte ao início
+  const dueDate = addMonths(start, installmentNumber);
+  // Define o dia do vencimento
+  const finalDate = setDate(dueDate, Math.min(dueDay, 28)); // Limita a 28 para evitar problemas em fevereiro
+  return finalDate;
 }
 
 export function ConsortiumPaymentsDialog({
@@ -35,6 +48,8 @@ export function ConsortiumPaymentsDialog({
   participantName,
   installmentsCount,
   installmentValue,
+  paymentDueDay,
+  consortiumStartDate,
   open,
   onOpenChange,
 }: Props) {
@@ -63,11 +78,13 @@ export function ConsortiumPaymentsDialog({
 
       for (let i = 1; i <= installmentsCount; i++) {
         if (!existingNumbers.includes(i)) {
+          const dueDate = calculateDueDate(consortiumStartDate, i, paymentDueDay);
           missingPayments.push({
             participant_id: participantId,
             installment_number: i,
             amount: installmentValue,
             is_paid: false,
+            due_date: format(dueDate, "yyyy-MM-dd"),
           });
         }
       }
@@ -151,8 +168,9 @@ export function ConsortiumPaymentsDialog({
               <TableRow>
                 <TableHead>Parcela</TableHead>
                 <TableHead>Valor</TableHead>
+                <TableHead>Vencimento</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Data Pagamento</TableHead>
+                <TableHead>Pago em</TableHead>
                 <TableHead>Forma</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
@@ -160,44 +178,60 @@ export function ConsortiumPaymentsDialog({
             <TableBody>
               {isLoading || createMissingPaymentsMutation.isPending ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Carregando parcelas...
                   </TableCell>
                 </TableRow>
               ) : payments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Nenhuma parcela encontrada
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell className="font-medium">
-                      {payment.installment_number}ª parcela
-                    </TableCell>
-                    <TableCell>R$ {Number(payment.amount).toFixed(2)}</TableCell>
-                    <TableCell>
-                      {payment.is_paid ? (
-                        <Badge className="bg-green-500/10 text-green-500 gap-1">
-                          <Check className="h-3 w-3" />
-                          Pago
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="gap-1">
-                          <X className="h-3 w-3" />
-                          Pendente
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {payment.paid_at
-                        ? format(new Date(payment.paid_at), "dd/MM/yyyy", { locale: ptBR })
-                        : "-"}
-                    </TableCell>
-                    <TableCell className="capitalize">
-                      {payment.payment_method?.replace("_", " ") || "-"}
-                    </TableCell>
+                payments.map((payment) => {
+                  const dueDate = payment.due_date 
+                    ? new Date(payment.due_date) 
+                    : calculateDueDate(consortiumStartDate, payment.installment_number, paymentDueDay);
+                  const isOverdue = !payment.is_paid && new Date() > dueDate;
+                  
+                  return (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-medium">
+                        {payment.installment_number}ª parcela
+                      </TableCell>
+                      <TableCell>R$ {Number(payment.amount).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <span className={isOverdue ? "text-destructive font-medium" : ""}>
+                          {format(dueDate, "dd/MM/yyyy", { locale: ptBR })}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {payment.is_paid ? (
+                          <Badge className="bg-green-500/10 text-green-500 gap-1">
+                            <Check className="h-3 w-3" />
+                            Pago
+                          </Badge>
+                        ) : isOverdue ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Atrasado
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1">
+                            <X className="h-3 w-3" />
+                            Pendente
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {payment.paid_at
+                          ? format(new Date(payment.paid_at), "dd/MM/yyyy", { locale: ptBR })
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="capitalize">
+                        {payment.payment_method?.replace("_", " ") || "-"}
+                      </TableCell>
                     <TableCell className="text-right">
                       {payment.is_paid ? (
                         <Button
@@ -240,7 +274,8 @@ export function ConsortiumPaymentsDialog({
                       )}
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>

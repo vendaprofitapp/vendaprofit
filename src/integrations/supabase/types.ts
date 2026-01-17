@@ -176,6 +176,7 @@ export type Database = {
           id: string
           is_drawn: boolean
           notes: string | null
+          payment_due_day: number | null
           payment_method: string
           updated_at: string
         }
@@ -188,6 +189,7 @@ export type Database = {
           id?: string
           is_drawn?: boolean
           notes?: string | null
+          payment_due_day?: number | null
           payment_method?: string
           updated_at?: string
         }
@@ -200,6 +202,7 @@ export type Database = {
           id?: string
           is_drawn?: boolean
           notes?: string | null
+          payment_due_day?: number | null
           payment_method?: string
           updated_at?: string
         }
@@ -217,6 +220,7 @@ export type Database = {
         Row: {
           amount: number
           created_at: string
+          due_date: string | null
           id: string
           installment_number: number
           is_paid: boolean
@@ -228,6 +232,7 @@ export type Database = {
         Insert: {
           amount: number
           created_at?: string
+          due_date?: string | null
           id?: string
           installment_number: number
           is_paid?: boolean
@@ -239,6 +244,7 @@ export type Database = {
         Update: {
           amount?: number
           created_at?: string
+          due_date?: string | null
           id?: string
           installment_number?: number
           is_paid?: boolean
