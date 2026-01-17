@@ -46,7 +46,7 @@ export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoi
           setPendingCommand(fallbackCommand);
           onCommand(fallbackCommand);
         } else {
-          onError?.('Não consegui entender o comando. Tente: "Incluir 2 Camiseta Preta" ou "Retirar 3 Calça Jeans"');
+          onError?.('Não consegui entender. Fale o nome do produto, ex: "Top Carol"');
         }
         return;
       }
@@ -91,7 +91,7 @@ export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoi
           toast.info(`Possível produto: ${data.command.matchedProduct}`, { duration: 2000 });
         }
       } else {
-        onError?.('Não consegui entender o comando. Tente: "Incluir 2 Camiseta Preta" ou "Retirar 3 Calça Jeans"');
+        onError?.('Não consegui entender. Fale o nome do produto, ex: "Top Carol"');
       }
     } catch (err) {
       console.error('AI processing error:', err);
@@ -188,6 +188,18 @@ function parseStockCommand(text: string): StockVoiceCommand | null {
         };
       }
     }
+  }
+
+  // NEW: If no operation pattern matched, treat as product search only
+  const cleaned = cleanProductSearch(lowerText);
+  if (cleaned && cleaned.length > 1) {
+    return {
+      operation: 'none',
+      quantity: 0,
+      productSearch: cleaned,
+      isAmbiguous: true,
+      rawText: text,
+    };
   }
 
   return null;
