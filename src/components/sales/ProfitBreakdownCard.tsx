@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Users, TrendingUp, Building2, Wallet } from "lucide-react";
+import { Users, TrendingUp, Building2, Wallet, Receipt } from "lucide-react";
 import { calculateSaleSplits, SaleSplitResult, formatCurrency } from "@/utils/profitEngine";
 
 interface CartItemWithCost {
@@ -26,20 +26,26 @@ interface ProfitBreakdownCardProps {
 }
 
 interface AggregatedSplits {
-  sellerTotal: number;
-  partnerTotal: number;
+  sellerTotalReceive: number;    // Cost recovery + profit share
+  sellerProfitOnly: number;      // Only profit share (real net profit)
+  partnerTotalReceive: number;   // Cost recovery + profit share
+  partnerProfitOnly: number;     // Only profit share
   ownerTotal: number;
-  partnershipPaymentDue: number; // NEW: Total payment due to partnership for third-party sales
+  partnershipPaymentDue: number;
   scenarios: Set<SaleSplitResult['scenario']>;
   details: Array<{
     productName: string;
     scenario: SaleSplitResult['scenario'];
     scenarioDescription: string;
-    seller: number;
-    partner: number;
+    sellerTotalReceive: number;
+    sellerProfitOnly: number;
+    partnerTotalReceive: number;
+    partnerProfitOnly: number;
     owner: number;
-    partnershipPaymentDue: number; // NEW
+    partnershipPaymentDue: number;
     ownerName?: string;
+    costPrice: number;
+    salePrice: number;
   }>;
 }
 
@@ -51,8 +57,10 @@ export function ProfitBreakdownCard({
 }: ProfitBreakdownCardProps) {
   const aggregatedSplits = useMemo<AggregatedSplits>(() => {
     const result: AggregatedSplits = {
-      sellerTotal: 0,
-      partnerTotal: 0,
+      sellerTotalReceive: 0,
+      sellerProfitOnly: 0,
+      partnerTotalReceive: 0,
+      partnerProfitOnly: 0,
       ownerTotal: 0,
       partnershipPaymentDue: 0,
       scenarios: new Set(),
@@ -75,8 +83,10 @@ export function ProfitBreakdownCard({
         hasActivePartnership,
       });
 
-      result.sellerTotal += splitResult.seller.total;
-      result.partnerTotal += splitResult.partner.total;
+      result.sellerTotalReceive += splitResult.seller.total;
+      result.sellerProfitOnly += splitResult.seller.profitShare;
+      result.partnerTotalReceive += splitResult.partner.total;
+      result.partnerProfitOnly += splitResult.partner.profitShare;
       result.ownerTotal += splitResult.owner.total;
       result.partnershipPaymentDue += splitResult.partnershipPaymentDue || 0;
       result.scenarios.add(splitResult.scenario);
@@ -85,11 +95,15 @@ export function ProfitBreakdownCard({
         productName: item.product.name,
         scenario: splitResult.scenario,
         scenarioDescription: splitResult.scenarioDescription,
-        seller: splitResult.seller.total,
-        partner: splitResult.partner.total,
+        sellerTotalReceive: splitResult.seller.total,
+        sellerProfitOnly: splitResult.seller.profitShare,
+        partnerTotalReceive: splitResult.partner.total,
+        partnerProfitOnly: splitResult.partner.profitShare,
         owner: splitResult.owner.total,
         partnershipPaymentDue: splitResult.partnershipPaymentDue || 0,
         ownerName: item.ownerName,
+        costPrice,
+        salePrice,
       });
     });
 
@@ -120,23 +134,44 @@ export function ProfitBreakdownCard({
       <CardContent className="space-y-3">
         {/* Main Summary Badges */}
         <div className="flex flex-wrap gap-2">
-          {/* Seller's earnings - Green */}
+          {/* Seller's net profit - Green (only profit, no cost recovery) */}
           <Badge 
             variant="outline" 
             className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
           >
             <Wallet className="h-3.5 w-3.5 mr-1.5" />
-            Seu Lucro Líquido: {formatCurrency(aggregatedSplits.sellerTotal)}
+            Lucro Líquido Real: {formatCurrency(aggregatedSplits.sellerProfitOnly)}
           </Badge>
 
+          {/* Seller's total to receive (cost + profit) - Emerald */}
+          {aggregatedSplits.sellerTotalReceive !== aggregatedSplits.sellerProfitOnly && (
+            <Badge 
+              variant="outline" 
+              className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 px-3 py-1.5 text-sm font-medium"
+            >
+              <Receipt className="h-3.5 w-3.5 mr-1.5" />
+              Total a Receber: {formatCurrency(aggregatedSplits.sellerTotalReceive)}
+            </Badge>
+          )}
+
           {/* Partner's share - Blue */}
-          {aggregatedSplits.partnerTotal > 0 && (
+          {aggregatedSplits.partnerTotalReceive > 0 && (
             <Badge 
               variant="outline" 
               className="bg-blue-500/10 text-blue-700 border-blue-500/30 px-3 py-1.5 text-sm font-medium"
             >
               <Users className="h-3.5 w-3.5 mr-1.5" />
-              Parte da Sócia: {formatCurrency(aggregatedSplits.partnerTotal)}
+              Sócia Recebe: {formatCurrency(aggregatedSplits.partnerTotalReceive)}
+            </Badge>
+          )}
+
+          {/* Partner's net profit if different */}
+          {aggregatedSplits.partnerProfitOnly > 0 && aggregatedSplits.partnerProfitOnly !== aggregatedSplits.partnerTotalReceive && (
+            <Badge 
+              variant="outline" 
+              className="bg-sky-500/10 text-sky-700 border-sky-500/30 px-3 py-1.5 text-xs"
+            >
+              Lucro Sócia: {formatCurrency(aggregatedSplits.partnerProfitOnly)}
             </Badge>
           )}
 
@@ -187,10 +222,22 @@ export function ProfitBreakdownCard({
                       {getScenarioShortLabel(detail.scenario)}
                     </Badge>
                   </div>
+                  <p className="text-muted-foreground">
+                    Venda: {formatCurrency(detail.salePrice)} | Custo: {formatCurrency(detail.costPrice)}
+                  </p>
                   <div className="flex gap-2 text-muted-foreground flex-wrap">
-                    <span className="text-green-600">Você: {formatCurrency(detail.seller)}</span>
-                    {detail.partner > 0 && (
-                      <span className="text-blue-600">Sócia: {formatCurrency(detail.partner)}</span>
+                    <span className="text-green-600">
+                      Seu Lucro: {formatCurrency(detail.sellerProfitOnly)}
+                    </span>
+                    {detail.sellerTotalReceive !== detail.sellerProfitOnly && (
+                      <span className="text-emerald-600">
+                        (Total: {formatCurrency(detail.sellerTotalReceive)})
+                      </span>
+                    )}
+                    {detail.partnerTotalReceive > 0 && (
+                      <span className="text-blue-600">
+                        Sócia: {formatCurrency(detail.partnerTotalReceive)}
+                      </span>
                     )}
                     {detail.owner > 0 && (
                       <span className="text-orange-600">Grupo: {formatCurrency(detail.owner)}</span>
@@ -205,11 +252,18 @@ export function ProfitBreakdownCard({
           </>
         )}
 
-        {/* Single item explanation */}
-        {aggregatedSplits.details.length === 1 && aggregatedSplits.details[0].scenario !== 'OWN_STOCK' && (
-          <p className="text-xs text-muted-foreground italic">
-            {aggregatedSplits.details[0].scenarioDescription}
-          </p>
+        {/* Single item explanation with cost breakdown */}
+        {aggregatedSplits.details.length === 1 && (
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>
+              Venda: {formatCurrency(aggregatedSplits.details[0].salePrice)} | 
+              Custo: {formatCurrency(aggregatedSplits.details[0].costPrice)} | 
+              Lucro Bruto: {formatCurrency(aggregatedSplits.details[0].salePrice - aggregatedSplits.details[0].costPrice)}
+            </p>
+            {aggregatedSplits.details[0].scenario !== 'OWN_STOCK' && (
+              <p className="italic">{aggregatedSplits.details[0].scenarioDescription}</p>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
