@@ -587,155 +587,96 @@ export function DirectPartnerships() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {receivedInvites.map((invite) => (
-              <div key={invite.id} className="p-4 bg-background rounded-lg border space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{getInviterName(invite.inviter_id)}</p>
-                    <p className="text-sm text-muted-foreground">
-                      quer ser seu parceiro direto
+            {receivedInvites.map((invite) => {
+              // Get values from invite with fallbacks
+              const inviteCostSplit = Math.round((invite.cost_split_ratio ?? 0.5) * 100);
+              const inviteProfitSeller = Math.round((invite.profit_share_seller ?? 0.7) * 100);
+              const inviteProfitPartner = Math.round((invite.profit_share_partner ?? 0.3) * 100);
+              const inviteOwnerCommission = Math.round((invite.owner_commission_percent ?? 0.2) * 100);
+              
+              return (
+                <div key={invite.id} className="p-4 bg-background rounded-lg border space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <UserPlus className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{getInviterName(invite.inviter_id)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        quer ser seu parceiro direto
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Proposed Terms Summary */}
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Percent className="h-4 w-4 text-primary" />
+                      Termos propostos por {getInviterName(invite.inviter_id)}:
                     </p>
+                    
+                    <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Divisão de Custo:</span>
+                        <Badge variant="secondary" className="bg-blue-500/10 text-blue-700 border-blue-500/30">
+                          {inviteCostSplit}% / {100 - inviteCostSplit}%
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Lucro de quem vende:</span>
+                        <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/30">
+                          {inviteProfitSeller}%
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Lucro da dona da peça:</span>
+                        <Badge variant="secondary" className="bg-orange-500/10 text-orange-700 border-orange-500/30">
+                          {inviteProfitPartner}%
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Comissão do dono (terceiros):</span>
+                        <Badge variant="secondary" className="bg-purple-500/10 text-purple-700 border-purple-500/30">
+                          {inviteOwnerCommission}%
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Resumo:</strong> Quando você vender uma peça de {getInviterName(invite.inviter_id)}, 
+                        você fica com <span className="text-green-600 font-medium">{inviteProfitSeller}%</span> do lucro 
+                        e ela recebe <span className="text-orange-600 font-medium">{inviteProfitPartner}%</span>. 
+                        O custo é dividido <span className="text-blue-600 font-medium">{inviteCostSplit}/{100 - inviteCostSplit}</span>.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end gap-2 pt-2 border-t">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => rejectInviteMutation.mutate(invite.id)}
+                      disabled={rejectInviteMutation.isPending}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Recusar
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => acceptInviteMutation.mutate(invite)}
+                      disabled={acceptInviteMutation.isPending}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Aceitar Parceria
+                    </Button>
                   </div>
                 </div>
-                
-                {/* Partnership Configuration Fields */}
-                <div className="border-t pt-4 space-y-4">
-                  <p className="text-sm font-medium text-muted-foreground">Configure a parceria:</p>
-                  
-                  <TooltipProvider>
-                    {/* Owner Commission */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`commission-${invite.id}`}>Comissão do Dono da Peça (%)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>Quanto o proprietário da peça ganha sobre o lucro quando outro membro vende</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <Input
-                        id={`commission-${invite.id}`}
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={ownerCommissionPercent}
-                        onChange={(e) => setOwnerCommissionPercent(Number(e.target.value))}
-                        className="w-32"
-                      />
-                    </div>
-                    
-                    {/* Cost Split */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`cost-split-${invite.id}`}>Divisão de Custo (%)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>Quanto cada parte recebe do custo da peça. Ex: 50% significa que cada uma recebe metade do custo</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id={`cost-split-${invite.id}`}
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={costSplitRatio}
-                          onChange={(e) => setCostSplitRatio(Number(e.target.value))}
-                          className="w-32"
-                        />
-                        <span className="text-sm text-muted-foreground">/ {100 - costSplitRatio}%</span>
-                      </div>
-                    </div>
-                    
-                    {/* Profit Share - Seller */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`profit-seller-${invite.id}`}>Sua Parte no Lucro quando você vende (%)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>Porcentagem do lucro que você recebe quando vende um produto da parceira</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <Input
-                        id={`profit-seller-${invite.id}`}
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={profitShareSeller}
-                        onChange={(e) => handleProfitShareSellerChange(Number(e.target.value))}
-                        className="w-32"
-                      />
-                    </div>
-                    
-                    {/* Profit Share - Partner */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`profit-partner-${invite.id}`}>Parte da Sócia quando você vende (%)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>Porcentagem do lucro que a dona da peça recebe quando você vende o produto dela</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <Input
-                        id={`profit-partner-${invite.id}`}
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={profitSharePartner}
-                        onChange={(e) => handleProfitSharePartnerChange(Number(e.target.value))}
-                        className="w-32"
-                      />
-                    </div>
-                  </TooltipProvider>
-                  
-                  {profitValidationError && (
-                    <p className="text-sm text-destructive">{profitValidationError}</p>
-                  )}
-                  
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <p className="text-xs text-muted-foreground">
-                      <strong>Resumo:</strong> Custo dividido {costSplitRatio}/{100 - costSplitRatio}. 
-                      Quando você vende: {profitShareSeller}% do lucro é seu, {profitSharePartner}% é da sócia.
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => rejectInviteMutation.mutate(invite.id)}
-                    disabled={rejectInviteMutation.isPending}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Recusar
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => acceptInviteMutation.mutate(invite)}
-                    disabled={acceptInviteMutation.isPending || !!profitValidationError}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Aceitar Parceria
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
