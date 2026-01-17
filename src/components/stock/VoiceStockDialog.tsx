@@ -23,6 +23,14 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+interface ProductVariant {
+  id: string;
+  color: string | null;
+  size: string;
+  stock_quantity: number;
+  image_url: string | null;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -31,6 +39,7 @@ interface Product {
   color: string | null;
   image_url: string | null;
   category: string;
+  product_variants?: ProductVariant[];
 }
 
 interface VoiceStockCommand {
@@ -111,13 +120,30 @@ export function VoiceStockDialog({
     setStep('searching');
     
     try {
-      // Fetch all user's products
-      const { data: products, error } = await supabase
+      // Extract search words for ilike query
+      const searchWords = searchTerm.trim().split(/\s+/).filter(w => w.length > 1);
+      const primarySearch = searchWords.slice(0, 2).join(' '); // Use first 2 words for ilike
+      
+      // First try: ilike search for similar products with variants
+      const { data: similarData, error: similarError } = await supabase
         .from('products')
-        .select('id, name, stock_quantity, size, color, image_url, category')
+        .select('id, name, stock_quantity, size, color, image_url, category, product_variants(id, color, size, stock_quantity, image_url)')
+        .eq('owner_id', userId)
+        .ilike('name', `%${primarySearch}%`)
+        .limit(10);
+
+      if (similarError) throw similarError;
+
+      // Also fetch all products for fallback scoring
+      const { data: allProducts, error: allError } = await supabase
+        .from('products')
+        .select('id, name, stock_quantity, size, color, image_url, category, product_variants(id, color, size, stock_quantity, image_url)')
         .eq('owner_id', userId);
 
-      if (error) throw error;
+      if (allError) throw allError;
+
+      // Combine results, prioritizing ilike matches
+      const products = similarData && similarData.length > 0 ? similarData : allProducts;
 
       if (!products || products.length === 0) {
         setStep('no_match');
@@ -125,10 +151,10 @@ export function VoiceStockDialog({
       }
 
       // Store all products for variant lookup
-      setAllVariants(products);
+      setAllVariants(allProducts || []);
 
       const normalizedSearch = normalizeText(searchTerm);
-      const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 1);
+      const normalizedWords = normalizedSearch.split(/\s+/).filter(w => w.length > 1);
 
       // Score products by match quality
       const scoredProducts = products.map(product => {
@@ -145,8 +171,8 @@ export function VoiceStockDialog({
         } 
         // Check if all search words are found
         else {
-          const matchedWords = searchWords.filter(word => fullText.includes(word));
-          score = (matchedWords.length / searchWords.length) * 80;
+          const matchedWords = normalizedWords.filter(word => fullText.includes(word));
+          score = (matchedWords.length / normalizedWords.length) * 80;
           
           // Bonus for consecutive words matching
           if (normalizedName.includes(normalizedSearch)) {
@@ -154,7 +180,7 @@ export function VoiceStockDialog({
           }
           
           // Partial word matching for fuzzy search
-          for (const word of searchWords) {
+          for (const word of normalizedWords) {
             if (word.length >= 3) {
               const nameWords = normalizedName.split(/\s+/);
               for (const nameWord of nameWords) {
@@ -163,6 +189,20 @@ export function VoiceStockDialog({
                 }
               }
             }
+          }
+        }
+        
+        // Bonus if color matches AI-detected color
+        if (command?.color) {
+          const detectedColor = normalizeText(command.color);
+          if (normalizedColor.includes(detectedColor) || detectedColor.includes(normalizedColor)) {
+            score += 20;
+          }
+          // Check variants for color match
+          if (product.product_variants?.some(v => 
+            v.color && normalizeText(v.color).includes(detectedColor)
+          )) {
+            score += 15;
           }
         }
 
@@ -175,7 +215,13 @@ export function VoiceStockDialog({
         .sort((a, b) => b.score - a.score);
 
       if (matches.length === 0) {
-        setStep('no_match');
+        // Try broader search if no matches
+        if (allProducts && allProducts.length > 0) {
+          setSimilarProducts(allProducts.slice(0, 5));
+          setStep('similar_matches');
+        } else {
+          setStep('no_match');
+        }
         return;
       }
 
@@ -209,7 +255,7 @@ export function VoiceStockDialog({
         
         // Find the correct variant based on AI-extracted color and size
         const targetSize = command?.size?.toUpperCase();
-        initializeSizeQuantitiesWithPreselection(product, products, targetColor, command?.quantity || 1, targetSize);
+        initializeSizeQuantitiesWithPreselection(product, allProducts || [], targetColor, command?.quantity || 1, targetSize);
         setStep('exact_match');
       } else {
         // Low score matches - show as options
