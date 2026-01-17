@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useMemo } from "react";
+import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,15 @@ interface ProductPartnership {
   id: string;
   product_id: string;
   group_id: string;
+}
+
+interface PartnershipRule {
+  id: string;
+  group_id: string;
+  seller_cost_percent: number;
+  seller_profit_percent: number;
+  owner_cost_percent: number;
+  owner_profit_percent: number;
 }
 
 interface DirectPartner {
@@ -178,6 +187,32 @@ export function DirectPartnerships() {
     },
     enabled: !!user,
   });
+
+  // Fetch partnership rules
+  const { data: partnershipRules = [] } = useQuery({
+    queryKey: ["partnership-rules"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partnership_rules")
+        .select("*");
+      if (error) throw error;
+      return data as PartnershipRule[];
+    },
+    enabled: !!user,
+  });
+
+  // Helper to get rules for a group
+  const getRulesForGroup = (groupId: string): PartnershipRule => {
+    const rules = partnershipRules.find(r => r.group_id === groupId);
+    return rules || {
+      id: "",
+      group_id: groupId,
+      seller_cost_percent: 50,
+      seller_profit_percent: 70,
+      owner_cost_percent: 50,
+      owner_profit_percent: 30,
+    };
+  };
 
   // Compute direct partners list
   const directPartners: DirectPartner[] = directGroups.map((dg: any) => {
@@ -736,6 +771,12 @@ export function DirectPartnerships() {
                     <TableHead>Categoria</TableHead>
                     <TableHead className="text-right">Preço</TableHead>
                     <TableHead className="text-right">Estoque</TableHead>
+                    <TableHead className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Percent className="h-3 w-3" />
+                        Seu Ganho
+                      </div>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -743,6 +784,11 @@ export function DirectPartnerships() {
                     const isEnabled = selectedPartner
                       ? isProductInPartnership(product.id, selectedPartner.groupId)
                       : false;
+                    
+                    // Get the rules for this partnership
+                    const rules = selectedPartner ? getRulesForGroup(selectedPartner.groupId) : null;
+                    const ownerProfitPercent = rules ? Number(rules.owner_profit_percent) : 30;
+                    const ownerCostPercent = rules ? Number(rules.owner_cost_percent) : 50;
 
                     return (
                       <TableRow key={product.id}>
@@ -770,6 +816,14 @@ export function DirectPartnerships() {
                           {formatCurrency(product.price)}
                         </TableCell>
                         <TableCell className="text-right">{product.stock_quantity}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant="secondary" 
+                            className="bg-green-500/10 text-green-700 border-green-500/30"
+                          >
+                            {ownerCostPercent}% custo + {ownerProfitPercent}% lucro
+                          </Badge>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
