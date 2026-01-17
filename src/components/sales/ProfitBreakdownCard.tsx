@@ -79,23 +79,26 @@ export function ProfitBreakdownCard({
 
     cart.forEach((item) => {
       const salePriceGross = item.product.price * item.quantity;
+      // Apply discount multiplier first
       const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
-      const feeAmount = salePriceAfterDiscount * (paymentFeePercent / 100);
-      const salePrice = Math.max(0, salePriceAfterDiscount - feeAmount);
 
-      // Use cost_price if available, otherwise estimate as 50% of sale price (antes da taxa)
+      // Use cost_price if available, otherwise estimate as 50% of sale price
       const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
       const isPartnershipStock = item.isPartnerStock;
 
+      // Pass payment fee to profitEngine - it will calculate net revenue internally
       const splitResult = calculateSaleSplits({
-        salePrice,
+        salePrice: salePriceAfterDiscount,
         costPrice,
         groupCommissionPercent,
         isPartnershipStock,
         sellerIsOwner,
         hasActivePartnership,
+        paymentMethodFee: paymentFeePercent,
       });
+      
+      const feeAmount = splitResult.paymentFeeAmount;
 
       result.sellerTotalReceive += splitResult.seller.total;
       result.sellerProfitOnly += splitResult.seller.profitShare;
@@ -118,7 +121,7 @@ export function ProfitBreakdownCard({
         partnershipPaymentDue: splitResult.partnershipPaymentDue || 0,
         ownerName: item.ownerName,
         costPrice,
-        salePrice,
+        salePrice: splitResult.netRevenue,
         feeAmount,
         salePriceGross,
       });
