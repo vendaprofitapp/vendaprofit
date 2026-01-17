@@ -36,6 +36,7 @@ interface Participant {
   customer_name: string;
   customer_phone: string | null;
   payment_method: string;
+  payment_due_day: number | null;
   is_drawn: boolean;
   drawn_at: string | null;
   notes: string | null;
@@ -65,11 +66,12 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
   const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
   const [isDrawingOpen, setIsDrawingOpen] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<{ winnerId: string; participantName: string } | null>(null);
-  const [selectedPaymentParticipant, setSelectedPaymentParticipant] = useState<{ id: string; name: string } | null>(null);
+  const [selectedPaymentParticipant, setSelectedPaymentParticipant] = useState<{ id: string; name: string; paymentDueDay: number } | null>(null);
   const [participantForm, setParticipantForm] = useState({
     customer_name: "",
     customer_phone: "",
     payment_method: "dinheiro",
+    payment_due_day: "10",
     notes: "",
   });
   const [drawingForm, setDrawingForm] = useState({
@@ -160,6 +162,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
         customer_name: participantForm.customer_name,
         customer_phone: participantForm.customer_phone || null,
         payment_method: participantForm.payment_method,
+        payment_due_day: parseInt(participantForm.payment_due_day) || 10,
         notes: participantForm.notes || null,
       });
       if (error) throw error;
@@ -168,7 +171,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
       queryClient.invalidateQueries({ queryKey: ["consortium-participants", consortium.id] });
       queryClient.invalidateQueries({ queryKey: ["consortium-participant-counts"] });
       setIsAddParticipantOpen(false);
-      setParticipantForm({ customer_name: "", customer_phone: "", payment_method: "dinheiro", notes: "" });
+      setParticipantForm({ customer_name: "", customer_phone: "", payment_method: "dinheiro", payment_due_day: "10", notes: "" });
       toast.success("Participante adicionado!");
     },
     onError: (error) => {
@@ -433,6 +436,18 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                         </Select>
                       </div>
                       <div>
+                        <Label>Dia de Vencimento (1-31)</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={participantForm.payment_due_day}
+                          onChange={(e) => setParticipantForm({ ...participantForm, payment_due_day: e.target.value })}
+                          placeholder="10"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Dia do mês que o participante paga</p>
+                      </div>
+                      <div>
                         <Label>Observações</Label>
                         <Textarea
                           value={participantForm.notes}
@@ -509,7 +524,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                                   variant="outline"
                                   size="sm"
                                   className="gap-1"
-                                  onClick={() => setSelectedPaymentParticipant({ id: p.id, name: p.customer_name })}
+                                  onClick={() => setSelectedPaymentParticipant({ id: p.id, name: p.customer_name, paymentDueDay: p.payment_due_day || 10 })}
                                 >
                                   <DollarSign className="h-4 w-4" />
                                   Parcelas
@@ -637,6 +652,8 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
           participantName={selectedPaymentParticipant.name}
           installmentsCount={consortium.installments_count}
           installmentValue={consortium.installment_value}
+          paymentDueDay={selectedPaymentParticipant.paymentDueDay}
+          consortiumStartDate={consortium.start_date}
           open={!!selectedPaymentParticipant}
           onOpenChange={(open) => !open && setSelectedPaymentParticipant(null)}
         />
