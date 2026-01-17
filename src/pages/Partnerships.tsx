@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Plus, Users, Settings2, Package, Trash2, Edit, Check, X, UserPlus, Copy } from "lucide-react";
+import { Plus, Users, Settings2, Package, Trash2, Edit, Check, X, UserPlus, Copy, User } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { DirectPartnerships } from "@/components/partnerships/DirectPartnerships";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,7 @@ interface Group {
   invite_code: string | null;
   created_by: string;
   created_at: string;
+  is_direct?: boolean;
 }
 
 interface GroupMember {
@@ -132,13 +134,14 @@ export default function Partnerships() {
     enabled: !!user,
   });
 
-  // Fetch groups
+  // Fetch groups (only non-direct ones for the group partnerships section)
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ["groups"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("groups")
-        .select("*");
+        .select("*")
+        .eq("is_direct", false);
       if (error) throw error;
       return data as Group[];
     },
@@ -498,22 +501,50 @@ export default function Partnerships() {
   return (
     <MainLayout>
       {/* Page Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Parcerias</h1>
           <p className="text-muted-foreground">Gerencie suas parcerias e regras de divisão</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsJoinOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Entrar em Parceria
-          </Button>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Parceria
-          </Button>
-        </div>
       </div>
+
+      {/* Tabs for Direct vs Group Partnerships */}
+      <Tabs defaultValue="direct" className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="direct" className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            Parcerias Diretas
+          </TabsTrigger>
+          <TabsTrigger value="groups" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Grupos
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Direct Partnerships Tab */}
+        <TabsContent value="direct">
+          <DirectPartnerships />
+        </TabsContent>
+
+        {/* Group Partnerships Tab */}
+        <TabsContent value="groups" className="space-y-6">
+          {/* Groups Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Grupos de Parceria</h2>
+              <p className="text-sm text-muted-foreground">Parcerias com múltiplos vendedores</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsJoinOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Entrar em Grupo
+              </Button>
+              <Button onClick={() => setIsCreateOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Grupo
+              </Button>
+            </div>
+          </div>
 
       {/* Partnerships Grid */}
       {groupsLoading ? (
@@ -661,7 +692,9 @@ export default function Partnerships() {
             );
           })}
         </div>
-      )}
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Create Partnership Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
