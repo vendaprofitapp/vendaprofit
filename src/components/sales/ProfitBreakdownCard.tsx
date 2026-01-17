@@ -23,19 +23,24 @@ interface ProfitBreakdownCardProps {
   currentUserId: string;
   groupCommissionPercent?: number;
   hasActivePartnership: boolean;
+  /** Percentual de taxa do método de pagamento (ex: 10 para 10%) */
+  paymentFeePercent?: number;
+  /** Multiplicador para refletir desconto aplicado no total (ex: total/subtotal) */
+  saleNetMultiplier?: number;
 }
 
 interface AggregatedSplits {
-  sellerTotalReceive: number;    // Cost recovery + profit share
-  sellerProfitOnly: number;      // Only profit share (real net profit)
-  partnerTotalReceive: number;   // Cost recovery + profit share
-  partnerProfitOnly: number;     // Only profit share
+  sellerTotalReceive: number; // Cost recovery + profit share
+  sellerProfitOnly: number; // Only profit share (real net profit)
+  partnerTotalReceive: number; // Cost recovery + profit share
+  partnerProfitOnly: number; // Only profit share
   ownerTotal: number;
   partnershipPaymentDue: number;
-  scenarios: Set<SaleSplitResult['scenario']>;
+  paymentFeesTotal: number; // Total de taxas do pagamento (cartão etc.)
+  scenarios: Set<SaleSplitResult["scenario"]>;
   details: Array<{
     productName: string;
-    scenario: SaleSplitResult['scenario'];
+    scenario: SaleSplitResult["scenario"];
     scenarioDescription: string;
     sellerTotalReceive: number;
     sellerProfitOnly: number;
@@ -45,7 +50,9 @@ interface AggregatedSplits {
     partnershipPaymentDue: number;
     ownerName?: string;
     costPrice: number;
-    salePrice: number;
+    salePrice: number; // preço líquido já com desconto e taxa
+    feeAmount: number;
+    salePriceGross: number; // antes de desconto/taxa (informativo)
   }>;
 }
 
@@ -54,6 +61,8 @@ export function ProfitBreakdownCard({
   currentUserId,
   groupCommissionPercent = 0.20,
   hasActivePartnership,
+  paymentFeePercent = 0,
+  saleNetMultiplier = 1,
 }: ProfitBreakdownCardProps) {
   const aggregatedSplits = useMemo<AggregatedSplits>(() => {
     const result: AggregatedSplits = {
@@ -63,13 +72,18 @@ export function ProfitBreakdownCard({
       partnerProfitOnly: 0,
       ownerTotal: 0,
       partnershipPaymentDue: 0,
+      paymentFeesTotal: 0,
       scenarios: new Set(),
       details: [],
     };
 
     cart.forEach((item) => {
-      const salePrice = item.product.price * item.quantity;
-      // Use cost_price if available, otherwise estimate as 50% of sale price
+      const salePriceGross = item.product.price * item.quantity;
+      const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
+      const feeAmount = salePriceAfterDiscount * (paymentFeePercent / 100);
+      const salePrice = Math.max(0, salePriceAfterDiscount - feeAmount);
+
+      // Use cost_price if available, otherwise estimate as 50% of sale price (antes da taxa)
       const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
       const isPartnershipStock = item.isPartnerStock;
@@ -89,6 +103,7 @@ export function ProfitBreakdownCard({
       result.partnerProfitOnly += splitResult.partner.profitShare;
       result.ownerTotal += splitResult.owner.total;
       result.partnershipPaymentDue += splitResult.partnershipPaymentDue || 0;
+      result.paymentFeesTotal += feeAmount;
       result.scenarios.add(splitResult.scenario);
 
       result.details.push({
@@ -104,11 +119,13 @@ export function ProfitBreakdownCard({
         ownerName: item.ownerName,
         costPrice,
         salePrice,
+        feeAmount,
+        salePriceGross,
       });
     });
 
     return result;
-  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership]);
+  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier]);
 
   // Don't show if cart is empty
   if (cart.length === 0) {
@@ -135,8 +152,8 @@ export function ProfitBreakdownCard({
         {/* Main Summary Badges */}
         <div className="flex flex-wrap gap-2">
           {/* Seller's net profit - Green (only profit, no cost recovery) */}
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
           >
             <Wallet className="h-3.5 w-3.5 mr-1.5" />
@@ -145,8 +162,8 @@ export function ProfitBreakdownCard({
 
           {/* Seller's total to receive (cost + profit) - Emerald */}
           {aggregatedSplits.sellerTotalReceive !== aggregatedSplits.sellerProfitOnly && (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 px-3 py-1.5 text-sm font-medium"
             >
               <Receipt className="h-3.5 w-3.5 mr-1.5" />
@@ -154,10 +171,20 @@ export function ProfitBreakdownCard({
             </Badge>
           )}
 
+          {/* Payment fee badge (card etc.) */}
+          {aggregatedSplits.paymentFeesTotal > 0 && (
+            <Badge
+              variant="outline"
+              className="bg-destructive/10 text-destructive border-destructive/30 px-3 py-1.5 text-sm font-medium"
+            >
+              Taxa ({paymentFeePercent}%): -{formatCurrency(aggregatedSplits.paymentFeesTotal)}
+            </Badge>
+          )}
+
           {/* Partner's share - Blue */}
           {aggregatedSplits.partnerTotalReceive > 0 && (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="bg-blue-500/10 text-blue-700 border-blue-500/30 px-3 py-1.5 text-sm font-medium"
             >
               <Users className="h-3.5 w-3.5 mr-1.5" />
@@ -166,19 +193,20 @@ export function ProfitBreakdownCard({
           )}
 
           {/* Partner's net profit if different */}
-          {aggregatedSplits.partnerProfitOnly > 0 && aggregatedSplits.partnerProfitOnly !== aggregatedSplits.partnerTotalReceive && (
-            <Badge 
-              variant="outline" 
-              className="bg-sky-500/10 text-sky-700 border-sky-500/30 px-3 py-1.5 text-xs"
-            >
-              Lucro Sócia: {formatCurrency(aggregatedSplits.partnerProfitOnly)}
-            </Badge>
-          )}
+          {aggregatedSplits.partnerProfitOnly > 0 &&
+            aggregatedSplits.partnerProfitOnly !== aggregatedSplits.partnerTotalReceive && (
+              <Badge
+                variant="outline"
+                className="bg-sky-500/10 text-sky-700 border-sky-500/30 px-3 py-1.5 text-xs"
+              >
+                Lucro Sócia: {formatCurrency(aggregatedSplits.partnerProfitOnly)}
+              </Badge>
+            )}
 
           {/* Owner/Group commission - Orange */}
           {aggregatedSplits.ownerTotal > 0 && (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="bg-orange-500/10 text-orange-700 border-orange-500/30 px-3 py-1.5 text-sm font-medium"
             >
               <Building2 className="h-3.5 w-3.5 mr-1.5" />
