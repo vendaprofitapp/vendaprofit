@@ -47,11 +47,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialog";
+import { ProfitBreakdownCard } from "@/components/sales/ProfitBreakdownCard";
 
 interface Product {
   id: string;
   name: string;
   price: number;
+  cost_price?: number;
   stock_quantity: number;
   owner_id: string;
   group_id: string | null;
@@ -178,7 +180,7 @@ export default function Sales() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, stock_quantity, owner_id, group_id, category, color, size")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size")
         .eq("is_active", true)
         .eq("owner_id", user?.id)
         .gt("stock_quantity", 0)
@@ -247,6 +249,9 @@ export default function Sales() {
     enabled: !!user,
   });
 
+  // Check if user has any active partnerships (for profit breakdown display)
+  const hasActivePartnership = userGroups.length > 0;
+
   // Search partner products when own stock doesn't have the product
   const searchPartnerProducts = async (searchName: string) => {
     if (!user || userGroups.length === 0) return [];
@@ -256,7 +261,7 @@ export default function Sales() {
     const { data, error } = await supabase
       .from("product_partnerships")
       .select(
-        "product:products!inner(id, name, price, stock_quantity, owner_id, group_id, category, color, size)"
+        "product:products!inner(id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size)"
       )
       .in("group_id", userGroups)
       .eq("products.is_active", true)
@@ -1437,6 +1442,16 @@ export default function Sales() {
                   <span>R$ {total.toFixed(2).replace(".", ",")}</span>
                 </div>
               </div>
+
+              {/* Profit Breakdown Card - L.E.V.E. */}
+              {user && (
+                <ProfitBreakdownCard
+                  cart={cart}
+                  currentUserId={user.id}
+                  groupCommissionPercent={0.20}
+                  hasActivePartnership={hasActivePartnership}
+                />
+              )}
 
               <Button
                 className="w-full"
