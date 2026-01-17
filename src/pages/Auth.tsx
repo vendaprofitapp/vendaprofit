@@ -10,12 +10,13 @@ import logoVendaProfit from "@/assets/logo-venda-profit.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, resetPassword, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,7 +30,15 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      if (isLogin) {
+      if (isForgotPassword) {
+        const { error } = await resetPassword(email);
+        if (error) {
+          toast.error(error.message);
+        } else {
+          toast.success("Email de recuperação enviado! Verifique sua caixa de entrada.");
+          setIsForgotPassword(false);
+        }
+      } else if (isLogin) {
         const { error } = await signIn(email, password);
         if (error) {
           if (error.message.includes("Invalid login credentials")) {
@@ -66,6 +75,17 @@ export default function Auth() {
     }
   };
 
+  const getTitle = () => {
+    if (isForgotPassword) return "Recuperar senha";
+    return isLogin ? "Entrar na sua conta" : "Criar nova conta";
+  };
+
+  const getButtonText = () => {
+    if (isLoading) return "Carregando...";
+    if (isForgotPassword) return "Enviar email de recuperação";
+    return isLogin ? "Entrar" : "Criar conta";
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
@@ -77,11 +97,11 @@ export default function Auth() {
 
         <div className="bg-card rounded-xl shadow-soft p-8 animate-fade-in">
           <h2 className="text-xl font-semibold text-center mb-6">
-            {isLogin ? "Entrar na sua conta" : "Criar nova conta"}
+            {getTitle()}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+            {!isLogin && !isForgotPassword && (
               <div className="space-y-2">
                 <Label htmlFor="fullName">Nome completo</Label>
                 <div className="relative">
@@ -93,7 +113,7 @@ export default function Auth() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="pl-10"
-                    required={!isLogin}
+                    required={!isLogin && !isForgotPassword}
                   />
                 </div>
               </div>
@@ -115,43 +135,67 @@ export default function Auth() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-10"
-                  required
-                  minLength={6}
-                />
+            {!isForgotPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-10 pr-10"
+                    required={!isForgotPassword}
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isLogin && !isForgotPassword && (
+              <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setIsForgotPassword(true)}
+                  className="text-sm text-primary hover:underline"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  Esqueci minha senha
                 </button>
               </div>
-            </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Carregando..." : isLogin ? "Entrar" : "Criar conta"}
+              {getButtonText()}
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-primary hover:underline"
-            >
-              {isLogin ? "Não tem conta? Cadastre-se" : "Já tem conta? Faça login"}
-            </button>
+          <div className="mt-6 text-center space-y-2">
+            {isForgotPassword ? (
+              <button
+                type="button"
+                onClick={() => setIsForgotPassword(false)}
+                className="text-sm text-primary hover:underline"
+              >
+                Voltar para o login
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-sm text-primary hover:underline"
+              >
+                {isLogin ? "Não tem conta? Cadastre-se" : "Já tem conta? Faça login"}
+              </button>
+            )}
           </div>
         </div>
       </div>
