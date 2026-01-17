@@ -133,19 +133,19 @@ function extractCategory(html: string, markdown: string, productName: string): s
   return null;
 }
 
-// Helper function to make request with retry
+// Helper function to make request with retry - optimized for edge function limits
 async function fetchWithRetry(
   url: string, 
   options: RequestInit, 
-  maxRetries = 3
+  maxRetries = 2
 ): Promise<Response> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Create abort controller for timeout
+      // Create abort controller for timeout - increased to 45s for slow sites
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
       
       const response = await fetch(url, {
         ...options,
@@ -154,11 +154,10 @@ async function fetchWithRetry(
       
       clearTimeout(timeoutId);
       
-      // If we get a 502/503/504, retry after a delay
+      // If we get a 502/503/504, retry after a short delay
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         console.log(`Attempt ${attempt + 1}/${maxRetries} failed with ${response.status}, retrying...`);
-        const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // exponential backoff, max 5s
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         continue;
       }
       
@@ -167,8 +166,7 @@ async function fetchWithRetry(
       lastError = error as Error;
       if (lastError.name === 'AbortError') {
         console.log(`Attempt ${attempt + 1}/${maxRetries} timed out, retrying...`);
-        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
       }
       // For other errors, throw immediately
