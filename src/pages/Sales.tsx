@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { calculateSaleSplits } from "@/utils/profitEngine";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
@@ -486,6 +487,83 @@ export default function Sales() {
             .eq("id", item.product.id);
           if (stockError) console.error("Error updating stock:", stockError);
         }
+      }
+
+      // Create financial_splits using profitEngine
+      const financialSplitsToInsert: Array<{
+        sale_id: string;
+        user_id: string;
+        amount: number;
+        type: 'cost_recovery' | 'profit_share' | 'group_commission';
+        description: string;
+      }> = [];
+
+      for (const item of cart) {
+        const salePrice = item.product.price * item.quantity;
+        const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
+        const sellerIsOwner = item.product.owner_id === user.id;
+        const isPartnershipStock = item.isPartnerStock;
+
+        const splitResult = calculateSaleSplits({
+          salePrice,
+          costPrice,
+          groupCommissionPercent: 0.20, // Default group commission
+          isPartnershipStock,
+          sellerIsOwner,
+          hasActivePartnership: userGroups.length > 0,
+        });
+
+        // Add seller splits (current user)
+        if (splitResult.seller.total > 0) {
+          if (splitResult.seller.costRecovery > 0) {
+            financialSplitsToInsert.push({
+              sale_id: sale.id,
+              user_id: user.id,
+              amount: splitResult.seller.costRecovery,
+              type: 'cost_recovery',
+              description: `Recuperação de custo - ${item.product.name}`,
+            });
+          }
+          if (splitResult.seller.profitShare > 0) {
+            financialSplitsToInsert.push({
+              sale_id: sale.id,
+              user_id: user.id,
+              amount: splitResult.seller.profitShare,
+              type: 'profit_share',
+              description: `Lucro da venda - ${item.product.name}`,
+            });
+          }
+        }
+
+        // Add owner splits (product owner, when different from seller)
+        if (splitResult.owner.total > 0 && item.product.owner_id !== user.id) {
+          if (splitResult.owner.costRecovery > 0) {
+            financialSplitsToInsert.push({
+              sale_id: sale.id,
+              user_id: item.product.owner_id,
+              amount: splitResult.owner.costRecovery,
+              type: 'cost_recovery',
+              description: `Recuperação de custo (dono) - ${item.product.name}`,
+            });
+          }
+          if (splitResult.owner.groupCommission > 0) {
+            financialSplitsToInsert.push({
+              sale_id: sale.id,
+              user_id: item.product.owner_id,
+              amount: splitResult.owner.groupCommission,
+              type: 'group_commission',
+              description: `Comissão de grupo - ${item.product.name}`,
+            });
+          }
+        }
+      }
+
+      // Insert financial splits if there are any
+      if (financialSplitsToInsert.length > 0) {
+        const { error: splitsError } = await supabase
+          .from("financial_splits")
+          .insert(financialSplitsToInsert);
+        if (splitsError) console.error("Error creating financial splits:", splitsError);
       }
 
       return sale;

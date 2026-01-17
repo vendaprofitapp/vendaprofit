@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, TrendingUp, DollarSign, Calendar, Filter, X } from "lucide-react";
+import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Wallet, Building2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +18,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/hooks/use-toast";
 import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+interface FinancialSplit {
+  id: string;
+  sale_id: string;
+  user_id: string;
+  amount: number;
+  type: 'cost_recovery' | 'profit_share' | 'group_commission';
+  description: string;
+  created_at: string;
+}
 
 interface SaleWithItems {
   id: string;
@@ -74,6 +86,7 @@ interface Profile {
   id: string;
   full_name: string;
   email: string;
+  phone?: string;
 }
 
 interface Group {
@@ -91,6 +104,13 @@ interface PartnerSummary {
   sellerEarnings: number;
   partnerEarnings: number;
   salesCount: number;
+}
+
+interface SplitSummary {
+  ownSalesProfit: number;
+  commissionsReceived: number;
+  partnershipParticipation: number;
+  total: number;
 }
 
 const periodOptions = [
@@ -146,6 +166,23 @@ export default function PartnerReports() {
         .select("id, name");
       if (error) throw error;
       return data as Group[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch financial splits
+  const { data: financialSplits = [], isLoading: splitsLoading } = useQuery({
+    queryKey: ["financial-splits", user?.id, dateRange.start, dateRange.end],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("financial_splits")
+        .select("*")
+        .eq("user_id", user?.id)
+        .gte("created_at", dateRange.start.toISOString())
+        .lte("created_at", dateRange.end.toISOString())
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as FinancialSplit[];
     },
     enabled: !!user,
   });
@@ -226,7 +263,7 @@ export default function PartnerReports() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email");
+        .select("id, full_name, email, phone");
       if (error) throw error;
       return data as Profile[];
     },
@@ -258,6 +295,39 @@ export default function PartnerReports() {
     return profiles.filter(p => partnerIds.has(p.id));
   }, [userGroupMemberships, userGroups, profiles, user, selectedGroupId]);
 
+  // Calculate split summary by type from financial_splits table
+  const splitSummary = useMemo<SplitSummary>(() => {
+    const summary: SplitSummary = {
+      ownSalesProfit: 0,
+      commissionsReceived: 0,
+      partnershipParticipation: 0,
+      total: 0,
+    };
+
+    for (const split of financialSplits) {
+      switch (split.type) {
+        case 'profit_share':
+          // Check if it's from own sale or partnership
+          if (split.description.includes('Lucro da venda')) {
+            summary.ownSalesProfit += split.amount;
+          } else {
+            summary.partnershipParticipation += split.amount;
+          }
+          break;
+        case 'group_commission':
+          summary.commissionsReceived += split.amount;
+          break;
+        case 'cost_recovery':
+          // Cost recovery is included in ownSalesProfit for simplicity
+          summary.ownSalesProfit += split.amount;
+          break;
+      }
+    }
+
+    summary.total = summary.ownSalesProfit + summary.commissionsReceived + summary.partnershipParticipation;
+    return summary;
+  }, [financialSplits]);
+
   // Helper to get rules for a group
   const getRulesForGroup = (groupId: string): PartnershipRule => {
     const rules = partnershipRules.find(r => r.group_id === groupId);
@@ -277,41 +347,34 @@ export default function PartnerReports() {
     return partnership?.group_id || null;
   };
 
-  // Calculate partner earnings
+  // Calculate partner earnings (legacy calculation for tables)
   const partnerSummaries = useMemo(() => {
     if (!user) return [];
 
     const productMap = new Map(products.map(p => [p.id, p]));
     const summaries = new Map<string, PartnerSummary>();
 
-    // Get relevant group IDs
     let relevantGroupIds = userGroups.map(g => g.id);
     if (selectedGroupId !== "all") {
       relevantGroupIds = [selectedGroupId];
     }
 
-    // Filter sales by user
     const userSales = salesData.filter(s => s.owner_id === user.id);
 
     for (const sale of userSales) {
       for (const item of sale.sale_items || []) {
         const product = productMap.get(item.product_id);
         if (!product) continue;
-
-        // Skip own products (no partner split needed)
         if (product.owner_id === user.id) continue;
 
-        // Check if product is in a partnership with a relevant group
         const productGroupId = getProductGroup(product.id) || product.group_id;
         if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
 
-        // Filter by selected partner
         if (selectedPartnerId !== "all" && product.owner_id !== selectedPartnerId) continue;
 
         const partner = profiles.find(p => p.id === product.owner_id);
         if (!partner) continue;
 
-        // Get rules for this group
         const rules = getRulesForGroup(productGroupId);
 
         const costPrice = product.cost_price || 0;
@@ -322,7 +385,6 @@ export default function PartnerReports() {
         const totalSale = salePrice * quantity;
         const profit = totalSale - totalCost;
 
-        // Apply custom rules
         const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
         const partnerEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
 
@@ -360,34 +422,28 @@ export default function PartnerReports() {
     const productMap = new Map(products.map(p => [p.id, p]));
     const summaries = new Map<string, PartnerSummary>();
 
-    // Get relevant group IDs
     let relevantGroupIds = userGroups.map(g => g.id);
     if (selectedGroupId !== "all") {
       relevantGroupIds = [selectedGroupId];
     }
 
-    // Filter sales NOT by user (partner sales)
     const partnerSales = salesData.filter(s => s.owner_id !== user.id);
 
     for (const sale of partnerSales) {
       const seller = profiles.find(p => p.id === sale.owner_id);
       if (!seller) continue;
 
-      // Filter by selected partner (seller in this case)
       if (selectedPartnerId !== "all" && sale.owner_id !== selectedPartnerId) continue;
 
       for (const item of sale.sale_items || []) {
         const product = productMap.get(item.product_id);
         if (!product) continue;
 
-        // Only process MY products sold by partners
         if (product.owner_id !== user.id) continue;
 
-        // Check if product is in a partnership with a relevant group
         const productGroupId = getProductGroup(product.id) || product.group_id;
         if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
 
-        // Get rules for this group
         const rules = getRulesForGroup(productGroupId);
 
         const costPrice = product.cost_price || 0;
@@ -398,7 +454,6 @@ export default function PartnerReports() {
         const totalSale = salePrice * quantity;
         const profit = totalSale - totalCost;
 
-        // Apply custom rules - I'm the product owner
         const myEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
         const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
 
@@ -420,7 +475,7 @@ export default function PartnerReports() {
         summary.totalSales += totalSale;
         summary.totalCost += totalCost;
         summary.totalProfit += profit;
-        summary.partnerEarnings += myEarnings; // My earnings as product owner
+        summary.partnerEarnings += myEarnings;
         summary.sellerEarnings += sellerEarnings;
         summary.salesCount += 1;
       }
@@ -461,6 +516,77 @@ export default function PartnerReports() {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   };
 
+  // Generate WhatsApp settlement text
+  const generateSettlementText = () => {
+    const currentUser = profiles.find(p => p.id === user?.id);
+    const periodLabel = periodOptions.find(p => p.value === period)?.label || period;
+    
+    let text = `📊 *ACERTO DE CONTAS - ${periodLabel.toUpperCase()}*\n`;
+    text += `📅 ${format(dateRange.start, "dd/MM/yyyy")} a ${format(dateRange.end, "dd/MM/yyyy")}\n\n`;
+    
+    text += `👤 *${currentUser?.full_name || 'Você'}*\n\n`;
+    
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📈 *RESUMO POR TIPO*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    text += `💰 Lucro Vendas Próprias: ${formatCurrency(splitSummary.ownSalesProfit)}\n`;
+    text += `🏢 Comissões Recebidas: ${formatCurrency(splitSummary.commissionsReceived)}\n`;
+    text += `👥 Participação Parcerias: ${formatCurrency(splitSummary.partnershipParticipation)}\n`;
+    text += `\n✨ *TOTAL GANHOS: ${formatCurrency(splitSummary.total)}*\n\n`;
+    
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `💸 *VALORES A ACERTAR*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    if (partnerSummaries.length > 0) {
+      text += `📤 *Devo às Parceiras:*\n`;
+      partnerSummaries.forEach(s => {
+        text += `  • ${s.partnerName}: ${formatCurrency(s.partnerEarnings)}\n`;
+      });
+      text += `  *Subtotal: ${formatCurrency(totals.iOwePartners)}*\n\n`;
+    }
+    
+    if (earningsFromPartners.length > 0) {
+      text += `📥 *A Receber das Parceiras:*\n`;
+      earningsFromPartners.forEach(s => {
+        text += `  • ${s.partnerName}: ${formatCurrency(s.partnerEarnings)}\n`;
+      });
+      text += `  *Subtotal: ${formatCurrency(totals.partnersOweMe)}*\n\n`;
+    }
+    
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+    const balanceEmoji = totals.netBalance >= 0 ? '✅' : '🔴';
+    const balanceLabel = totals.netBalance >= 0 ? 'A RECEBER' : 'A PAGAR';
+    text += `${balanceEmoji} *SALDO FINAL (${balanceLabel}): ${formatCurrency(Math.abs(totals.netBalance))}*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    text += `_Gerado por VendaProfit_`;
+    
+    return text;
+  };
+
+  const handleExportSettlement = () => {
+    const text = generateSettlementText();
+    const encodedText = encodeURIComponent(text);
+    
+    // Open WhatsApp with the text
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+    
+    // Also copy to clipboard
+    navigator.clipboard.writeText(text).then(() => {
+      toast({
+        title: "Texto copiado!",
+        description: "O acerto de contas foi copiado para a área de transferência e o WhatsApp foi aberto.",
+      });
+    }).catch(() => {
+      toast({
+        title: "WhatsApp aberto",
+        description: "Selecione a sócia para enviar o acerto de contas.",
+      });
+    });
+  };
+
   return (
     <MainLayout>
       {/* Page Header */}
@@ -469,6 +595,10 @@ export default function PartnerReports() {
           <h1 className="text-2xl font-bold text-foreground">Relatório de Parcerias</h1>
           <p className="text-muted-foreground">Acompanhe os ganhos e divisões com suas parcerias</p>
         </div>
+        <Button onClick={handleExportSettlement} className="gap-2">
+          <Share2 className="h-4 w-4" />
+          Exportar Acerto de Contas
+        </Button>
       </div>
 
       {/* Info Card */}
@@ -544,7 +674,85 @@ export default function PartnerReports() {
         )}
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary by Type Cards */}
+      <div className="grid gap-4 md:grid-cols-4 mb-6">
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-green-600" />
+              Lucro de Vendas Próprias
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-green-600">
+              {formatCurrency(splitSummary.ownSalesProfit)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Vendas do seu estoque
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-orange-500/30 bg-orange-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-orange-600" />
+              Comissões Recebidas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-orange-600">
+              {formatCurrency(splitSummary.commissionsReceived)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Estoque cedido a grupos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Users className="h-4 w-4 text-blue-600" />
+              Participação em Parcerias
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-blue-600">
+              {formatCurrency(splitSummary.partnershipParticipation)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Vendas em parceria com sócia
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-primary/50 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Total de Ganhos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-primary">
+              {formatCurrency(splitSummary.total)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Soma de todas as fontes
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator className="my-6" />
+
+      {/* Balance Cards */}
+      <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <DollarSign className="h-5 w-5" />
+        Acerto entre Parceiras
+      </h2>
+
       <div className="grid gap-4 md:grid-cols-4 mb-6">
         <Card>
           <CardHeader className="pb-2">
