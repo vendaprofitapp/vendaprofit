@@ -1059,11 +1059,9 @@ export function SupplierBulkImportDialog({
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="0">Auto</SelectItem>
-                                  <SelectItem value="1">1</SelectItem>
-                                  <SelectItem value="2">2</SelectItem>
-                                  <SelectItem value="3">3</SelectItem>
-                                  <SelectItem value="4">4</SelectItem>
-                                  <SelectItem value="5">5</SelectItem>
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                                    <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                               <span className="text-xs text-muted-foreground">
