@@ -52,22 +52,28 @@ REGRAS IMPORTANTES:
    - ENTRADA (adicionar ao estoque): incluir, inserir, adicionar, entrada, entrar, receber, chegou, recebi, repor, repondo, colocar, guardando, guardar
    - SAÍDA (remover do estoque): retirar, saída, sair, baixa, baixar, saiu, remover, vender, vendido, tirando, tirar, excluir, removendo
 
-2. QUANTIDADE: Extraia o número mencionado. Se não houver número, use 1.
+2. QUANTIDADE: Extraia o número mencionado (pode ser por extenso: "dois" = 2, "três" = 3). Se não houver número, use 1.
 
 3. PRODUTO: Encontre o produto mais similar na lista acima. Use correspondência fuzzy:
    - Ignore acentos, maiúsculas/minúsculas
-   - "camiseta preta" pode corresponder a "Camiseta Preta M"
-   - "calça jeans" pode corresponder a "Calça Jeans Azul 42"
+   - "top carol" deve corresponder a "Top Carol" mesmo que tenha cor/tamanho depois
    - Considere abreviações comuns
+   - Foque no NOME BASE do produto, não nas variantes
 
-4. Se não encontrar um produto similar com pelo menos 50% de certeza, retorne productSearch com o termo original.
+4. COR: Se o usuário mencionar uma cor (preto, branco, azul, vermelho, rosa, verde, etc), extraia-a.
+
+5. TAMANHO: Se o usuário mencionar um tamanho (PP, P, M, G, GG, XG, XXG, 36, 38, 40, 42, etc), extraia-o.
+
+6. Se não encontrar um produto similar com pelo menos 50% de certeza, retorne productSearch com o termo original.
 
 RESPONDA APENAS com JSON no formato:
 {
   "operation": "entry" ou "exit",
   "quantity": número,
-  "productSearch": "nome exato do produto da lista ou termo de busca",
+  "productSearch": "nome base do produto (sem cor/tamanho)",
   "matchedProduct": "nome do produto correspondente da lista ou null",
+  "color": "cor mencionada ou null",
+  "size": "tamanho mencionado ou null",
   "confidence": número de 0 a 1 indicando certeza da correspondência,
   "rawText": "texto original"
 }`;
@@ -134,6 +140,8 @@ RESPONDA APENAS com JSON no formato:
           quantity: parsed.quantity || 1,
           productSearch: parsed.productSearch || parsed.matchedProduct || voiceText,
           matchedProduct: parsed.matchedProduct,
+          color: parsed.color || null,
+          size: parsed.size || null,
           confidence: parsed.confidence || 0,
           rawText: voiceText,
         }

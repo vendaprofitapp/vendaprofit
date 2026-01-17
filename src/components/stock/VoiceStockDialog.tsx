@@ -37,6 +37,8 @@ interface VoiceStockCommand {
   operation: 'entry' | 'exit';
   quantity: number;
   productSearch: string;
+  color?: string | null;
+  size?: string | null;
   rawText: string;
 }
 
@@ -167,8 +169,14 @@ export function VoiceStockDialog({
       if (matches[0].score > 85) {
         const product = matches[0].product;
         setMatchedProduct(product);
-        setSelectedColor(product.color);
-        initializeSizeQuantities(product, products, product.color, command?.quantity || 1);
+        
+        // Use AI-extracted color if available, otherwise use product's color
+        const targetColor = command?.color || product.color;
+        setSelectedColor(targetColor);
+        
+        // Find the correct variant based on AI-extracted color and size
+        const targetSize = command?.size?.toUpperCase();
+        initializeSizeQuantitiesWithPreselection(product, products, targetColor, command?.quantity || 1, targetSize);
         setStep('exact_match');
       } else {
         // Show similar matches
@@ -185,12 +193,40 @@ export function VoiceStockDialog({
 
   // Initialize size quantities when product/color changes
   const initializeSizeQuantities = (product: Product, variants: Product[], color: string | null, defaultQty: number) => {
+    initializeSizeQuantitiesWithPreselection(product, variants, color, defaultQty, undefined);
+  };
+
+  // Initialize size quantities with optional pre-selection of a specific size
+  const initializeSizeQuantitiesWithPreselection = (
+    product: Product, 
+    variants: Product[], 
+    color: string | null, 
+    defaultQty: number,
+    preselectedSize?: string
+  ) => {
     const baseName = normalizeText(product.name);
     
-    // Find all variants with same name and color
-    const colorVariants = variants.filter(p => 
-      normalizeText(p.name) === baseName && p.color === color
+    // Find all variants with same name
+    // Try to match by color first, but if no match, use all variants with same name
+    let colorVariants = variants.filter(p => 
+      normalizeText(p.name) === baseName && 
+      (color ? normalizeText(p.color || '') === normalizeText(color) : true)
     );
+    
+    // If no variants found with the color, try fuzzy color matching
+    if (colorVariants.length === 0 && color) {
+      const normalizedColor = normalizeText(color);
+      colorVariants = variants.filter(p => {
+        const productColor = normalizeText(p.color || '');
+        return normalizeText(p.name) === baseName && 
+          (productColor.includes(normalizedColor) || normalizedColor.includes(productColor));
+      });
+    }
+    
+    // If still no matches, use all variants with the same name
+    if (colorVariants.length === 0) {
+      colorVariants = variants.filter(p => normalizeText(p.name) === baseName);
+    }
     
     // Get unique sizes for this color
     const uniqueSizes = [...new Set(colorVariants.map(p => p.size))];
@@ -218,11 +254,14 @@ export function VoiceStockDialog({
       
       const quantities = sorted.map(size => {
         const variant = colorVariants.find(p => p.size === size);
+        const normalizedSize = size?.toUpperCase();
+        const isPreselected = preselectedSize && normalizedSize === preselectedSize;
+        
         return {
           productId: variant?.id || product.id,
           size: size,
           currentStock: variant?.stock_quantity || 0,
-          quantity: 0, // Start with 0, user will fill in
+          quantity: isPreselected ? defaultQty : 0, // Pre-fill the matched size
         };
       });
       
