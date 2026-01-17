@@ -135,12 +135,13 @@ export function ProfitBreakdownCard({
     return null;
   }
 
-  // Only show if there are partnership items or active partnerships
+  // Show if there are partnership items, active partnerships, OR payment fees
   const hasPartnershipItems = cart.some(item => item.isPartnerStock || item.product.owner_id !== currentUserId);
-  const shouldShow = hasPartnershipItems || hasActivePartnership;
+  const hasPaymentFee = paymentFeePercent > 0;
+  const shouldShow = hasPartnershipItems || hasActivePartnership || hasPaymentFee;
 
   if (!shouldShow && aggregatedSplits.scenarios.has('OWN_STOCK') && aggregatedSplits.scenarios.size === 1) {
-    return null; // Don't show for pure own stock sales without partnerships
+    return null; // Don't show for pure own stock sales without partnerships and no fees
   }
 
   return (
@@ -254,7 +255,11 @@ export function ProfitBreakdownCard({
                     </Badge>
                   </div>
                   <p className="text-muted-foreground">
-                    Venda: {formatCurrency(detail.salePrice)} | Custo: {formatCurrency(detail.costPrice)}
+                    Venda: {formatCurrency(detail.salePriceGross)}
+                    {detail.feeAmount > 0 && (
+                      <span className="text-destructive"> | Taxa: -{formatCurrency(detail.feeAmount)}</span>
+                    )}
+                    {' '}| Custo: {formatCurrency(detail.costPrice)}
                   </p>
                   <div className="flex gap-2 text-muted-foreground flex-wrap">
                     <span className="text-green-600">
@@ -287,7 +292,13 @@ export function ProfitBreakdownCard({
         {aggregatedSplits.details.length === 1 && (
           <div className="text-xs text-muted-foreground space-y-1">
             <p>
-              Venda: {formatCurrency(aggregatedSplits.details[0].salePrice)} | 
+              Venda Bruta: {formatCurrency(aggregatedSplits.details[0].salePriceGross)}
+              {aggregatedSplits.details[0].feeAmount > 0 && (
+                <span className="text-destructive"> | Taxa Finan.: -{formatCurrency(aggregatedSplits.details[0].feeAmount)}</span>
+              )}
+            </p>
+            <p>
+              Venda Líquida: {formatCurrency(aggregatedSplits.details[0].salePrice)} | 
               Custo: {formatCurrency(aggregatedSplits.details[0].costPrice)} | 
               Lucro Bruto: {formatCurrency(aggregatedSplits.details[0].salePrice - aggregatedSplits.details[0].costPrice)}
             </p>
