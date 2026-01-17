@@ -457,6 +457,51 @@ export type Database = {
           },
         ]
       }
+      financial_splits: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          id: string
+          sale_id: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          sale_id: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          sale_id?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_splits_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_splits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           group_id: string
@@ -491,6 +536,7 @@ export type Database = {
       }
       groups: {
         Row: {
+          commission_percent: number
           created_at: string
           created_by: string
           description: string | null
@@ -501,6 +547,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          commission_percent?: number
           created_at?: string
           created_by: string
           description?: string | null
@@ -511,6 +558,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          commission_percent?: number
           created_at?: string
           created_by?: string
           description?: string | null
@@ -956,6 +1004,7 @@ export type Database = {
           notes: string | null
           owner_id: string
           payment_method: string
+          sale_source: string
           status: string
           subtotal: number
           total: number
@@ -972,6 +1021,7 @@ export type Database = {
           notes?: string | null
           owner_id: string
           payment_method?: string
+          sale_source?: string
           status?: string
           subtotal?: number
           total?: number
@@ -988,6 +1038,7 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           payment_method?: string
+          sale_source?: string
           status?: string
           subtotal?: number
           total?: number
