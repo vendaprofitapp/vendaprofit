@@ -266,6 +266,7 @@ export function DirectPartnerships() {
       if (!user) throw new Error("Não autenticado");
 
       // Create a direct group for this partnership
+      // The trigger handle_new_group() will automatically add the created_by user as owner
       const { data: group, error: groupError } = await supabase
         .from("groups")
         .insert({
@@ -279,13 +280,10 @@ export function DirectPartnerships() {
 
       if (groupError) throw groupError;
 
-      // Add both users to the group
+      // Add only the accepting user to the group (inviter is already added by trigger)
       const { error: membersError } = await supabase
         .from("group_members")
-        .insert([
-          { group_id: group.id, user_id: invite.inviter_id, role: "owner" },
-          { group_id: group.id, user_id: user.id, role: "member" },
-        ]);
+        .insert({ group_id: group.id, user_id: user.id, role: "member" });
 
       if (membersError) throw membersError;
 
