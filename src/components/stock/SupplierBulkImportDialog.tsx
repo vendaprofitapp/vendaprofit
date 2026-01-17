@@ -515,7 +515,10 @@ export function SupplierBulkImportDialog({
       const grouped = productMap.get(key)!;
 
       // Add variant - use availableSizes to create all combinations
-      const colors = color ? [color] : (product.colors.length > 0 ? product.colors : ["Sem cor"]);
+      // If extractColorFromName is disabled, don't use any colors from scraped data
+      const colors = extractColorFromName 
+        ? (color ? [color] : (product.colors.length > 0 ? product.colors : ["Sem cor"]))
+        : ["Sem cor"];
       // Normalize colors for display
       const normalizedColors = colors.map(c => 
         c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
