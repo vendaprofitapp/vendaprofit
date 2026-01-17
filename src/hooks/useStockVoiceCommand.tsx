@@ -8,6 +8,8 @@ export interface StockVoiceCommand {
   quantity: number;
   productSearch: string;
   matchedProduct?: string | null;
+  color?: string | null;
+  size?: string | null;
   confidence?: number;
   rawText: string;
 }
@@ -61,6 +63,8 @@ export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoi
           quantity: data.command.quantity || 1,
           productSearch: data.command.matchedProduct || data.command.productSearch,
           matchedProduct: data.command.matchedProduct,
+          color: data.command.color,
+          size: data.command.size,
           confidence: data.command.confidence,
           rawText: text,
         };
@@ -68,9 +72,17 @@ export function useStockVoiceCommand({ onCommand, onError, userId }: UseStockVoi
         setPendingCommand(command);
         onCommand(command);
         
-        // Show confidence feedback
+        // Show confidence feedback with color/size info
+        const details = [
+          data.command.color && `Cor: ${data.command.color}`,
+          data.command.size && `Tamanho: ${data.command.size}`
+        ].filter(Boolean).join(', ');
+        
         if (data.command.matchedProduct && data.command.confidence >= 0.7) {
-          toast.success(`Produto identificado: ${data.command.matchedProduct}`, { duration: 2000 });
+          const msg = details 
+            ? `Produto: ${data.command.matchedProduct} (${details})`
+            : `Produto identificado: ${data.command.matchedProduct}`;
+          toast.success(msg, { duration: 2000 });
         } else if (data.command.matchedProduct && data.command.confidence < 0.7) {
           toast.info(`Possível produto: ${data.command.matchedProduct}`, { duration: 2000 });
         }
