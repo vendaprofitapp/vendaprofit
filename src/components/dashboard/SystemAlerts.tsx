@@ -1,0 +1,302 @@
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
+
+interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  birth_date: string | null;
+}
+
+interface ConsortiumPayment {
+  id: string;
+  installment_number: number;
+  amount: number;
+  due_date: string | null;
+  is_paid: boolean;
+  participant: {
+    customer_name: string;
+    customer_phone: string | null;
+  } | null;
+}
+
+interface StockRequest {
+  id: string;
+  quantity: number;
+  status: string;
+  product: {
+    name: string;
+  } | null;
+  requester_profile: {
+    full_name: string;
+  } | null;
+}
+
+export function SystemAlerts() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayMonthDay = format(new Date(), "MM-dd");
+
+  // Aniversariantes de hoje
+  const { data: birthdayCustomers = [] } = useQuery({
+    queryKey: ["birthday-customers", user?.id, todayMonthDay],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id, name, phone, birth_date")
+        .not("birth_date", "is", null);
+      if (error) throw error;
+      
+      // Filtrar por mês e dia
+      return (data as Customer[]).filter(c => {
+        if (!c.birth_date) return false;
+        const birthMonthDay = c.birth_date.substring(5); // "MM-DD"
+        return birthMonthDay === todayMonthDay;
+      });
+    },
+    enabled: !!user?.id,
+  });
+
+  // Pagamentos de consórcio vencendo hoje
+  const { data: dueTodayPayments = [] } = useQuery({
+    queryKey: ["due-today-payments", user?.id, today],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("consortium_payments")
+        .select(`
+          id,
+          installment_number,
+          amount,
+          due_date,
+          is_paid,
+          participant:consortium_participants(customer_name, customer_phone)
+        `)
+        .eq("due_date", today)
+        .eq("is_paid", false);
+      if (error) throw error;
+      return data as unknown as ConsortiumPayment[];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Pagamentos de consórcio em atraso
+  const { data: overduePayments = [] } = useQuery({
+    queryKey: ["overdue-payments", user?.id, today],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("consortium_payments")
+        .select(`
+          id,
+          installment_number,
+          amount,
+          due_date,
+          is_paid,
+          participant:consortium_participants(customer_name, customer_phone)
+        `)
+        .lt("due_date", today)
+        .eq("is_paid", false);
+      if (error) throw error;
+      return data as unknown as ConsortiumPayment[];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Solicitações de parceiros pendentes
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ["pending-stock-requests", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stock_requests")
+        .select(`
+          id,
+          quantity,
+          status,
+          product:products(name),
+          requester_id
+        `)
+        .eq("owner_id", user?.id)
+        .eq("status", "pending");
+      if (error) throw error;
+      
+      // Buscar nomes dos solicitantes
+      const requestsWithNames = await Promise.all(
+        (data || []).map(async (req) => {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", req.requester_id)
+            .single();
+          return {
+            ...req,
+            requester_profile: profile
+          };
+        })
+      );
+      
+      return requestsWithNames as StockRequest[];
+    },
+    enabled: !!user?.id,
+  });
+
+  const openWhatsApp = (phone: string, message: string) => {
+    const cleanPhone = phone.replace(/\D/g, "");
+    window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0;
+
+  if (!hasAlerts) return null;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+      {/* Aniversariantes */}
+      {birthdayCustomers.length > 0 && (
+        <Card className="border-pink-500/30 bg-pink-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-pink-500">
+              <Cake className="h-4 w-4" />
+              Aniversariantes Hoje
+              <Badge variant="secondary" className="ml-auto">{birthdayCustomers.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {birthdayCustomers.slice(0, 3).map((customer) => (
+              <div key={customer.id} className="flex items-center justify-between text-sm">
+                <span className="truncate">{customer.name}</span>
+                {customer.phone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-green-500"
+                    onClick={() => openWhatsApp(customer.phone!, `Olá ${customer.name}! 🎂 Feliz aniversário! Desejamos muitas felicidades!`)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {birthdayCustomers.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-pink-500" onClick={() => navigate("/customers")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Vencimentos Hoje */}
+      {dueTodayPayments.length > 0 && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-yellow-500">
+              <Calendar className="h-4 w-4" />
+              Vencendo Hoje
+              <Badge variant="secondary" className="ml-auto">{dueTodayPayments.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dueTodayPayments.slice(0, 3).map((payment) => (
+              <div key={payment.id} className="flex items-center justify-between text-sm">
+                <div className="truncate">
+                  <span>{payment.participant?.customer_name}</span>
+                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                </div>
+                {payment.participant?.customer_phone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-green-500"
+                    onClick={() => openWhatsApp(payment.participant!.customer_phone!, `Olá ${payment.participant!.customer_name}! Lembramos que a parcela ${payment.installment_number} do consórcio vence hoje. Valor: R$ ${Number(payment.amount).toFixed(2)}`)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {dueTodayPayments.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-yellow-500" onClick={() => navigate("/consortiums")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pagamentos em Atraso */}
+      {overduePayments.length > 0 && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              Pagamentos Atrasados
+              <Badge variant="destructive" className="ml-auto">{overduePayments.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {overduePayments.slice(0, 3).map((payment) => (
+              <div key={payment.id} className="flex items-center justify-between text-sm">
+                <div className="truncate">
+                  <span>{payment.participant?.customer_name}</span>
+                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                </div>
+                {payment.participant?.customer_phone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-green-500"
+                    onClick={() => openWhatsApp(payment.participant!.customer_phone!, `Olá ${payment.participant!.customer_name}! Identificamos que a parcela ${payment.installment_number} do consórcio está em atraso. Valor: R$ ${Number(payment.amount).toFixed(2)}. Por favor, entre em contato para regularização.`)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {overduePayments.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-destructive" onClick={() => navigate("/consortiums")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Solicitações de Parceiros */}
+      {pendingRequests.length > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-primary">
+              <Users className="h-4 w-4" />
+              Solicitações Pendentes
+              <Badge className="ml-auto">{pendingRequests.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingRequests.slice(0, 3).map((request) => (
+              <div key={request.id} className="text-sm truncate">
+                <span className="font-medium">{request.requester_profile?.full_name}</span>
+                <span className="text-muted-foreground"> - {request.quantity}x {request.product?.name}</span>
+              </div>
+            ))}
+            {pendingRequests.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-primary" onClick={() => navigate("/stock-requests")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+            <Button size="sm" className="w-full mt-2" onClick={() => navigate("/stock-requests")}>
+              Gerenciar Solicitações
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

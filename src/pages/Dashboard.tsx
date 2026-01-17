@@ -5,6 +5,7 @@ import { RecentSales } from "@/components/dashboard/RecentSales";
 import { LowStockAlert } from "@/components/dashboard/LowStockAlert";
 import { SalesChart } from "@/components/dashboard/SalesChart";
 import { TopProducts } from "@/components/dashboard/TopProducts";
+import { SystemAlerts } from "@/components/dashboard/SystemAlerts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -103,10 +104,13 @@ export default function Dashboard() {
   return (
     <MainLayout>
       {/* Page Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">Bem-vindo de volta! Aqui está o resumo das suas operações.</p>
       </div>
+
+      {/* System Alerts */}
+      <SystemAlerts />
 
       {/* Metrics Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
