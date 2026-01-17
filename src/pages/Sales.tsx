@@ -328,11 +328,12 @@ export default function Sales() {
     mutationFn: async () => {
       if (!user || cart.length === 0) throw new Error("Carrinho vazio");
 
-      // Only process own stock items
+      // Separate own stock items and partner items
       const ownStockItems = cart.filter(item => !item.isPartnerStock);
-      if (ownStockItems.length === 0) throw new Error("Adicione produtos do seu estoque para finalizar a venda");
+      const partnerItems = cart.filter(item => item.isPartnerStock);
 
-      const subtotal = ownStockItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+      // Calculate subtotal including ALL items (own + partner)
+      const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
       const discountAmount = discountType === "percentage" 
         ? (subtotal * discountValue) / 100 
         : discountValue;
@@ -371,6 +372,17 @@ export default function Sales() {
       const feePercent = selectedPaymentMethod?.fee_percent || 0;
       const isDeferred = selectedPaymentMethod?.is_deferred || false;
 
+      // Build notes including partner info if applicable
+      let saleNotes = notes || "";
+      if (partnerItems.length > 0) {
+        const partnerInfo = partnerItems.map(item => 
+          `${item.product.name} (${item.quantity}x) - Parceiro: ${item.ownerName}`
+        ).join("; ");
+        saleNotes = saleNotes 
+          ? `${saleNotes} | Itens de parceiros: ${partnerInfo}` 
+          : `Itens de parceiros: ${partnerInfo}`;
+      }
+
       // Create sale
       const { data: sale, error: saleError } = await supabase
         .from("sales")
@@ -384,7 +396,7 @@ export default function Sales() {
           discount_value: discountValue,
           discount_amount: discountAmount,
           total,
-          notes: notes || null,
+          notes: saleNotes || null,
           status: "completed",
         })
         .select()
@@ -410,14 +422,17 @@ export default function Sales() {
         if (reminderError) console.error("Error creating reminder:", reminderError);
       }
 
-      // Create sale items with variant info
-      const itemsToInsert = ownStockItems.map((item) => {
+      // Create sale items for ALL items (own + partner)
+      const allItemsToInsert = cart.map((item) => {
         let productName = item.product.name;
         if (item.variant) {
           const parts = [];
           if (item.variant.color) parts.push(item.variant.color);
           if (item.variant.size) parts.push(item.variant.size);
           if (parts.length > 0) productName += ` (${parts.join(' - ')})`;
+        }
+        if (item.isPartnerStock && item.ownerName) {
+          productName += ` [Parceiro: ${item.ownerName}]`;
         }
         return {
           sale_id: sale.id,
@@ -431,11 +446,11 @@ export default function Sales() {
 
       const { error: itemsError } = await supabase
         .from("sale_items")
-        .insert(itemsToInsert);
+        .insert(allItemsToInsert);
 
       if (itemsError) throw itemsError;
 
-      // Update stock: variant stock if variant selected, otherwise product stock
+      // Update stock ONLY for own stock items (not partner items)
       for (const item of ownStockItems) {
         if (item.variant) {
           // Update variant stock
@@ -691,6 +706,49 @@ export default function Sales() {
 
     return () => window.clearTimeout(t);
   }, [productSearch, ownProducts, autoPartnerLastQuery, autoPartnerSearching]);
+
+  // Check for pending sale from approved stock request
+  useEffect(() => {
+    const pendingSaleData = sessionStorage.getItem("pendingSaleFromRequest");
+    if (!pendingSaleData) return;
+
+    try {
+      const saleData = JSON.parse(pendingSaleData);
+      sessionStorage.removeItem("pendingSaleFromRequest");
+
+      // Create a virtual product for the partner item and add to cart
+      const partnerProduct: Product = {
+        id: saleData.productId,
+        name: saleData.productName,
+        price: saleData.productPrice,
+        stock_quantity: saleData.quantity,
+        owner_id: "",
+        group_id: null,
+        category: "",
+        color: null,
+        size: null,
+      };
+
+      // Add to cart as partner stock
+      setCart([{
+        product: partnerProduct,
+        quantity: saleData.quantity,
+        isPartnerStock: true,
+        ownerName: saleData.ownerName,
+      }]);
+
+      // Open the new sale dialog
+      setIsNewSaleOpen(true);
+
+      toast({
+        title: "Produto do parceiro adicionado",
+        description: `${saleData.productName} (${saleData.quantity}x) de ${saleData.ownerName} foi adicionado ao carrinho.`,
+      });
+    } catch (e) {
+      console.error("Error parsing pending sale data:", e);
+      sessionStorage.removeItem("pendingSaleFromRequest");
+    }
+  }, []);
 
   const handleRequestReserve = (product: PartnerProduct) => {
     setSelectedPartnerProduct(product);

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Package, Clock, CheckCircle, XCircle, Users, Eye, MessageCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Package, Clock, CheckCircle, XCircle, Users, Eye, MessageCircle, ShoppingCart } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +64,7 @@ const statusConfig = {
 export default function StockRequests() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedRequest, setSelectedRequest] = useState<RequestWithDetails | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isRespondOpen, setIsRespondOpen] = useState(false);
@@ -220,6 +222,21 @@ Quando podemos agendar?`;
     setIsRespondOpen(true);
   };
 
+  // Navigate to Sales page with pre-filled data from approved request
+  const createSaleFromRequest = (request: RequestWithDetails) => {
+    // Store the request data in sessionStorage for the Sales page to pick up
+    const saleData = {
+      productId: request.product_id,
+      productName: request.product_name,
+      productPrice: request.product_price,
+      quantity: request.quantity,
+      ownerName: request.owner_name,
+      requestId: request.id,
+    };
+    sessionStorage.setItem("pendingSaleFromRequest", JSON.stringify(saleData));
+    navigate("/sales");
+  };
+
   const pendingReceived = receivedRequests.filter(r => r.status === "pending").length;
   const pendingSent = sentRequests.filter(r => r.status === "pending").length;
 
@@ -293,15 +310,25 @@ Quando podemos agendar?`;
               </Button>
             )}
             {!isReceived && request.status === "approved" && (
-              <Button
-                variant="default"
-                size="sm"
-                className="bg-green-600 hover:bg-green-700"
-                onClick={() => openWhatsApp(request)}
-              >
-                <MessageCircle className="h-4 w-4 mr-1" />
-                WhatsApp
-              </Button>
+              <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => createSaleFromRequest(request)}
+                >
+                  <ShoppingCart className="h-4 w-4 mr-1" />
+                  Vender
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-green-600 text-green-600 hover:bg-green-50"
+                  onClick={() => openWhatsApp(request)}
+                >
+                  <MessageCircle className="h-4 w-4 mr-1" />
+                  WhatsApp
+                </Button>
+              </>
             )}
           </div>
         </TableCell>
