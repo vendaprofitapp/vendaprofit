@@ -418,32 +418,44 @@ export type Database = {
       }
       direct_partnership_invites: {
         Row: {
+          cost_split_ratio: number | null
           created_at: string
           group_id: string | null
           id: string
           invite_code: string
           invitee_email: string
           inviter_id: string
+          owner_commission_percent: number | null
+          profit_share_partner: number | null
+          profit_share_seller: number | null
           status: string
           updated_at: string
         }
         Insert: {
+          cost_split_ratio?: number | null
           created_at?: string
           group_id?: string | null
           id?: string
           invite_code?: string
           invitee_email: string
           inviter_id: string
+          owner_commission_percent?: number | null
+          profit_share_partner?: number | null
+          profit_share_seller?: number | null
           status?: string
           updated_at?: string
         }
         Update: {
+          cost_split_ratio?: number | null
           created_at?: string
           group_id?: string | null
           id?: string
           invite_code?: string
           invitee_email?: string
           inviter_id?: string
+          owner_commission_percent?: number | null
+          profit_share_partner?: number | null
+          profit_share_seller?: number | null
           status?: string
           updated_at?: string
         }
