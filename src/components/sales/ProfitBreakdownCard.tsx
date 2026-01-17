@@ -29,6 +29,7 @@ interface AggregatedSplits {
   sellerTotal: number;
   partnerTotal: number;
   ownerTotal: number;
+  partnershipPaymentDue: number; // NEW: Total payment due to partnership for third-party sales
   scenarios: Set<SaleSplitResult['scenario']>;
   details: Array<{
     productName: string;
@@ -37,6 +38,8 @@ interface AggregatedSplits {
     seller: number;
     partner: number;
     owner: number;
+    partnershipPaymentDue: number; // NEW
+    ownerName?: string;
   }>;
 }
 
@@ -51,6 +54,7 @@ export function ProfitBreakdownCard({
       sellerTotal: 0,
       partnerTotal: 0,
       ownerTotal: 0,
+      partnershipPaymentDue: 0,
       scenarios: new Set(),
       details: [],
     };
@@ -74,6 +78,7 @@ export function ProfitBreakdownCard({
       result.sellerTotal += splitResult.seller.total;
       result.partnerTotal += splitResult.partner.total;
       result.ownerTotal += splitResult.owner.total;
+      result.partnershipPaymentDue += splitResult.partnershipPaymentDue || 0;
       result.scenarios.add(splitResult.scenario);
 
       result.details.push({
@@ -83,6 +88,8 @@ export function ProfitBreakdownCard({
         seller: splitResult.seller.total,
         partner: splitResult.partner.total,
         owner: splitResult.owner.total,
+        partnershipPaymentDue: splitResult.partnershipPaymentDue || 0,
+        ownerName: item.ownerName,
       });
     });
 
@@ -145,6 +152,27 @@ export function ProfitBreakdownCard({
           )}
         </div>
 
+        {/* Third-party partnership payment notice */}
+        {aggregatedSplits.partnershipPaymentDue > 0 && (
+          <>
+            <Separator className="my-2" />
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+              <p className="text-sm font-medium text-amber-700 flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Pagamento Devido à Parceria
+              </p>
+              <p className="text-lg font-bold text-amber-800">
+                {formatCurrency(aggregatedSplits.partnershipPaymentDue)}
+              </p>
+              {aggregatedSplits.details.filter(d => d.scenario === 'C').map((detail, idx) => (
+                <p key={idx} className="text-xs text-amber-600 mt-1">
+                  Esta peça pertence à Parceria{detail.ownerName ? ` (${detail.ownerName})` : ''}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Detailed breakdown per product (if multiple items) */}
         {aggregatedSplits.details.length > 1 && (
           <>
@@ -159,13 +187,16 @@ export function ProfitBreakdownCard({
                       {getScenarioShortLabel(detail.scenario)}
                     </Badge>
                   </div>
-                  <div className="flex gap-2 text-muted-foreground">
+                  <div className="flex gap-2 text-muted-foreground flex-wrap">
                     <span className="text-green-600">Você: {formatCurrency(detail.seller)}</span>
                     {detail.partner > 0 && (
                       <span className="text-blue-600">Sócia: {formatCurrency(detail.partner)}</span>
                     )}
                     {detail.owner > 0 && (
                       <span className="text-orange-600">Grupo: {formatCurrency(detail.owner)}</span>
+                    )}
+                    {detail.partnershipPaymentDue > 0 && (
+                      <span className="text-amber-600">Parceria: {formatCurrency(detail.partnershipPaymentDue)}</span>
                     )}
                   </div>
                 </div>

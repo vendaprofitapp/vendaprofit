@@ -96,10 +96,11 @@ export function DirectPartnerships() {
   const [selectedPartner, setSelectedPartner] = useState<DirectPartner | null>(null);
   const [expandedPartners, setExpandedPartners] = useState<Set<string>>(new Set());
   
-  // Partnership configuration state (NO owner commission for direct partnerships)
+  // Partnership configuration state
   const [costSplitRatio, setCostSplitRatio] = useState<number>(50);
   const [profitShareWhenYouSell, setProfitShareWhenYouSell] = useState<number>(70);
   const [profitShareWhenPartnerSells, setProfitShareWhenPartnerSells] = useState<number>(30);
+  const [thirdPartyCommissionPercent, setThirdPartyCommissionPercent] = useState<number>(20);
   const [profitValidationError, setProfitValidationError] = useState<string | null>(null);
   
   // Validate profit share values (both must be valid percentages)
@@ -121,6 +122,7 @@ export function DirectPartnerships() {
     setCostSplitRatio(50);
     setProfitShareWhenYouSell(70);
     setProfitShareWhenPartnerSells(30);
+    setThirdPartyCommissionPercent(20);
     setProfitValidationError(null);
   };
 
@@ -307,7 +309,8 @@ export function DirectPartnerships() {
         throw new Error("Porcentagens de lucro inválidas");
       }
 
-      // Create the invite with partnership configuration (NO owner commission for partnerships)
+      // Create the invite with partnership configuration
+      // owner_commission_percent is used for THIRD-PARTY sales (Scenario C)
       const { data, error } = await supabase
         .from("direct_partnership_invites")
         .insert({
@@ -316,7 +319,7 @@ export function DirectPartnerships() {
           cost_split_ratio: costSplitRatio / 100,
           profit_share_seller: profitShareWhenYouSell / 100,
           profit_share_partner: profitShareWhenPartnerSells / 100,
-          owner_commission_percent: 0, // Not used for direct partnerships
+          owner_commission_percent: thirdPartyCommissionPercent / 100, // Commission for third-party sales
         })
         .select()
         .single();
@@ -352,9 +355,10 @@ export function DirectPartnerships() {
       const inviteCostSplit = invite.cost_split_ratio ?? 0.5;
       const inviteProfitSeller = invite.profit_share_seller ?? 0.7;
       const inviteProfitPartner = invite.profit_share_partner ?? 0.3;
+      const inviteThirdPartyCommission = invite.owner_commission_percent ?? 0.2;
 
       // Create a direct group for this partnership with values from invite
-      // NOTE: commission_percent is NOT used for direct partnerships (set to 0)
+      // commission_percent is used for THIRD-PARTY sales (Scenario C)
       const { data: group, error: groupError } = await supabase
         .from("groups")
         .insert({
@@ -362,7 +366,7 @@ export function DirectPartnerships() {
           description: null,
           created_by: user.id,
           is_direct: true,
-          commission_percent: 0, // Not used for direct partnerships
+          commission_percent: inviteThirdPartyCommission, // Used when third-party sells partnership stock
           cost_split_ratio: inviteCostSplit,
           profit_share_seller: inviteProfitSeller,
           profit_share_partner: inviteProfitPartner,
@@ -932,6 +936,38 @@ export function DirectPartnerships() {
                     <span className="text-sm text-muted-foreground">% para você (sócia fica com {100 - profitShareWhenPartnerSells}%)</span>
                   </div>
                 </div>
+                
+                {/* Third-Party Commission - NEW */}
+                <div className="space-y-2 mb-4 border-t pt-4 mt-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="invite-third-party-commission" className="text-sm font-medium">
+                      Comissão da Parceria em Vendas de Terceiros (%)
+                    </Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Este é o percentual de lucro que a sociedade recebe quando um membro do grupo (que não faz parte da parceria) vende um item de vocês.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Quando um terceiro do grupo vende uma peça da parceria, qual % do lucro vai para a sociedade?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="invite-third-party-commission"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={thirdPartyCommissionPercent}
+                      onChange={(e) => setThirdPartyCommissionPercent(Number(e.target.value))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">% para a sociedade (terceiro fica com {100 - thirdPartyCommissionPercent}%)</span>
+                  </div>
+                </div>
               </TooltipProvider>
               
               {profitValidationError && (
@@ -948,6 +984,9 @@ export function DirectPartnerships() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   • Quando sócia vende: {profitShareWhenPartnerSells}% lucro para você, {100 - profitShareWhenPartnerSells}% para sócia
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  • Venda por terceiro: Sociedade recebe custo + {thirdPartyCommissionPercent}% do lucro
                 </p>
               </div>
             </div>
