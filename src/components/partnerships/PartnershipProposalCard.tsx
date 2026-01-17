@@ -31,11 +31,12 @@ export function PartnershipProposalCard({
   const partnerSellsPartnerReceives = (simulationCost * ((100 - costSplitPercent) / 100)) + (simulationProfit * (profitShareSeller / 100));
 
   // Situação 2: Third-party sale
+  // Commission is split 50/50 since neither partner made the sale
   const partnershipCommissionTotal = simulationProfit * (thirdPartyCommission / 100);
   const yourCostBack = simulationCost * (costSplitPercent / 100);
   const partnerCostBack = simulationCost * ((100 - costSplitPercent) / 100);
-  const yourCommissionShare = partnershipCommissionTotal * (costSplitPercent / 100); // Using cost split for commission division
-  const partnerCommissionShare = partnershipCommissionTotal * ((100 - costSplitPercent) / 100);
+  const yourCommissionShare = partnershipCommissionTotal * 0.5; // 50/50 split on commission for third-party sales
+  const partnerCommissionShare = partnershipCommissionTotal * 0.5;
   const youReceiveThirdParty = yourCostBack + yourCommissionShare;
   const partnerReceivesThirdParty = partnerCostBack + partnerCommissionShare;
 
