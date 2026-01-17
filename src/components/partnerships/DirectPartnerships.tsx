@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle } from "lucide-react";
+import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle, FileText } from "lucide-react";
 import { PartnershipProposalCard } from "./PartnershipProposalCard";
+import { PartnershipRulesDialog } from "./PartnershipRulesDialog";
 import {
   Tooltip,
   TooltipContent,
@@ -96,6 +97,11 @@ export function DirectPartnerships() {
   const [acceptCode, setAcceptCode] = useState("");
   const [selectedPartner, setSelectedPartner] = useState<DirectPartner | null>(null);
   const [expandedPartners, setExpandedPartners] = useState<Set<string>>(new Set());
+  const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
+  const [selectedPartnerForRules, setSelectedPartnerForRules] = useState<{
+    partnerName: string;
+    groupId: string;
+  } | null>(null);
   
   // Partnership configuration state
   const [costSplitRatio, setCostSplitRatio] = useState<number>(50);
@@ -175,7 +181,7 @@ export function DirectPartnerships() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("group_members")
-        .select("group_id, groups!inner(id, name, is_direct, created_by)")
+        .select("group_id, groups!inner(id, name, is_direct, created_by, commission_percent, cost_split_ratio, profit_share_seller, profit_share_partner)")
         .eq("user_id", user?.id);
       if (error) throw error;
       // Filter for direct groups only
@@ -183,6 +189,26 @@ export function DirectPartnerships() {
     },
     enabled: !!user,
   });
+
+  // Helper to get group config for rules dialog
+  const getGroupConfig = (groupId: string) => {
+    const groupData = directGroups.find((d: any) => d.group_id === groupId);
+    if (!groupData?.groups) {
+      return {
+        costSplitPercent: 50,
+        profitShareSeller: 70,
+        profitSharePartner: 30,
+        thirdPartyCommission: 20,
+      };
+    }
+    const g = groupData.groups;
+    return {
+      costSplitPercent: Math.round((g.cost_split_ratio ?? 0.5) * 100),
+      profitShareSeller: Math.round((g.profit_share_seller ?? 0.7) * 100),
+      profitSharePartner: Math.round((g.profit_share_partner ?? 0.3) * 100),
+      thirdPartyCommission: Math.round((g.commission_percent ?? 0.2) * 100),
+    };
+  };
 
   // Fetch all members of direct groups
   const { data: directGroupMembers = [] } = useQuery({
@@ -764,8 +790,25 @@ export function DirectPartnerships() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent className="pt-0">
-                      <div className="border-t pt-4">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="border-t pt-4 space-y-4">
+                        {/* View Rules Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            setSelectedPartnerForRules({
+                              partnerName: partner.partnerName,
+                              groupId: partner.groupId,
+                            });
+                            setRulesDialogOpen(true);
+                          }}
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Ver Regras da Sociedade
+                        </Button>
+                        
+                        <div className="flex items-center justify-between">
                           <p className="text-sm font-medium">Seus produtos liberados para {partner.partnerName}</p>
                           <Button
                             size="sm"
@@ -1092,6 +1135,16 @@ export function DirectPartnerships() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Partnership Rules Dialog */}
+      {selectedPartnerForRules && (
+        <PartnershipRulesDialog
+          open={rulesDialogOpen}
+          onOpenChange={setRulesDialogOpen}
+          partnerName={selectedPartnerForRules.partnerName}
+          {...getGroupConfig(selectedPartnerForRules.groupId)}
+        />
+      )}
     </div>
   );
 }
