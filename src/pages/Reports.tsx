@@ -2,7 +2,9 @@ import { useState, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Download, Filter, X, Percent, Users } from "lucide-react";
+import { Download, Filter, X, Percent, Users, FileText, BarChart3 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AccountSettlement } from "@/components/reports/AccountSettlement";
 import {
   Select,
   SelectContent,
@@ -107,6 +109,9 @@ interface CustomPaymentMethod {
 
 export default function Reports() {
   const { user } = useAuth();
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState("vendas");
   
   // Filter states
   const [period, setPeriod] = useState("month");
@@ -558,13 +563,30 @@ export default function Reports() {
           <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
           <p className="text-muted-foreground">Análise detalhada do seu negócio</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Exportar
-          </Button>
-        </div>
+        {activeTab === "vendas" && (
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={handleExport}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="vendas" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Vendas
+          </TabsTrigger>
+          <TabsTrigger value="acerto" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Acerto de Contas
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="vendas" className="space-y-6">
 
       {/* Filters Section */}
       <div className="rounded-xl bg-card p-4 shadow-soft mb-6">
@@ -1024,6 +1046,12 @@ export default function Reports() {
           </div>
         </div>
       </div>
+        </TabsContent>
+
+        <TabsContent value="acerto">
+          <AccountSettlement />
+        </TabsContent>
+      </Tabs>
     </MainLayout>
   );
 }
