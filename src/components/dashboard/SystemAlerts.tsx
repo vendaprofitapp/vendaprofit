@@ -362,7 +362,7 @@ export function SystemAlerts() {
               </div>
             ))}
             {deferredDueToday.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-orange-500" onClick={() => navigate("/settings")}>
+              <Button variant="link" size="sm" className="p-0 h-auto text-orange-500" onClick={() => navigate("/dashboard")}>
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -400,7 +400,7 @@ export function SystemAlerts() {
               </div>
             ))}
             {deferredOverdue.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-red-600" onClick={() => navigate("/settings")}>
+              <Button variant="link" size="sm" className="p-0 h-auto text-red-600" onClick={() => navigate("/dashboard")}>
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
