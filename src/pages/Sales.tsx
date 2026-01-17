@@ -247,39 +247,36 @@ export default function Sales() {
   const searchPartnerProducts = async (searchName: string) => {
     if (!user || userGroups.length === 0) return [];
 
-    // First get product IDs shared with user's groups via product_partnerships
-    const { data: partnerships, error: ppError } = await supabase
-      .from("product_partnerships")
-      .select("product_id")
-      .in("group_id", userGroups);
-
-    if (ppError) {
-      console.error("Error fetching product partnerships:", ppError);
-      return [];
-    }
-
-    const sharedProductIds = partnerships?.map(pp => pp.product_id) || [];
-    if (sharedProductIds.length === 0) return [];
-
-    // Now fetch the actual products that are shared and match the search
+    // IMPORTANT: do NOT fetch all shared IDs first (can exceed URL limits and cause 400 Bad Request).
+    // Query partnerships and join products in a single request, filtered by the user's groups.
     const { data, error } = await supabase
-      .from("products")
-      .select("id, name, price, stock_quantity, owner_id, group_id, category, color, size")
-      .eq("is_active", true)
-      .neq("owner_id", user.id)
-      .gt("stock_quantity", 0)
-      .in("id", sharedProductIds)
-      .ilike("name", `%${searchName}%`)
-      .order("name");
+      .from("product_partnerships")
+      .select(
+        "product:products!inner(id, name, price, stock_quantity, owner_id, group_id, category, color, size)"
+      )
+      .in("group_id", userGroups)
+      .eq("products.is_active", true)
+      .gt("products.stock_quantity", 0)
+      .neq("products.owner_id", user.id)
+      .ilike("products.name", `%${searchName}%`)
+      .order("name", { foreignTable: "products" })
+      .limit(50);
 
     if (error) {
       console.error("Error searching partner products:", error);
       return [];
     }
 
+    // Deduplicate (a product can be shared in multiple groups)
+    const uniqueById = new Map<string, any>();
+    for (const row of data || []) {
+      const product = (row as any).product;
+      if (product?.id && !uniqueById.has(product.id)) uniqueById.set(product.id, product);
+    }
+
     // Map owner names
-    return (data || []).map(p => {
-      const owner = profiles.find(prof => prof.id === p.owner_id);
+    return Array.from(uniqueById.values()).map((p) => {
+      const owner = profiles.find((prof) => prof.id === p.owner_id);
       return {
         ...p,
         ownerName: owner?.full_name || "Parceiro",
@@ -610,23 +607,31 @@ export default function Sales() {
     }));
   };
 
-  const handleProductSearch = async (searchValue: string) => {
+  const handleProductSearch = async (searchValue: string, opts?: { forcePartner?: boolean }) => {
     setProductSearch(searchValue);
-    
-    if (searchValue.length >= 2) {
-      // Check if product exists in own stock
-      const ownMatch = ownProducts.filter(p => 
-        p.name.toLowerCase().includes(searchValue.toLowerCase())
-      );
 
-      if (ownMatch.length === 0) {
-        // Search in partner stocks
-        setSearchedProductName(searchValue);
-        const partnerResults = await searchPartnerProducts(searchValue);
-        if (partnerResults.length > 0) {
-          setPartnerProducts(partnerResults);
-          setShowPartnerDialog(true);
-        }
+    if (searchValue.length < 2) return;
+
+    const forcePartner = !!opts?.forcePartner;
+
+    // Check if product exists in own stock
+    const ownMatch = ownProducts.filter((p) =>
+      p.name.toLowerCase().includes(searchValue.toLowerCase())
+    );
+
+    // If user explicitly requested partner search, always do it (even if there are own matches)
+    if (forcePartner || ownMatch.length === 0) {
+      setSearchedProductName(searchValue);
+      const partnerResults = await searchPartnerProducts(searchValue);
+      if (partnerResults.length > 0) {
+        setPartnerProducts(partnerResults);
+        setShowPartnerDialog(true);
+      } else {
+        toast({
+          title: "Não encontrado nos parceiros",
+          description: "Nenhum parceiro tem este produto com estoque disponível.",
+          variant: "destructive",
+        });
       }
     }
   };
@@ -992,7 +997,7 @@ export default function Sales() {
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
-                          handleProductSearch(productSearch);
+                          handleProductSearch(productSearch, { forcePartner: true });
                         }}
                       >
                         Buscar nos estoques parceiros
@@ -1025,7 +1030,7 @@ export default function Sales() {
                           type="button"
                           onClick={(e) => {
                             e.preventDefault();
-                            handleProductSearch(productSearch);
+                            handleProductSearch(productSearch, { forcePartner: true });
                           }}
                         >
                           Buscar também nos estoques parceiros
