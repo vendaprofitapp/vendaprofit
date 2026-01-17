@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight } from "lucide-react";
+import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -38,6 +38,15 @@ interface StockRequest {
   requester_profile: {
     full_name: string;
   } | null;
+}
+
+interface PaymentReminder {
+  id: string;
+  amount: number;
+  due_date: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  payment_method_name: string;
 }
 
 export function SystemAlerts() {
@@ -110,6 +119,60 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
+  // Buscar formas de pagamento "a prazo" (is_deferred = true)
+  const { data: deferredPaymentMethods = [] } = useQuery({
+    queryKey: ["deferred-payment-methods", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_payment_methods")
+        .select("name")
+        .eq("owner_id", user?.id)
+        .eq("is_deferred", true)
+        .eq("is_active", true);
+      if (error) throw error;
+      return data.map(pm => pm.name);
+    },
+    enabled: !!user?.id,
+  });
+
+  // Pagamentos a prazo vencendo hoje
+  const { data: deferredDueToday = [] } = useQuery({
+    queryKey: ["deferred-due-today", user?.id, today, deferredPaymentMethods],
+    queryFn: async () => {
+      if (deferredPaymentMethods.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("payment_reminders")
+        .select("id, amount, due_date, customer_name, customer_phone, payment_method_name")
+        .eq("owner_id", user?.id)
+        .eq("due_date", today)
+        .eq("is_paid", false)
+        .in("payment_method_name", deferredPaymentMethods);
+      if (error) throw error;
+      return data as PaymentReminder[];
+    },
+    enabled: !!user?.id && deferredPaymentMethods.length > 0,
+  });
+
+  // Pagamentos a prazo em atraso
+  const { data: deferredOverdue = [] } = useQuery({
+    queryKey: ["deferred-overdue", user?.id, today, deferredPaymentMethods],
+    queryFn: async () => {
+      if (deferredPaymentMethods.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("payment_reminders")
+        .select("id, amount, due_date, customer_name, customer_phone, payment_method_name")
+        .eq("owner_id", user?.id)
+        .lt("due_date", today)
+        .eq("is_paid", false)
+        .in("payment_method_name", deferredPaymentMethods);
+      if (error) throw error;
+      return data as PaymentReminder[];
+    },
+    enabled: !!user?.id && deferredPaymentMethods.length > 0,
+  });
+
   // Solicitações de parceiros pendentes
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ["pending-stock-requests", user?.id],
@@ -152,7 +215,7 @@ export function SystemAlerts() {
     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0;
+  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0;
 
   if (!hasAlerts) return null;
 
@@ -262,6 +325,82 @@ export function SystemAlerts() {
             ))}
             {overduePayments.length > 3 && (
               <Button variant="link" size="sm" className="p-0 h-auto text-destructive" onClick={() => navigate("/consortiums")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Vendas a Prazo - Vencendo Hoje */}
+      {deferredDueToday.length > 0 && (
+        <Card className="border-orange-500/30 bg-orange-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-500">
+              <CreditCard className="h-4 w-4" />
+              Vendas a Prazo - Hoje
+              <Badge variant="secondary" className="ml-auto">{deferredDueToday.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {deferredDueToday.slice(0, 3).map((payment) => (
+              <div key={payment.id} className="flex items-center justify-between text-sm">
+                <div className="truncate">
+                  <span>{payment.customer_name || "Cliente"}</span>
+                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                </div>
+                {payment.customer_phone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-green-500"
+                    onClick={() => openWhatsApp(payment.customer_phone!, `Olá ${payment.customer_name || ""}! Lembramos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} vence hoje.`)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {deferredDueToday.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-orange-500" onClick={() => navigate("/settings")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Vendas a Prazo - Em Atraso */}
+      {deferredOverdue.length > 0 && (
+        <Card className="border-red-600/30 bg-red-600/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-red-600">
+              <CreditCard className="h-4 w-4" />
+              Vendas a Prazo Atrasadas
+              <Badge variant="destructive" className="ml-auto">{deferredOverdue.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {deferredOverdue.slice(0, 3).map((payment) => (
+              <div key={payment.id} className="flex items-center justify-between text-sm">
+                <div className="truncate">
+                  <span>{payment.customer_name || "Cliente"}</span>
+                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                </div>
+                {payment.customer_phone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-green-500"
+                    onClick={() => openWhatsApp(payment.customer_phone!, `Olá ${payment.customer_name || ""}! Identificamos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} está em atraso. Por favor, entre em contato para regularização.`)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {deferredOverdue.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-red-600" onClick={() => navigate("/settings")}>
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
