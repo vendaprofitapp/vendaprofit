@@ -1369,7 +1369,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                   ref={imageInputRef}
                   type="file"
                   accept="image/*,application/pdf"
-                  capture="environment"
                   onChange={handleInvoiceUpload}
                   className="hidden"
                 />
