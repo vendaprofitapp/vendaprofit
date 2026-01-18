@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link2, Loader2, Check, X, Download, Import, Globe } from "lucide-react";
+import { Link2, Loader2, Check, X, Download, Import, Globe, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -46,6 +47,10 @@ export function SupplierImageScraper({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState(currentSupplierId || "");
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  
+  // Direct URL input
+  const [directUrl, setDirectUrl] = useState("");
+  const [isLoadingDirect, setIsLoadingDirect] = useState(false);
 
   const availableSlots = maxImages - currentImageCount;
 
@@ -93,20 +98,26 @@ export function SupplierImageScraper({
     }
   };
 
-  const handleScrape = async () => {
-    if (!selectedSupplier?.website) {
-      toast.error("Este fornecedor não possui site cadastrado");
+  const handleScrape = async (urlToScrape?: string) => {
+    const url = urlToScrape || selectedSupplier?.website;
+    
+    if (!url) {
+      toast.error("URL não informada");
       return;
     }
 
-    setIsLoading(true);
+    if (urlToScrape) {
+      setIsLoadingDirect(true);
+    } else {
+      setIsLoading(true);
+    }
     setImages([]);
     setSelectedImages(new Set());
     setShowResults(false);
 
     try {
       const { data, error } = await supabase.functions.invoke('scrape-product-images', {
-        body: { url: selectedSupplier.website.trim() },
+        body: { url: url.trim() },
       });
 
       if (error) {
@@ -129,7 +140,16 @@ export function SupplierImageScraper({
       toast.error(error instanceof Error ? error.message : "Erro ao buscar imagens do fornecedor");
     } finally {
       setIsLoading(false);
+      setIsLoadingDirect(false);
     }
+  };
+
+  const handleDirectUrlScrape = () => {
+    if (!directUrl.trim()) {
+      toast.error("Cole a URL do produto");
+      return;
+    }
+    handleScrape(directUrl.trim());
   };
 
   const toggleImageSelection = (imageUrl: string) => {
@@ -160,6 +180,7 @@ export function SupplierImageScraper({
     setShowResults(false);
     setImages([]);
     setSelectedImages(new Set());
+    setDirectUrl("");
   };
 
   const handleAutoSelect = () => {
@@ -174,7 +195,54 @@ export function SupplierImageScraper({
     <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
       <div className="flex items-center gap-2">
         <Link2 className="h-4 w-4 text-muted-foreground" />
-        <Label className="text-sm font-medium">Importar do Site do Fornecedor</Label>
+        <Label className="text-sm font-medium">Importar Fotos do Fornecedor</Label>
+      </div>
+
+      {/* Direct URL Input - Always visible */}
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+          <ExternalLink className="h-3 w-3" />
+          URL Direta do Produto (mais preciso)
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            type="url"
+            value={directUrl}
+            onChange={(e) => setDirectUrl(e.target.value)}
+            placeholder="https://loja.com.br/produto-xyz"
+            className="flex-1 text-sm"
+          />
+          <Button 
+            type="button" 
+            variant="default"
+            size="sm"
+            onClick={handleDirectUrlScrape}
+            disabled={isLoadingDirect || !directUrl.trim()}
+            className="shrink-0"
+          >
+            {isLoadingDirect ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-1" />
+                Buscar
+              </>
+            )}
+          </Button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Cole o link direto da página do produto para fotos mais precisas
+        </p>
+      </div>
+
+      {/* Divider */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-muted/20 px-2 text-muted-foreground">ou</span>
+        </div>
       </div>
 
       {suppliers.length === 0 ? (
@@ -185,7 +253,7 @@ export function SupplierImageScraper({
         <>
           {/* Supplier Selection */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Selecione o Fornecedor</Label>
+            <Label className="text-xs text-muted-foreground">Buscar do Site do Fornecedor</Label>
             <div className="flex gap-2">
               <Select value={selectedSupplierId} onValueChange={handleSupplierChange}>
                 <SelectTrigger className="flex-1">
@@ -202,7 +270,7 @@ export function SupplierImageScraper({
               <Button 
                 type="button" 
                 variant="outline" 
-                onClick={handleScrape}
+                onClick={() => handleScrape()}
                 disabled={isLoading || !selectedSupplier?.website}
                 title={!selectedSupplier?.website ? "Fornecedor sem site cadastrado" : "Buscar imagens"}
               >
@@ -219,98 +287,98 @@ export function SupplierImageScraper({
               </p>
             )}
           </div>
+        </>
+      )}
 
-          {showResults && images.length > 0 && (
-            <div className="border rounded-lg p-3 space-y-3 bg-background">
+      {showResults && images.length > 0 && (
+        <div className="border rounded-lg p-3 space-y-3 bg-background">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium flex items-center gap-2">
+              <Import className="h-4 w-4" />
+              Imagens encontradas ({images.length})
+            </span>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setShowResults(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {availableSlots > 0 ? (
+            <>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium flex items-center gap-2">
-                  <Import className="h-4 w-4" />
-                  Imagens encontradas ({images.length})
+                <span className="text-xs text-muted-foreground">
+                  Selecione até {availableSlots} imagem(ns)
                 </span>
                 <Button 
                   type="button" 
                   variant="ghost" 
                   size="sm"
-                  onClick={() => setShowResults(false)}
+                  onClick={handleAutoSelect}
+                  className="h-6 text-xs"
                 >
-                  <X className="h-4 w-4" />
+                  Selecionar primeiras
                 </Button>
               </div>
 
-              {availableSlots > 0 ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      Selecione até {availableSlots} imagem(ns)
-                    </span>
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={handleAutoSelect}
-                      className="h-6 text-xs"
+              <ScrollArea className="h-[180px]">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {images.map((imageUrl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => toggleImageSelection(imageUrl)}
+                      className={cn(
+                        "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                        selectedImages.has(imageUrl) 
+                          ? "border-primary ring-2 ring-primary/20" 
+                          : "border-border hover:border-primary/50"
+                      )}
                     >
-                      Selecionar primeiras
-                    </Button>
-                  </div>
-
-                  <ScrollArea className="h-[180px]">
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {images.map((imageUrl, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => toggleImageSelection(imageUrl)}
-                          className={cn(
-                            "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
-                            selectedImages.has(imageUrl) 
-                              ? "border-primary ring-2 ring-primary/20" 
-                              : "border-border hover:border-primary/50"
-                          )}
-                        >
-                          <img
-                            src={imageUrl}
-                            alt={`Imagem ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '/placeholder.svg';
-                            }}
-                          />
-                          {selectedImages.has(imageUrl) && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                              <div className="bg-primary text-primary-foreground rounded-full p-1">
-                                <Check className="h-4 w-4" />
-                              </div>
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Limite de imagens atingido. Remova uma imagem para adicionar novas.
-                </p>
-              )}
-
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-xs text-muted-foreground">
-                  {selectedImages.size > 0 && `${selectedImages.size} imagem(ns) selecionada(s)`}
-                </span>
-                <Button 
-                  type="button"
-                  size="sm"
-                  onClick={handleConfirmSelection}
-                  disabled={selectedImages.size === 0}
-                >
-                  <Import className="h-4 w-4 mr-2" />
-                  Importar
-                </Button>
-              </div>
-            </div>
+                      <img
+                        src={imageUrl}
+                        alt={`Imagem ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.svg';
+                        }}
+                      />
+                      {selectedImages.has(imageUrl) && (
+                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                          <div className="bg-primary text-primary-foreground rounded-full p-1">
+                            <Check className="h-4 w-4" />
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Limite de imagens atingido. Remova uma imagem para adicionar novas.
+            </p>
           )}
-        </>
+
+          <div className="flex items-center justify-between pt-2 border-t">
+            <span className="text-xs text-muted-foreground">
+              {selectedImages.size > 0 && `${selectedImages.size} imagem(ns) selecionada(s)`}
+            </span>
+            <Button 
+              type="button"
+              size="sm"
+              onClick={handleConfirmSelection}
+              disabled={selectedImages.size === 0}
+            >
+              <Import className="h-4 w-4 mr-2" />
+              Importar
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
