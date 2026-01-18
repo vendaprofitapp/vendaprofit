@@ -48,6 +48,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialog";
+import { VoiceSaleDialog } from "@/components/sales/VoiceSaleDialog";
 import { ProfitBreakdownCard } from "@/components/sales/ProfitBreakdownCard";
 
 interface Product {
@@ -160,6 +161,17 @@ export default function Sales() {
   // Auto partner lookup (when product is not in own stock)
   const [autoPartnerLastQuery, setAutoPartnerLastQuery] = useState<string>("");
   const [autoPartnerSearching, setAutoPartnerSearching] = useState(false);
+
+  // Voice sale dialog state
+  const [showVoiceSaleDialog, setShowVoiceSaleDialog] = useState(false);
+  const [voiceSaleCommand, setVoiceSaleCommand] = useState<{
+    productSearch: string;
+    quantity: number;
+    color?: string | null;
+    size?: string | null;
+    customerName?: string | null;
+    paymentMethod?: string | null;
+  } | null>(null);
 
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
@@ -1015,7 +1027,7 @@ export default function Sales() {
       setCustomerName(result.customerName);
     }
     
-    // Add product to cart if found
+    // Add product to cart if found by exact ID match
     if (result.productId) {
       setTimeout(() => {
         const matchingProduct = ownProducts.find(p => p.id === result.productId);
@@ -1029,17 +1041,70 @@ export default function Sales() {
             title: "✓ Venda reconhecida por voz!", 
             description: `${qty}x ${matchingProduct.name}`
           });
+        } else {
+          // Product ID not found in own products - use similarity search
+          if (result.productName) {
+            setVoiceSaleCommand({
+              productSearch: result.productName,
+              quantity: result.quantity || 1,
+              color: result.color || null,
+              size: result.size || null,
+              customerName: result.customerName || null,
+              paymentMethod: result.paymentMethod || null,
+            });
+            setShowVoiceSaleDialog(true);
+          }
         }
       }, 300);
     } else if (result.productName) {
-      // Product not found in user's stock, show message
-      toast({ 
-        title: "Produto não encontrado no estoque", 
-        description: `"${result.productName}" - ${result.message || 'Verifique o nome do produto'}`,
-        variant: "destructive"
+      // No exact product ID - use similarity search dialog
+      setVoiceSaleCommand({
+        productSearch: result.productName,
+        quantity: result.quantity || 1,
+        color: result.color || null,
+        size: result.size || null,
+        customerName: result.customerName || null,
+        paymentMethod: result.paymentMethod || null,
       });
+      setShowVoiceSaleDialog(true);
     }
   }, [ownProducts, customPaymentMethods]);
+
+  // Handler when product is selected from voice sale dialog
+  const handleVoiceProductSelected = useCallback((product: Product, variant: any, quantity: number) => {
+    const cartItem: CartItem = {
+      product,
+      quantity,
+      isPartnerStock: false,
+      variant: variant || null,
+    };
+    
+    // Add to cart (or replace if coming from voice command)
+    setCart(prev => {
+      // Check if product is already in cart
+      const existingIndex = prev.findIndex(item => 
+        item.product.id === product.id && 
+        (!variant || item.variant?.id === variant?.id)
+      );
+      
+      if (existingIndex >= 0) {
+        // Update quantity
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: updated[existingIndex].quantity + quantity
+        };
+        return updated;
+      }
+      
+      return [...prev, cartItem];
+    });
+    
+    toast({ 
+      title: "✓ Produto adicionado!", 
+      description: `${quantity}x ${product.name}${variant ? ` - ${variant.color || ''} ${variant.size}` : ''}`
+    });
+  }, []);
 
   const { isListening, isProcessing, transcript, isSupported, startListening, stopListening } = useVoiceCommand({
     smartSaleMode: true,
@@ -1856,6 +1921,15 @@ export default function Sales() {
         onOpenChange={setShowVariantDialog}
         product={selectedProductForVariant}
         onConfirm={handleVariantConfirm}
+      />
+
+      {/* Voice Sale Dialog - Similarity Search */}
+      <VoiceSaleDialog
+        open={showVoiceSaleDialog}
+        onOpenChange={setShowVoiceSaleDialog}
+        command={voiceSaleCommand}
+        userId={user?.id || ''}
+        onProductSelected={handleVoiceProductSelected}
       />
     </MainLayout>
   );
