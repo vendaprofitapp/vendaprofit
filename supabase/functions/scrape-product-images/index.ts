@@ -282,45 +282,157 @@ Deno.serve(async (req) => {
     const markdown = data.data?.markdown || data.markdown || html;
     const images: string[] = [];
     
-    // Extract images from HTML
-    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
-    let match;
+    // === PRIORITY 1: Open Graph and Twitter meta images (most reliable for product pages) ===
+    const metaImagePatterns = [
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi,
+      /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/gi,
+      /<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/gi,
+      /<meta[^>]+property=["']product:image["'][^>]+content=["']([^"']+)["']/gi,
+    ];
     
-    while ((match = imgRegex.exec(html)) !== null) {
-      let imgUrl = match[1];
-      
-      if (imgUrl.includes('data:image') && imgUrl.length < 200) continue;
-      if (imgUrl.includes('pixel') || imgUrl.includes('tracking')) continue;
-      if (imgUrl.includes('icon') && imgUrl.length < 50) continue;
-      if (imgUrl.includes('logo') && !imgUrl.includes('product')) continue;
-      
-      if (imgUrl.startsWith('//')) {
-        imgUrl = 'https:' + imgUrl;
-      } else if (imgUrl.startsWith('/')) {
-        const urlObj = new URL(formattedUrl);
-        imgUrl = urlObj.origin + imgUrl;
-      } else if (!imgUrl.startsWith('http')) {
-        const urlObj = new URL(formattedUrl);
-        imgUrl = urlObj.origin + '/' + imgUrl;
+    for (const pattern of metaImagePatterns) {
+      let match;
+      while ((match = pattern.exec(html)) !== null) {
+        let imgUrl = match[1];
+        if (imgUrl && !imgUrl.includes('logo') && imgUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
+          if (imgUrl.startsWith('//')) {
+            imgUrl = 'https:' + imgUrl;
+          }
+          if (!images.includes(imgUrl)) {
+            console.log('Found meta image:', imgUrl);
+            images.push(imgUrl);
+          }
+        }
       }
+    }
+    
+    // === PRIORITY 2: JSON-LD structured data (very reliable for e-commerce) ===
+    const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+    if (jsonLdMatch) {
+      for (const jsonLd of jsonLdMatch) {
+        try {
+          const jsonContent = jsonLd.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
+          const parsed = JSON.parse(jsonContent);
+          
+          // Handle direct Product type
+          if (parsed['@type'] === 'Product' && parsed.image) {
+            const productImages = Array.isArray(parsed.image) ? parsed.image : [parsed.image];
+            for (const img of productImages) {
+              const imgUrl = typeof img === 'string' ? img : img.url || img.contentUrl;
+              if (imgUrl && !images.includes(imgUrl)) {
+                console.log('Found JSON-LD product image:', imgUrl);
+                images.push(imgUrl);
+              }
+            }
+          }
+          
+          // Handle @graph array
+          if (parsed['@graph']) {
+            for (const item of parsed['@graph']) {
+              if (item['@type'] === 'Product' && item.image) {
+                const productImages = Array.isArray(item.image) ? item.image : [item.image];
+                for (const img of productImages) {
+                  const imgUrl = typeof img === 'string' ? img : img.url || img.contentUrl;
+                  if (imgUrl && !images.includes(imgUrl)) {
+                    console.log('Found JSON-LD graph product image:', imgUrl);
+                    images.push(imgUrl);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+      }
+    }
+    
+    // === PRIORITY 3: E-commerce specific classes and attributes ===
+    const ecommercePatterns = [
+      // Common e-commerce class patterns
+      /<img[^>]+class=["'][^"']*(?:product-image|main-image|gallery-image|product-photo|produto-img|foto-produto|primary-image|featured-image|product-main)[^"']*["'][^>]+src=["']([^"']+)["']/gi,
+      /<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*(?:product-image|main-image|gallery-image|product-photo|produto-img|foto-produto|primary-image|featured-image|product-main)[^"']*["']/gi,
+      // Data attributes common in galleries
+      /<[^>]+data-zoom-image=["']([^"']+)["']/gi,
+      /<[^>]+data-large-image=["']([^"']+)["']/gi,
+      /<[^>]+data-image=["']([^"']+)["']/gi,
+      /<[^>]+data-original=["']([^"']+)["']/gi,
+      // Picture/source srcset patterns (high quality images)
+      /<source[^>]+srcset=["']([^"'\s,]+)/gi,
+      // Images inside product containers
+      /<div[^>]+class=["'][^"']*(?:product-gallery|product-images|gallery|carousel|slider|zoom)[^"']*["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/gi,
+    ];
+    
+    for (const pattern of ecommercePatterns) {
+      let match;
+      while ((match = pattern.exec(html)) !== null) {
+        let imgUrl = match[1];
+        if (imgUrl.includes('data:image') && imgUrl.length < 200) continue;
+        if (imgUrl.includes('pixel') || imgUrl.includes('tracking')) continue;
+        if (imgUrl.includes('icon') && imgUrl.length < 50) continue;
+        if (imgUrl.includes('logo') && !imgUrl.includes('product')) continue;
+        
+        if (imgUrl.startsWith('//')) {
+          imgUrl = 'https:' + imgUrl;
+        } else if (imgUrl.startsWith('/')) {
+          const urlObj = new URL(formattedUrl);
+          imgUrl = urlObj.origin + imgUrl;
+        } else if (!imgUrl.startsWith('http')) {
+          const urlObj = new URL(formattedUrl);
+          imgUrl = urlObj.origin + '/' + imgUrl;
+        }
+        
+        if (!images.includes(imgUrl) && imgUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
+          console.log('Found e-commerce pattern image:', imgUrl);
+          images.push(imgUrl);
+        }
+      }
+    }
+    
+    // === PRIORITY 4: Generic img tags (fallback) - only if we don't have enough images ===
+    if (images.length < 5) {
+      const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+      let match;
       
-      const isLikelyProductImage = 
-        imgUrl.includes('product') ||
-        imgUrl.includes('uploads') ||
-        imgUrl.includes('media') ||
-        imgUrl.includes('images') ||
-        imgUrl.includes('cdn') ||
-        imgUrl.includes('foto') ||
-        imgUrl.includes('gallery') ||
-        imgUrl.match(/\.(jpg|jpeg|png|webp)/i);
-      
-      if (isLikelyProductImage && !images.includes(imgUrl)) {
-        images.push(imgUrl);
+      while ((match = imgRegex.exec(html)) !== null) {
+        let imgUrl = match[1];
+        
+        if (imgUrl.includes('data:image') && imgUrl.length < 200) continue;
+        if (imgUrl.includes('pixel') || imgUrl.includes('tracking')) continue;
+        if (imgUrl.includes('icon') && imgUrl.length < 50) continue;
+        if (imgUrl.includes('logo') && !imgUrl.includes('product')) continue;
+        
+        if (imgUrl.startsWith('//')) {
+          imgUrl = 'https:' + imgUrl;
+        } else if (imgUrl.startsWith('/')) {
+          const urlObj = new URL(formattedUrl);
+          imgUrl = urlObj.origin + imgUrl;
+        } else if (!imgUrl.startsWith('http')) {
+          const urlObj = new URL(formattedUrl);
+          imgUrl = urlObj.origin + '/' + imgUrl;
+        }
+        
+        const isLikelyProductImage = 
+          imgUrl.includes('product') ||
+          imgUrl.includes('uploads') ||
+          imgUrl.includes('media') ||
+          imgUrl.includes('images') ||
+          imgUrl.includes('cdn') ||
+          imgUrl.includes('foto') ||
+          imgUrl.includes('gallery') ||
+          imgUrl.match(/\.(jpg|jpeg|png|webp)/i);
+        
+        if (isLikelyProductImage && !images.includes(imgUrl)) {
+          images.push(imgUrl);
+        }
       }
     }
 
-    // Also look for data-src attributes
+    // Also look for data-src attributes (lazy loaded images)
     const dataSrcRegex = /data-src=["']([^"']+)["']/gi;
+    let match;
     while ((match = dataSrcRegex.exec(html)) !== null) {
       let imgUrl = match[1];
       if (imgUrl.startsWith('//')) {
@@ -368,10 +480,10 @@ Deno.serve(async (req) => {
       productName = h1Match[1].trim();
     }
 
-    // Try product name from JSON-LD
-    const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-    if (jsonLdMatch) {
-      for (const jsonLd of jsonLdMatch) {
+    // Try product name from JSON-LD (reuse previous jsonLdMatch or re-search)
+    const jsonLdForName = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+    if (jsonLdForName) {
+      for (const jsonLd of jsonLdForName) {
         try {
           const jsonContent = jsonLd.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
           const parsed = JSON.parse(jsonContent);
