@@ -55,7 +55,7 @@ interface VoiceSaleDialogProps {
   onProductSelected: (product: Product, variant: ProductVariant | null, quantity: number) => void;
 }
 
-type DialogStep = 'searching' | 'similar_matches' | 'color_selection' | 'size_selection' | 'quantity_confirmation';
+type DialogStep = 'searching' | 'similar_matches' | 'color_selection' | 'size_selection' | 'quantity_confirmation' | 'auto_added';
 
 // Size ordering helper
 const SIZE_ORDER = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 
@@ -275,7 +275,7 @@ export function VoiceSaleDialog({
       const detectedColor = command?.color ? normalizeText(command.color) : null;
       const detectedSize = command?.size ? normalizeText(command.size) : null;
       
-      // Try to find exact variant match
+      // Try to find exact variant match - AUTO ADD TO CART if found
       if (detectedColor && detectedSize) {
         const exactMatch = variants.find(v => {
           const colorMatch = v.color && normalizeText(v.color).includes(detectedColor);
@@ -284,10 +284,15 @@ export function VoiceSaleDialog({
         });
         
         if (exactMatch) {
+          // AUTO-ADD: Directly add to cart and close dialog
           setSelectedColor(exactMatch.color);
           setSelectedVariant(exactMatch);
-          setStep('quantity_confirmation');
           setIsLoading(false);
+          
+          // Auto-add to cart immediately
+          onProductSelected(product, exactMatch, command?.quantity || 1);
+          onOpenChange(false);
+          toast.success(`✓ ${product.name} - ${exactMatch.color || ''} ${exactMatch.size} adicionado!`);
           return;
         }
       }
@@ -478,8 +483,16 @@ export function VoiceSaleDialog({
           {step === 'color_selection' && selectedProduct && (
             <div className="space-y-4 py-2">
               <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/50">
-                <Package className="h-5 w-5 text-primary" />
-                <div>
+                {selectedProduct.image_url ? (
+                  <img
+                    src={selectedProduct.image_url}
+                    alt={selectedProduct.name}
+                    className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <Package className="h-5 w-5 text-primary" />
+                )}
+                <div className="flex-1">
                   <p className="font-medium">{selectedProduct.name}</p>
                   <p className="text-primary font-semibold">
                     R$ {selectedProduct.price.toFixed(2).replace(".", ",")}
@@ -487,40 +500,51 @@ export function VoiceSaleDialog({
                 </div>
               </div>
               
-              <p className="text-sm font-medium">Selecione a cor:</p>
-              <div className="grid grid-cols-2 gap-2">
-                {uniqueColors.map(({ color, image, stock }) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => handleColorSelect(color)}
-                    className={cn(
-                      "flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all touch-manipulation",
-                      selectedColor === color
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    {image ? (
-                      <img
-                        src={image}
-                        alt={color}
-                        className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                        <Package className="h-6 w-6 text-muted-foreground" />
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Selecione a cor:</p>
+                <Badge variant="outline" className="text-xs">
+                  {uniqueColors.length} cores disponíveis
+                </Badge>
+              </div>
+              
+              {/* Scrollable color grid for many colors */}
+              <div className="max-h-[45vh] overflow-y-auto pr-1 -mr-1">
+                <div className="grid grid-cols-2 gap-3">
+                  {uniqueColors.map(({ color, image, stock }) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => handleColorSelect(color)}
+                      className={cn(
+                        "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 text-center transition-all touch-manipulation active:scale-95",
+                        selectedColor === color
+                          ? "border-primary bg-primary/10 shadow-md"
+                          : "border-border hover:border-primary/50 hover:bg-accent/30"
+                      )}
+                    >
+                      {image ? (
+                        <img
+                          src={image}
+                          alt={color}
+                          className="h-16 w-16 rounded-xl object-cover flex-shrink-0 shadow-sm"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center flex-shrink-0">
+                          <Package className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="w-full">
+                        <p className="font-semibold text-sm truncate">{color}</p>
+                        <p className="text-xs text-muted-foreground">{stock} un</p>
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{color}</p>
-                      <p className="text-xs text-muted-foreground">{stock} un</p>
-                    </div>
-                    {selectedColor === color && (
-                      <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
+                      {selectedColor === color && (
+                        <div className="absolute top-2 right-2 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -529,8 +553,16 @@ export function VoiceSaleDialog({
           {step === 'size_selection' && selectedProduct && (
             <div className="space-y-4 py-2">
               <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/50">
-                <Package className="h-5 w-5 text-primary" />
-                <div>
+                {selectedProduct.image_url ? (
+                  <img
+                    src={selectedProduct.image_url}
+                    alt={selectedProduct.name}
+                    className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <Package className="h-5 w-5 text-primary" />
+                )}
+                <div className="flex-1">
                   <p className="font-medium">{selectedProduct.name}</p>
                   {selectedColor && (
                     <Badge variant="secondary" className="mt-1">{selectedColor}</Badge>
@@ -538,29 +570,38 @@ export function VoiceSaleDialog({
                 </div>
               </div>
               
-              <p className="text-sm font-medium">Selecione o tamanho:</p>
-              <div className="flex flex-wrap gap-2">
-                {sizesForColor.map((variant) => (
-                  <button
-                    key={variant.id}
-                    type="button"
-                    onClick={() => handleSizeSelect(variant)}
-                    className={cn(
-                      "px-4 py-3 rounded-xl border-2 font-medium transition-all touch-manipulation min-w-[4rem] text-center",
-                      selectedVariant?.id === variant.id
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <span className="block text-base">{variant.size}</span>
-                    <span className={cn(
-                      "text-xs",
-                      selectedVariant?.id === variant.id ? "text-primary-foreground/80" : "text-muted-foreground"
-                    )}>
-                      {variant.stock_quantity} un
-                    </span>
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Selecione o tamanho:</p>
+                <Badge variant="outline" className="text-xs">
+                  {sizesForColor.length} tamanhos
+                </Badge>
+              </div>
+              
+              {/* Large touch-friendly size buttons */}
+              <div className="max-h-[40vh] overflow-y-auto pr-1 -mr-1">
+                <div className="grid grid-cols-3 gap-3">
+                  {sizesForColor.map((variant) => (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      onClick={() => handleSizeSelect(variant)}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-4 rounded-2xl border-2 font-medium transition-all touch-manipulation min-h-[5rem] active:scale-95",
+                        selectedVariant?.id === variant.id
+                          ? "border-primary bg-primary text-primary-foreground shadow-md"
+                          : "border-border hover:border-primary/50 hover:bg-accent/30"
+                      )}
+                    >
+                      <span className="block text-xl font-bold">{variant.size}</span>
+                      <span className={cn(
+                        "text-xs mt-1",
+                        selectedVariant?.id === variant.id ? "text-primary-foreground/80" : "text-muted-foreground"
+                      )}>
+                        {variant.stock_quantity} un
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
