@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1310,7 +1311,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] sm:w-auto">
         <DialogHeader>
           <DialogTitle>Importar Estoque</DialogTitle>
           <DialogDescription>
@@ -1414,7 +1415,134 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               </div>
             )}
 
-            <div className="border rounded-lg overflow-hidden">
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3 max-w-full overflow-x-hidden">
+              {products.map((product, idx) => (
+                <div 
+                  key={idx} 
+                  className={`border rounded-lg p-4 ${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5 border-destructive/30" : "bg-card"}`}
+                >
+                  {/* Header with select, status and edit */}
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 h-10 w-10"
+                        onClick={() => toggleProduct(idx)}
+                      >
+                        {product.selected ? (
+                          <Check className="h-5 w-5 text-primary" />
+                        ) : (
+                          <X className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <div className="flex-1 min-w-0">
+                        <span className={`font-semibold text-base block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
+                          {product.name || "(sem nome)"}
+                        </span>
+                        <span className={`text-sm ${!product.category ? "text-destructive" : "text-muted-foreground"}`}>
+                          {product.category || "(categoria obrigatória)"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {product.existingProduct ? (
+                        <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                          Já existe
+                        </Badge>
+                      ) : product.hasErrors ? (
+                        <Badge variant="destructive" className="text-xs">
+                          Incompleto
+                        </Badge>
+                      ) : (
+                        <Badge variant="default" className="text-xs">
+                          Novo
+                        </Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10"
+                        onClick={() => setEditingIndex(idx)}
+                      >
+                        <Edit className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Variants info */}
+                  {product.variants.length > 0 && (
+                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                      {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
+                    </p>
+                  )}
+
+                  {/* Info grid */}
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <span className="text-xs text-muted-foreground block">Custo</span>
+                      <span className="font-medium text-sm">R$ {product.cost_price.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <span className="text-xs text-muted-foreground block">Qtd</span>
+                      <span className="font-medium text-sm">{product.quantity}</span>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <span className="text-xs text-muted-foreground block">Cor/Tam</span>
+                      <span className="font-medium text-sm">
+                        {product.variants.length > 0 
+                          ? `${product.variants.length} var.` 
+                          : `${product.color || "-"}/${product.size || "-"}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Images */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {product.imageUrls.map((url, imgIdx) => (
+                      <div key={imgIdx} className="relative w-14 h-14">
+                        <img 
+                          src={url} 
+                          alt={`Foto ${imgIdx + 1}`} 
+                          className="w-full h-full object-cover rounded-lg border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeProductImage(idx, imgIdx)}
+                          className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {product.images.length < 3 && (
+                      <>
+                        <input
+                          ref={(el) => productImageRefs.current[idx] = el}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => handleProductImageUpload(idx, e.target.files)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => productImageRefs.current[idx]?.click()}
+                          className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                        >
+                          <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground mt-0.5">Foto</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
