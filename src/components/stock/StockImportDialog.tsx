@@ -1333,7 +1333,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] sm:w-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] sm:w-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Importar Estoque</DialogTitle>
           <DialogDescription>
@@ -1405,141 +1405,141 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         ) : (
           <div className="space-y-4 py-4">
             {supplierName && (
-              <div className="p-3 bg-muted rounded-lg">
-                <span className="text-sm text-muted-foreground">Fornecedor identificado:</span>
-                <span className="ml-2 font-medium">{supplierName}</span>
+              <div className="p-2 sm:p-3 bg-muted rounded-lg">
+                <span className="text-xs sm:text-sm text-muted-foreground">Fornecedor:</span>
+                <span className="ml-1 sm:ml-2 font-medium text-sm sm:text-base truncate">{supplierName}</span>
               </div>
             )}
             
             <SupplierSelect value={supplierId} onChange={setSupplierId} />
 
             {hasDuplicates && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-amber-600">Produtos duplicados detectados</p>
+              <div className="p-2 sm:p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm">
+                  <p className="font-medium text-amber-600">Duplicados detectados</p>
                   <p className="text-muted-foreground">
-                    Produtos marcados como "Já existe" terão apenas o estoque atualizado (somado).
+                    Itens "Existe" terão estoque atualizado.
                   </p>
                 </div>
               </div>
             )}
 
             {hasProductsWithErrors && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-destructive">Campos obrigatórios não preenchidos</p>
+              <div className="p-2 sm:p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm">
+                  <p className="font-medium text-destructive">Campos obrigatórios</p>
                   <p className="text-muted-foreground">
-                    Clique em "Editar" para preencher Nome e Categoria dos produtos com erro.
+                    Clique em Editar para preencher.
                   </p>
                 </div>
               </div>
             )}
 
             {/* Mobile Card View */}
-            <div className="md:hidden space-y-3 max-w-full overflow-x-hidden">
+            <div className="md:hidden space-y-3 max-w-full overflow-hidden">
               {products.map((product, idx) => (
                 <div 
                   key={idx} 
-                  className={`border rounded-lg p-4 ${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5 border-destructive/30" : "bg-card"}`}
+                  className={`border rounded-lg p-3 ${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5 border-destructive/30" : "bg-card"}`}
                 >
-                  {/* Header with select, status and edit */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0 h-10 w-10"
-                        onClick={() => toggleProduct(idx)}
-                      >
-                        {product.selected ? (
-                          <Check className="h-5 w-5 text-primary" />
-                        ) : (
-                          <X className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </Button>
-                      <div className="flex-1 min-w-0">
-                        <span className={`font-semibold text-base block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
-                          {product.name || "(sem nome)"}
-                        </span>
-                        <span className={`text-sm ${!product.category ? "text-destructive" : "text-muted-foreground"}`}>
-                          {product.category || "(categoria obrigatória)"}
-                        </span>
-                      </div>
+                  {/* Header row: checkbox + name + badge + edit */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center border"
+                      onClick={() => toggleProduct(idx)}
+                    >
+                      {product.selected ? (
+                        <Check className="h-4 w-4 text-primary" />
+                      ) : (
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className={`font-semibold text-sm block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
+                        {product.name || "(sem nome)"}
+                      </span>
+                      <span className={`text-xs ${!product.category ? "text-destructive" : "text-muted-foreground"}`}>
+                        {product.category || "(categoria)"}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {product.existingProduct ? (
-                        <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                          Já existe
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                          Existe
                         </Badge>
                       ) : product.hasErrors ? (
-                        <Badge variant="destructive" className="text-xs">
-                          Incompleto
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                          Erro
                         </Badge>
                       ) : (
-                        <Badge variant="default" className="text-xs">
+                        <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
                           Novo
                         </Badge>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10"
+                      <button
+                        type="button"
+                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted"
                         onClick={() => setEditingIndex(idx)}
                       >
-                        <Edit className="h-5 w-5" />
-                      </Button>
+                        <Edit className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
 
                   {/* Variants info */}
                   {product.variants.length > 0 && (
-                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                    <p className="text-[11px] text-muted-foreground mb-2 line-clamp-1">
                       {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
                     </p>
                   )}
 
-                  {/* Info grid */}
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <span className="text-xs text-muted-foreground block">Custo</span>
-                      <span className="font-medium text-sm">R$ {product.cost_price.toFixed(2)}</span>
+                  {/* Compact info row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                      <span className="text-[10px] text-muted-foreground">Custo </span>
+                      <span className="font-medium text-xs">R$ {product.cost_price.toFixed(2)}</span>
                     </div>
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <span className="text-xs text-muted-foreground block">Qtd</span>
-                      <span className="font-medium text-sm">{product.quantity}</span>
+                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                      <span className="text-[10px] text-muted-foreground">Qtd </span>
+                      <span className="font-medium text-xs">{product.quantity}</span>
                     </div>
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <span className="text-xs text-muted-foreground block">Cor/Tam</span>
-                      <span className="font-medium text-sm">
+                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                      <span className="text-[10px] text-muted-foreground">Var </span>
+                      <span className="font-medium text-xs">
                         {product.variants.length > 0 
-                          ? `${product.variants.length} var.` 
+                          ? product.variants.length
                           : `${product.color || "-"}/${product.size || "-"}`}
                       </span>
                     </div>
-                  </div>
 
-                  {/* Images */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {product.imageUrls.map((url, imgIdx) => (
-                      <div key={imgIdx} className="relative w-14 h-14">
-                        <img 
-                          src={url} 
-                          alt={`Foto ${imgIdx + 1}`} 
-                          className="w-full h-full object-cover rounded-lg border"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeProductImage(idx, imgIdx)}
-                          className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md"
-                        >
-                          ×
-                        </button>
+                    {/* Photo upload button inline */}
+                    {product.imageUrls.length > 0 ? (
+                      <div className="flex items-center gap-1 ml-auto">
+                        {product.imageUrls.slice(0, 2).map((url, imgIdx) => (
+                          <div key={imgIdx} className="relative w-8 h-8">
+                            <img 
+                              src={url} 
+                              alt={`Foto ${imgIdx + 1}`} 
+                              className="w-full h-full object-cover rounded border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeProductImage(idx, imgIdx)}
+                              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] shadow-md"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        {product.imageUrls.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground">+{product.imageUrls.length - 2}</span>
+                        )}
                       </div>
-                    ))}
-                    {product.images.length < 3 && (
-                      <>
+                    ) : product.images.length < 3 ? (
+                      <div className="ml-auto">
                         <input
                           ref={(el) => productImageRefs.current[idx] = el}
                           type="file"
@@ -1551,13 +1551,12 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                         <button
                           type="button"
                           onClick={() => productImageRefs.current[idx]?.click()}
-                          className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                          className="w-8 h-8 border border-dashed border-border rounded flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors"
                         >
-                          <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-[10px] text-muted-foreground mt-0.5">Foto</span>
+                          <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
                         </button>
-                      </>
-                    )}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -1732,22 +1731,24 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           />
         )}
 
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
           {step === "review" && (
-            <Button variant="outline" onClick={() => setStep("upload")}>
+            <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setStep("upload")}>
               Voltar
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handleClose}>
             Cancelar
           </Button>
           {step === "review" && (
             <Button 
+              size="sm"
+              className="w-full sm:w-auto"
               onClick={handleImport} 
               disabled={loading || hasProductsWithErrors}
             >
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Importar {products.filter(p => p.selected).length} Produtos
+              Importar {products.filter(p => p.selected).length}
             </Button>
           )}
         </DialogFooter>
