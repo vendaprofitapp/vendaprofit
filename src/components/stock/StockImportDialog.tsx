@@ -43,6 +43,7 @@ import { SupplierSelect } from "./SupplierSelect";
 import { SupplierImageScraper } from "./SupplierImageScraper";
 import { CategoryManager } from "@/components/products/CategoryManager";
 import { ColorManager, Color, findMatchingColor } from "@/components/products/ColorManager";
+import { ProductColorCombobox } from "./ProductColorCombobox";
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
@@ -96,6 +97,7 @@ interface StockImportDialogProps {
 interface EditProductWithVariantsDialogProps {
   product: ImportedProduct;
   categories: { id: string; name: string }[];
+  userColors: Color[];
   onClose: () => void;
   onUpdateProduct: (updates: Partial<ImportedProduct>) => void;
   onUpdateVariants: (variants: ProductVariant[]) => void;
@@ -105,6 +107,7 @@ interface EditProductWithVariantsDialogProps {
 function EditProductWithVariantsDialog({
   product,
   categories,
+  userColors,
   onClose,
   onUpdateProduct,
   onUpdateVariants,
@@ -499,11 +502,15 @@ function EditProductWithVariantsDialog({
                                 </SelectContent>
                               </Select>
                               
-                              <ColorManager
-                                value={variant.color || ""}
-                                onChange={(value) => updateVariant(index, "color", value || null)}
-                                placeholder="Cor"
-                              />
+                              <div className="w-28 sm:w-32">
+                                <ProductColorCombobox
+                                  value={variant.color || ""}
+                                  onChange={(value) => updateVariant(index, "color", value || null)}
+                                  existingProductId={product.existingProduct?.id || null}
+                                  userColors={userColors}
+                                  placeholder="Cor"
+                                />
+                              </div>
                               
                               <Input
                                 type="number"
@@ -1705,6 +1712,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           <EditProductWithVariantsDialog
             product={products[editingIndex]}
             categories={categories}
+            userColors={userColors}
             onClose={() => setEditingIndex(null)}
             onUpdateProduct={(updates) => updateProduct(editingIndex, updates)}
             onUpdateVariants={(variants) => {
