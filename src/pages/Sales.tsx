@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
@@ -172,6 +172,9 @@ export default function Sales() {
     customerName?: string | null;
     paymentMethod?: string | null;
   } | null>(null);
+
+  // Ref for product search input to focus after voice add
+  const productSearchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
@@ -1079,7 +1082,7 @@ export default function Sales() {
       variant: variant || null,
     };
     
-    // Add to cart (or replace if coming from voice command)
+    // Add to cart (or update quantity if already exists)
     setCart(prev => {
       // Check if product is already in cart
       const existingIndex = prev.findIndex(item => 
@@ -1100,8 +1103,16 @@ export default function Sales() {
       return [...prev, cartItem];
     });
     
+    // Clear search and focus on input for next product
+    setProductSearch("");
+    
+    // Focus on product search input after a short delay to allow state updates
+    setTimeout(() => {
+      productSearchInputRef.current?.focus();
+    }, 100);
+    
     toast({ 
-      title: "✓ Produto adicionado!", 
+      title: "✓ Produto adicionado ao carrinho!", 
       description: `${quantity}x ${product.name}${variant ? ` - ${variant.color || ''} ${variant.size}` : ''}`
     });
   }, []);
@@ -1330,6 +1341,7 @@ export default function Sales() {
               <div>
                 <Label>Buscar Produto (Seu Estoque)</Label>
                 <Input
+                  ref={productSearchInputRef}
                   placeholder="Digite o nome do produto..."
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
@@ -1338,6 +1350,7 @@ export default function Sales() {
                       handleProductSearch(productSearch);
                     }
                   }}
+                  autoComplete="off"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Se não encontrar no seu estoque, buscaremos nos parceiros
