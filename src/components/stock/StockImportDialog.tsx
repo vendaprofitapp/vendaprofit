@@ -632,18 +632,33 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     setCategories(data || []);
   };
 
-  // Normalize name: lowercase, trim, and collapse multiple spaces to single space
+  // Normalize name: lowercase, trim, collapse multiple spaces, and remove accents
   const normalizeName = (name: string) => 
-    name.toLowerCase().trim().replace(/\s+/g, ' ');
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, ""); // Remove diacritical marks (accents)
 
   const findDuplicate = (name: string): ExistingProductWithCategory | null => {
-    // Check by name (normalized - case insensitive, trimmed, collapsed spaces)
+    // Check by name (normalized - case insensitive, trimmed, no accents)
     const normalizedName = normalizeName(name);
-    const nameMatch = existingProductsFull.find(p => 
+    
+    // First try exact match (after normalization)
+    const exactMatch = existingProductsFull.find(p => 
       normalizeName(p.name) === normalizedName
     );
     
-    return nameMatch || null;
+    if (exactMatch) return exactMatch;
+    
+    // Fallback: try "contains" match (one contains the other)
+    const containsMatch = existingProductsFull.find(p => {
+      const normalizedExisting = normalizeName(p.name);
+      return normalizedExisting.includes(normalizedName) || normalizedName.includes(normalizedExisting);
+    });
+    
+    return containsMatch || null;
   };
 
   const checkProductErrors = (product: ImportedProduct): boolean => {
