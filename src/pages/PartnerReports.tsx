@@ -3,21 +3,8 @@ import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Wallet, Bui
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,7 +13,6 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
 interface FinancialSplit {
   id: string;
   sale_id: string;
@@ -36,7 +22,6 @@ interface FinancialSplit {
   description: string;
   created_at: string;
 }
-
 interface SaleWithItems {
   id: string;
   owner_id: string;
@@ -52,7 +37,6 @@ interface SaleWithItems {
     total: number;
   }[];
 }
-
 interface Product {
   id: string;
   name: string;
@@ -61,13 +45,11 @@ interface Product {
   owner_id: string;
   group_id: string | null;
 }
-
 interface ProductPartnership {
   id: string;
   product_id: string;
   group_id: string;
 }
-
 interface GroupWithConfig {
   id: string;
   name: string;
@@ -77,19 +59,16 @@ interface GroupWithConfig {
   profit_share_partner: number;
   is_direct: boolean;
 }
-
 interface GroupMember {
   group_id: string;
   user_id: string;
 }
-
 interface Profile {
   id: string;
   full_name: string;
   email: string;
   phone?: string;
 }
-
 interface PartnerSummary {
   partnerId: string;
   partnerName: string;
@@ -101,24 +80,32 @@ interface PartnerSummary {
   partnerEarnings: number;
   salesCount: number;
 }
-
 interface SplitSummary {
   ownSalesProfit: number;
   commissionsReceived: number;
   partnershipParticipation: number;
   total: number;
 }
-
-const periodOptions = [
-  { value: "today", label: "Hoje" },
-  { value: "week", label: "Esta Semana" },
-  { value: "month", label: "Este Mês" },
-  { value: "year", label: "Este Ano" },
-  { value: "all", label: "Todo Período" },
-];
-
+const periodOptions = [{
+  value: "today",
+  label: "Hoje"
+}, {
+  value: "week",
+  label: "Esta Semana"
+}, {
+  value: "month",
+  label: "Este Mês"
+}, {
+  value: "year",
+  label: "Este Ano"
+}, {
+  value: "all",
+  label: "Todo Período"
+}];
 export default function PartnerReports() {
-  const { user } = useAuth();
+  const {
+    user
+  } = useAuth();
   const [period, setPeriod] = useState("month");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>("all");
@@ -128,68 +115,99 @@ export default function PartnerReports() {
     const now = new Date();
     switch (period) {
       case "today":
-        return { start: startOfDay(now), end: endOfDay(now) };
+        return {
+          start: startOfDay(now),
+          end: endOfDay(now)
+        };
       case "week":
-        return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
+        return {
+          start: startOfWeek(now, {
+            weekStartsOn: 0
+          }),
+          end: endOfWeek(now, {
+            weekStartsOn: 0
+          })
+        };
       case "month":
-        return { start: startOfMonth(now), end: endOfMonth(now) };
+        return {
+          start: startOfMonth(now),
+          end: endOfMonth(now)
+        };
       case "year":
-        return { start: startOfYear(now), end: endOfYear(now) };
+        return {
+          start: startOfYear(now),
+          end: endOfYear(now)
+        };
       default:
-        return { start: new Date(2020, 0, 1), end: now };
+        return {
+          start: new Date(2020, 0, 1),
+          end: now
+        };
     }
   }, [period]);
 
   // Fetch user's groups
-  const { data: userGroupMemberships = [] } = useQuery({
+  const {
+    data: userGroupMemberships = []
+  } = useQuery({
     queryKey: ["user-group-memberships"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("group_members")
-        .select("group_id, user_id");
+      const {
+        data,
+        error
+      } = await supabase.from("group_members").select("group_id, user_id");
       if (error) throw error;
       return data as GroupMember[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Fetch groups with full configuration
-  const { data: groups = [] } = useQuery({
+  const {
+    data: groups = []
+  } = useQuery({
     queryKey: ["groups-with-config"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("groups")
-        .select("id, name, commission_percent, cost_split_ratio, profit_share_seller, profit_share_partner, is_direct");
+      const {
+        data,
+        error
+      } = await supabase.from("groups").select("id, name, commission_percent, cost_split_ratio, profit_share_seller, profit_share_partner, is_direct");
       if (error) throw error;
       return data as GroupWithConfig[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Fetch financial splits
-  const { data: financialSplits = [], isLoading: splitsLoading } = useQuery({
+  const {
+    data: financialSplits = [],
+    isLoading: splitsLoading
+  } = useQuery({
     queryKey: ["financial-splits", user?.id, dateRange.start, dateRange.end],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("financial_splits")
-        .select("*")
-        .eq("user_id", user?.id)
-        .gte("created_at", dateRange.start.toISOString())
-        .lte("created_at", dateRange.end.toISOString())
-        .order("created_at", { ascending: false });
+      const {
+        data,
+        error
+      } = await supabase.from("financial_splits").select("*").eq("user_id", user?.id).gte("created_at", dateRange.start.toISOString()).lte("created_at", dateRange.end.toISOString()).order("created_at", {
+        ascending: false
+      });
       if (error) throw error;
       return data as FinancialSplit[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Fetch all sales with items
-  const { data: salesData = [], isLoading: salesLoading } = useQuery({
+  const {
+    data: salesData = [],
+    isLoading: salesLoading
+  } = useQuery({
     queryKey: ["partner-sales", dateRange.start, dateRange.end],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select(`
+      const {
+        data,
+        error
+      } = await supabase.from("sales").select(`
           id,
           owner_id,
           total,
@@ -203,80 +221,80 @@ export default function PartnerReports() {
             unit_price,
             total
           )
-        `)
-        .eq("status", "completed")
-        .gte("created_at", dateRange.start.toISOString())
-        .lte("created_at", dateRange.end.toISOString())
-        .order("created_at", { ascending: false });
+        `).eq("status", "completed").gte("created_at", dateRange.start.toISOString()).lte("created_at", dateRange.end.toISOString()).order("created_at", {
+        ascending: false
+      });
       if (error) throw error;
       return data as SaleWithItems[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Fetch products (to get cost_price and owner info)
-  const { data: products = [] } = useQuery({
+  const {
+    data: products = []
+  } = useQuery({
     queryKey: ["products-for-partner-report"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, owner_id, group_id");
+      const {
+        data,
+        error
+      } = await supabase.from("products").select("id, name, price, cost_price, owner_id, group_id");
       if (error) throw error;
       return data as Product[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Fetch product partnerships
-  const { data: productPartnerships = [] } = useQuery({
+  const {
+    data: productPartnerships = []
+  } = useQuery({
     queryKey: ["product-partnerships-report"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_partnerships")
-        .select("*");
+      const {
+        data,
+        error
+      } = await supabase.from("product_partnerships").select("*");
       if (error) throw error;
       return data as ProductPartnership[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Note: partnership_rules table is deprecated, using groups table for configuration
 
   // Fetch profiles
-  const { data: profiles = [] } = useQuery({
+  const {
+    data: profiles = []
+  } = useQuery({
     queryKey: ["profiles"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, phone");
+      const {
+        data,
+        error
+      } = await supabase.from("profiles").select("id, full_name, email, phone");
       if (error) throw error;
       return data as Profile[];
     },
-    enabled: !!user,
+    enabled: !!user
   });
 
   // Get user's groups
   const userGroups = useMemo(() => {
-    const userGroupIds = userGroupMemberships
-      .filter(m => m.user_id === user?.id)
-      .map(m => m.group_id);
+    const userGroupIds = userGroupMemberships.filter(m => m.user_id === user?.id).map(m => m.group_id);
     return groups.filter(g => userGroupIds.includes(g.id));
   }, [userGroupMemberships, groups, user]);
 
   // Get partners in user's groups
   const partners = useMemo(() => {
     if (!user) return [];
-    
     let relevantGroupIds = userGroups.map(g => g.id);
     if (selectedGroupId !== "all") {
       relevantGroupIds = [selectedGroupId];
     }
-
     const partnerIds = new Set<string>();
-    userGroupMemberships
-      .filter(m => relevantGroupIds.includes(m.group_id) && m.user_id !== user.id)
-      .forEach(m => partnerIds.add(m.user_id));
-
+    userGroupMemberships.filter(m => relevantGroupIds.includes(m.group_id) && m.user_id !== user.id).forEach(m => partnerIds.add(m.user_id));
     return profiles.filter(p => partnerIds.has(p.id));
   }, [userGroupMemberships, userGroups, profiles, user, selectedGroupId]);
 
@@ -286,9 +304,8 @@ export default function PartnerReports() {
       ownSalesProfit: 0,
       commissionsReceived: 0,
       partnershipParticipation: 0,
-      total: 0,
+      total: 0
     };
-
     for (const split of financialSplits) {
       switch (split.type) {
         case 'profit_share':
@@ -308,7 +325,6 @@ export default function PartnerReports() {
           break;
       }
     }
-
     summary.total = summary.ownSalesProfit + summary.commissionsReceived + summary.partnershipParticipation;
     return summary;
   }, [financialSplits]);
@@ -322,7 +338,7 @@ export default function PartnerReports() {
       profitShareSeller: group?.profit_share_seller ?? 0.7,
       profitSharePartner: group?.profit_share_partner ?? 0.3,
       commissionPercent: group?.commission_percent ?? 0.2,
-      isDirect: group?.is_direct ?? false,
+      isDirect: group?.is_direct ?? false
     };
   };
 
@@ -337,50 +353,38 @@ export default function PartnerReports() {
   // Cenário B: Grupo (dono recebe custo + comissão)
   const partnerSummaries = useMemo(() => {
     if (!user) return [];
-
     const productMap = new Map(products.map(p => [p.id, p]));
     const summaries = new Map<string, PartnerSummary>();
-
     let relevantGroupIds = userGroups.map(g => g.id);
     if (selectedGroupId !== "all") {
       relevantGroupIds = [selectedGroupId];
     }
-
     const userSales = salesData.filter(s => s.owner_id === user.id);
-
     for (const sale of userSales) {
       for (const item of sale.sale_items || []) {
         const product = productMap.get(item.product_id);
         if (!product) continue;
         if (product.owner_id === user.id) continue;
-
         const productGroupId = getProductGroup(product.id) || product.group_id;
         if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
-
         if (selectedPartnerId !== "all" && product.owner_id !== selectedPartnerId) continue;
-
         const partner = profiles.find(p => p.id === product.owner_id);
         if (!partner) continue;
-
         const config = getGroupConfig(productGroupId);
-
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
         const quantity = item.quantity;
-        
         const totalCost = costPrice * quantity;
         const totalSale = salePrice * quantity;
         const profit = Math.max(0, totalSale - totalCost);
-
         let sellerEarnings = 0;
         let partnerEarnings = 0;
-
         if (config.isDirect) {
           // Cenário A: Parceria direta 1-1
           // Vendedor: custo * costSplitRatio + lucro * profitShareSeller
           // Parceira: custo * (1-costSplitRatio) + lucro * profitSharePartner
-          sellerEarnings = (totalCost * config.costSplitRatio) + (profit * config.profitShareSeller);
-          partnerEarnings = (totalCost * (1 - config.costSplitRatio)) + (profit * config.profitSharePartner);
+          sellerEarnings = totalCost * config.costSplitRatio + profit * config.profitShareSeller;
+          partnerEarnings = totalCost * (1 - config.costSplitRatio) + profit * config.profitSharePartner;
         } else {
           // Cenário B: Grupo
           // Dono recebe: custo + (lucro * comissão)
@@ -389,7 +393,6 @@ export default function PartnerReports() {
           partnerEarnings = totalCost + ownerCommission;
           sellerEarnings = profit - ownerCommission;
         }
-
         if (!summaries.has(partner.id)) {
           summaries.set(partner.id, {
             partnerId: partner.id,
@@ -400,10 +403,9 @@ export default function PartnerReports() {
             totalProfit: 0,
             sellerEarnings: 0,
             partnerEarnings: 0,
-            salesCount: 0,
+            salesCount: 0
           });
         }
-
         const summary = summaries.get(partner.id)!;
         summary.totalSales += totalSale;
         summary.totalCost += totalCost;
@@ -413,58 +415,44 @@ export default function PartnerReports() {
         summary.salesCount += 1;
       }
     }
-
     return Array.from(summaries.values()).sort((a, b) => b.totalSales - a.totalSales);
   }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, productPartnerships, groups]);
 
   // Calculate earnings from products sold by partners using profitEngine logic
   const earningsFromPartners = useMemo(() => {
     if (!user) return [];
-
     const productMap = new Map(products.map(p => [p.id, p]));
     const summaries = new Map<string, PartnerSummary>();
-
     let relevantGroupIds = userGroups.map(g => g.id);
     if (selectedGroupId !== "all") {
       relevantGroupIds = [selectedGroupId];
     }
-
     const partnerSales = salesData.filter(s => s.owner_id !== user.id);
-
     for (const sale of partnerSales) {
       const seller = profiles.find(p => p.id === sale.owner_id);
       if (!seller) continue;
-
       if (selectedPartnerId !== "all" && sale.owner_id !== selectedPartnerId) continue;
-
       for (const item of sale.sale_items || []) {
         const product = productMap.get(item.product_id);
         if (!product) continue;
-
         if (product.owner_id !== user.id) continue;
-
         const productGroupId = getProductGroup(product.id) || product.group_id;
         if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
-
         const config = getGroupConfig(productGroupId);
-
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
         const quantity = item.quantity;
-        
         const totalCost = costPrice * quantity;
         const totalSale = salePrice * quantity;
         const profit = Math.max(0, totalSale - totalCost);
-
         let myEarnings = 0;
         let sellerEarnings = 0;
-
         if (config.isDirect) {
           // Cenário A: Parceria direta 1-1
           // Eu (dono): custo * (1-costSplitRatio) + lucro * profitSharePartner
           // Vendedor: custo * costSplitRatio + lucro * profitShareSeller
-          myEarnings = (totalCost * (1 - config.costSplitRatio)) + (profit * config.profitSharePartner);
-          sellerEarnings = (totalCost * config.costSplitRatio) + (profit * config.profitShareSeller);
+          myEarnings = totalCost * (1 - config.costSplitRatio) + profit * config.profitSharePartner;
+          sellerEarnings = totalCost * config.costSplitRatio + profit * config.profitShareSeller;
         } else {
           // Cenário B: Grupo
           // Eu (dono): custo + (lucro * comissão)
@@ -473,7 +461,6 @@ export default function PartnerReports() {
           myEarnings = totalCost + ownerCommission;
           sellerEarnings = profit - ownerCommission;
         }
-
         if (!summaries.has(seller.id)) {
           summaries.set(seller.id, {
             partnerId: seller.id,
@@ -484,10 +471,9 @@ export default function PartnerReports() {
             totalProfit: 0,
             sellerEarnings: 0,
             partnerEarnings: 0,
-            salesCount: 0,
+            salesCount: 0
           });
         }
-
         const summary = summaries.get(seller.id)!;
         summary.totalSales += totalSale;
         summary.totalCost += totalCost;
@@ -497,7 +483,6 @@ export default function PartnerReports() {
         summary.salesCount += 1;
       }
     }
-
     return Array.from(summaries.values()).sort((a, b) => b.totalSales - a.totalSales);
   }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, groups, productPartnerships]);
 
@@ -507,55 +492,44 @@ export default function PartnerReports() {
     const iOwePartners = partnerSummaries.reduce((sum, s) => sum + s.partnerEarnings, 0);
     const myOwnerEarnings = earningsFromPartners.reduce((sum, s) => sum + s.partnerEarnings, 0);
     const partnersOweMe = myOwnerEarnings;
-
     return {
       mySellerEarnings,
       iOwePartners,
       myOwnerEarnings,
       partnersOweMe,
-      netBalance: partnersOweMe - iOwePartners,
+      netBalance: partnersOweMe - iOwePartners
     };
   }, [partnerSummaries, earningsFromPartners]);
-
   const clearFilters = () => {
     setPeriod("month");
     setSelectedGroupId("all");
     setSelectedPartnerId("all");
   };
-
-  const activeFiltersCount = [
-    period !== "month",
-    selectedGroupId !== "all",
-    selectedPartnerId !== "all",
-  ].filter(Boolean).length;
-
+  const activeFiltersCount = [period !== "month", selectedGroupId !== "all", selectedPartnerId !== "all"].filter(Boolean).length;
   const formatCurrency = (value: number) => {
-    return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    return value.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL"
+    });
   };
 
   // Generate WhatsApp settlement text
   const generateSettlementText = () => {
     const currentUser = profiles.find(p => p.id === user?.id);
     const periodLabel = periodOptions.find(p => p.value === period)?.label || period;
-    
     let text = `📊 *ACERTO DE CONTAS - ${periodLabel.toUpperCase()}*\n`;
     text += `📅 ${format(dateRange.start, "dd/MM/yyyy")} a ${format(dateRange.end, "dd/MM/yyyy")}\n\n`;
-    
     text += `👤 *${currentUser?.full_name || 'Você'}*\n\n`;
-    
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
     text += `📈 *RESUMO POR TIPO*\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
     text += `💰 Lucro Vendas Próprias: ${formatCurrency(splitSummary.ownSalesProfit)}\n`;
     text += `🏢 Comissões Recebidas: ${formatCurrency(splitSummary.commissionsReceived)}\n`;
     text += `👥 Participação Parcerias: ${formatCurrency(splitSummary.partnershipParticipation)}\n`;
     text += `\n✨ *TOTAL GANHOS: ${formatCurrency(splitSummary.total)}*\n\n`;
-    
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
     text += `💸 *VALORES A ACERTAR*\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
     if (partnerSummaries.length > 0) {
       text += `📤 *Devo às Parceiras:*\n`;
       partnerSummaries.forEach(s => {
@@ -563,7 +537,6 @@ export default function PartnerReports() {
       });
       text += `  *Subtotal: ${formatCurrency(totals.iOwePartners)}*\n\n`;
     }
-    
     if (earningsFromPartners.length > 0) {
       text += `📥 *A Receber das Parceiras:*\n`;
       earningsFromPartners.forEach(s => {
@@ -571,41 +544,35 @@ export default function PartnerReports() {
       });
       text += `  *Subtotal: ${formatCurrency(totals.partnersOweMe)}*\n\n`;
     }
-    
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
     const balanceEmoji = totals.netBalance >= 0 ? '✅' : '🔴';
     const balanceLabel = totals.netBalance >= 0 ? 'A RECEBER' : 'A PAGAR';
     text += `${balanceEmoji} *SALDO FINAL (${balanceLabel}): ${formatCurrency(Math.abs(totals.netBalance))}*\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
     text += `_Gerado por VendaProfit_`;
-    
     return text;
   };
-
   const handleExportSettlement = () => {
     const text = generateSettlementText();
     const encodedText = encodeURIComponent(text);
-    
+
     // Open WhatsApp with the text
     window.open(`https://wa.me/?text=${encodedText}`, '_blank');
-    
+
     // Also copy to clipboard
     navigator.clipboard.writeText(text).then(() => {
       toast({
         title: "Texto copiado!",
-        description: "O acerto de contas foi copiado para a área de transferência e o WhatsApp foi aberto.",
+        description: "O acerto de contas foi copiado para a área de transferência e o WhatsApp foi aberto."
       });
     }).catch(() => {
       toast({
         title: "WhatsApp aberto",
-        description: "Selecione a sócia para enviar o acerto de contas.",
+        description: "Selecione a sócia para enviar o acerto de contas."
       });
     });
   };
-
-  return (
-    <MainLayout>
+  return <MainLayout>
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -627,7 +594,7 @@ export default function PartnerReports() {
               <p className="font-medium text-foreground">Regra de Divisão de Lucros</p>
               <p className="text-muted-foreground">
                 <strong>Quem vende:</strong> 50% do custo + 70% do lucro | 
-                <strong> Dona da peça:</strong> 50% do custo + 30% do lucro
+                <strong> Parceira:</strong> 50% do custo + 30% do lucro
               </p>
             </div>
           </div>
@@ -647,11 +614,9 @@ export default function PartnerReports() {
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
-            {periodOptions.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
+            {periodOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
-              </SelectItem>
-            ))}
+              </SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -661,11 +626,9 @@ export default function PartnerReports() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Parcerias</SelectItem>
-            {userGroups.map((group) => (
-              <SelectItem key={group.id} value={group.id}>
+            {userGroups.map(group => <SelectItem key={group.id} value={group.id}>
                 {group.name}
-              </SelectItem>
-            ))}
+              </SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -675,20 +638,16 @@ export default function PartnerReports() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Parceiras</SelectItem>
-            {partners.map((partner) => (
-              <SelectItem key={partner.id} value={partner.id}>
+            {partners.map(partner => <SelectItem key={partner.id} value={partner.id}>
                 {partner.full_name}
-              </SelectItem>
-            ))}
+              </SelectItem>)}
           </SelectContent>
         </Select>
 
-        {activeFiltersCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
+        {activeFiltersCount > 0 && <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="h-4 w-4 mr-1" />
             Limpar ({activeFiltersCount})
-          </Button>
-        )}
+          </Button>}
       </div>
 
       {/* Summary by Type Cards */}
@@ -857,21 +816,15 @@ export default function PartnerReports() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salesLoading ? (
-                  <TableRow>
+                {salesLoading ? <TableRow>
                     <TableCell colSpan={4} className="text-center py-8">
                       Carregando...
                     </TableCell>
-                  </TableRow>
-                ) : partnerSummaries.length === 0 ? (
-                  <TableRow>
+                  </TableRow> : partnerSummaries.length === 0 ? <TableRow>
                     <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       Nenhuma venda de peças de parceiras no período
                     </TableCell>
-                  </TableRow>
-                ) : (
-                  partnerSummaries.map((summary) => (
-                    <TableRow key={summary.partnerId}>
+                  </TableRow> : partnerSummaries.map(summary => <TableRow key={summary.partnerId}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{summary.partnerName}</p>
@@ -889,9 +842,7 @@ export default function PartnerReports() {
                       <TableCell className="text-right text-destructive font-medium">
                         {formatCurrency(summary.partnerEarnings)}
                       </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                    </TableRow>)}
               </TableBody>
             </Table>
           </CardContent>
@@ -916,21 +867,15 @@ export default function PartnerReports() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salesLoading ? (
-                  <TableRow>
+                {salesLoading ? <TableRow>
                     <TableCell colSpan={4} className="text-center py-8">
                       Carregando...
                     </TableCell>
-                  </TableRow>
-                ) : earningsFromPartners.length === 0 ? (
-                  <TableRow>
+                  </TableRow> : earningsFromPartners.length === 0 ? <TableRow>
                     <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       Nenhuma venda de suas peças por parceiras no período
                     </TableCell>
-                  </TableRow>
-                ) : (
-                  earningsFromPartners.map((summary) => (
-                    <TableRow key={summary.partnerId}>
+                  </TableRow> : earningsFromPartners.map(summary => <TableRow key={summary.partnerId}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{summary.partnerName}</p>
@@ -948,9 +893,7 @@ export default function PartnerReports() {
                       <TableCell className="text-right text-muted-foreground">
                         {formatCurrency(summary.sellerEarnings)}
                       </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                    </TableRow>)}
               </TableBody>
             </Table>
           </CardContent>
@@ -959,8 +902,11 @@ export default function PartnerReports() {
 
       {/* Period Info */}
       <div className="mt-6 text-center text-sm text-muted-foreground">
-        Período: {format(dateRange.start, "dd/MM/yyyy", { locale: ptBR })} - {format(dateRange.end, "dd/MM/yyyy", { locale: ptBR })}
+        Período: {format(dateRange.start, "dd/MM/yyyy", {
+        locale: ptBR
+      })} - {format(dateRange.end, "dd/MM/yyyy", {
+        locale: ptBR
+      })}
       </div>
-    </MainLayout>
-  );
+    </MainLayout>;
 }
