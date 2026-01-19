@@ -866,6 +866,7 @@ export type Database = {
           stock_quantity: number
           supplier_id: string | null
           updated_at: string
+          video_url: string | null
         }
         Insert: {
           category: string
@@ -890,6 +891,7 @@ export type Database = {
           stock_quantity?: number
           supplier_id?: string | null
           updated_at?: string
+          video_url?: string | null
         }
         Update: {
           category?: string
@@ -914,6 +916,7 @@ export type Database = {
           stock_quantity?: number
           supplier_id?: string | null
           updated_at?: string
+          video_url?: string | null
         }
         Relationships: [
           {
