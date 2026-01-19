@@ -9,7 +9,8 @@ const corsHeaders = {
 const RATE_LIMIT_MAX_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_HOURS = 1;
 
-const FITTING_ROOM_PROMPT = (productName: string) => `You are a professional virtual fitting room AI specialized in fashion and clothing visualization. Your task is to create an EXACT and FAITHFUL representation of the person in the FIRST photo wearing the EXACT clothing item shown in the SECOND photo.
+// Default prompt if none provided from frontend
+const DEFAULT_FITTING_ROOM_PROMPT = (productName: string) => `You are a professional virtual fitting room AI specialized in fashion and clothing visualization. Your task is to create an EXACT and FAITHFUL representation of the person in the FIRST photo wearing the EXACT clothing item shown in the SECOND photo.
 
 CRITICAL REQUIREMENTS - CLOTHING ACCURACY:
 1. **EXACT COLOR REPRODUCTION**: The clothing color MUST be IDENTICAL to the second image. Do not change, lighten, darken, or modify the color in any way. If it's red, make it the EXACT same shade of red. If it's navy blue, keep it navy blue.
@@ -42,7 +43,41 @@ The clothing item is called "${productName}". Study the second image carefully a
 
 Generate a photorealistic, high-quality image.`;
 
-async function callLovableAI(userImage: string, productImage: string, productName: string, apiKey: string) {
+// Build the final prompt combining frontend input with our requirements
+const buildFinalPrompt = (productName: string, customPrompt?: string, negativePrompt?: string, style?: string): string => {
+  let finalPrompt = customPrompt || DEFAULT_FITTING_ROOM_PROMPT(productName);
+  
+  // If custom prompt is provided, enhance it with our requirements
+  if (customPrompt) {
+    finalPrompt = `${customPrompt}
+
+ADDITIONAL CRITICAL REQUIREMENTS FOR VIRTUAL FITTING ROOM:
+- The person's face, body type, skin tone, and pose MUST be preserved from the FIRST photo
+- The clothing item "${productName}" from the SECOND image MUST be placed realistically on the person
+- EXACT color, pattern, texture, and design details of the clothing must match the product image
+- Maintain proper proportions, shadows, and lighting for natural results
+- The clothing should fit naturally on the person's body type
+- Keep the background similar to the original person's photo
+- The final image MUST look like a real photograph, not a digital edit
+
+${negativePrompt ? `AVOID: ${negativePrompt}` : ''}
+${style === 'photorealistic' ? 'STYLE: Ultra-photorealistic, raw photo quality, no digital artifacts' : ''}`;
+  }
+  
+  return finalPrompt;
+};
+
+async function callLovableAI(
+  userImage: string, 
+  productImage: string, 
+  productName: string, 
+  apiKey: string,
+  customPrompt?: string,
+  negativePrompt?: string,
+  style?: string
+) {
+  const finalPrompt = buildFinalPrompt(productName, customPrompt, negativePrompt, style);
+  
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -55,7 +90,7 @@ async function callLovableAI(userImage: string, productImage: string, productNam
         {
           role: "user",
           content: [
-            { type: "text", text: FITTING_ROOM_PROMPT(productName) },
+            { type: "text", text: finalPrompt },
             { type: "image_url", image_url: { url: userImage } },
             { type: "image_url", image_url: { url: productImage } }
           ]
@@ -114,8 +149,18 @@ async function getImageData(image: string): Promise<{ mimeType: string; data: st
   throw new Error("Invalid image format - must be data URL or HTTP URL");
 }
 
-async function callGeminiDirect(userImage: string, productImage: string, productName: string, apiKey: string) {
+async function callGeminiDirect(
+  userImage: string, 
+  productImage: string, 
+  productName: string, 
+  apiKey: string,
+  customPrompt?: string,
+  negativePrompt?: string,
+  style?: string
+) {
   console.log("Using Gemini direct API as fallback...");
+  
+  const finalPrompt = buildFinalPrompt(productName, customPrompt, negativePrompt, style);
   
   // Get image data for both images
   const userImageData = await getImageData(userImage);
@@ -133,7 +178,7 @@ async function callGeminiDirect(userImage: string, productImage: string, product
       contents: [
         {
           parts: [
-            { text: FITTING_ROOM_PROMPT(productName) },
+            { text: finalPrompt },
             {
               inline_data: {
                 mime_type: userImageData.mimeType,
@@ -168,7 +213,7 @@ serve(async (req) => {
   }
 
   try {
-    const { userImage, productImage, productName } = await req.json();
+    const { userImage, productImage, productName, prompt, negativePrompt, style } = await req.json();
 
     if (!userImage || !productImage) {
       return new Response(
@@ -282,7 +327,7 @@ serve(async (req) => {
 
     // Try Lovable AI first
     if (LOVABLE_API_KEY) {
-      response = await callLovableAI(userImage, productImage, productName, LOVABLE_API_KEY);
+      response = await callLovableAI(userImage, productImage, productName, LOVABLE_API_KEY, prompt, negativePrompt, style);
       
       // Check if we need to fallback to Gemini (credits exhausted)
       if (response.status === 402 && GEMINI_API_KEY) {
@@ -301,7 +346,7 @@ serve(async (req) => {
     // Use Gemini direct API as fallback
     if (useGeminiFallback && GEMINI_API_KEY) {
       try {
-        response = await callGeminiDirect(userImage, productImage, productName, GEMINI_API_KEY);
+        response = await callGeminiDirect(userImage, productImage, productName, GEMINI_API_KEY, prompt, negativePrompt, style);
         
         if (!response.ok) {
           const errorText = await response.text();
