@@ -68,13 +68,14 @@ interface ProductPartnership {
   group_id: string;
 }
 
-interface PartnershipRule {
+interface GroupWithConfig {
   id: string;
-  group_id: string;
-  seller_cost_percent: number;
-  seller_profit_percent: number;
-  owner_cost_percent: number;
-  owner_profit_percent: number;
+  name: string;
+  commission_percent: number;
+  cost_split_ratio: number;
+  profit_share_seller: number;
+  profit_share_partner: number;
+  is_direct: boolean;
 }
 
 interface GroupMember {
@@ -87,11 +88,6 @@ interface Profile {
   full_name: string;
   email: string;
   phone?: string;
-}
-
-interface Group {
-  id: string;
-  name: string;
 }
 
 interface PartnerSummary {
@@ -157,15 +153,15 @@ export default function PartnerReports() {
     enabled: !!user,
   });
 
-  // Fetch groups
+  // Fetch groups with full configuration
   const { data: groups = [] } = useQuery({
-    queryKey: ["groups"],
+    queryKey: ["groups-with-config"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("groups")
-        .select("id, name");
+        .select("id, name, commission_percent, cost_split_ratio, profit_share_seller, profit_share_partner, is_direct");
       if (error) throw error;
-      return data as Group[];
+      return data as GroupWithConfig[];
     },
     enabled: !!user,
   });
@@ -244,18 +240,7 @@ export default function PartnerReports() {
     enabled: !!user,
   });
 
-  // Fetch partnership rules
-  const { data: partnershipRules = [] } = useQuery({
-    queryKey: ["partnership-rules-report"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("partnership_rules")
-        .select("*");
-      if (error) throw error;
-      return data as PartnershipRule[];
-    },
-    enabled: !!user,
-  });
+  // Note: partnership_rules table is deprecated, using groups table for configuration
 
   // Fetch profiles
   const { data: profiles = [] } = useQuery({
@@ -328,16 +313,16 @@ export default function PartnerReports() {
     return summary;
   }, [financialSplits]);
 
-  // Helper to get rules for a group
-  const getRulesForGroup = (groupId: string): PartnershipRule => {
-    const rules = partnershipRules.find(r => r.group_id === groupId);
-    return rules || {
-      id: "",
-      group_id: groupId,
-      seller_cost_percent: 50,
-      seller_profit_percent: 70,
-      owner_cost_percent: 50,
-      owner_profit_percent: 30,
+  // Helper to get group config (aligned with profitEngine)
+  const getGroupConfig = (groupId: string) => {
+    const group = groups.find(g => g.id === groupId);
+    return {
+      id: groupId,
+      costSplitRatio: group?.cost_split_ratio ?? 0.5,
+      profitShareSeller: group?.profit_share_seller ?? 0.7,
+      profitSharePartner: group?.profit_share_partner ?? 0.3,
+      commissionPercent: group?.commission_percent ?? 0.2,
+      isDirect: group?.is_direct ?? false,
     };
   };
 
@@ -347,7 +332,9 @@ export default function PartnerReports() {
     return partnership?.group_id || null;
   };
 
-  // Calculate partner earnings (legacy calculation for tables)
+  // Calculate partner earnings using profitEngine logic
+  // Cenário A: Parceria direta 1-1 (split de custo + lucro)
+  // Cenário B: Grupo (dono recebe custo + comissão)
   const partnerSummaries = useMemo(() => {
     if (!user) return [];
 
@@ -375,7 +362,7 @@ export default function PartnerReports() {
         const partner = profiles.find(p => p.id === product.owner_id);
         if (!partner) continue;
 
-        const rules = getRulesForGroup(productGroupId);
+        const config = getGroupConfig(productGroupId);
 
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
@@ -383,10 +370,25 @@ export default function PartnerReports() {
         
         const totalCost = costPrice * quantity;
         const totalSale = salePrice * quantity;
-        const profit = totalSale - totalCost;
+        const profit = Math.max(0, totalSale - totalCost);
 
-        const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
-        const partnerEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
+        let sellerEarnings = 0;
+        let partnerEarnings = 0;
+
+        if (config.isDirect) {
+          // Cenário A: Parceria direta 1-1
+          // Vendedor: custo * costSplitRatio + lucro * profitShareSeller
+          // Parceira: custo * (1-costSplitRatio) + lucro * profitSharePartner
+          sellerEarnings = (totalCost * config.costSplitRatio) + (profit * config.profitShareSeller);
+          partnerEarnings = (totalCost * (1 - config.costSplitRatio)) + (profit * config.profitSharePartner);
+        } else {
+          // Cenário B: Grupo
+          // Dono recebe: custo + (lucro * comissão)
+          // Vendedor recebe: lucro - (lucro * comissão)
+          const ownerCommission = profit * config.commissionPercent;
+          partnerEarnings = totalCost + ownerCommission;
+          sellerEarnings = profit - ownerCommission;
+        }
 
         if (!summaries.has(partner.id)) {
           summaries.set(partner.id, {
@@ -413,9 +415,9 @@ export default function PartnerReports() {
     }
 
     return Array.from(summaries.values()).sort((a, b) => b.totalSales - a.totalSales);
-  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, productPartnerships, partnershipRules]);
+  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, productPartnerships, groups]);
 
-  // Calculate earnings from products sold by partners
+  // Calculate earnings from products sold by partners using profitEngine logic
   const earningsFromPartners = useMemo(() => {
     if (!user) return [];
 
@@ -444,7 +446,7 @@ export default function PartnerReports() {
         const productGroupId = getProductGroup(product.id) || product.group_id;
         if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
 
-        const rules = getRulesForGroup(productGroupId);
+        const config = getGroupConfig(productGroupId);
 
         const costPrice = product.cost_price || 0;
         const salePrice = item.unit_price;
@@ -452,10 +454,25 @@ export default function PartnerReports() {
         
         const totalCost = costPrice * quantity;
         const totalSale = salePrice * quantity;
-        const profit = totalSale - totalCost;
+        const profit = Math.max(0, totalSale - totalCost);
 
-        const myEarnings = (totalCost * Number(rules.owner_cost_percent) / 100) + (profit * Number(rules.owner_profit_percent) / 100);
-        const sellerEarnings = (totalCost * Number(rules.seller_cost_percent) / 100) + (profit * Number(rules.seller_profit_percent) / 100);
+        let myEarnings = 0;
+        let sellerEarnings = 0;
+
+        if (config.isDirect) {
+          // Cenário A: Parceria direta 1-1
+          // Eu (dono): custo * (1-costSplitRatio) + lucro * profitSharePartner
+          // Vendedor: custo * costSplitRatio + lucro * profitShareSeller
+          myEarnings = (totalCost * (1 - config.costSplitRatio)) + (profit * config.profitSharePartner);
+          sellerEarnings = (totalCost * config.costSplitRatio) + (profit * config.profitShareSeller);
+        } else {
+          // Cenário B: Grupo
+          // Eu (dono): custo + (lucro * comissão)
+          // Vendedor: lucro - (lucro * comissão)
+          const ownerCommission = profit * config.commissionPercent;
+          myEarnings = totalCost + ownerCommission;
+          sellerEarnings = profit - ownerCommission;
+        }
 
         if (!summaries.has(seller.id)) {
           summaries.set(seller.id, {
@@ -482,7 +499,7 @@ export default function PartnerReports() {
     }
 
     return Array.from(summaries.values()).sort((a, b) => b.totalSales - a.totalSales);
-  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId]);
+  }, [salesData, products, profiles, user, userGroups, selectedGroupId, selectedPartnerId, groups, productPartnerships]);
 
   // Totals
   const totals = useMemo(() => {
