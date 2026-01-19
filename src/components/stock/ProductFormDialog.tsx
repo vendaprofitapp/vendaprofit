@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { MultiCategoryManager } from "@/components/products/MultiCategoryManager";
 import { ColorManager } from "@/components/products/ColorManager";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
+import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 
 interface Product {
   id: string;
@@ -61,6 +62,7 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
+  video_url?: string | null;
 }
 
 interface Supplier {
@@ -123,7 +125,8 @@ export function ProductFormDialog({
     price: "",
     cost_price: "",
     min_stock_level: "5",
-    supplier_id: ""
+    supplier_id: "",
+    video_url: "" as string | null
   });
 
   useEffect(() => {
@@ -145,7 +148,8 @@ export function ProductFormDialog({
         price: editingProduct.price.toString(),
         cost_price: editingProduct.cost_price?.toString() || "",
         min_stock_level: editingProduct.min_stock_level.toString(),
-        supplier_id: editingProduct.supplier_id || ""
+        supplier_id: editingProduct.supplier_id || "",
+        video_url: editingProduct.video_url || null
       });
       
       // Fetch existing variants with images
@@ -162,7 +166,8 @@ export function ProductFormDialog({
         price: duplicatingProduct.price.toString(),
         cost_price: duplicatingProduct.cost_price?.toString() || "",
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
-        supplier_id: duplicatingProduct.supplier_id || ""
+        supplier_id: duplicatingProduct.supplier_id || "",
+        video_url: null
       });
       
       // Start with empty variants for duplicate
@@ -242,7 +247,8 @@ export function ProductFormDialog({
       price: "",
       cost_price: "",
       min_stock_level: "5",
-      supplier_id: ""
+      supplier_id: "",
+      video_url: null
     });
     // Clean up preview URLs
     Object.values(colorImages).forEach(ci => {
@@ -443,6 +449,7 @@ export function ProductFormDialog({
       supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
       owner_id: user.id,
       group_id: null,
+      video_url: form.video_url || null,
       // Clear product-level images since they're now per-color
       image_url: null,
       image_url_2: null,
@@ -729,6 +736,14 @@ export function ProductFormDialog({
           value={form.min_stock_level}
           onChange={(e) => setForm({ ...form, min_stock_level: e.target.value })}
           placeholder="5"
+        />
+      </div>
+      
+      {/* Video Upload Section */}
+      <div className="col-span-1 sm:col-span-2">
+        <ProductVideoUpload
+          value={form.video_url}
+          onChange={(url) => setForm({ ...form, video_url: url })}
         />
       </div>
       
