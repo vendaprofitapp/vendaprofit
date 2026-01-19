@@ -9,17 +9,38 @@ const corsHeaders = {
 const RATE_LIMIT_MAX_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_HOURS = 1;
 
-const FITTING_ROOM_PROMPT = (productName: string) => `You are a virtual fitting room AI. Your task is to create a realistic image of the person in the first photo wearing the clothing item shown in the second photo.
+const FITTING_ROOM_PROMPT = (productName: string) => `You are a professional virtual fitting room AI specialized in fashion and clothing visualization. Your task is to create an EXACT and FAITHFUL representation of the person in the FIRST photo wearing the EXACT clothing item shown in the SECOND photo.
 
-Instructions:
-- The person's face, body type, skin tone, and pose should be preserved from their original photo
-- The clothing item "${productName}" from the second image should be realistically placed on the person
-- Maintain proper proportions, shadows, and lighting to make the result look natural
-- The clothing should fit naturally on the person's body
-- Keep the background similar to the original person's photo
-- Make the final image look like a real photo, not a collage
+CRITICAL REQUIREMENTS - CLOTHING ACCURACY:
+1. **EXACT COLOR REPRODUCTION**: The clothing color MUST be IDENTICAL to the second image. Do not change, lighten, darken, or modify the color in any way. If it's red, make it the EXACT same shade of red. If it's navy blue, keep it navy blue.
 
-Create a high-quality, realistic image of this person wearing this exact clothing item.`;
+2. **EXACT PATTERN/PRINT REPRODUCTION**: If the clothing has any patterns, prints, stripes, logos, embroidery, or designs, they MUST be reproduced EXACTLY as shown in the second image. Copy every detail precisely.
+
+3. **EXACT FABRIC TEXTURE**: Maintain the exact fabric texture visible in the product image - whether it's cotton, lace, silk, denim, knit, etc. The texture and how light interacts with the fabric should match.
+
+4. **EXACT DESIGN DETAILS**: Preserve ALL design elements exactly as shown:
+   - Neckline shape and style
+   - Sleeve length and style  
+   - Buttons, zippers, pockets
+   - Stitching and seams
+   - Collars, cuffs, hems
+   - Any decorative elements (lace, ruffles, embroidery, appliques)
+
+5. **EXACT SILHOUETTE/CUT**: The garment's silhouette, fit (loose, fitted, etc.), and cut must match the product image exactly.
+
+PERSON PRESERVATION:
+- Keep the person's face, hair, skin tone, body proportions EXACTLY as in the first image
+- Maintain their natural pose and expression
+- Keep the background similar to their original photo
+
+REALISM:
+- Add natural shadows and lighting that match the person's photo
+- Make the clothing fit naturally on their body type
+- The final image should look like a real photograph, not a digital collage
+
+The clothing item is called "${productName}". Study the second image carefully and reproduce EVERY visual detail of this garment on the person from the first image.
+
+Generate a photorealistic, high-quality image.`;
 
 async function callLovableAI(userImage: string, productImage: string, productName: string, apiKey: string) {
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
