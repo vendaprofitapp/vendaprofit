@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame } from "lucide-react";
 
 interface StoreSettings {
   id: string;
@@ -30,10 +30,14 @@ interface StoreSettings {
   banner_link: string | null;
   is_banner_visible: boolean;
   banner_height_mobile: string | null;
+  banner_height_desktop: string | null;
   font_heading: string | null;
   font_body: string | null;
   custom_font_url: string | null;
   custom_font_name: string | null;
+  show_opportunities_button: boolean;
+  opportunities_button_text: string | null;
+  opportunities_button_color: string | null;
 }
 
 interface Group {
@@ -66,9 +70,13 @@ export default function StoreSettings() {
     banner_link: "",
     is_banner_visible: false,
     banner_height_mobile: "150px",
+    banner_height_desktop: "120px",
     font_heading: "Inter",
     font_body: "Inter",
     custom_font_name: "",
+    show_opportunities_button: true,
+    opportunities_button_text: "OPORTUNIDADES",
+    opportunities_button_color: "#f97316",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -168,9 +176,13 @@ export default function StoreSettings() {
         banner_link: storeSettings.banner_link || "",
         is_banner_visible: storeSettings.is_banner_visible ?? false,
         banner_height_mobile: storeSettings.banner_height_mobile || "150px",
+        banner_height_desktop: storeSettings.banner_height_desktop || "120px",
         font_heading: storeSettings.font_heading || "Inter",
         font_body: storeSettings.font_body || "Inter",
         custom_font_name: storeSettings.custom_font_name || "",
+        show_opportunities_button: storeSettings.show_opportunities_button ?? true,
+        opportunities_button_text: storeSettings.opportunities_button_text || "OPORTUNIDADES",
+        opportunities_button_color: storeSettings.opportunities_button_color || "#f97316",
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -397,6 +409,10 @@ export default function StoreSettings() {
             banner_link: formData.banner_link || null,
             is_banner_visible: formData.is_banner_visible,
             banner_height_mobile: formData.banner_height_mobile,
+            banner_height_desktop: formData.banner_height_desktop,
+            show_opportunities_button: formData.show_opportunities_button,
+            opportunities_button_text: formData.opportunities_button_text || null,
+            opportunities_button_color: formData.opportunities_button_color,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -421,6 +437,10 @@ export default function StoreSettings() {
             banner_link: formData.banner_link || null,
             is_banner_visible: formData.is_banner_visible,
             banner_height_mobile: formData.banner_height_mobile,
+            banner_height_desktop: formData.banner_height_desktop,
+            show_opportunities_button: formData.show_opportunities_button,
+            opportunities_button_text: formData.opportunities_button_text || null,
+            opportunities_button_color: formData.opportunities_button_color,
             ...fontData,
           })
           .select("id")
@@ -677,7 +697,7 @@ export default function StoreSettings() {
 
                 {/* Banner Height Mobile */}
                 <div className="space-y-2">
-                  <Label htmlFor="banner_height_mobile">Altura do Banner (Mobile)</Label>
+                  <Label htmlFor="banner_height_mobile">Altura Máx. Banner (Mobile)</Label>
                   <Input
                     id="banner_height_mobile"
                     value={formData.banner_height_mobile}
@@ -685,9 +705,90 @@ export default function StoreSettings() {
                     placeholder="150px"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Ex: 150px, 200px. Define a altura do banner em dispositivos móveis.
+                    Ex: 150px, 200px. Altura máxima em dispositivos móveis.
                   </p>
                 </div>
+
+                {/* Banner Height Desktop */}
+                <div className="space-y-2">
+                  <Label htmlFor="banner_height_desktop">Altura Máx. Banner (Desktop)</Label>
+                  <Input
+                    id="banner_height_desktop"
+                    value={formData.banner_height_desktop}
+                    onChange={(e) => setFormData(prev => ({ ...prev, banner_height_desktop: e.target.value }))}
+                    placeholder="120px"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ex: 120px, 180px. Altura máxima em computadores.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Opportunities Button Section */}
+            <div className="border-t pt-6">
+              <h4 className="font-medium flex items-center gap-2 mb-4">
+                <Flame className="h-4 w-4 text-orange-500" />
+                Botão Oportunidades
+              </h4>
+              
+              <div className="space-y-4">
+                {/* Show Button Toggle */}
+                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                  <div>
+                    <Label className="font-medium">Exibir Botão</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Ative para mostrar o botão de oportunidades
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.show_opportunities_button}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, show_opportunities_button: checked }))}
+                  />
+                </div>
+
+                {formData.show_opportunities_button && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Button Text */}
+                    <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                      <Label htmlFor="opportunities_button_text">Texto do Botão</Label>
+                      <Input
+                        id="opportunities_button_text"
+                        value={formData.opportunities_button_text}
+                        onChange={(e) => setFormData(prev => ({ ...prev, opportunities_button_text: e.target.value }))}
+                        placeholder="OPORTUNIDADES"
+                      />
+                    </div>
+
+                    {/* Button Color */}
+                    <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                      <Label htmlFor="opportunities_button_color">Cor do Botão</Label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="color"
+                          id="opportunities_button_color"
+                          value={formData.opportunities_button_color}
+                          onChange={(e) => setFormData(prev => ({ ...prev, opportunities_button_color: e.target.value }))}
+                          className="w-12 h-12 rounded-lg border-2 cursor-pointer shadow-sm"
+                        />
+                        <div className="flex-1">
+                          <Input
+                            value={formData.opportunities_button_color}
+                            onChange={(e) => setFormData(prev => ({ ...prev, opportunities_button_color: e.target.value }))}
+                            className="font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div 
+                        className="h-8 rounded-full mt-2 flex items-center justify-center text-white text-sm font-semibold gap-2"
+                        style={{ backgroundColor: formData.opportunities_button_color }}
+                      >
+                        <Flame className="h-4 w-4" />
+                        {formData.opportunities_button_text || "OPORTUNIDADES"}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

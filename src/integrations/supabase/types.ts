@@ -1181,6 +1181,7 @@ export type Database = {
       store_settings: {
         Row: {
           background_color: string | null
+          banner_height_desktop: string | null
           banner_height_mobile: string | null
           banner_link: string | null
           banner_url: string | null
@@ -1194,8 +1195,11 @@ export type Database = {
           is_active: boolean
           is_banner_visible: boolean | null
           logo_url: string | null
+          opportunities_button_color: string | null
+          opportunities_button_text: string | null
           owner_id: string
           primary_color: string | null
+          show_opportunities_button: boolean | null
           show_own_products: boolean
           store_description: string | null
           store_name: string
@@ -1205,6 +1209,7 @@ export type Database = {
         }
         Insert: {
           background_color?: string | null
+          banner_height_desktop?: string | null
           banner_height_mobile?: string | null
           banner_link?: string | null
           banner_url?: string | null
@@ -1218,8 +1223,11 @@ export type Database = {
           is_active?: boolean
           is_banner_visible?: boolean | null
           logo_url?: string | null
+          opportunities_button_color?: string | null
+          opportunities_button_text?: string | null
           owner_id: string
           primary_color?: string | null
+          show_opportunities_button?: boolean | null
           show_own_products?: boolean
           store_description?: string | null
           store_name: string
@@ -1229,6 +1237,7 @@ export type Database = {
         }
         Update: {
           background_color?: string | null
+          banner_height_desktop?: string | null
           banner_height_mobile?: string | null
           banner_link?: string | null
           banner_url?: string | null
@@ -1242,8 +1251,11 @@ export type Database = {
           is_active?: boolean
           is_banner_visible?: boolean | null
           logo_url?: string | null
+          opportunities_button_color?: string | null
+          opportunities_button_text?: string | null
           owner_id?: string
           primary_color?: string | null
+          show_opportunities_button?: boolean | null
           show_own_products?: boolean
           store_description?: string | null
           store_name?: string
