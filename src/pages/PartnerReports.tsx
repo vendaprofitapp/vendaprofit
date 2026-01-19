@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -92,10 +92,24 @@ const periodOptions = [
 
 export default function PartnerReports() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState("month");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("partnerships");
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["partner-sales"] }),
+      queryClient.invalidateQueries({ queryKey: ["products-for-partner-report"] }),
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships-report"] }),
+      queryClient.invalidateQueries({ queryKey: ["user-group-memberships"] }),
+      queryClient.invalidateQueries({ queryKey: ["groups-with-config"] }),
+      queryClient.invalidateQueries({ queryKey: ["profiles"] }),
+    ]);
+
+    toast({ title: "Relatório atualizado" });
+  };
 
   // Calculate date range based on period
   const dateRange = useMemo(() => {
@@ -600,7 +614,9 @@ export default function PartnerReports() {
               ) : summaries.mySales.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                    Nenhuma venda no período
+                    {isPartnership
+                      ? "Nenhuma venda de parcerias no período (vendas de estoque próprio não entram aqui)."
+                      : "Nenhuma venda de grupos no período (vendas de estoque próprio não entram aqui)."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -655,7 +671,9 @@ export default function PartnerReports() {
               ) : summaries.partnerSales.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                    Nenhuma venda no período
+                    {isPartnership
+                      ? "Nenhuma venda de parceiras com suas peças no período."
+                      : "Nenhuma venda de membros com suas peças no período."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -694,10 +712,16 @@ export default function PartnerReports() {
           <h1 className="text-2xl font-bold text-foreground">Relatório de Parcerias e Grupos</h1>
           <p className="text-muted-foreground">Acompanhe os ganhos e divisões com parcerias 1-1 e grupos</p>
         </div>
-        <Button onClick={handleExportSettlement} className="gap-2">
-          <Share2 className="h-4 w-4" />
-          Exportar Acerto de Contas
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleRefresh} className="gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Atualizar
+          </Button>
+          <Button onClick={handleExportSettlement} className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Exportar Acerto de Contas
+          </Button>
+        </div>
       </div>
 
       {/* Tabs for Partnerships vs Groups */}
