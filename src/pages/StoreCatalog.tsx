@@ -510,9 +510,6 @@ export default function StoreCatalog() {
         `}</style>
       )}
       
-      {/* Promotional Banner - Top of page */}
-      <PromotionalBanner />
-      
       {/* Minimal Header */}
       <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody }}>
         <div className="max-w-7xl mx-auto px-4 py-3">
@@ -667,6 +664,9 @@ export default function StoreCatalog() {
           </div>
         </div>
       </header>
+
+      {/* Promotional Banner - Below header */}
+      <PromotionalBanner />
 
       {/* Search and Filters */}
       <div className="max-w-7xl mx-auto px-4 py-6">
