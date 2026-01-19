@@ -298,8 +298,11 @@ serve(async (req) => {
         let generatedImage = null;
         
         for (const part of parts) {
-          if (part.inline_data) {
-            generatedImage = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+          // Handle both snake_case (inline_data) and camelCase (inlineData) responses
+          const inlineData = part.inline_data || part.inlineData;
+          if (inlineData) {
+            const mimeType = inlineData.mime_type || inlineData.mimeType || "image/png";
+            generatedImage = `data:${mimeType};base64,${inlineData.data}`;
             break;
           }
         }
