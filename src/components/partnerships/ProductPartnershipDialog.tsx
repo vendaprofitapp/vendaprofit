@@ -134,7 +134,7 @@ export function ProductPartnershipDialog({
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
     },
     onError: (error) => {
       toast({
@@ -169,7 +169,7 @@ export function ProductPartnershipDialog({
       return productsToRelease.length;
     },
     onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
       toast({
         title: "Produtos liberados!",
         description: `${count} produto${count !== 1 ? "s" : ""} liberado${count !== 1 ? "s" : ""} com sucesso.`,
@@ -208,7 +208,7 @@ export function ProductPartnershipDialog({
       return { count: productsInCategory.length, category };
     },
     onSuccess: ({ count, category }) => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
       toast({
         title: "Categoria liberada!",
         description: `${count} produto${count !== 1 ? "s" : ""} de "${category}" liberado${count !== 1 ? "s" : ""}.`,

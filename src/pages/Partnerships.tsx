@@ -305,7 +305,7 @@ export default function Partnerships() {
       queryClient.invalidateQueries({ queryKey: ["group-memberships"] });
       queryClient.invalidateQueries({ queryKey: ["all-group-members"] });
       queryClient.invalidateQueries({ queryKey: ["partnership-rules"] });
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
     },
     onError: (error) => {
       toast({ title: "Erro ao excluir parceria", description: error.message, variant: "destructive" });
@@ -404,7 +404,7 @@ export default function Partnerships() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
     },
     onError: (error) => {
       toast({ title: "Erro ao atualizar produto", description: error.message, variant: "destructive" });
@@ -421,7 +421,7 @@ export default function Partnerships() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
       queryClient.invalidateQueries({ queryKey: ["auto-share-settings"] });
       toast({ title: "Configuração atualizada!" });
     },
