@@ -6,8 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
-import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Minus, Trash2, X, Flame } from "lucide-react";
-import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -81,15 +80,8 @@ export default function StoreCatalog() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showOpportunities, setShowOpportunities] = useState(false);
-  const [fittingRoomOpen, setFittingRoomOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<CatalogDisplayItem | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-
-  const handleOpenFittingRoom = (item: CatalogDisplayItem) => {
-    setSelectedProduct(item);
-    setFittingRoomOpen(true);
-  };
 
   // Cart functions
   const addToCart = (item: CatalogDisplayItem, size: string) => {
@@ -699,7 +691,6 @@ export default function StoreCatalog() {
                 item={item}
                 primaryColor={primaryColor}
                 onAddToCart={addToCart}
-                onOpenFittingRoom={handleOpenFittingRoom}
               />
             ))}
           </div>
@@ -733,16 +724,6 @@ export default function StoreCatalog() {
         </div>
       </footer>
 
-      {/* AI Fitting Room Dialog */}
-      <AIFittingRoomDialog
-        open={fittingRoomOpen}
-        onOpenChange={setFittingRoomOpen}
-        product={selectedProduct ? {
-          id: selectedProduct.productId,
-          name: selectedProduct.name,
-          image_url: selectedProduct.image_url,
-        } : null}
-      />
     </div>
   );
 }
@@ -752,10 +733,9 @@ interface ProductCardProps {
   item: CatalogDisplayItem;
   primaryColor: string;
   onAddToCart: (item: CatalogDisplayItem, size: string) => void;
-  onOpenFittingRoom: (item: CatalogDisplayItem) => void;
 }
 
-function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: ProductCardProps) {
+function ProductCard({ item, primaryColor, onAddToCart }: ProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [imageOpen, setImageOpen] = useState(false);
 
@@ -850,17 +830,6 @@ function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: Pro
           )}
 
           <div className="space-y-2">
-            {item.image_url && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                onClick={() => onOpenFittingRoom(item)}
-              >
-                <Sparkles className="h-4 w-4" />
-                Provador I.A.
-              </Button>
-            )}
             <Button
               size="sm"
               className="w-full gap-2"
