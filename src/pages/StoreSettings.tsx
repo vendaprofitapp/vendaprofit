@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2 } from "lucide-react";
 
 interface StoreSettings {
   id: string;
@@ -25,6 +25,11 @@ interface StoreSettings {
   logo_url: string | null;
   banner_url: string | null;
   primary_color: string | null;
+  background_color: string | null;
+  card_background_color: string | null;
+  banner_link: string | null;
+  is_banner_visible: boolean;
+  banner_height_mobile: string | null;
 }
 
 interface Group {
@@ -42,6 +47,7 @@ export default function StoreSettings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     store_slug: "",
@@ -51,10 +57,17 @@ export default function StoreSettings() {
     show_own_products: true,
     is_active: true,
     primary_color: "#8B5CF6",
+    background_color: "#fafaf9",
+    card_background_color: "#ffffff",
+    banner_link: "",
+    is_banner_visible: false,
+    banner_height_mobile: "150px",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   // Fetch store settings
   const { data: storeSettings, isLoading } = useQuery({
@@ -122,10 +135,78 @@ export default function StoreSettings() {
         show_own_products: storeSettings.show_own_products,
         is_active: storeSettings.is_active,
         primary_color: storeSettings.primary_color || "#8B5CF6",
+        background_color: storeSettings.background_color || "#fafaf9",
+        card_background_color: storeSettings.card_background_color || "#ffffff",
+        banner_link: storeSettings.banner_link || "",
+        is_banner_visible: storeSettings.is_banner_visible ?? false,
+        banner_height_mobile: storeSettings.banner_height_mobile || "150px",
       });
       setLogoUrl(storeSettings.logo_url);
+      setBannerUrl(storeSettings.banner_url);
     }
   }, [storeSettings]);
+
+  // Handle banner upload
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor, selecione uma imagem");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5MB");
+      return;
+    }
+
+    setUploadingBanner(true);
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${user!.id}/banner-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("store-banners")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrl } = supabase.storage
+        .from("store-banners")
+        .getPublicUrl(fileName);
+
+      setBannerUrl(publicUrl.publicUrl);
+
+      // Update in database if store exists
+      if (storeSettings?.id) {
+        await supabase
+          .from("store_settings")
+          .update({ banner_url: publicUrl.publicUrl })
+          .eq("id", storeSettings.id);
+        queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+      }
+
+      toast.success("Banner enviado com sucesso!");
+    } catch (error) {
+      console.error("Error uploading banner:", error);
+      toast.error("Erro ao enviar banner");
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const removeBanner = async () => {
+    setBannerUrl(null);
+    if (storeSettings?.id) {
+      await supabase
+        .from("store_settings")
+        .update({ banner_url: null })
+        .eq("id", storeSettings.id);
+      queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+    }
+  };
 
   // Handle logo upload
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,6 +292,11 @@ export default function StoreSettings() {
             show_own_products: formData.show_own_products,
             is_active: formData.is_active,
             primary_color: formData.primary_color,
+            background_color: formData.background_color,
+            card_background_color: formData.card_background_color,
+            banner_link: formData.banner_link || null,
+            is_banner_visible: formData.is_banner_visible,
+            banner_height_mobile: formData.banner_height_mobile,
           })
           .eq("id", storeSettings.id);
         
@@ -229,6 +315,11 @@ export default function StoreSettings() {
             show_own_products: formData.show_own_products,
             is_active: formData.is_active,
             primary_color: formData.primary_color,
+            background_color: formData.background_color,
+            card_background_color: formData.card_background_color,
+            banner_link: formData.banner_link || null,
+            is_banner_visible: formData.is_banner_visible,
+            banner_height_mobile: formData.banner_height_mobile,
           })
           .select("id")
           .single();
@@ -384,7 +475,212 @@ export default function StoreSettings() {
           </CardContent>
         </Card>
 
-        {/* Basic Settings */}
+        {/* Visual Customization & Banner */}
+        <Card className="border-2 border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Personalização Visual & Banner
+            </CardTitle>
+            <CardDescription>
+              Personalize as cores e adicione um banner promocional à sua loja
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Banner Section */}
+            <div className="space-y-4">
+              <h4 className="font-medium flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                Banner Promocional
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                📱 Formato ideal para mobile: retangular horizontal (ex: 1200x300px)
+              </p>
+              
+              <div className="space-y-4">
+                {bannerUrl ? (
+                  <div className="relative">
+                    <img
+                      src={bannerUrl}
+                      alt="Banner promocional"
+                      className="w-full h-32 object-cover rounded-lg border shadow-sm"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2 h-8 w-8 rounded-full"
+                      onClick={removeBanner}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="w-full h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30">
+                    <div className="text-center">
+                      <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">Nenhum banner configurado</p>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    ref={bannerInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBannerUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => bannerInputRef.current?.click()}
+                    disabled={uploadingBanner}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingBanner ? "Enviando..." : "Enviar Banner"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">PNG, JPG ou WebP. Máximo 5MB.</p>
+                </div>
+
+                {/* Banner Visibility Toggle */}
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  <div>
+                    <Label className="font-medium">Exibir Banner</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Ative para mostrar o banner na sua loja
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.is_banner_visible}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_banner_visible: checked }))}
+                  />
+                </div>
+
+                {/* Banner Link */}
+                <div className="space-y-2">
+                  <Label htmlFor="banner_link" className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4" />
+                    Link do Banner (opcional)
+                  </Label>
+                  <Input
+                    id="banner_link"
+                    value={formData.banner_link}
+                    onChange={(e) => setFormData(prev => ({ ...prev, banner_link: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se preenchido, o banner será clicável e abrirá este link
+                  </p>
+                </div>
+
+                {/* Banner Height Mobile */}
+                <div className="space-y-2">
+                  <Label htmlFor="banner_height_mobile">Altura do Banner (Mobile)</Label>
+                  <Input
+                    id="banner_height_mobile"
+                    value={formData.banner_height_mobile}
+                    onChange={(e) => setFormData(prev => ({ ...prev, banner_height_mobile: e.target.value }))}
+                    placeholder="150px"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ex: 150px, 200px. Define a altura do banner em dispositivos móveis.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t pt-6">
+              <h4 className="font-medium flex items-center gap-2 mb-4">
+                <Palette className="h-4 w-4" />
+                Cores da Loja
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Primary Color */}
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                  <Label htmlFor="primary_color_picker" className="font-medium">
+                    Cor Primária (Botões e Destaques)
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      id="primary_color_picker"
+                      value={formData.primary_color}
+                      onChange={(e) => setFormData(prev => ({ ...prev, primary_color: e.target.value }))}
+                      className="w-12 h-12 rounded-lg border-2 cursor-pointer shadow-sm"
+                    />
+                    <div className="flex-1">
+                      <Input
+                        value={formData.primary_color}
+                        onChange={(e) => setFormData(prev => ({ ...prev, primary_color: e.target.value }))}
+                        className="font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div 
+                    className="h-8 rounded-md mt-2 flex items-center justify-center text-white text-sm font-medium"
+                    style={{ backgroundColor: formData.primary_color }}
+                  >
+                    Preview do Botão
+                  </div>
+                </div>
+
+                {/* Background Color */}
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                  <Label htmlFor="background_color_picker" className="font-medium">
+                    Cor de Fundo da Página
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      id="background_color_picker"
+                      value={formData.background_color}
+                      onChange={(e) => setFormData(prev => ({ ...prev, background_color: e.target.value }))}
+                      className="w-12 h-12 rounded-lg border-2 cursor-pointer shadow-sm"
+                    />
+                    <div className="flex-1">
+                      <Input
+                        value={formData.background_color}
+                        onChange={(e) => setFormData(prev => ({ ...prev, background_color: e.target.value }))}
+                        className="font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div 
+                    className="h-8 rounded-md mt-2 border flex items-center justify-center text-xs"
+                    style={{ backgroundColor: formData.background_color }}
+                  >
+                    Preview do Fundo
+                  </div>
+                </div>
+
+                {/* Card Background Color */}
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg md:col-span-2">
+                  <Label htmlFor="card_background_color_picker" className="font-medium">
+                    Cor de Fundo dos Cards de Produto
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      id="card_background_color_picker"
+                      value={formData.card_background_color}
+                      onChange={(e) => setFormData(prev => ({ ...prev, card_background_color: e.target.value }))}
+                      className="w-12 h-12 rounded-lg border-2 cursor-pointer shadow-sm"
+                    />
+                    <div className="flex-1 max-w-xs">
+                      <Input
+                        value={formData.card_background_color}
+                        onChange={(e) => setFormData(prev => ({ ...prev, card_background_color: e.target.value }))}
+                        className="font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Informações Básicas</CardTitle>
@@ -440,27 +736,6 @@ export default function StoreSettings() {
               <p className="text-xs text-muted-foreground">
                 Os clientes poderão entrar em contato via WhatsApp para comprar
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="primary_color" className="flex items-center gap-2">
-                <Palette className="h-4 w-4" />
-                Cor Principal
-              </Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  id="primary_color"
-                  value={formData.primary_color}
-                  onChange={(e) => setFormData(prev => ({ ...prev, primary_color: e.target.value }))}
-                  className="w-10 h-10 rounded border cursor-pointer"
-                />
-                <Input
-                  value={formData.primary_color}
-                  onChange={(e) => setFormData(prev => ({ ...prev, primary_color: e.target.value }))}
-                  className="w-28"
-                />
-              </div>
             </div>
           </CardContent>
         </Card>
