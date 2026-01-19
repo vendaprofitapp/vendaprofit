@@ -79,10 +79,14 @@ interface StoreSettings {
   banner_link: string | null;
   is_banner_visible: boolean;
   banner_height_mobile: string | null;
+  banner_height_desktop: string | null;
   font_heading: string | null;
   font_body: string | null;
   custom_font_url: string | null;
   custom_font_name: string | null;
+  show_opportunities_button: boolean;
+  opportunities_button_text: string | null;
+  opportunities_button_color: string | null;
 }
 
 export default function StoreCatalog() {
@@ -457,6 +461,12 @@ export default function StoreCatalog() {
   const cardBackgroundColor = store.card_background_color || "#ffffff";
   const showBanner = store.is_banner_visible && store.banner_url;
   const bannerHeightMobile = store.banner_height_mobile || "150px";
+  const bannerHeightDesktop = store.banner_height_desktop || "120px";
+  
+  // Opportunities button customization
+  const showOpportunitiesButton = store.show_opportunities_button ?? true;
+  const opportunitiesButtonText = store.opportunities_button_text || "OPORTUNIDADES";
+  const opportunitiesButtonColor = store.opportunities_button_color || "#f97316";
   
   // Font customization
   const fontHeading = store.font_heading || "Inter";
@@ -472,10 +482,11 @@ export default function StoreCatalog() {
       <img 
         src={store.banner_url!} 
         alt="Promoção"
-        className="w-full object-cover"
+        className="w-full object-contain"
         style={{ 
-          height: bannerHeightMobile,
-          maxHeight: "200px"
+          width: "100%",
+          height: "auto",
+          maxHeight: window.innerWidth >= 768 ? bannerHeightDesktop : bannerHeightMobile,
         }}
       />
     );
@@ -671,25 +682,32 @@ export default function StoreCatalog() {
       {/* Search and Filters */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Opportunities Button */}
-        <div className="flex justify-center mb-6">
-          <button
-            className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all",
-              showOpportunities
-                ? "bg-orange-500 text-white shadow-lg shadow-orange-500/25"
-                : "bg-orange-50 text-orange-600 hover:bg-orange-100"
-            )}
-            onClick={() => {
-              setShowOpportunities(!showOpportunities);
-              if (!showOpportunities) {
-                setSelectedCategory(null);
-              }
-            }}
-          >
-            <Flame className="h-4 w-4" />
-            OPORTUNIDADES
-          </button>
-        </div>
+        {showOpportunitiesButton && (
+          <div className="flex justify-center mb-6">
+            <button
+              className={cn(
+                "flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all",
+                showOpportunities
+                  ? "text-white shadow-lg"
+                  : "hover:opacity-80"
+              )}
+              style={{
+                backgroundColor: showOpportunities ? opportunitiesButtonColor : `${opportunitiesButtonColor}15`,
+                color: showOpportunities ? "white" : opportunitiesButtonColor,
+                boxShadow: showOpportunities ? `0 10px 15px -3px ${opportunitiesButtonColor}40` : undefined,
+              }}
+              onClick={() => {
+                setShowOpportunities(!showOpportunities);
+                if (!showOpportunities) {
+                  setSelectedCategory(null);
+                }
+              }}
+            >
+              <Flame className="h-4 w-4" />
+              {opportunitiesButtonText}
+            </button>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="relative max-w-md mx-auto mb-6">
