@@ -125,10 +125,7 @@ export function ProductPartnershipDialog({
       } else {
         const { error } = await supabase
           .from("product_partnerships")
-          .upsert(
-            { product_id: productId, group_id: groupId },
-            { onConflict: "group_id,product_id" }
-          );
+          .insert({ product_id: productId, group_id: groupId });
         if (error) throw error;
       }
     },
@@ -162,7 +159,7 @@ export function ProductPartnershipDialog({
 
       const { error } = await supabase
         .from("product_partnerships")
-        .upsert(inserts, { onConflict: "group_id,product_id" });
+        .insert(inserts);
 
       if (error) throw error;
       return productsToRelease.length;
@@ -201,7 +198,7 @@ export function ProductPartnershipDialog({
 
       const { error } = await supabase
         .from("product_partnerships")
-        .upsert(inserts, { onConflict: "group_id,product_id" });
+        .insert(inserts);
 
       if (error) throw error;
       return { count: productsInCategory.length, category };
