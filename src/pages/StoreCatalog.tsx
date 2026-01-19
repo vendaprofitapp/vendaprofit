@@ -10,7 +10,7 @@ import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Mi
 import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -826,21 +826,26 @@ function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: Pro
             </div>
           )}
 
-          {/* Size selector */}
+          {/* Size selector - using buttons instead of Select for better iOS compatibility */}
           {item.sizes.length > 0 && (
             <div className="mb-3">
-              <Select value={selectedSize} onValueChange={setSelectedSize}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Selecione o tamanho" />
-                </SelectTrigger>
-                <SelectContent>
-                  {item.sizes.map(size => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <p className="text-xs text-muted-foreground mb-1.5">Tamanho:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {item.sizes.map(size => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setSelectedSize(size)}
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors touch-manipulation ${
+                      selectedSize === size
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background hover:border-primary/50"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
