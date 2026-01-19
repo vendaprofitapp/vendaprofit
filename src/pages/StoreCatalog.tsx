@@ -74,6 +74,11 @@ interface StoreSettings {
   logo_url: string | null;
   banner_url: string | null;
   primary_color: string | null;
+  background_color: string | null;
+  card_background_color: string | null;
+  banner_link: string | null;
+  is_banner_visible: boolean;
+  banner_height_mobile: string | null;
 }
 
 export default function StoreCatalog() {
@@ -444,11 +449,50 @@ export default function StoreCatalog() {
   }
 
   const primaryColor = store.primary_color || "#000000";
+  const backgroundColor = store.background_color || "#fafaf9";
+  const cardBackgroundColor = store.card_background_color || "#ffffff";
+  const showBanner = store.is_banner_visible && store.banner_url;
+  const bannerHeightMobile = store.banner_height_mobile || "150px";
+
+  // Promotional Banner Component
+  const PromotionalBanner = () => {
+    if (!showBanner) return null;
+    
+    const bannerContent = (
+      <img 
+        src={store.banner_url!} 
+        alt="Promoção"
+        className="w-full object-cover"
+        style={{ 
+          height: bannerHeightMobile,
+          maxHeight: "200px"
+        }}
+      />
+    );
+
+    if (store.banner_link) {
+      return (
+        <a 
+          href={store.banner_link} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="block w-full cursor-pointer hover:opacity-95 transition-opacity"
+        >
+          {bannerContent}
+        </a>
+      );
+    }
+
+    return <div className="w-full">{bannerContent}</div>;
+  };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ backgroundColor }}>
+      {/* Promotional Banner - Top of page */}
+      <PromotionalBanner />
+      
       {/* Minimal Header */}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100" style={{ backgroundColor: `${backgroundColor}f5` }}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -686,6 +730,7 @@ export default function StoreCatalog() {
                 key={item.id}
                 item={item}
                 primaryColor={primaryColor}
+                cardBackgroundColor={cardBackgroundColor}
                 onAddToCart={addToCart}
               />
             ))}
@@ -730,10 +775,11 @@ export default function StoreCatalog() {
 interface BoutiqueProductCardProps {
   item: CatalogDisplayItem;
   primaryColor: string;
+  cardBackgroundColor: string;
   onAddToCart: (item: CatalogDisplayItem, size: string) => void;
 }
 
-function BoutiqueProductCard({ item, primaryColor, onAddToCart }: BoutiqueProductCardProps) {
+function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart }: BoutiqueProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [isHovering, setIsHovering] = useState(false);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
@@ -774,7 +820,8 @@ function BoutiqueProductCard({ item, primaryColor, onAddToCart }: BoutiqueProduc
   return (
     <>
       <div 
-        className="group flex flex-col"
+        className="group flex flex-col p-3 rounded-2xl shadow-sm hover:shadow-md transition-shadow"
+        style={{ backgroundColor: cardBackgroundColor }}
         onMouseEnter={handleInteractionStart}
         onMouseLeave={handleInteractionEnd}
         onTouchStart={handleInteractionStart}
