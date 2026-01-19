@@ -1080,6 +1080,9 @@ export type Database = {
           response_notes: string | null
           status: Database["public"]["Enums"]["request_status"]
           updated_at: string
+          variant_color: string | null
+          variant_id: string | null
+          variant_size: string | null
         }
         Insert: {
           created_at?: string
@@ -1093,6 +1096,9 @@ export type Database = {
           response_notes?: string | null
           status?: Database["public"]["Enums"]["request_status"]
           updated_at?: string
+          variant_color?: string | null
+          variant_id?: string | null
+          variant_size?: string | null
         }
         Update: {
           created_at?: string
@@ -1106,6 +1112,9 @@ export type Database = {
           response_notes?: string | null
           status?: Database["public"]["Enums"]["request_status"]
           updated_at?: string
+          variant_color?: string | null
+          variant_id?: string | null
+          variant_size?: string | null
         }
         Relationships: [
           {
@@ -1113,6 +1122,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_requests_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
         ]
@@ -1278,6 +1294,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approve_stock_request: {
+        Args: { _request_id: string; _response_notes?: string }
+        Returns: Json
+      }
       cleanup_old_fitting_room_usage: { Args: never; Returns: undefined }
       has_role: {
         Args: {
