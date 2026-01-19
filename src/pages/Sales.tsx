@@ -268,6 +268,51 @@ export default function Sales() {
     enabled: !!user,
   });
 
+  // Fetch product partnerships for user's own products (to detect when own stock is in a partnership)
+  const { data: ownProductPartnerships = [] } = useQuery({
+    queryKey: ["own-product-partnerships", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("product_partnerships")
+        .select(`
+          product_id,
+          group_id,
+          group:groups!inner(id, is_direct, cost_split_ratio, profit_share_seller, profit_share_partner, commission_percent)
+        `)
+        .in("group_id", userGroups);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && userGroups.length > 0,
+  });
+
+  // Create a map of product ID to partnership info for ProfitBreakdownCard
+  const productPartnershipsMap = useMemo(() => {
+    const map = new Map<string, {
+      groupId: string;
+      isDirect: boolean;
+      costSplitRatio: number;
+      profitShareSeller: number;
+      profitSharePartner: number;
+      commissionPercent: number;
+    }>();
+    
+    ownProductPartnerships.forEach((pp: any) => {
+      if (pp.group && pp.product_id) {
+        map.set(pp.product_id, {
+          groupId: pp.group_id,
+          isDirect: pp.group.is_direct ?? false,
+          costSplitRatio: pp.group.cost_split_ratio ?? 0.5,
+          profitShareSeller: pp.group.profit_share_seller ?? 0.7,
+          profitSharePartner: pp.group.profit_share_partner ?? 0.3,
+          commissionPercent: pp.group.commission_percent ?? 0.2,
+        });
+      }
+    });
+    
+    return map;
+  }, [ownProductPartnerships]);
+
   // Check if user has any active partnerships (for profit breakdown display)
   const hasActivePartnership = userGroups.length > 0;
 
@@ -567,36 +612,118 @@ export default function Sales() {
         const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
         const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
         const sellerIsOwner = item.product.owner_id === user.id;
-        const isPartnershipStock = item.isPartnerStock;
+        
+        // Check if this product is in a partnership (even if it's our own stock)
+        // Products in product_partnerships should ALWAYS apply partnership rules
+        const { data: productPartnershipData } = await supabase
+          .from("product_partnerships")
+          .select("group_id, group:groups!inner(id, is_direct, cost_split_ratio, profit_share_seller, profit_share_partner, commission_percent)")
+          .eq("product_id", item.product.id)
+          .limit(1)
+          .maybeSingle();
+        
+        // If product is in product_partnerships, it's partnership stock regardless of who owns it
+        const isInPartnership = !!productPartnershipData?.group_id;
+        const isPartnershipStock = item.isPartnerStock || isInPartnership;
+        const partnershipGroup = productPartnershipData?.group as {
+          id: string;
+          is_direct: boolean;
+          cost_split_ratio: number;
+          profit_share_seller: number;
+          profit_share_partner: number;
+          commission_percent: number;
+        } | null;
 
         // Pass payment method fee to profitEngine - it will deduct fee before calculating profit
         const splitResult = calculateSaleSplits({
           salePrice: salePriceAfterDiscount,
           costPrice,
-          groupCommissionPercent: 0.20, // Default group commission
+          groupCommissionPercent: partnershipGroup?.commission_percent ?? 0.20,
           isPartnershipStock,
           sellerIsOwner,
-          hasActivePartnership: userGroups.length > 0,
-          paymentMethodFee: feePercent, // Include payment fee in calculation
+          hasActivePartnership: isInPartnership || userGroups.length > 0,
+          isDirectPartnership: partnershipGroup?.is_direct ?? false,
+          paymentMethodFee: feePercent,
+          partnership: partnershipGroup ? {
+            cost_split_ratio: partnershipGroup.cost_split_ratio,
+            profit_share_seller: partnershipGroup.profit_share_seller,
+            profit_share_partner: partnershipGroup.profit_share_partner,
+            is_direct: partnershipGroup.is_direct,
+          } : null,
+          group: partnershipGroup ? {
+            commission_percent: partnershipGroup.commission_percent,
+            is_direct: partnershipGroup.is_direct,
+          } : null,
         });
 
+        // SCENARIO A: Partnership stock sold by partner (seller is also an owner in the partnership)
+        // Generate splits for both partners
+        if (splitResult.scenario === 'A' && isInPartnership && productPartnershipData?.group_id) {
+          // Get all members of this partnership group
+          const { data: groupMembers } = await supabase
+            .from("group_members")
+            .select("user_id")
+            .eq("group_id", productPartnershipData.group_id);
+
+          if (groupMembers && groupMembers.length >= 2) {
+            // Find the partner (the other member who is not the seller)
+            const partnerUserId = groupMembers.find(m => m.user_id !== user.id)?.user_id;
+
+            // Add seller split (current user)
+            if (splitResult.seller.costRecovery > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: user.id,
+                amount: splitResult.seller.costRecovery,
+                type: 'cost_recovery',
+                description: `Recuperação de custo ${((partnershipGroup?.cost_split_ratio ?? 0.5) * 100).toFixed(0)}% (parceria) - ${item.product.name}`,
+              });
+            }
+            if (splitResult.seller.profitShare > 0) {
+              financialSplitsToInsert.push({
+                sale_id: sale.id,
+                user_id: user.id,
+                amount: splitResult.seller.profitShare,
+                type: 'profit_share',
+                description: `Lucro ${((partnershipGroup?.profit_share_seller ?? 0.7) * 100).toFixed(0)}% vendedora (parceria) - ${item.product.name}`,
+              });
+            }
+
+            // Add partner split
+            if (partnerUserId && splitResult.partner.total > 0) {
+              if (splitResult.partner.costRecovery > 0) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: partnerUserId,
+                  amount: splitResult.partner.costRecovery,
+                  type: 'cost_recovery',
+                  description: `Recuperação de custo ${((1 - (partnershipGroup?.cost_split_ratio ?? 0.5)) * 100).toFixed(0)}% (parceria) - ${item.product.name}`,
+                });
+              }
+              if (splitResult.partner.profitShare > 0) {
+                financialSplitsToInsert.push({
+                  sale_id: sale.id,
+                  user_id: partnerUserId,
+                  amount: splitResult.partner.profitShare,
+                  type: 'profit_share',
+                  description: `Lucro ${((partnershipGroup?.profit_share_partner ?? 0.3) * 100).toFixed(0)}% sócia (parceria) - ${item.product.name}`,
+                });
+              }
+            }
+          }
+        }
         // SCENARIO C: Third-party sells partnership stock
         // Generate two financial_splits, one for each partner
-        if (splitResult.scenario === 'C' && isPartnershipStock) {
-          // Get the partnership group and members for this product
-          const { data: productPartnership } = await supabase
-            .from("product_partnerships")
-            .select("group_id")
-            .eq("product_id", item.product.id)
-            .limit(1)
-            .maybeSingle();
+        else if (splitResult.scenario === 'C' && isPartnershipStock) {
+          // Use the partnership data we already have, or fetch if needed
+          const groupId = productPartnershipData?.group_id;
 
-          if (productPartnership?.group_id) {
+          if (groupId) {
             // Get all members of this partnership group
             const { data: groupMembers } = await supabase
               .from("group_members")
               .select("user_id")
-              .eq("group_id", productPartnership.group_id);
+              .eq("group_id", groupId);
 
             if (groupMembers && groupMembers.length >= 2) {
               // Find the two partners (owner and the other member)
@@ -638,7 +765,7 @@ export default function Sales() {
             }
           }
         } else {
-          // Other scenarios: seller splits (current user)
+          // Other scenarios (OWN_STOCK, B): seller splits (current user)
           if (splitResult.seller.total > 0) {
             if (splitResult.seller.costRecovery > 0) {
               financialSplitsToInsert.push({
@@ -660,7 +787,7 @@ export default function Sales() {
             }
           }
 
-          // Add owner splits (product owner, when different from seller)
+          // Add owner splits (product owner, when different from seller - Scenario B)
           if (splitResult.owner.total > 0 && item.product.owner_id !== user.id) {
             if (splitResult.owner.costRecovery > 0) {
               financialSplitsToInsert.push({
@@ -679,36 +806,6 @@ export default function Sales() {
                 type: 'group_commission',
                 description: `Comissão de grupo - ${item.product.name}`,
               });
-            }
-          }
-
-          // Add partner splits (Scenario A - partnership stock sold by partner)
-          if (splitResult.scenario === 'A' && splitResult.partner.total > 0) {
-            // Find the partner for this product's partnership
-            const { data: productPartnership } = await supabase
-              .from("product_partnerships")
-              .select("group_id")
-              .eq("product_id", item.product.id)
-              .limit(1)
-              .maybeSingle();
-
-            if (productPartnership?.group_id) {
-              const { data: groupMembers } = await supabase
-                .from("group_members")
-                .select("user_id")
-                .eq("group_id", productPartnership.group_id);
-
-              const partnerUserId = groupMembers?.find(m => m.user_id !== user.id)?.user_id;
-
-              if (partnerUserId) {
-                financialSplitsToInsert.push({
-                  sale_id: sale.id,
-                  user_id: partnerUserId,
-                  amount: splitResult.partner.total,
-                  type: 'profit_share',
-                  description: `Participação na venda (parceria) - ${item.product.name}`,
-                });
-              }
             }
           }
         }
@@ -1794,6 +1891,7 @@ export default function Sales() {
                       : 0
                   }
                   saleNetMultiplier={subtotal > 0 ? total / subtotal : 1}
+                  productPartnerships={productPartnershipsMap}
                 />
               )}
 

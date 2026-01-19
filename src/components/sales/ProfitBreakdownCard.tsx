@@ -18,6 +18,16 @@ interface CartItemWithCost {
   ownerName?: string;
 }
 
+// Partnership config for a specific product
+interface ProductPartnershipInfo {
+  groupId: string;
+  isDirect: boolean;
+  costSplitRatio: number;
+  profitShareSeller: number;
+  profitSharePartner: number;
+  commissionPercent: number;
+}
+
 interface ProfitBreakdownCardProps {
   cart: CartItemWithCost[];
   currentUserId: string;
@@ -27,6 +37,8 @@ interface ProfitBreakdownCardProps {
   paymentFeePercent?: number;
   /** Multiplicador para refletir desconto aplicado no total (ex: total/subtotal) */
   saleNetMultiplier?: number;
+  /** Map of product ID to partnership info (for own products in partnerships) */
+  productPartnerships?: Map<string, ProductPartnershipInfo>;
 }
 
 interface AggregatedSplits {
@@ -63,6 +75,7 @@ export function ProfitBreakdownCard({
   hasActivePartnership,
   paymentFeePercent = 0,
   saleNetMultiplier = 1,
+  productPartnerships,
 }: ProfitBreakdownCardProps) {
   const aggregatedSplits = useMemo<AggregatedSplits>(() => {
     const result: AggregatedSplits = {
@@ -85,17 +98,34 @@ export function ProfitBreakdownCard({
       // Use cost_price if available, otherwise estimate as 50% of sale price
       const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
-      const isPartnershipStock = item.isPartnerStock;
+      
+      // Check if product is in a partnership (from passed map)
+      const partnershipInfo = productPartnerships?.get(item.product.id);
+      const isInPartnership = !!partnershipInfo;
+      
+      // Product is partnership stock if it came from partner OR if it's in our partnerships
+      const isPartnershipStock = item.isPartnerStock || isInPartnership;
 
       // Pass payment fee to profitEngine - it will calculate net revenue internally
       const splitResult = calculateSaleSplits({
         salePrice: salePriceAfterDiscount,
         costPrice,
-        groupCommissionPercent,
+        groupCommissionPercent: partnershipInfo?.commissionPercent ?? groupCommissionPercent,
         isPartnershipStock,
         sellerIsOwner,
-        hasActivePartnership,
+        hasActivePartnership: isInPartnership || hasActivePartnership,
+        isDirectPartnership: partnershipInfo?.isDirect ?? false,
         paymentMethodFee: paymentFeePercent,
+        partnership: partnershipInfo ? {
+          cost_split_ratio: partnershipInfo.costSplitRatio,
+          profit_share_seller: partnershipInfo.profitShareSeller,
+          profit_share_partner: partnershipInfo.profitSharePartner,
+          is_direct: partnershipInfo.isDirect,
+        } : null,
+        group: partnershipInfo ? {
+          commission_percent: partnershipInfo.commissionPercent,
+          is_direct: partnershipInfo.isDirect,
+        } : null,
       });
       
       const feeAmount = splitResult.paymentFeeAmount;
@@ -128,7 +158,7 @@ export function ProfitBreakdownCard({
     });
 
     return result;
-  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier]);
+  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier, productPartnerships]);
 
   // Don't show if cart is empty
   if (cart.length === 0) {
@@ -136,7 +166,12 @@ export function ProfitBreakdownCard({
   }
 
   // Show if there are partnership items, active partnerships, OR payment fees
-  const hasPartnershipItems = cart.some(item => item.isPartnerStock || item.product.owner_id !== currentUserId);
+  // Also show if any product in cart is in a partnership
+  const hasPartnershipItems = cart.some(item => 
+    item.isPartnerStock || 
+    item.product.owner_id !== currentUserId || 
+    productPartnerships?.has(item.product.id)
+  );
   const hasPaymentFee = paymentFeePercent > 0;
   const shouldShow = hasPartnershipItems || hasActivePartnership || hasPaymentFee;
 
