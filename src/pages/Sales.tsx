@@ -887,9 +887,14 @@ export default function Sales() {
     setProductSearch("");
   };
 
-  // Called when variant is selected and confirmed
-  const handleVariantConfirm = (product: Product, variant: ProductVariant | null, quantity: number) => {
-    const cartKey = variant ? `${product.id}-${variant.id}` : product.id;
+  // Called when variant is selected and confirmed (now handles partner variants)
+  const handleVariantConfirm = (
+    product: Product, 
+    variant: ProductVariant | null, 
+    quantity: number,
+    isPartnerStock: boolean = false,
+    ownerName?: string
+  ) => {
     const stockLimit = variant ? variant.stock_quantity : product.stock_quantity;
     
     setCart((prev) => {
@@ -897,7 +902,7 @@ export default function Sales() {
         if (variant) {
           return item.variant?.id === variant.id;
         }
-        return item.product.id === product.id && !item.variant;
+        return item.product.id === product.id && !item.variant && item.isPartnerStock === isPartnerStock;
       });
       
       if (existing) {
@@ -907,7 +912,7 @@ export default function Sales() {
             if (variant && item.variant?.id === variant.id) {
               return { ...item, quantity: newQty };
             }
-            if (!variant && item.product.id === product.id && !item.variant) {
+            if (!variant && item.product.id === product.id && !item.variant && item.isPartnerStock === isPartnerStock) {
               return { ...item, quantity: newQty };
             }
             return item;
@@ -917,7 +922,7 @@ export default function Sales() {
         return prev;
       }
 
-      return [...prev, { product, quantity, isPartnerStock: false, variant }];
+      return [...prev, { product, quantity, isPartnerStock, ownerName, variant }];
     });
 
     setShowVariantDialog(false);
@@ -2160,12 +2165,15 @@ export default function Sales() {
         </DialogContent>
       </Dialog>
 
-      {/* Variant Selection Dialog */}
+      {/* Variant Selection Dialog - Now includes partner variants */}
       <VariantSelectionDialog
         open={showVariantDialog}
         onOpenChange={setShowVariantDialog}
         product={selectedProductForVariant}
         onConfirm={handleVariantConfirm}
+        userGroups={userGroups}
+        profiles={profiles}
+        userId={user?.id}
       />
 
       {/* Voice Sale Dialog - Similarity Search */}
