@@ -822,9 +822,24 @@ export default function Sales() {
       return sale;
     },
     onSuccess: () => {
+      // Core lists
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
+
+      // Reports / settlements (keep base keys so date-range variants are also refreshed)
+      queryClient.invalidateQueries({ queryKey: ["partner-sales"] });
+      queryClient.invalidateQueries({ queryKey: ["products-for-partner-report"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships-report"] });
+
+      queryClient.invalidateQueries({ queryKey: ["settlement-splits"] });
+      queryClient.invalidateQueries({ queryKey: ["settlement-sales"] });
+
+      queryClient.invalidateQueries({ queryKey: ["financial-splits-received"] });
+      queryClient.invalidateQueries({ queryKey: ["financial-splits-all"] });
+      queryClient.invalidateQueries({ queryKey: ["my-products-financial"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships-financial"] });
+
       toast({ title: "Venda registrada com sucesso!" });
       resetForm();
       setIsNewSaleOpen(false);
