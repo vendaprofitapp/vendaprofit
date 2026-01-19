@@ -123,9 +123,13 @@ export function ProductPartnershipDialog({
           .eq("group_id", groupId);
         if (error) throw error;
       } else {
+        // Use upsert with ignoreDuplicates to avoid UPDATE (no UPDATE policy on this table)
         const { error } = await supabase
           .from("product_partnerships")
-          .insert({ product_id: productId, group_id: groupId });
+          .upsert(
+            { product_id: productId, group_id: groupId },
+            { onConflict: "product_id,group_id", ignoreDuplicates: true }
+          );
         if (error) throw error;
       }
     },
@@ -159,7 +163,7 @@ export function ProductPartnershipDialog({
 
       const { error } = await supabase
         .from("product_partnerships")
-        .insert(inserts);
+        .upsert(inserts, { onConflict: "product_id,group_id", ignoreDuplicates: true });
 
       if (error) throw error;
       return productsToRelease.length;
@@ -198,7 +202,7 @@ export function ProductPartnershipDialog({
 
       const { error } = await supabase
         .from("product_partnerships")
-        .insert(inserts);
+        .upsert(inserts, { onConflict: "product_id,group_id", ignoreDuplicates: true });
 
       if (error) throw error;
       return { count: productsInCategory.length, category };
