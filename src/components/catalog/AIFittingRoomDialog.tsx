@@ -21,12 +21,12 @@ interface AIFittingRoomDialogProps {
   product: Product | null;
 }
 
-// High-fidelity prompts focused on preservation
+// Aggressive swap prompts - force clothing replacement
 const buildEnhancedPrompt = (productName: string) => {
-  return `photo of the user wearing ${productName}, perfect garment fitting, maintain original facial features, maintain original clothing texture, high quality, dressing room background`;
+  return `Change the clothing. The person must be wearing ${productName}. Replace original outfit with ${productName}. High quality texture, realistic fabric, fitting the body perfectly.`;
 };
 
-const NEGATIVE_PROMPT = "changing face, changing identity, altering garment pattern, altering fabric texture, distorted, low quality, cartoon, illustration";
+const NEGATIVE_PROMPT = "original clothes, old outfit, different color, wrong fabric, naked, distorted body, bad anatomy, cartoon";
 
 export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRoomDialogProps) {
   const [userImage, setUserImage] = useState<string | null>(null);
@@ -74,8 +74,11 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
     }, 120000); // 2 minute timeout
     
     try {
-      // Build enhanced prompts for better quality
+      // Build aggressive swap prompts
       const enhancedPrompt = buildEnhancedPrompt(product.name);
+      
+      // Debug log to verify product name is being sent correctly
+      console.log('Enviando para IA:', { prompt: enhancedPrompt, product: product.name });
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-fitting-room`,
@@ -92,6 +95,7 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
             prompt: enhancedPrompt,
             negativePrompt: NEGATIVE_PROMPT,
             style: "photorealistic",
+            strength: 0.8, // High strength to force clothing swap while preserving pose
           }),
           signal: abortControllerRef.current.signal,
         }
