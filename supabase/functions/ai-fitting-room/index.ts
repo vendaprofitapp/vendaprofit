@@ -102,8 +102,8 @@ async function callGeminiDirect(userImage: string, productImage: string, product
 
   console.log("Images prepared for Gemini API");
 
-  // Use imagen model for image generation
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey, {
+  // Use gemini-2.0-flash-exp-image-generation model for image generation
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=" + apiKey, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
