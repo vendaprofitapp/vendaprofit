@@ -1,8 +1,13 @@
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, Loader2, Sparkles, X, RotateCcw } from "lucide-react";
+import { Camera, Upload, Loader2, Sparkles, X, RotateCcw, HelpCircle, Lightbulb, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface Product {
   id: string;
@@ -16,11 +21,19 @@ interface AIFittingRoomDialogProps {
   product: Product | null;
 }
 
+// Build enhanced prompts for better image quality
+const buildEnhancedPrompt = (productName: string) => {
+  return `Professional photography of a fit brazilian model wearing ${productName}, standing in a modern dressing room, soft studio lighting, cinematic lighting, 8k uhd, highly detailed fabric texture, realistic skin texture, masterpiece, raw photo, shot on 85mm lens`;
+};
+
+const NEGATIVE_PROMPT = "cartoon, anime, illustration, painting, drawing, low quality, blur, distorted face, extra limbs, bad anatomy, watermark, text, ugly, deformed hands, unnatural skin";
+
 export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRoomDialogProps) {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -54,7 +67,16 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
 
     setIsProcessing(true);
     
+    // Create abort controller for timeout handling
+    abortControllerRef.current = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortControllerRef.current?.abort();
+    }, 120000); // 2 minute timeout
+    
     try {
+      // Build enhanced prompts for better quality
+      const enhancedPrompt = buildEnhancedPrompt(product.name);
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-fitting-room`,
         {
@@ -67,9 +89,15 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
             userImage,
             productImage: product.image_url,
             productName: product.name,
+            prompt: enhancedPrompt,
+            negativePrompt: NEGATIVE_PROMPT,
+            style: "photorealistic",
           }),
+          signal: abortControllerRef.current.signal,
         }
       );
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -79,6 +107,9 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
         }
         if (response.status === 402) {
           throw new Error("Serviço temporariamente indisponível. Tente novamente mais tarde.");
+        }
+        if (response.status >= 500) {
+          throw new Error("Instabilidade no Provador. Tente novamente em instantes.");
         }
         
         throw new Error(errorData.error || "Erro ao processar imagem");
@@ -94,15 +125,40 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
       }
     } catch (error) {
       console.error("Error generating image:", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao gerar imagem");
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          toast.error("Instabilidade no Provador. Tente novamente em instantes.", {
+            description: "A geração demorou muito tempo.",
+            duration: 5000,
+          });
+        } else {
+          toast.error(error.message, {
+            duration: 5000,
+          });
+        }
+      } else {
+        toast.error("Instabilidade no Provador. Tente novamente em instantes.", {
+          duration: 5000,
+        });
+      }
     } finally {
+      clearTimeout(timeoutId);
       setIsProcessing(false);
+      abortControllerRef.current = null;
     }
   };
 
   const handleReset = () => {
+    // Cancel any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setUserImage(null);
     setGeneratedImage(null);
+    setIsProcessing(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -112,6 +168,14 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
     handleReset();
     onOpenChange(false);
   };
+
+  const tips = [
+    { icon: "📸", text: "Use uma foto de corpo inteiro" },
+    { icon: "💡", text: "Fundo neutro e bem iluminado" },
+    { icon: "👕", text: "Evite roupas muito largas na foto original" },
+    { icon: "🧍", text: "Fique de frente para a câmera" },
+    { icon: "📱", text: "Foto na vertical funciona melhor" },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -154,24 +218,55 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
               />
 
               {!userImage ? (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                >
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="p-3 bg-primary/10 rounded-full">
-                      <Camera className="h-8 w-8 text-primary" />
+                <div className="space-y-3">
+                  {/* Upload Area with Help Button */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground">Sua foto</span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-primary hover:text-primary/80">
+                          <HelpCircle className="h-4 w-4" />
+                          <span className="text-xs">Dicas</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="end">
+                        <div className="bg-gradient-to-br from-primary/10 to-primary/5 p-4 rounded-lg">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Lightbulb className="h-5 w-5 text-primary" />
+                            <h4 className="font-semibold text-sm">Dicas para o Provador Perfeito</h4>
+                          </div>
+                          <ul className="space-y-2">
+                            {tips.map((tip, index) => (
+                              <li key={index} className="flex items-start gap-2">
+                                <span className="text-base">{tip.icon}</span>
+                                <span className="text-xs text-muted-foreground">{tip.text}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="p-3 bg-primary/10 rounded-full">
+                        <Camera className="h-8 w-8 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">Envie sua foto</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Clique para selecionar uma imagem
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Escolher foto
+                      </Button>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">Envie sua foto</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Clique para selecionar uma imagem
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <Upload className="h-4 w-4" />
-                      Escolher foto
-                    </Button>
                   </div>
                 </div>
               ) : (
@@ -186,9 +281,18 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
                     size="icon"
                     className="absolute top-2 right-2 h-8 w-8"
                     onClick={handleReset}
+                    disabled={isProcessing}
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                  
+                  {/* Quality checklist for uploaded image */}
+                  <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="text-xs font-medium">Foto carregada</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -204,11 +308,27 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
               )}
 
               {isProcessing && (
-                <div className="flex flex-col items-center gap-3 py-4">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">
-                    Gerando sua imagem... Isso pode levar alguns segundos.
-                  </p>
+                <div className="flex flex-col items-center gap-3 py-6 px-4 bg-muted/50 rounded-lg">
+                  <div className="relative">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <Sparkles className="h-4 w-4 text-primary absolute -top-1 -right-1 animate-pulse" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Criando sua imagem...
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Isso pode levar até 30 segundos
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleReset}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancelar
+                  </Button>
                 </div>
               )}
             </div>
@@ -242,10 +362,13 @@ export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRo
             </div>
           )}
 
-          {/* Tips */}
-          {!generatedImage && (
+          {/* Tips - only show when no image uploaded yet */}
+          {!generatedImage && !userImage && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-              <p className="text-sm font-medium">💡 Dicas para melhores resultados:</p>
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Dicas para melhores resultados:
+              </p>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Use uma foto de corpo inteiro com boa iluminação</li>
                 <li>• Prefira fundos simples e neutros</li>
