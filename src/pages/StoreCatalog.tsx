@@ -51,6 +51,7 @@ interface CatalogDisplayItem {
   image_url: string | null;
   totalStock: number;
   owner_id: string;
+  isPartner: boolean; // true if product is from a partner's stock
 }
 
 // Cart item with selected size
@@ -169,24 +170,23 @@ export default function StoreCatalog() {
   const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
     queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, partnerships],
     queryFn: async () => {
-      const productIds = new Set<string>();
-      const allProducts: Product[] = [];
+      const ownProductIds = new Set<string>();
+      const ownProducts: (Product & { isPartner: boolean })[] = [];
+      const partnerProducts: (Product & { isPartner: boolean })[] = [];
 
       // Get own products if enabled
       if (store?.show_own_products) {
-        const { data: ownProducts, error } = await supabase
+        const { data: products, error } = await supabase
           .from("products")
           .select("id, name, description, price, category, size, color, image_url, stock_quantity, owner_id")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
         
-        if (!error && ownProducts) {
-          ownProducts.forEach(p => {
-            if (!productIds.has(p.id)) {
-              productIds.add(p.id);
-              allProducts.push(p);
-            }
+        if (!error && products) {
+          products.forEach(p => {
+            ownProductIds.add(p.id);
+            ownProducts.push({ ...p, isPartner: false });
           });
         }
       }
@@ -206,14 +206,15 @@ export default function StoreCatalog() {
         if (!error && partnershipProducts) {
           partnershipProducts.forEach((pp: any) => {
             const p = pp.products;
-            if (p && p.is_active && p.stock_quantity > 0 && !productIds.has(p.id)) {
-              productIds.add(p.id);
-              allProducts.push(p);
+            // Only add if not already in own products (by ID) and is active with stock
+            if (p && p.is_active && p.stock_quantity > 0 && !ownProductIds.has(p.id)) {
+              partnerProducts.push({ ...p, isPartner: true });
             }
           });
         }
       }
 
+      const allProducts = [...ownProducts, ...partnerProducts];
       if (allProducts.length === 0) return [];
 
       // Fetch variants for all products
@@ -223,26 +224,22 @@ export default function StoreCatalog() {
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
-      // Group variants by product and color
-      const variantsByProductColor = new Map<string, ProductVariant[]>();
-      
-      variants?.forEach(v => {
-        const key = `${v.product_id}_${v.color || '__no_color__'}`;
-        if (!variantsByProductColor.has(key)) {
-          variantsByProductColor.set(key, []);
-        }
-        variantsByProductColor.get(key)!.push(v);
-      });
-
       // Create display items
       const displayItems: CatalogDisplayItem[] = [];
+      
+      // Track which color/size combinations we already have from own stock
+      // Key: "productName_color_size" (normalized)
+      const ownStockCombinations = new Set<string>();
 
-      for (const product of allProducts) {
-        // Get all variants for this product
+      // Helper to create a unique key for product+color+size
+      const makeKey = (name: string, color: string | null, size: string) => 
+        `${name.toLowerCase().trim()}_${(color || '').toLowerCase().trim()}_${size.toLowerCase().trim()}`;
+
+      // Process own products first to track combinations
+      for (const product of ownProducts) {
         const productVariants = variants?.filter(v => v.product_id === product.id) || [];
         
         if (productVariants.length > 0) {
-          // Group variants by color
           const colorGroups = new Map<string, ProductVariant[]>();
           
           productVariants.forEach(v => {
@@ -253,13 +250,15 @@ export default function StoreCatalog() {
             colorGroups.get(color)!.push(v);
           });
 
-          // Create one display item per color
           for (const [color, colorVariants] of colorGroups) {
             const sizes = colorVariants.map(v => v.size).filter(Boolean);
             const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
-            
-            // Use the first variant's image, or fall back to product image
             const variantImage = colorVariants.find(v => v.image_url)?.image_url || product.image_url;
+            
+            // Track each size in own stock
+            sizes.forEach(size => {
+              ownStockCombinations.add(makeKey(product.name, color === '__no_color__' ? null : color, size));
+            });
 
             displayItems.push({
               id: `${product.id}_${color}`,
@@ -269,14 +268,19 @@ export default function StoreCatalog() {
               price: product.price,
               category: product.category,
               color: color === '__no_color__' ? null : color,
-              sizes: [...new Set(sizes)], // Remove duplicates
+              sizes: [...new Set(sizes)],
               image_url: variantImage,
               totalStock,
               owner_id: product.owner_id,
+              isPartner: false,
             });
           }
         } else {
-          // No variants, show product as-is
+          // No variants
+          if (product.size) {
+            ownStockCombinations.add(makeKey(product.name, product.color, product.size));
+          }
+          
           displayItems.push({
             id: product.id,
             productId: product.id,
@@ -289,6 +293,74 @@ export default function StoreCatalog() {
             image_url: product.image_url,
             totalStock: product.stock_quantity,
             owner_id: product.owner_id,
+            isPartner: false,
+          });
+        }
+      }
+
+      // Process partner products, filtering out duplicates
+      for (const product of partnerProducts) {
+        const productVariants = variants?.filter(v => v.product_id === product.id) || [];
+        
+        if (productVariants.length > 0) {
+          const colorGroups = new Map<string, ProductVariant[]>();
+          
+          productVariants.forEach(v => {
+            const color = v.color || '__no_color__';
+            if (!colorGroups.has(color)) {
+              colorGroups.set(color, []);
+            }
+            colorGroups.get(color)!.push(v);
+          });
+
+          for (const [color, colorVariants] of colorGroups) {
+            // Filter sizes: only include sizes NOT in own stock for same product name + color
+            const displayColor = color === '__no_color__' ? null : color;
+            const availableSizes = colorVariants
+              .map(v => v.size)
+              .filter(size => size && !ownStockCombinations.has(makeKey(product.name, displayColor, size)));
+            
+            // Skip if all sizes are already in own stock
+            if (availableSizes.length === 0) continue;
+            
+            const filteredVariants = colorVariants.filter(v => availableSizes.includes(v.size));
+            const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
+            const variantImage = filteredVariants.find(v => v.image_url)?.image_url || product.image_url;
+
+            displayItems.push({
+              id: `${product.id}_${color}_partner`,
+              productId: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              category: product.category,
+              color: displayColor,
+              sizes: [...new Set(availableSizes)],
+              image_url: variantImage,
+              totalStock,
+              owner_id: product.owner_id,
+              isPartner: true,
+            });
+          }
+        } else {
+          // No variants - check if same name+color+size exists in own stock
+          if (product.size && ownStockCombinations.has(makeKey(product.name, product.color, product.size))) {
+            continue; // Skip, own stock has this
+          }
+          
+          displayItems.push({
+            id: `${product.id}_partner`,
+            productId: product.id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            color: product.color,
+            sizes: product.size ? [product.size] : [],
+            image_url: product.image_url,
+            totalStock: product.stock_quantity,
+            owner_id: product.owner_id,
+            isPartner: true,
           });
         }
       }
@@ -321,11 +393,14 @@ export default function StoreCatalog() {
   const sendCartViaWhatsApp = () => {
     if (!store?.whatsapp_number || cart.length === 0) return;
     
+    const hasPartnerProducts = cart.some(item => item.displayItem.isPartner);
+    
     let message = "Olá! Gostaria de fazer o seguinte pedido:\n\n";
     
     cart.forEach((item, index) => {
       const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
-      message += `${index + 1}. ${item.displayItem.name}${colorInfo}\n`;
+      const partnerMark = item.displayItem.isPartner ? " *" : "";
+      message += `${index + 1}. ${item.displayItem.name}${colorInfo}${partnerMark}\n`;
       message += `   Tamanho: ${item.selectedSize}\n`;
       message += `   Quantidade: ${item.quantity}\n`;
       message += `   Preço unitário: ${formatPrice(item.displayItem.price)}\n`;
@@ -333,6 +408,10 @@ export default function StoreCatalog() {
     });
     
     message += `*TOTAL: ${formatPrice(cartTotal)}*`;
+    
+    if (hasPartnerProducts) {
+      message += "\n\n_* Produto de estoque parceiro_";
+    }
     
     const phone = store.whatsapp_number.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
