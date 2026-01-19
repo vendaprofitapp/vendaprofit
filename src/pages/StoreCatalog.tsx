@@ -73,6 +73,7 @@ interface StoreSettings {
   show_own_products: boolean;
   logo_url: string | null;
   banner_url: string | null;
+  banner_url_mobile: string | null;
   primary_color: string | null;
   background_color: string | null;
   card_background_color: string | null;
@@ -459,9 +460,11 @@ export default function StoreCatalog() {
   const primaryColor = store.primary_color || "#000000";
   const backgroundColor = store.background_color || "#fafaf9";
   const cardBackgroundColor = store.card_background_color || "#ffffff";
-  const showBanner = store.is_banner_visible && store.banner_url;
-  const bannerHeightMobile = store.banner_height_mobile || "150px";
-  const bannerHeightDesktop = store.banner_height_desktop || "120px";
+  
+  // Banner configuration - check if at least one banner exists
+  const hasBannerDesktop = store.is_banner_visible && store.banner_url;
+  const hasBannerMobile = store.is_banner_visible && store.banner_url_mobile;
+  const showBanner = store.is_banner_visible && (store.banner_url || store.banner_url_mobile);
   
   // Opportunities button customization
   const showOpportunitiesButton = store.show_opportunities_button ?? true;
@@ -474,21 +477,33 @@ export default function StoreCatalog() {
   const customFontUrl = store.custom_font_url;
   const customFontName = store.custom_font_name;
 
-  // Promotional Banner Component
+  // Promotional Banner Component with separate images for mobile/desktop
   const PromotionalBanner = () => {
     if (!showBanner) return null;
     
+    // Get appropriate banner URL - mobile takes priority on small screens
+    const mobileBannerUrl = store.banner_url_mobile || store.banner_url;
+    const desktopBannerUrl = store.banner_url || store.banner_url_mobile;
+    
     const bannerContent = (
-      <img 
-        src={store.banner_url!} 
-        alt="Promoção"
-        className="w-full object-contain"
-        style={{ 
-          width: "100%",
-          height: "auto",
-          maxHeight: window.innerWidth >= 768 ? bannerHeightDesktop : bannerHeightMobile,
-        }}
-      />
+      <>
+        {/* Desktop Banner - hidden on mobile */}
+        {desktopBannerUrl && (
+          <img 
+            src={desktopBannerUrl} 
+            alt="Promoção"
+            className="hidden md:block w-full h-auto object-contain"
+          />
+        )}
+        {/* Mobile Banner - hidden on desktop */}
+        {mobileBannerUrl && (
+          <img 
+            src={mobileBannerUrl} 
+            alt="Promoção"
+            className="block md:hidden w-full h-auto object-contain"
+          />
+        )}
+      </>
     );
 
     if (store.banner_link) {
@@ -646,23 +661,28 @@ export default function StoreCatalog() {
           </div>
 
           {/* Conteúdo centralizado */}
-          <div className="flex flex-col items-center gap-2 pt-2">
+          <div className={cn(
+            "flex flex-col items-center",
+            (store.logo_url || store.store_name || store.store_description) ? "gap-2 pt-2" : ""
+          )}>
             {/* Logo centralizada e maior */}
             {store.logo_url && (
               <img 
                 src={store.logo_url} 
-                alt={store.store_name}
+                alt={store.store_name || "Logo"}
                 className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover shadow-md"
               />
             )}
             
-            {/* Nome da loja */}
-            <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
-              {store.store_name}
-            </h1>
+            {/* Nome da loja - só aparece se preenchido */}
+            {store.store_name && (
+              <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
+                {store.store_name}
+              </h1>
+            )}
             
-            {/* Descrição em bullet points */}
-            {store.store_description && (
+            {/* Descrição em bullet points - só aparece se preenchido */}
+            {store.store_description && store.store_description.trim() && (
               <div className="text-xs text-gray-600 text-center max-w-md">
                 {store.store_description.split('\n').filter(line => line.trim()).map((line, i) => (
                   <p key={i} className="flex items-center justify-center gap-1">
