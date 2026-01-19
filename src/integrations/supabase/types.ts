@@ -1180,10 +1180,15 @@ export type Database = {
       }
       store_settings: {
         Row: {
+          background_color: string | null
+          banner_height_mobile: string | null
+          banner_link: string | null
           banner_url: string | null
+          card_background_color: string | null
           created_at: string
           id: string
           is_active: boolean
+          is_banner_visible: boolean | null
           logo_url: string | null
           owner_id: string
           primary_color: string | null
@@ -1195,10 +1200,15 @@ export type Database = {
           whatsapp_number: string | null
         }
         Insert: {
+          background_color?: string | null
+          banner_height_mobile?: string | null
+          banner_link?: string | null
           banner_url?: string | null
+          card_background_color?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          is_banner_visible?: boolean | null
           logo_url?: string | null
           owner_id: string
           primary_color?: string | null
@@ -1210,10 +1220,15 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Update: {
+          background_color?: string | null
+          banner_height_mobile?: string | null
+          banner_link?: string | null
           banner_url?: string | null
+          card_background_color?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          is_banner_visible?: boolean | null
           logo_url?: string | null
           owner_id?: string
           primary_color?: string | null
