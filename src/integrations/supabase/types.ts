@@ -1185,6 +1185,7 @@ export type Database = {
           banner_height_mobile: string | null
           banner_link: string | null
           banner_url: string | null
+          banner_url_mobile: string | null
           card_background_color: string | null
           created_at: string
           custom_font_name: string | null
@@ -1213,6 +1214,7 @@ export type Database = {
           banner_height_mobile?: string | null
           banner_link?: string | null
           banner_url?: string | null
+          banner_url_mobile?: string | null
           card_background_color?: string | null
           created_at?: string
           custom_font_name?: string | null
@@ -1241,6 +1243,7 @@ export type Database = {
           banner_height_mobile?: string | null
           banner_link?: string | null
           banner_url?: string | null
+          banner_url_mobile?: string | null
           card_background_color?: string | null
           created_at?: string
           custom_font_name?: string | null

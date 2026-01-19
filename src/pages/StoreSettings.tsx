@@ -24,6 +24,7 @@ interface StoreSettings {
   is_active: boolean;
   logo_url: string | null;
   banner_url: string | null;
+  banner_url_mobile: string | null;
   primary_color: string | null;
   background_color: string | null;
   card_background_color: string | null;
@@ -81,11 +82,14 @@ export default function StoreSettings() {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [bannerUrlMobile, setBannerUrlMobile] = useState<string | null>(null);
   const [customFontUrl, setCustomFontUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingBannerMobile, setUploadingBannerMobile] = useState(false);
   const [uploadingFont, setUploadingFont] = useState(false);
   const fontInputRef = useRef<HTMLInputElement>(null);
+  const bannerMobileInputRef = useRef<HTMLInputElement>(null);
 
   // Available Google Fonts
   const availableFonts = [
@@ -186,6 +190,7 @@ export default function StoreSettings() {
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
+      setBannerUrlMobile(storeSettings.banner_url_mobile);
       setCustomFontUrl(storeSettings.custom_font_url);
     }
   }, [storeSettings]);
@@ -247,6 +252,68 @@ export default function StoreSettings() {
       await supabase
         .from("store_settings")
         .update({ banner_url: null })
+        .eq("id", storeSettings.id);
+      queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+    }
+  };
+
+  // Handle mobile banner upload
+  const handleBannerMobileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor, selecione uma imagem");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5MB");
+      return;
+    }
+
+    setUploadingBannerMobile(true);
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${user!.id}/banner-mobile-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("store-banners")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrl } = supabase.storage
+        .from("store-banners")
+        .getPublicUrl(fileName);
+
+      setBannerUrlMobile(publicUrl.publicUrl);
+
+      // Update in database if store exists
+      if (storeSettings?.id) {
+        await supabase
+          .from("store_settings")
+          .update({ banner_url_mobile: publicUrl.publicUrl })
+          .eq("id", storeSettings.id);
+        queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+      }
+
+      toast.success("Banner mobile enviado com sucesso!");
+    } catch (error) {
+      console.error("Error uploading mobile banner:", error);
+      toast.error("Erro ao enviar banner mobile");
+    } finally {
+      setUploadingBannerMobile(false);
+    }
+  };
+
+  const removeBannerMobile = async () => {
+    setBannerUrlMobile(null);
+    if (storeSettings?.id) {
+      await supabase
+        .from("store_settings")
+        .update({ banner_url_mobile: null })
         .eq("id", storeSettings.id);
       queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
     }
@@ -610,22 +677,28 @@ export default function StoreSettings() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Banner Section */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <h4 className="font-medium flex items-center gap-2">
                 <ImageIcon className="h-4 w-4" />
-                Banner Promocional
+                Banners Promocionais
               </h4>
               <p className="text-sm text-muted-foreground">
-                📱 Formato ideal para mobile: retangular horizontal (ex: 1200x300px)
+                Configure imagens diferentes para desktop e mobile para exibição 100% correta em cada dispositivo.
               </p>
               
-              <div className="space-y-4">
+              {/* Desktop Banner */}
+              <div className="space-y-3 p-4 bg-muted/20 rounded-lg border">
+                <Label className="font-medium flex items-center gap-2">
+                  🖥️ Banner Desktop
+                  <span className="text-xs text-muted-foreground font-normal">(Recomendado: 1920x400px)</span>
+                </Label>
+                
                 {bannerUrl ? (
                   <div className="relative">
                     <img
                       src={bannerUrl}
-                      alt="Banner promocional"
-                      className="w-full h-32 object-cover rounded-lg border shadow-sm"
+                      alt="Banner desktop"
+                      className="w-full h-24 object-cover rounded-lg border shadow-sm"
                     />
                     <Button
                       variant="destructive"
@@ -637,15 +710,12 @@ export default function StoreSettings() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="w-full h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30">
-                    <div className="text-center">
-                      <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">Nenhum banner configurado</p>
-                    </div>
+                  <div className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center bg-background">
+                    <p className="text-sm text-muted-foreground">Nenhum banner desktop</p>
                   </div>
                 )}
                 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-3">
                   <input
                     ref={bannerInputRef}
                     type="file"
@@ -655,73 +725,94 @@ export default function StoreSettings() {
                   />
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={() => bannerInputRef.current?.click()}
                     disabled={uploadingBanner}
                   >
                     <Upload className="h-4 w-4 mr-2" />
-                    {uploadingBanner ? "Enviando..." : "Enviar Banner"}
+                    {uploadingBanner ? "Enviando..." : "Enviar Desktop"}
                   </Button>
-                  <p className="text-xs text-muted-foreground">PNG, JPG ou WebP. Máximo 5MB.</p>
                 </div>
+              </div>
 
-                {/* Banner Visibility Toggle */}
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                  <div>
-                    <Label className="font-medium">Exibir Banner</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Ative para mostrar o banner na sua loja
-                    </p>
+              {/* Mobile Banner */}
+              <div className="space-y-3 p-4 bg-muted/20 rounded-lg border">
+                <Label className="font-medium flex items-center gap-2">
+                  📱 Banner Mobile
+                  <span className="text-xs text-muted-foreground font-normal">(Recomendado: 800x400px)</span>
+                </Label>
+                
+                {bannerUrlMobile ? (
+                  <div className="relative">
+                    <img
+                      src={bannerUrlMobile}
+                      alt="Banner mobile"
+                      className="w-full h-32 object-cover rounded-lg border shadow-sm"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2 h-8 w-8 rounded-full"
+                      onClick={removeBannerMobile}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Switch
-                    checked={formData.is_banner_visible}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_banner_visible: checked }))}
+                ) : (
+                  <div className="w-full h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-background">
+                    <p className="text-sm text-muted-foreground">Nenhum banner mobile</p>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={bannerMobileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBannerMobileUpload}
+                    className="hidden"
                   />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bannerMobileInputRef.current?.click()}
+                    disabled={uploadingBannerMobile}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingBannerMobile ? "Enviando..." : "Enviar Mobile"}
+                  </Button>
                 </div>
+              </div>
 
-                {/* Banner Link */}
-                <div className="space-y-2">
-                  <Label htmlFor="banner_link" className="flex items-center gap-2">
-                    <Link2 className="h-4 w-4" />
-                    Link do Banner (opcional)
-                  </Label>
-                  <Input
-                    id="banner_link"
-                    value={formData.banner_link}
-                    onChange={(e) => setFormData(prev => ({ ...prev, banner_link: e.target.value }))}
-                    placeholder="https://..."
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Se preenchido, o banner será clicável e abrirá este link
+              {/* Banner Visibility Toggle */}
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                <div>
+                  <Label className="font-medium">Exibir Banners</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Ative para mostrar os banners na sua loja
                   </p>
                 </div>
+                <Switch
+                  checked={formData.is_banner_visible}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_banner_visible: checked }))}
+                />
+              </div>
 
-                {/* Banner Height Mobile */}
-                <div className="space-y-2">
-                  <Label htmlFor="banner_height_mobile">Altura Máx. Banner (Mobile)</Label>
-                  <Input
-                    id="banner_height_mobile"
-                    value={formData.banner_height_mobile}
-                    onChange={(e) => setFormData(prev => ({ ...prev, banner_height_mobile: e.target.value }))}
-                    placeholder="150px"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Ex: 150px, 200px. Altura máxima em dispositivos móveis.
-                  </p>
-                </div>
-
-                {/* Banner Height Desktop */}
-                <div className="space-y-2">
-                  <Label htmlFor="banner_height_desktop">Altura Máx. Banner (Desktop)</Label>
-                  <Input
-                    id="banner_height_desktop"
-                    value={formData.banner_height_desktop}
-                    onChange={(e) => setFormData(prev => ({ ...prev, banner_height_desktop: e.target.value }))}
-                    placeholder="120px"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Ex: 120px, 180px. Altura máxima em computadores.
-                  </p>
-                </div>
+              {/* Banner Link */}
+              <div className="space-y-2">
+                <Label htmlFor="banner_link" className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Link do Banner (opcional)
+                </Label>
+                <Input
+                  id="banner_link"
+                  value={formData.banner_link}
+                  onChange={(e) => setFormData(prev => ({ ...prev, banner_link: e.target.value }))}
+                  placeholder="https://..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se preenchido, os banners serão clicáveis
+                </p>
               </div>
             </div>
 
