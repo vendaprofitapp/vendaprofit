@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, Users, Settings2, Package, Trash2, Edit, Check, X, UserPlus, Copy, User } from "lucide-react";
+import { ProductPartnershipDialog } from "@/components/partnerships/ProductPartnershipDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { DirectPartnerships } from "@/components/partnerships/DirectPartnerships";
 import { Button } from "@/components/ui/button";
@@ -827,110 +828,25 @@ export default function Partnerships() {
       </Dialog>
 
       {/* Products Dialog */}
-      <Dialog open={isProductsOpen} onOpenChange={setIsProductsOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Produtos Liberados - {selectedGroup?.name}</DialogTitle>
-            <DialogDescription>
-              Selecione quais produtos você quer liberar para esta parceria.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Auto-share toggle */}
-          {selectedGroup && (
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border mb-4">
-              <div>
-                <p className="font-medium text-sm">Liberar todos os produtos automaticamente</p>
-                <p className="text-xs text-muted-foreground">
-                  Inclui produtos atuais e futuros cadastrados
-                </p>
-              </div>
-              <Button
-                variant={isAutoShareEnabled(selectedGroup.id) ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  toggleAutoShareMutation.mutate({
-                    groupId: selectedGroup.id,
-                    enabled: !isAutoShareEnabled(selectedGroup.id),
-                  });
-                }}
-                disabled={toggleAutoShareMutation.isPending}
-              >
-                {isAutoShareEnabled(selectedGroup.id) ? "Ativado" : "Ativar"}
-              </Button>
-            </div>
-          )}
-
-          <div className="flex-1 overflow-auto">
-            {products.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Você ainda não tem produtos cadastrados.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-12">Liberar</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead className="text-right">Preço</TableHead>
-                    <TableHead className="text-right">Estoque</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product) => {
-                    const isEnabled = selectedGroup ? isProductInPartnership(product.id, selectedGroup.id) : false;
-                    const partnershipsCount = getProductPartnershipsCount(product.id);
-                    
-                    return (
-                      <TableRow key={product.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isEnabled}
-                            onCheckedChange={() => {
-                              if (selectedGroup) {
-                                toggleProductPartnershipMutation.mutate({
-                                  productId: product.id,
-                                  groupId: selectedGroup.id,
-                                  isEnabled,
-                                });
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            {partnershipsCount > 0 && (
-                              <p className="text-xs text-muted-foreground">
-                                Em {partnershipsCount} parceria{partnershipsCount !== 1 ? "s" : ""}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{product.category}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(product.price)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {product.stock_quantity}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setIsProductsOpen(false)}>
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedGroup && (
+        <ProductPartnershipDialog
+          open={isProductsOpen}
+          onOpenChange={setIsProductsOpen}
+          groupId={selectedGroup.id}
+          groupName={selectedGroup.name}
+          products={products}
+          productPartnerships={productPartnerships}
+          showAutoShare={true}
+          isAutoShareEnabled={isAutoShareEnabled(selectedGroup.id)}
+          onToggleAutoShare={() => {
+            toggleAutoShareMutation.mutate({
+              groupId: selectedGroup.id,
+              enabled: !isAutoShareEnabled(selectedGroup.id),
+            });
+          }}
+          isAutoSharePending={toggleAutoShareMutation.isPending}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

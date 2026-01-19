@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle, FileText } from "lucide-react";
 import { PartnershipProposalCard } from "./PartnershipProposalCard";
 import { PartnershipRulesDialog } from "./PartnershipRulesDialog";
+import { ProductPartnershipDialog } from "./ProductPartnershipDialog";
 import {
   Tooltip,
   TooltipContent,
@@ -1045,96 +1046,17 @@ export function DirectPartnerships() {
       </Dialog>
 
       {/* Products Dialog */}
-      <Dialog open={isProductsOpen} onOpenChange={setIsProductsOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              Produtos Liberados para {selectedPartner?.partnerName}
-            </DialogTitle>
-            <DialogDescription>
-              Selecione quais produtos você quer liberar para esta parceria direta.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-auto">
-            {products.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Você ainda não tem produtos cadastrados.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-12">Liberar</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead className="text-right">Preço</TableHead>
-                    <TableHead className="text-right">Estoque</TableHead>
-                    <TableHead className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Percent className="h-3 w-3" />
-                        Seu Ganho
-                      </div>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product) => {
-                    const isEnabled = selectedPartner
-                      ? isProductInPartnership(product.id, selectedPartner.groupId)
-                      : false;
-                    
-                    // Get the rules for this partnership
-                    const rules = selectedPartner ? getRulesForGroup(selectedPartner.groupId) : null;
-                    const ownerProfitPercent = rules ? Number(rules.owner_profit_percent) : 30;
-                    const ownerCostPercent = rules ? Number(rules.owner_cost_percent) : 50;
-
-                    return (
-                      <TableRow key={product.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isEnabled}
-                            onCheckedChange={() => {
-                              if (selectedPartner) {
-                                toggleProductMutation.mutate({
-                                  productId: product.id,
-                                  groupId: selectedPartner.groupId,
-                                  isEnabled,
-                                });
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium">{product.name}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{product.category}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(product.price)}
-                        </TableCell>
-                        <TableCell className="text-right">{product.stock_quantity}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge 
-                            variant="secondary" 
-                            className="bg-green-500/10 text-green-700 border-green-500/30"
-                          >
-                            {ownerCostPercent}% custo + {ownerProfitPercent}% lucro
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setIsProductsOpen(false)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedPartner && (
+        <ProductPartnershipDialog
+          open={isProductsOpen}
+          onOpenChange={setIsProductsOpen}
+          groupId={selectedPartner.groupId}
+          groupName={selectedPartner.partnerName}
+          products={products}
+          productPartnerships={productPartnerships}
+          showAutoShare={false}
+        />
+      )}
 
       {/* Partnership Rules Dialog */}
       {selectedPartnerForRules && (
