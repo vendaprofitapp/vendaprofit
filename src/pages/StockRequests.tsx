@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Package, Clock, CheckCircle, XCircle, Users, Eye, MessageCircle, ShoppingCart } from "lucide-react";
+import { Package, Clock, CheckCircle, XCircle, Users, Eye, MessageCircle, ShoppingCart, Palette, Ruler } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface StockRequest {
   id: string;
@@ -44,6 +46,9 @@ interface StockRequest {
   responded_at: string | null;
   created_at: string;
   updated_at: string;
+  variant_id: string | null;
+  variant_color: string | null;
+  variant_size: string | null;
 }
 
 interface RequestWithDetails extends StockRequest {
@@ -55,10 +60,31 @@ interface RequestWithDetails extends StockRequest {
   owner_phone: string | null;
 }
 
+interface ProductVariant {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string;
+  stock_quantity: number;
+  image_url: string | null;
+}
+
 const statusConfig = {
   pending: { label: "Pendente", variant: "secondary" as const, icon: Clock },
   approved: { label: "Aprovada", variant: "default" as const, icon: CheckCircle },
   rejected: { label: "Recusada", variant: "destructive" as const, icon: XCircle },
+};
+
+// Size ordering helper
+const SIZE_ORDER = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 
+  'U', 'UN', 'UNICO', 'ÚNICO',
+  '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48',
+  '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+
+const getSizeIndex = (size: string) => {
+  const upperSize = size.toUpperCase().trim();
+  const idx = SIZE_ORDER.indexOf(upperSize);
+  return idx === -1 ? 999 : idx;
 };
 
 export default function StockRequests() {
@@ -141,12 +167,17 @@ export default function StockRequests() {
     // Clean phone number (remove non-digits)
     const cleanPhone = request.owner_phone.replace(/\D/g, "");
     
+    // Build variant info
+    const variantInfo = request.variant_color || request.variant_size
+      ? ` (${[request.variant_color, request.variant_size].filter(Boolean).join(' - ')})`
+      : '';
+    
     // Build the pre-filled message
     const message = `Olá ${request.owner_name}! 👋
 
 Minha solicitação de reserva foi aprovada e gostaria de combinar a entrega/retirada da peça:
 
-📦 *Produto:* ${request.product_name}
+📦 *Produto:* ${request.product_name}${variantInfo}
 🔢 *Quantidade:* ${request.quantity} unidade(s)
 💰 *Valor:* R$ ${(request.product_price * request.quantity).toFixed(2).replace(".", ",")}
 
@@ -163,27 +194,48 @@ Quando podemos agendar?`;
   const receivedRequests = enrichedRequests.filter(r => r.owner_id === user?.id);
   const sentRequests = enrichedRequests.filter(r => r.requester_id === user?.id);
 
-  // Respond to request mutation
+  // Respond to request mutation using atomic function
   const respondMutation = useMutation({
     mutationFn: async ({ requestId, status, notes }: { requestId: string; status: "approved" | "rejected"; notes: string }) => {
-      const { error } = await supabase
-        .from("stock_requests")
-        .update({
-          status,
-          response_notes: notes || null,
-          responded_at: new Date().toISOString(),
-        })
-        .eq("id", requestId);
+      if (status === "approved") {
+        // Use the atomic function for approvals
+        const { data, error } = await supabase.rpc("approve_stock_request", {
+          _request_id: requestId,
+          _response_notes: notes || null,
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+        
+        const result = data as { success: boolean; error?: string };
+        if (!result.success) {
+          throw new Error(result.error || "Erro ao aprovar solicitação");
+        }
+        
+        return result;
+      } else {
+        // For rejections, just update the status
+        const { error } = await supabase
+          .from("stock_requests")
+          .update({
+            status,
+            response_notes: notes || null,
+            responded_at: new Date().toISOString(),
+          })
+          .eq("id", requestId);
+
+        if (error) throw error;
+      }
     },
     onSuccess: (_, variables) => {
       const action = variables.status === "approved" ? "aprovada" : "recusada";
-      toast({ title: `Solicitação ${action} com sucesso!` });
+      const extraMsg = variables.status === "approved" ? " O estoque foi atualizado automaticamente." : "";
+      toast({ title: `Solicitação ${action} com sucesso!${extraMsg}` });
       setIsRespondOpen(false);
       setSelectedRequest(null);
       setResponseNotes("");
       queryClient.invalidateQueries({ queryKey: ["stock-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["product-variants"] });
     },
     onError: (error) => {
       toast({ title: "Erro ao responder solicitação", description: error.message, variant: "destructive" });
@@ -232,6 +284,9 @@ Quando podemos agendar?`;
       quantity: request.quantity,
       ownerName: request.owner_name,
       requestId: request.id,
+      variantId: request.variant_id,
+      variantColor: request.variant_color,
+      variantSize: request.variant_size,
     };
     sessionStorage.setItem("pendingSaleFromRequest", JSON.stringify(saleData));
     navigate("/sales");
@@ -240,8 +295,17 @@ Quando podemos agendar?`;
   const pendingReceived = receivedRequests.filter(r => r.status === "pending").length;
   const pendingSent = sentRequests.filter(r => r.status === "pending").length;
 
+  // Build variant display string
+  const getVariantDisplay = (request: RequestWithDetails) => {
+    const parts = [];
+    if (request.variant_color) parts.push(request.variant_color);
+    if (request.variant_size) parts.push(request.variant_size);
+    return parts.length > 0 ? parts.join(' - ') : null;
+  };
+
   const renderRequestRow = (request: RequestWithDetails, isReceived: boolean) => {
     const StatusIcon = statusConfig[request.status].icon;
+    const variantDisplay = getVariantDisplay(request);
     
     return (
       <TableRow key={request.id} className="group">
@@ -252,9 +316,19 @@ Quando podemos agendar?`;
             </div>
             <div>
               <p className="font-medium">{request.product_name}</p>
-              <p className="text-xs text-muted-foreground">
-                {request.quantity} unidade{request.quantity > 1 ? "s" : ""}
-              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{request.quantity} unidade{request.quantity > 1 ? "s" : ""}</span>
+                {variantDisplay && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      {request.variant_color && <Palette className="h-3 w-3" />}
+                      {request.variant_size && <Ruler className="h-3 w-3" />}
+                      {variantDisplay}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </TableCell>
@@ -314,10 +388,11 @@ Quando podemos agendar?`;
                 <Button
                   variant="default"
                   size="sm"
+                  className="bg-green-600 hover:bg-green-700"
                   onClick={() => createSaleFromRequest(request)}
                 >
                   <ShoppingCart className="h-4 w-4 mr-1" />
-                  Vender
+                  Vender Agora
                 </Button>
                 <Button
                   variant="outline"
@@ -472,6 +547,25 @@ Quando podemos agendar?`;
                   <p className="text-muted-foreground">Quantidade</p>
                   <p className="font-medium">{selectedRequest.quantity}</p>
                 </div>
+                {(selectedRequest.variant_color || selectedRequest.variant_size) && (
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">Variante</p>
+                    <div className="flex items-center gap-2 font-medium">
+                      {selectedRequest.variant_color && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Palette className="h-3 w-3" />
+                          {selectedRequest.variant_color}
+                        </Badge>
+                      )}
+                      {selectedRequest.variant_size && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Ruler className="h-3 w-3" />
+                          {selectedRequest.variant_size}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <p className="text-muted-foreground">Preço Unitário</p>
                   <p className="font-medium">
@@ -549,6 +643,22 @@ Quando podemos agendar?`;
                   {selectedRequest.quantity} unidade{selectedRequest.quantity > 1 ? "s" : ""} • 
                   Solicitante: {selectedRequest.requester_name}
                 </p>
+                {(selectedRequest.variant_color || selectedRequest.variant_size) && (
+                  <div className="flex items-center gap-2 mt-2">
+                    {selectedRequest.variant_color && (
+                      <Badge variant="outline" className="text-xs">
+                        <Palette className="h-3 w-3 mr-1" />
+                        {selectedRequest.variant_color}
+                      </Badge>
+                    )}
+                    {selectedRequest.variant_size && (
+                      <Badge variant="outline" className="text-xs">
+                        <Ruler className="h-3 w-3 mr-1" />
+                        {selectedRequest.variant_size}
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </div>
 
               {selectedRequest.notes && (
@@ -559,6 +669,12 @@ Quando podemos agendar?`;
                   </p>
                 </div>
               )}
+
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  <strong>Atenção:</strong> Ao aprovar, o estoque será automaticamente subtraído da sua conta e o produto ficará disponível para venda pelo solicitante.
+                </p>
+              </div>
 
               <div>
                 <Label>Observações (opcional)</Label>
@@ -601,7 +717,7 @@ Quando podemos agendar?`;
               }}
             >
               <CheckCircle className="h-4 w-4 mr-2" />
-              Aprovar
+              Aprovar e Liberar Estoque
             </Button>
           </DialogFooter>
         </DialogContent>

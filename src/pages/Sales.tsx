@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
@@ -156,6 +156,9 @@ export default function Sales() {
   const [showReserveDialog, setShowReserveDialog] = useState(false);
   const [reserveQuantity, setReserveQuantity] = useState(1);
   const [reserveNotes, setReserveNotes] = useState("");
+  const [reserveVariants, setReserveVariants] = useState<ProductVariant[]>([]);
+  const [selectedReserveVariant, setSelectedReserveVariant] = useState<ProductVariant | null>(null);
+  const [loadingReserveVariants, setLoadingReserveVariants] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
   // Auto partner lookup (when product is not in own stock)
@@ -310,9 +313,19 @@ export default function Sales() {
     });
   };
 
-  // Create stock request mutation
+  // Create stock request mutation with variant support
   const createReserveMutation = useMutation({
-    mutationFn: async ({ product, quantity, notes }: { product: PartnerProduct; quantity: number; notes: string }) => {
+    mutationFn: async ({ 
+      product, 
+      quantity, 
+      notes, 
+      variant 
+    }: { 
+      product: PartnerProduct; 
+      quantity: number; 
+      notes: string;
+      variant?: ProductVariant | null;
+    }) => {
       if (!user) throw new Error("Usuário não autenticado");
 
       const { data, error } = await supabase
@@ -324,6 +337,9 @@ export default function Sales() {
           quantity,
           notes: notes || null,
           status: "pending",
+          variant_id: variant?.id || null,
+          variant_color: variant?.color || null,
+          variant_size: variant?.size || null,
         })
         .select()
         .single();
@@ -337,12 +353,41 @@ export default function Sales() {
       setSelectedPartnerProduct(null);
       setReserveQuantity(1);
       setReserveNotes("");
+      setSelectedReserveVariant(null);
+      setReserveVariants([]);
       queryClient.invalidateQueries({ queryKey: ["stock-requests"] });
     },
     onError: (error) => {
       toast({ title: "Erro ao solicitar reserva", description: error.message, variant: "destructive" });
     },
   });
+
+  // Fetch variants for partner product when opening reserve dialog
+  const loadPartnerVariants = async (productId: string) => {
+    setLoadingReserveVariants(true);
+    try {
+      const { data, error } = await supabase
+        .from("product_variants")
+        .select("id, product_id, color, size, stock_quantity, image_url")
+        .eq("product_id", productId)
+        .gt("stock_quantity", 0)
+        .order("color")
+        .order("size");
+
+      if (error) throw error;
+      setReserveVariants(data || []);
+      
+      // Auto-select if only one variant
+      if (data && data.length === 1) {
+        setSelectedReserveVariant(data[0]);
+      }
+    } catch (error) {
+      console.error("Error loading variants:", error);
+      setReserveVariants([]);
+    } finally {
+      setLoadingReserveVariants(false);
+    }
+  };
 
   // Create sale mutation
   const createSaleMutation = useMutation({
@@ -910,18 +955,40 @@ export default function Sales() {
       const saleData = JSON.parse(pendingSaleData);
       sessionStorage.removeItem("pendingSaleFromRequest");
 
+      // Ensure price is a valid number
+      const productPrice = Number(saleData.productPrice) || 0;
+      
+      // Build display name with variant info
+      let displayName = saleData.productName || "Produto";
+      const variantParts = [];
+      if (saleData.variantColor) variantParts.push(saleData.variantColor);
+      if (saleData.variantSize) variantParts.push(saleData.variantSize);
+      if (variantParts.length > 0) {
+        displayName += ` (${variantParts.join(' - ')})`;
+      }
+
       // Create a virtual product for the partner item and add to cart
       const partnerProduct: Product = {
         id: saleData.productId,
-        name: saleData.productName,
-        price: saleData.productPrice,
+        name: displayName,
+        price: productPrice,
         stock_quantity: saleData.quantity,
         owner_id: "",
         group_id: null,
         category: "",
-        color: null,
-        size: null,
+        color: saleData.variantColor || null,
+        size: saleData.variantSize || null,
       };
+
+      // Create virtual variant if present
+      const variant = saleData.variantId ? {
+        id: saleData.variantId,
+        product_id: saleData.productId,
+        color: saleData.variantColor || null,
+        size: saleData.variantSize || "",
+        stock_quantity: saleData.quantity,
+        image_url: null,
+      } as ProductVariant : null;
 
       // Add to cart as partner stock
       setCart([{
@@ -929,6 +996,7 @@ export default function Sales() {
         quantity: saleData.quantity,
         isPartnerStock: true,
         ownerName: saleData.ownerName,
+        variant,
       }]);
 
       // Open the new sale dialog
@@ -936,7 +1004,7 @@ export default function Sales() {
 
       toast({
         title: "Produto do parceiro adicionado",
-        description: `${saleData.productName} (${saleData.quantity}x) de ${saleData.ownerName} foi adicionado ao carrinho.`,
+        description: `${displayName} (${saleData.quantity}x) de ${saleData.ownerName} foi adicionado ao carrinho.`,
       });
     } catch (e) {
       console.error("Error parsing pending sale data:", e);
@@ -948,15 +1016,34 @@ export default function Sales() {
     setSelectedPartnerProduct(product);
     setReserveQuantity(1);
     setReserveNotes("");
+    setSelectedReserveVariant(null);
+    setReserveVariants([]);
     setShowReserveDialog(true);
     setShowPartnerDialog(false);
+    // Load variants for the product
+    loadPartnerVariants(product.id);
   };
 
-  const subtotal = cart.filter(i => !i.isPartnerStock).reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const discountAmount = discountType === "percentage" 
-    ? (subtotal * discountValue) / 100 
-    : discountValue;
-  const total = Math.max(0, subtotal - discountAmount);
+  // Calculate subtotal for ALL items (own + partner) using useMemo for real-time updates
+  const { subtotal, discountAmount, total } = useMemo(() => {
+    const calculatedSubtotal = cart.reduce((sum, item) => {
+      // Ensure price is available - use sale_price or price from product
+      const itemPrice = item.product.price || 0;
+      return sum + itemPrice * item.quantity;
+    }, 0);
+    
+    const calculatedDiscount = discountType === "percentage" 
+      ? (calculatedSubtotal * discountValue) / 100 
+      : discountValue;
+    
+    const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount);
+    
+    return {
+      subtotal: calculatedSubtotal,
+      discountAmount: calculatedDiscount,
+      total: calculatedTotal,
+    };
+  }, [cart, discountType, discountValue]);
 
   const filteredOwnProducts = ownProducts.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
@@ -1444,11 +1531,10 @@ export default function Sales() {
                             <p className="text-sm text-muted-foreground">
                               R$ {item.product.price.toFixed(2).replace(".", ",")} x {item.quantity}
                             </p>
-                            {item.isPartnerStock && (
-                              <Badge variant="outline" className="text-xs">
-                                <Users className="h-3 w-3 mr-1" />
-                                {item.ownerName}
-                              </Badge>
+                            {item.isPartnerStock && item.ownerName && (
+                              <p className="text-xs text-primary mt-0.5">
+                                Origem: Estoque Parceiro - {item.ownerName}
+                              </p>
                             )}
                           </div>
                           <div className="flex items-center gap-1">
@@ -1796,21 +1882,53 @@ export default function Sales() {
                 <p className="text-sm text-muted-foreground">
                   Preço: R$ {selectedPartnerProduct.price.toFixed(2).replace(".", ",")}
                 </p>
+              </div>
+
+              {/* Variant Selection */}
+              {loadingReserveVariants ? (
+                <div className="text-center py-4 text-muted-foreground">Carregando variantes...</div>
+              ) : reserveVariants.length > 0 ? (
+                <div>
+                  <Label>Selecione a Variante *</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-40 overflow-y-auto">
+                    {reserveVariants.map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedReserveVariant(variant);
+                          setReserveQuantity(1);
+                        }}
+                        className={`p-2 text-left rounded-lg border-2 transition-all ${
+                          selectedReserveVariant?.id === variant.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/50"
+                        }`}
+                      >
+                        <p className="font-medium text-sm">
+                          {[variant.color, variant.size].filter(Boolean).join(' - ')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{variant.stock_quantity} un</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <p className="text-sm text-muted-foreground">
                   Disponível: {selectedPartnerProduct.stock_quantity} unidades
                 </p>
-              </div>
+              )}
 
               <div>
                 <Label>Quantidade</Label>
                 <Input
                   type="number"
                   min="1"
-                  max={selectedPartnerProduct.stock_quantity}
+                  max={selectedReserveVariant?.stock_quantity || selectedPartnerProduct.stock_quantity}
                   value={reserveQuantity}
                   onChange={(e) => setReserveQuantity(Math.min(
                     Number(e.target.value),
-                    selectedPartnerProduct.stock_quantity
+                    selectedReserveVariant?.stock_quantity || selectedPartnerProduct.stock_quantity
                   ))}
                 />
               </div>
@@ -1829,13 +1947,14 @@ export default function Sales() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              disabled={createReserveMutation.isPending}
+              disabled={createReserveMutation.isPending || (reserveVariants.length > 0 && !selectedReserveVariant)}
               onClick={() => {
                 if (selectedPartnerProduct) {
                   createReserveMutation.mutate({
                     product: selectedPartnerProduct,
                     quantity: reserveQuantity,
                     notes: reserveNotes,
+                    variant: selectedReserveVariant,
                   });
                 }
               }}
