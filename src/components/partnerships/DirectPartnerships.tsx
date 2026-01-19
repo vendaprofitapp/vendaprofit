@@ -537,12 +537,14 @@ export function DirectPartnerships() {
       } else {
         const { error } = await supabase
           .from("product_partnerships")
-          .upsert({ product_id: productId, group_id: groupId }, { onConflict: "group_id,product_id" });
-        if (error) throw error;
+          .upsert(
+            { product_id: productId, group_id: groupId },
+            { onConflict: "product_id,group_id", ignoreDuplicates: true }
+          );
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product-partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
     },
     onError: (error) => {
       toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
