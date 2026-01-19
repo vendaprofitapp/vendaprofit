@@ -345,11 +345,10 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
     const ownerCostRecovery = costPrice * costSplitRatio;
     const partnerCostRecovery = costPrice * (1 - costSplitRatio);
     
-    // The commission profit received by the partnership is split using profit shares
-    // For third-party sales, we use a 50/50 split on the commission by default
-    // since neither partner sold it - they both equally benefit from the external sale
-    const ownerProfitFromCommission = partnershipCommissionAmount * 0.5;
-    const partnerProfitFromCommission = partnershipCommissionAmount * 0.5;
+    // The commission profit received by the partnership is split using partnership profit share rules
+    // Uses the same profit share percentages defined for the partnership (e.g., 70/30)
+    const ownerProfitFromCommission = partnershipCommissionAmount * profitShareSeller;
+    const partnerProfitFromCommission = partnershipCommissionAmount * profitSharePartner;
     
     // Owner (of the product within partnership) gets their cost share + their profit share from commission
     result.owner.costRecovery = ownerCostRecovery;
