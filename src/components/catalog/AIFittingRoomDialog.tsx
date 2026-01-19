@@ -21,12 +21,12 @@ interface AIFittingRoomDialogProps {
   product: Product | null;
 }
 
-// Build enhanced prompts for better image quality
+// High-fidelity prompts focused on preservation
 const buildEnhancedPrompt = (productName: string) => {
-  return `Professional photography of a fit brazilian model wearing ${productName}, standing in a modern dressing room, soft studio lighting, cinematic lighting, 8k uhd, highly detailed fabric texture, realistic skin texture, masterpiece, raw photo, shot on 85mm lens`;
+  return `photo of the user wearing ${productName}, perfect garment fitting, maintain original facial features, maintain original clothing texture, high quality, dressing room background`;
 };
 
-const NEGATIVE_PROMPT = "cartoon, anime, illustration, painting, drawing, low quality, blur, distorted face, extra limbs, bad anatomy, watermark, text, ugly, deformed hands, unnatural skin";
+const NEGATIVE_PROMPT = "changing face, changing identity, altering garment pattern, altering fabric texture, distorted, low quality, cartoon, illustration";
 
 export function AIFittingRoomDialog({ open, onOpenChange, product }: AIFittingRoomDialogProps) {
   const [userImage, setUserImage] = useState<string | null>(null);
