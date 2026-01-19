@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram } from "lucide-react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
@@ -50,6 +50,7 @@ import {
 import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialog";
 import { VoiceSaleDialog } from "@/components/sales/VoiceSaleDialog";
 import { ProfitBreakdownCard } from "@/components/sales/ProfitBreakdownCard";
+import { EditSaleDialog } from "@/components/sales/EditSaleDialog";
 
 interface Product {
   id: string;
@@ -92,11 +93,13 @@ interface Sale {
   discount_amount: number | null;
   total: number;
   status: string;
+  notes: string | null;
   created_at: string;
 }
 
 interface SaleItem {
   id: string;
+  product_id: string;
   product_name: string;
   quantity: number;
   unit_price: number;
@@ -175,6 +178,9 @@ export default function Sales() {
     customerName?: string | null;
     paymentMethod?: string | null;
   } | null>(null);
+
+  // Edit sale dialog state
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Ref for product search input to focus after voice add
   const productSearchInputRef = useRef<HTMLInputElement>(null);
@@ -1184,6 +1190,18 @@ export default function Sales() {
     setIsViewOpen(true);
   };
 
+  const openEditSale = async (sale: Sale) => {
+    setSelectedSale(sale);
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("*")
+      .eq("sale_id", sale.id);
+    if (!error && data) {
+      setSaleItems(data);
+    }
+    setIsEditOpen(true);
+  };
+
   // Stats
   const todaySales = sales.filter((s) => {
     const today = new Date().toDateString();
@@ -2160,10 +2178,35 @@ export default function Sales() {
                   <span>R$ {Number(selectedSale.total).toFixed(2).replace(".", ",")}</span>
                 </div>
               </div>
+
+              {/* Edit/Delete Actions */}
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setIsViewOpen(false);
+                    openEditSale(selectedSale);
+                  }}
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Editar Venda
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Sale Dialog */}
+      <EditSaleDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        sale={selectedSale}
+        saleItems={saleItems}
+        customPaymentMethods={customPaymentMethods}
+        userId={user?.id || ""}
+      />
 
       {/* Variant Selection Dialog - Now includes partner variants */}
       <VariantSelectionDialog
