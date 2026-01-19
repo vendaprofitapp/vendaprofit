@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard } from "lucide-react";
+import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard, Clock, CheckCircle, ShoppingCart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -35,7 +35,10 @@ interface StockRequest {
   product: {
     name: string;
   } | null;
-  requester_profile: {
+  requester_profile?: {
+    full_name: string;
+  } | null;
+  owner_profile?: {
     full_name: string;
   } | null;
 }
@@ -173,7 +176,7 @@ export function SystemAlerts() {
     enabled: !!user?.id && deferredPaymentMethods.length > 0,
   });
 
-  // Solicitações de parceiros pendentes
+  // Solicitações de parceiros pendentes (recebidas)
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ["pending-stock-requests", user?.id],
     queryFn: async () => {
@@ -210,12 +213,86 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
+  // Minhas solicitações enviadas pendentes (aguardando resposta)
+  const { data: mySentPendingRequests = [] } = useQuery({
+    queryKey: ["my-sent-pending-requests", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stock_requests")
+        .select(`
+          id,
+          quantity,
+          status,
+          product:products(name),
+          owner_id
+        `)
+        .eq("requester_id", user?.id)
+        .eq("status", "pending");
+      if (error) throw error;
+      
+      // Buscar nomes dos donos
+      const requestsWithNames = await Promise.all(
+        (data || []).map(async (req) => {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", req.owner_id)
+            .single();
+          return {
+            ...req,
+            owner_profile: profile
+          };
+        })
+      );
+      
+      return requestsWithNames as StockRequest[];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Minhas solicitações aprovadas (prontas para vender)
+  const { data: myApprovedRequests = [] } = useQuery({
+    queryKey: ["my-approved-requests", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stock_requests")
+        .select(`
+          id,
+          quantity,
+          status,
+          product:products(name),
+          owner_id
+        `)
+        .eq("requester_id", user?.id)
+        .eq("status", "approved");
+      if (error) throw error;
+      
+      // Buscar nomes dos donos
+      const requestsWithNames = await Promise.all(
+        (data || []).map(async (req) => {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", req.owner_id)
+            .single();
+          return {
+            ...req,
+            owner_profile: profile
+          };
+        })
+      );
+      
+      return requestsWithNames as StockRequest[];
+    },
+    enabled: !!user?.id,
+  });
+
   const openWhatsApp = (phone: string, message: string) => {
     const cleanPhone = phone.replace(/\D/g, "");
     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0;
+  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0;
 
   if (!hasAlerts) return null;
 
@@ -408,13 +485,13 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Solicitações de Parceiros */}
+      {/* Solicitações de Parceiros (Recebidas) */}
       {pendingRequests.length > 0 && (
         <Card className="border-primary/30 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-primary">
               <Users className="h-4 w-4" />
-              Solicitações Pendentes
+              Solicitações Recebidas
               <Badge className="ml-auto">{pendingRequests.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -432,6 +509,62 @@ export function SystemAlerts() {
             )}
             <Button size="sm" className="w-full mt-2" onClick={() => navigate("/stock-requests")}>
               Gerenciar Solicitações
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Minhas Solicitações Aguardando Resposta */}
+      {mySentPendingRequests.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-amber-500">
+              <Clock className="h-4 w-4" />
+              Aguardando Resposta
+              <Badge variant="secondary" className="ml-auto">{mySentPendingRequests.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {mySentPendingRequests.slice(0, 3).map((request) => (
+              <div key={request.id} className="text-sm truncate">
+                <span className="text-muted-foreground">{request.quantity}x {request.product?.name}</span>
+                <span className="font-medium"> - {request.owner_profile?.full_name}</span>
+              </div>
+            ))}
+            {mySentPendingRequests.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-amber-500" onClick={() => navigate("/stock-requests")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Minhas Solicitações Aprovadas (Prontas para Vender) */}
+      {myApprovedRequests.length > 0 && (
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-500">
+              <CheckCircle className="h-4 w-4" />
+              Prontas para Vender
+              <Badge variant="secondary" className="ml-auto bg-green-500/20 text-green-500">{myApprovedRequests.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {myApprovedRequests.slice(0, 3).map((request) => (
+              <div key={request.id} className="text-sm truncate">
+                <span className="text-muted-foreground">{request.quantity}x {request.product?.name}</span>
+                <span className="font-medium"> - {request.owner_profile?.full_name}</span>
+              </div>
+            ))}
+            {myApprovedRequests.length > 3 && (
+              <Button variant="link" size="sm" className="p-0 h-auto text-green-500" onClick={() => navigate("/stock-requests")}>
+                Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            )}
+            <Button size="sm" className="w-full mt-2 bg-green-500 hover:bg-green-600" onClick={() => navigate("/stock-requests")}>
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Vender Agora
             </Button>
           </CardContent>
         </Card>
