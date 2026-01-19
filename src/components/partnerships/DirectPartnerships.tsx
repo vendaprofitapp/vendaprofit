@@ -243,17 +243,20 @@ export function DirectPartnerships() {
     enabled: !!user,
   });
 
-  // Fetch product partnerships
+  // Fetch product partnerships (scoped to my direct group ids to avoid 1000-row limit)
+  const directGroupIds = directGroups.map((d: any) => d.group_id);
   const { data: productPartnerships = [] } = useQuery({
-    queryKey: ["product-partnerships"],
+    queryKey: ["product-partnerships", directGroupIds.sort().join(",")],
     queryFn: async () => {
+      if (directGroupIds.length === 0) return [];
       const { data, error } = await supabase
         .from("product_partnerships")
-        .select("*");
+        .select("*")
+        .in("group_id", directGroupIds);
       if (error) throw error;
       return data as ProductPartnership[];
     },
-    enabled: !!user,
+    enabled: !!user && directGroupIds.length > 0,
   });
 
   // Fetch partnership rules
