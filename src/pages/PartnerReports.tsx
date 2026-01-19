@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Wallet, Building2 } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Building2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -30,19 +30,14 @@ interface SaleWithItems {
   }[];
 }
 
-interface Product {
+interface FinancialSplit {
   id: string;
-  name: string;
-  price: number;
-  cost_price: number | null;
-  owner_id: string;
-  group_id: string | null;
-}
-
-interface ProductPartnership {
-  id: string;
-  product_id: string;
-  group_id: string;
+  sale_id: string;
+  user_id: string;
+  amount: number;
+  type: "cost_recovery" | "profit_share" | "group_commission";
+  description: string;
+  created_at: string;
 }
 
 interface GroupWithConfig {
@@ -82,6 +77,7 @@ interface PartnerSummary {
   salesCount: number;
 }
 
+
 const periodOptions = [
   { value: "today", label: "Hoje" },
   { value: "week", label: "Esta Semana" },
@@ -96,7 +92,7 @@ export default function PartnerReports() {
   const [period, setPeriod] = useState("month");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState("partnerships");
+  const [activeTab, setActiveTab] = useState("all");
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -183,28 +179,19 @@ export default function PartnerReports() {
     enabled: !!user
   });
 
-  // Fetch products
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-for-partner-report"],
+  // Fetch financial splits (source of truth for earnings/divisions)
+  const { data: financialSplits = [] } = useQuery({
+    queryKey: ["partner-financial-splits", dateRange.start, dateRange.end],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, owner_id, group_id");
+        .from("financial_splits")
+        .select("id, sale_id, user_id, amount, type, description, created_at")
+        .gte("created_at", dateRange.start.toISOString())
+        .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
-      return data as Product[];
+      return data as FinancialSplit[];
     },
-    enabled: !!user
-  });
-
-  // Fetch product partnerships
-  const { data: productPartnerships = [] } = useQuery({
-    queryKey: ["product-partnerships-report"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("product_partnerships").select("*");
-      if (error) throw error;
-      return data as ProductPartnership[];
-    },
-    enabled: !!user
+    enabled: !!user,
   });
 
   // Fetch profiles
@@ -242,185 +229,154 @@ export default function PartnerReports() {
     return profiles.filter(p => partnerIds.has(p.id));
   }, [userGroupMemberships, directPartnerships, regularGroups, profiles, user, selectedGroupId, activeTab]);
 
-  // Helper to get group config
-  const getGroupConfig = (groupId: string) => {
-    const group = groups.find(g => g.id === groupId);
-    return {
-      id: groupId,
-      name: group?.name ?? "Grupo",
-      costSplitRatio: group?.cost_split_ratio ?? 0.5,
-      profitShareSeller: group?.profit_share_seller ?? 0.7,
-      profitSharePartner: group?.profit_share_partner ?? 0.3,
-      commissionPercent: group?.commission_percent ?? 0.2,
-      isDirect: group?.is_direct ?? false
-    };
-  };
+  type ReportKind = "all" | "partnerships" | "groups";
 
-  // Helper to get product's group from product_partnerships
-  const getProductGroup = (productId: string): string | null => {
-    const partnership = productPartnerships.find(pp => pp.product_id === productId);
-    return partnership?.group_id || null;
-  };
+  const profileMap = useMemo(() => {
+    const map = new Map<string, Profile>();
+    profiles.forEach((p) => map.set(p.id, p));
+    return map;
+  }, [profiles]);
 
-  // Calculate partner summaries - separated by type
-  const calculateSummaries = (isDirect: boolean) => {
+  const splitsBySaleId = useMemo(() => {
+    const map = new Map<string, FinancialSplit[]>();
+    for (const s of financialSplits) {
+      const arr = map.get(s.sale_id) ?? [];
+      arr.push(s);
+      map.set(s.sale_id, arr);
+    }
+    return map;
+  }, [financialSplits]);
+
+  const detectKindBySplits = useCallback((saleId: string): Exclude<ReportKind, "all"> | "own" => {
+    const splits = splitsBySaleId.get(saleId) ?? [];
+    const joined = splits.map((s) => s.description.toLowerCase()).join(" | ");
+
+    if (joined.includes("parceria") || joined.includes("cessão") || joined.includes("cessao")) return "partnerships";
+    if (joined.includes("comissão grupo") || joined.includes("comissao grupo")) return "groups";
+    return "own";
+  }, [splitsBySaleId]);
+
+  const calculateSummaries = (kind: ReportKind) => {
     if (!user) return { mySales: [], partnerSales: [] };
-    const productMap = new Map(products.map(p => [p.id, p]));
+
     const mySalesMap = new Map<string, PartnerSummary>();
     const partnerSalesMap = new Map<string, PartnerSummary>();
-    
-    const relevantGroups = isDirect ? directPartnerships : regularGroups;
-    let relevantGroupIds = relevantGroups.map(g => g.id);
-    if (selectedGroupId !== "all") {
-      relevantGroupIds = [selectedGroupId];
-    }
 
-    // My sales of partner products
-    const userSales = salesData.filter(s => s.owner_id === user.id);
-    for (const sale of userSales) {
-      for (const item of sale.sale_items || []) {
-        const product = productMap.get(item.product_id);
-        if (!product) continue;
-        if (product.owner_id === user.id) continue;
+    const relevantSales = salesData.filter((sale) => {
+      const saleKind = detectKindBySplits(sale.id);
+      if (kind === "all") return true;
+      return saleKind === kind;
+    });
 
-        const productGroupId = getProductGroup(product.id) || product.group_id;
-        if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
+    for (const sale of relevantSales) {
+      const splits = splitsBySaleId.get(sale.id) ?? [];
+      const myTotalInSale = splits.filter((s) => s.user_id === user.id).reduce((sum, s) => sum + s.amount, 0);
+      const otherSplits = splits.filter((s) => s.user_id !== user.id);
 
-        const groupConfig = getGroupConfig(productGroupId);
-        if (groupConfig.isDirect !== isDirect) continue;
+      const saleKind = detectKindBySplits(sale.id);
+      const groupName = saleKind === "partnerships" ? "Parceria 1-1" : saleKind === "groups" ? "Grupo" : "Estoque Próprio";
+      const groupId = saleKind;
+      const isDirect = saleKind === "partnerships";
 
-        if (selectedPartnerId !== "all" && product.owner_id !== selectedPartnerId) continue;
-
-        const partner = profiles.find(p => p.id === product.owner_id);
-        if (!partner) continue;
-
-        const costPrice = product.cost_price || 0;
-        const salePrice = item.unit_price;
-        const quantity = item.quantity;
-        const totalCost = costPrice * quantity;
-        const totalSale = salePrice * quantity;
-        const profit = Math.max(0, totalSale - totalCost);
-
-        let sellerEarnings = 0;
-        let partnerEarnings = 0;
-
-        if (isDirect) {
-          // Parceria 1-1: custo + lucro divididos
-          sellerEarnings = totalCost * groupConfig.costSplitRatio + profit * groupConfig.profitShareSeller;
-          partnerEarnings = totalCost * (1 - groupConfig.costSplitRatio) + profit * groupConfig.profitSharePartner;
+      // Vendas que EU fiz (posso dever para outros)
+      if (sale.owner_id === user.id) {
+        if (otherSplits.length === 0) {
+          // Estoque próprio: registrar como "minha venda" sem parceiro
+          const key = `__own__-${groupId}`;
+          if (!mySalesMap.has(key)) {
+            mySalesMap.set(key, {
+              partnerId: "__own__",
+              partnerName: "(Sem parceiro)",
+              partnerEmail: "",
+              groupId,
+              groupName,
+              isDirect,
+              totalSales: 0,
+              totalCost: 0,
+              totalProfit: 0,
+              sellerEarnings: 0,
+              partnerEarnings: 0,
+              salesCount: 0,
+            });
+          }
+          const summary = mySalesMap.get(key)!;
+          summary.totalSales += sale.total;
+          summary.sellerEarnings += myTotalInSale;
+          summary.salesCount += 1;
         } else {
-          // Grupo: dono recebe custo + comissão
-          const ownerCommission = profit * groupConfig.commissionPercent;
-          partnerEarnings = totalCost + ownerCommission;
-          sellerEarnings = profit - ownerCommission;
-        }
+          // Com parceiro(s): agrupar por recebedor
+          const byRecipient = new Map<string, number>();
+          for (const s of otherSplits) {
+            byRecipient.set(s.user_id, (byRecipient.get(s.user_id) ?? 0) + s.amount);
+          }
 
-        const key = `${partner.id}-${productGroupId}`;
-        if (!mySalesMap.has(key)) {
-          mySalesMap.set(key, {
-            partnerId: partner.id,
-            partnerName: partner.full_name,
-            partnerEmail: partner.email,
-            groupId: productGroupId,
-            groupName: groupConfig.name,
-            isDirect,
-            totalSales: 0,
-            totalCost: 0,
-            totalProfit: 0,
-            sellerEarnings: 0,
-            partnerEarnings: 0,
-            salesCount: 0
-          });
+          for (const [partnerId, owed] of byRecipient.entries()) {
+            const partner = profileMap.get(partnerId);
+            const key = `${partnerId}-${groupId}`;
+            if (!mySalesMap.has(key)) {
+              mySalesMap.set(key, {
+                partnerId,
+                partnerName: partner?.full_name ?? "Parceiro",
+                partnerEmail: partner?.email ?? "",
+                groupId,
+                groupName,
+                isDirect,
+                totalSales: 0,
+                totalCost: 0,
+                totalProfit: 0,
+                sellerEarnings: 0,
+                partnerEarnings: 0,
+                salesCount: 0,
+              });
+            }
+            const summary = mySalesMap.get(key)!;
+            summary.totalSales += sale.total;
+            summary.sellerEarnings += myTotalInSale;
+            summary.partnerEarnings += owed;
+            summary.salesCount += 1;
+          }
         }
-        const summary = mySalesMap.get(key)!;
-        summary.totalSales += totalSale;
-        summary.totalCost += totalCost;
-        summary.totalProfit += profit;
-        summary.sellerEarnings += sellerEarnings;
-        summary.partnerEarnings += partnerEarnings;
-        summary.salesCount += 1;
       }
-    }
 
-    // Partner sales of my products
-    const partnerSales = salesData.filter(s => s.owner_id !== user.id);
-    for (const sale of partnerSales) {
-      const seller = profiles.find(p => p.id === sale.owner_id);
-      if (!seller) continue;
-      if (selectedPartnerId !== "all" && sale.owner_id !== selectedPartnerId) continue;
+      // Vendas que OUTROS fizeram e EU recebo algo
+      if (sale.owner_id !== user.id && myTotalInSale > 0) {
+        const seller = profileMap.get(sale.owner_id);
+        const sellerTotalInSale = splits.filter((s) => s.user_id === sale.owner_id).reduce((sum, s) => sum + s.amount, 0);
 
-      for (const item of sale.sale_items || []) {
-        const product = productMap.get(item.product_id);
-        if (!product) continue;
-        if (product.owner_id !== user.id) continue;
-
-        const productGroupId = getProductGroup(product.id) || product.group_id;
-        if (!productGroupId || !relevantGroupIds.includes(productGroupId)) continue;
-
-        const groupConfig = getGroupConfig(productGroupId);
-        if (groupConfig.isDirect !== isDirect) continue;
-
-        const costPrice = product.cost_price || 0;
-        const salePrice = item.unit_price;
-        const quantity = item.quantity;
-        const totalCost = costPrice * quantity;
-        const totalSale = salePrice * quantity;
-        const profit = Math.max(0, totalSale - totalCost);
-
-        let myEarnings = 0;
-        let sellerEarnings = 0;
-
-        if (isDirect) {
-          // Parceria 1-1
-          myEarnings = totalCost * (1 - groupConfig.costSplitRatio) + profit * groupConfig.profitSharePartner;
-          sellerEarnings = totalCost * groupConfig.costSplitRatio + profit * groupConfig.profitShareSeller;
-        } else {
-          // Grupo
-          const ownerCommission = profit * groupConfig.commissionPercent;
-          myEarnings = totalCost + ownerCommission;
-          sellerEarnings = profit - ownerCommission;
-        }
-
-        const key = `${seller.id}-${productGroupId}`;
+        const key = `${sale.owner_id}-${groupId}`;
         if (!partnerSalesMap.has(key)) {
           partnerSalesMap.set(key, {
-            partnerId: seller.id,
-            partnerName: seller.full_name,
-            partnerEmail: seller.email,
-            groupId: productGroupId,
-            groupName: groupConfig.name,
+            partnerId: sale.owner_id,
+            partnerName: seller?.full_name ?? "Vendedor",
+            partnerEmail: seller?.email ?? "",
+            groupId,
+            groupName,
             isDirect,
             totalSales: 0,
             totalCost: 0,
             totalProfit: 0,
             sellerEarnings: 0,
             partnerEarnings: 0,
-            salesCount: 0
+            salesCount: 0,
           });
         }
         const summary = partnerSalesMap.get(key)!;
-        summary.totalSales += totalSale;
-        summary.totalCost += totalCost;
-        summary.totalProfit += profit;
-        summary.partnerEarnings += myEarnings;
-        summary.sellerEarnings += sellerEarnings;
+        summary.totalSales += sale.total;
+        summary.partnerEarnings += myTotalInSale; // meu ganho
+        summary.sellerEarnings += sellerTotalInSale; // ganho do vendedor
         summary.salesCount += 1;
       }
     }
 
     return {
       mySales: Array.from(mySalesMap.values()).sort((a, b) => b.totalSales - a.totalSales),
-      partnerSales: Array.from(partnerSalesMap.values()).sort((a, b) => b.totalSales - a.totalSales)
+      partnerSales: Array.from(partnerSalesMap.values()).sort((a, b) => b.totalSales - a.totalSales),
     };
   };
 
-  const partnershipSummaries = useMemo(() => calculateSummaries(true), [
-    salesData, products, profiles, user, directPartnerships, selectedGroupId, selectedPartnerId, productPartnerships, groups
-  ]);
-
-  const groupSummaries = useMemo(() => calculateSummaries(false), [
-    salesData, products, profiles, user, regularGroups, selectedGroupId, selectedPartnerId, productPartnerships, groups
-  ]);
+  const allSummaries = useMemo(() => calculateSummaries("all"), [salesData, financialSplits, profiles, user]);
+  const partnershipSummaries = useMemo(() => calculateSummaries("partnerships"), [salesData, financialSplits, profiles, user]);
+  const groupSummaries = useMemo(() => calculateSummaries("groups"), [salesData, financialSplits, profiles, user]);
 
   // Calculate totals for each type
   const calculateTotals = (mySales: PartnerSummary[], partnerSales: PartnerSummary[]) => {
@@ -432,19 +388,13 @@ export default function PartnerReports() {
       iOwePartners,
       myOwnerEarnings,
       partnersOweMe: myOwnerEarnings,
-      netBalance: myOwnerEarnings - iOwePartners
+      netBalance: myOwnerEarnings - iOwePartners,
     };
   };
 
-  const partnershipTotals = useMemo(
-    () => calculateTotals(partnershipSummaries.mySales, partnershipSummaries.partnerSales),
-    [partnershipSummaries]
-  );
-
-  const groupTotals = useMemo(
-    () => calculateTotals(groupSummaries.mySales, groupSummaries.partnerSales),
-    [groupSummaries]
-  );
+  const allTotals = useMemo(() => calculateTotals(allSummaries.mySales, allSummaries.partnerSales), [allSummaries]);
+  const partnershipTotals = useMemo(() => calculateTotals(partnershipSummaries.mySales, partnershipSummaries.partnerSales), [partnershipSummaries]);
+  const groupTotals = useMemo(() => calculateTotals(groupSummaries.mySales, groupSummaries.partnerSales), [groupSummaries]);
 
   const clearFilters = () => {
     setPeriod("month");
@@ -726,7 +676,11 @@ export default function PartnerReports() {
 
       {/* Tabs for Partnerships vs Groups */}
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedGroupId("all"); setSelectedPartnerId("all"); }} className="mb-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-xl grid-cols-3">
+          <TabsTrigger value="all" className="gap-2">
+            <DollarSign className="h-4 w-4" />
+            Todas
+          </TabsTrigger>
           <TabsTrigger value="partnerships" className="gap-2">
             <Users className="h-4 w-4" />
             Parcerias 1-1 ({directPartnerships.length})
@@ -824,6 +778,16 @@ export default function PartnerReports() {
             </Button>
           )}
         </div>
+
+        <TabsContent value="all">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Todas as Vendas (com divisões)
+          </h2>
+          {renderSummaryCards(allTotals, false)}
+          <Separator className="my-6" />
+          {renderTables(allSummaries, false)}
+        </TabsContent>
 
         <TabsContent value="partnerships">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
