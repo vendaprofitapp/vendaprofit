@@ -1186,6 +1186,10 @@ export type Database = {
           banner_url: string | null
           card_background_color: string | null
           created_at: string
+          custom_font_name: string | null
+          custom_font_url: string | null
+          font_body: string | null
+          font_heading: string | null
           id: string
           is_active: boolean
           is_banner_visible: boolean | null
@@ -1206,6 +1210,10 @@ export type Database = {
           banner_url?: string | null
           card_background_color?: string | null
           created_at?: string
+          custom_font_name?: string | null
+          custom_font_url?: string | null
+          font_body?: string | null
+          font_heading?: string | null
           id?: string
           is_active?: boolean
           is_banner_visible?: boolean | null
@@ -1226,6 +1234,10 @@ export type Database = {
           banner_url?: string | null
           card_background_color?: string | null
           created_at?: string
+          custom_font_name?: string | null
+          custom_font_url?: string | null
+          font_body?: string | null
+          font_heading?: string | null
           id?: string
           is_active?: boolean
           is_banner_visible?: boolean | null

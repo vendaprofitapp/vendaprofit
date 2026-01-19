@@ -79,6 +79,10 @@ interface StoreSettings {
   banner_link: string | null;
   is_banner_visible: boolean;
   banner_height_mobile: string | null;
+  font_heading: string | null;
+  font_body: string | null;
+  custom_font_url: string | null;
+  custom_font_name: string | null;
 }
 
 export default function StoreCatalog() {
@@ -453,6 +457,12 @@ export default function StoreCatalog() {
   const cardBackgroundColor = store.card_background_color || "#ffffff";
   const showBanner = store.is_banner_visible && store.banner_url;
   const bannerHeightMobile = store.banner_height_mobile || "150px";
+  
+  // Font customization
+  const fontHeading = store.font_heading || "Inter";
+  const fontBody = store.font_body || "Inter";
+  const customFontUrl = store.custom_font_url;
+  const customFontName = store.custom_font_name;
 
   // Promotional Banner Component
   const PromotionalBanner = () => {
@@ -487,35 +497,27 @@ export default function StoreCatalog() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor }}>
+    <div className="min-h-screen" style={{ backgroundColor, fontFamily: fontBody }}>
+      {/* Custom Font Loader */}
+      {customFontUrl && customFontName && (
+        <style>{`
+          @font-face {
+            font-family: '${customFontName}';
+            src: url('${customFontUrl}') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+          }
+        `}</style>
+      )}
+      
       {/* Promotional Banner - Top of page */}
       <PromotionalBanner />
       
       {/* Minimal Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100" style={{ backgroundColor: `${backgroundColor}f5` }}>
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {store.logo_url && (
-                <img 
-                  src={store.logo_url} 
-                  alt={store.store_name}
-                  className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover"
-                />
-              )}
-              <div>
-                <h1 className="text-lg md:text-xl font-semibold tracking-tight text-gray-900">
-                  {store.store_name}
-                </h1>
-                {store.store_description && (
-                  <p className="text-xs text-gray-500 hidden md:block max-w-xs truncate">
-                    {store.store_description}
-                  </p>
-                )}
-              </div>
-            </div>
-            
-            {/* Cart Button */}
+      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody }}>
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          {/* Carrinho no canto superior direito */}
+          <div className="absolute right-4 top-4 z-10">
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
               <SheetTrigger asChild>
                 <button 
@@ -633,6 +635,35 @@ export default function StoreCatalog() {
                 )}
               </SheetContent>
             </Sheet>
+          </div>
+
+          {/* Conteúdo centralizado */}
+          <div className="flex flex-col items-center gap-2 pt-2">
+            {/* Logo centralizada e maior */}
+            {store.logo_url && (
+              <img 
+                src={store.logo_url} 
+                alt={store.store_name}
+                className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover shadow-md"
+              />
+            )}
+            
+            {/* Nome da loja */}
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
+              {store.store_name}
+            </h1>
+            
+            {/* Descrição em bullet points */}
+            {store.store_description && (
+              <div className="text-xs text-gray-600 text-center max-w-md">
+                {store.store_description.split('\n').filter(line => line.trim()).map((line, i) => (
+                  <p key={i} className="flex items-center justify-center gap-1">
+                    <span className="text-gray-400">•</span>
+                    <span>{line.trim().replace(/^[-•]\s*/, '')}</span>
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -934,12 +965,12 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
 
           {/* Add to Cart Button */}
           <Button
-            className="w-full h-10 rounded-xl font-semibold text-sm transition-all hover:shadow-lg"
-            style={{ backgroundColor: primaryColor }}
+            className="w-full h-10 rounded-xl font-semibold text-xs sm:text-sm transition-all hover:shadow-lg whitespace-nowrap overflow-hidden px-2"
+            style={{ backgroundColor: primaryColor, color: 'white' }}
             onClick={handleAddToCart}
           >
-            <ShoppingBag className="h-4 w-4 mr-2" />
-            Adicionar à Sacola
+            <ShoppingBag className="h-4 w-4 mr-1 flex-shrink-0" />
+            <span className="truncate">Adicionar</span>
           </Button>
         </div>
       </div>

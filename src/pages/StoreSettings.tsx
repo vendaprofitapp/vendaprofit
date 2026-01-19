@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2 } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type } from "lucide-react";
 
 interface StoreSettings {
   id: string;
@@ -30,6 +30,10 @@ interface StoreSettings {
   banner_link: string | null;
   is_banner_visible: boolean;
   banner_height_mobile: string | null;
+  font_heading: string | null;
+  font_body: string | null;
+  custom_font_url: string | null;
+  custom_font_name: string | null;
 }
 
 interface Group {
@@ -62,12 +66,36 @@ export default function StoreSettings() {
     banner_link: "",
     is_banner_visible: false,
     banner_height_mobile: "150px",
+    font_heading: "Inter",
+    font_body: "Inter",
+    custom_font_name: "",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [customFontUrl, setCustomFontUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingFont, setUploadingFont] = useState(false);
+  const fontInputRef = useRef<HTMLInputElement>(null);
+
+  // Available Google Fonts
+  const availableFonts = [
+    "Inter",
+    "Roboto", 
+    "Open Sans",
+    "Montserrat",
+    "Poppins",
+    "Playfair Display",
+    "Lora",
+    "Raleway",
+    "Oswald",
+    "Bebas Neue",
+    "Dancing Script",
+    "Pacifico",
+    "Great Vibes",
+    "Fonte Personalizada"
+  ];
 
   // Fetch store settings
   const { data: storeSettings, isLoading } = useQuery({
@@ -140,9 +168,13 @@ export default function StoreSettings() {
         banner_link: storeSettings.banner_link || "",
         is_banner_visible: storeSettings.is_banner_visible ?? false,
         banner_height_mobile: storeSettings.banner_height_mobile || "150px",
+        font_heading: storeSettings.font_heading || "Inter",
+        font_body: storeSettings.font_body || "Inter",
+        custom_font_name: storeSettings.custom_font_name || "",
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
+      setCustomFontUrl(storeSettings.custom_font_url);
     }
   }, [storeSettings]);
 
@@ -270,6 +302,63 @@ export default function StoreSettings() {
     }
   };
 
+  // Handle custom font upload
+  const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['.ttf', '.otf', '.woff', '.woff2'];
+    const fileExt = file.name.split(".").pop()?.toLowerCase();
+    if (!fileExt || !allowedTypes.includes(`.${fileExt}`)) {
+      toast.error("Por favor, selecione um arquivo de fonte válido (TTF, OTF, WOFF, WOFF2)");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("O arquivo deve ter no máximo 5MB");
+      return;
+    }
+
+    setUploadingFont(true);
+
+    try {
+      const fontName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "");
+      const fileName = `${user!.id}/font-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("store-fonts")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrl } = supabase.storage
+        .from("store-fonts")
+        .getPublicUrl(fileName);
+
+      setCustomFontUrl(publicUrl.publicUrl);
+      setFormData(prev => ({ ...prev, custom_font_name: fontName }));
+
+      toast.success(`Fonte "${fontName}" enviada com sucesso!`);
+    } catch (error) {
+      console.error("Error uploading font:", error);
+      toast.error("Erro ao enviar fonte");
+    } finally {
+      setUploadingFont(false);
+    }
+  };
+
+  const removeCustomFont = async () => {
+    setCustomFontUrl(null);
+    setFormData(prev => ({ ...prev, custom_font_name: "" }));
+    if (storeSettings?.id) {
+      await supabase
+        .from("store_settings")
+        .update({ custom_font_url: null, custom_font_name: null })
+        .eq("id", storeSettings.id);
+      queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+    }
+  };
+
   // Set selected groups when partnerships load
   useEffect(() => {
     if (storePartnerships.length > 0) {
@@ -280,6 +369,17 @@ export default function StoreSettings() {
   // Create/Update store
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const fontData = {
+        font_heading: formData.font_heading === "Fonte Personalizada" 
+          ? (formData.custom_font_name || "Inter") 
+          : formData.font_heading,
+        font_body: formData.font_body === "Fonte Personalizada"
+          ? (formData.custom_font_name || "Inter")
+          : formData.font_body,
+        custom_font_url: customFontUrl,
+        custom_font_name: formData.custom_font_name || null,
+      };
+
       if (storeSettings) {
         // Update existing
         const { error } = await supabase
@@ -297,6 +397,7 @@ export default function StoreSettings() {
             banner_link: formData.banner_link || null,
             is_banner_visible: formData.is_banner_visible,
             banner_height_mobile: formData.banner_height_mobile,
+            ...fontData,
           })
           .eq("id", storeSettings.id);
         
@@ -320,6 +421,7 @@ export default function StoreSettings() {
             banner_link: formData.banner_link || null,
             is_banner_visible: formData.is_banner_visible,
             banner_height_mobile: formData.banner_height_mobile,
+            ...fontData,
           })
           .select("id")
           .single();
@@ -679,6 +781,98 @@ export default function StoreSettings() {
                 </div>
               </div>
             </div>
+
+            {/* Font Section */}
+            <div className="border-t pt-6">
+              <h4 className="font-medium flex items-center gap-2 mb-4">
+                <Type className="h-4 w-4" />
+                Tipografia
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Heading Font */}
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                  <Label htmlFor="font_heading" className="font-medium">
+                    Fonte dos Títulos
+                  </Label>
+                  <select
+                    id="font_heading"
+                    value={formData.font_heading}
+                    onChange={(e) => setFormData(prev => ({ ...prev, font_heading: e.target.value }))}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {availableFonts.map(font => (
+                      <option key={font} value={font}>{font}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Body Font */}
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                  <Label htmlFor="font_body" className="font-medium">
+                    Fonte do Corpo
+                  </Label>
+                  <select
+                    id="font_body"
+                    value={formData.font_body}
+                    onChange={(e) => setFormData(prev => ({ ...prev, font_body: e.target.value }))}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {availableFonts.map(font => (
+                      <option key={font} value={font}>{font}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Custom Font Upload */}
+              {(formData.font_heading === "Fonte Personalizada" || formData.font_body === "Fonte Personalizada") && (
+                <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                  <Label className="font-medium text-amber-900 flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Fonte Personalizada (TTF, OTF, WOFF)
+                  </Label>
+                  
+                  {customFontUrl && formData.custom_font_name ? (
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="flex-1 p-3 bg-white rounded-lg border">
+                        <p className="font-medium text-sm">{formData.custom_font_name}</p>
+                        <p className="text-xs text-muted-foreground">Fonte carregada com sucesso</p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={removeCustomFont}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        ref={fontInputRef}
+                        type="file"
+                        accept=".ttf,.otf,.woff,.woff2"
+                        onChange={handleFontUpload}
+                        className="hidden"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => fontInputRef.current?.click()}
+                        disabled={uploadingFont}
+                        className="w-full"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        {uploadingFont ? "Enviando..." : "Enviar Arquivo de Fonte"}
+                      </Button>
+                      <p className="text-xs text-amber-700">
+                        Formatos aceitos: TTF, OTF, WOFF, WOFF2. Máximo 5MB.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -715,14 +909,17 @@ export default function StoreSettings() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="store_description">Descrição</Label>
+              <Label htmlFor="store_description">Descrição (Exibida em Bullet Points)</Label>
               <Textarea
                 id="store_description"
                 value={formData.store_description}
                 onChange={(e) => setFormData(prev => ({ ...prev, store_description: e.target.value }))}
-                placeholder="Descreva sua loja..."
-                rows={3}
+                placeholder="Cada linha será um bullet point&#10;Exemplo: Moda fitness de alta qualidade&#10;Envio para todo o Brasil&#10;Trocas em até 30 dias"
+                rows={4}
               />
+              <p className="text-xs text-muted-foreground">
+                💡 Cada linha será exibida como um bullet point abaixo da logo. Use para destacar diferenciais da sua loja.
+              </p>
             </div>
 
             <div className="space-y-2">
