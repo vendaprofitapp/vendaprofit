@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
-import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Minus, Trash2, X } from "lucide-react";
+import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Minus, Trash2, X, Flame } from "lucide-react";
 import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -80,6 +80,7 @@ export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showOpportunities, setShowOpportunities] = useState(false);
   const [fittingRoomOpen, setFittingRoomOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogDisplayItem | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -384,8 +385,15 @@ export default function StoreCatalog() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
       (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
-    const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean);
-    const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory);
+    const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
+    const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+    
+    // Filter for opportunities
+    if (showOpportunities) {
+      const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
+      if (!hasOpportunity) return false;
+    }
+    
     return matchesSearch && matchesCategory;
   });
 
@@ -608,6 +616,25 @@ export default function StoreCatalog() {
 
       {/* Search and Filters */}
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Opportunities Button Bar */}
+        <div className="flex justify-center mb-4">
+          <Button
+            variant={showOpportunities ? "default" : "outline"}
+            size="lg"
+            className={`gap-2 font-bold text-base px-6 ${showOpportunities ? "" : "border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white"}`}
+            style={showOpportunities ? { backgroundColor: "#f97316" } : {}}
+            onClick={() => {
+              setShowOpportunities(!showOpportunities);
+              if (!showOpportunities) {
+                setSelectedCategory(null);
+              }
+            }}
+          >
+            <Flame className="h-5 w-5" />
+            OPORTUNIDADES
+          </Button>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -620,18 +647,24 @@ export default function StoreCatalog() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
-              variant={selectedCategory === null ? "default" : "outline"}
+              variant={selectedCategory === null && !showOpportunities ? "default" : "outline"}
               size="sm"
-              onClick={() => setSelectedCategory(null)}
+              onClick={() => {
+                setSelectedCategory(null);
+                setShowOpportunities(false);
+              }}
             >
               Todos
             </Button>
-            {categories.map(cat => (
+            {categories.filter(cat => cat?.toLowerCase() !== "oportunidades").map(cat => (
               <Button
                 key={cat}
                 variant={selectedCategory === cat ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSelectedCategory(cat)}
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  setShowOpportunities(false);
+                }}
               >
                 {cat}
               </Button>
@@ -778,11 +811,20 @@ function ProductCard({ item, primaryColor, onAddToCart, onOpenFittingRoom }: Pro
           )}
 
           <p 
-            className="text-lg font-bold mb-3"
+            className="text-lg font-bold mb-2"
             style={{ color: primaryColor }}
           >
             {formatPrice(item.price)}
           </p>
+
+          {/* Partner product shipping notice */}
+          {item.isPartner && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md px-2 py-1 mb-2">
+              <p className="text-xs text-amber-700 font-medium text-center">
+                📦 Prazo de Envio: 7-10 dias
+              </p>
+            </div>
+          )}
 
           {/* Size selector */}
           {item.sizes.length > 0 && (
