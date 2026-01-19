@@ -621,12 +621,25 @@ export default function Sales() {
         
         // Check if this product is in a partnership (even if it's our own stock)
         // Products in product_partnerships should ALWAYS apply partnership rules
-        const { data: productPartnershipData } = await supabase
+        // PRIORITY: Direct (1-1) partnerships take precedence over group partnerships
+        const { data: allProductPartnerships } = await supabase
           .from("product_partnerships")
-          .select("group_id, group:groups!inner(id, is_direct, cost_split_ratio, profit_share_seller, profit_share_partner, commission_percent)")
-          .eq("product_id", item.product.id)
-          .limit(1)
-          .maybeSingle();
+          .select("group_id, group:groups!inner(id, is_direct, cost_split_ratio, profit_share_seller, profit_share_partner, commission_percent, created_by)")
+          .eq("product_id", item.product.id);
+        
+        // Sort partnerships: direct (1-1) first, then by membership (where user is a member)
+        let productPartnershipData: typeof allProductPartnerships extends Array<infer T> ? T : never | null = null;
+        
+        if (allProductPartnerships && allProductPartnerships.length > 0) {
+          // First, try to find a direct partnership where the user is a member
+          const directPartnership = allProductPartnerships.find(pp => {
+            const g = pp.group as any;
+            return g?.is_direct === true;
+          });
+          
+          // If direct partnership exists, use it; otherwise fall back to first available
+          productPartnershipData = directPartnership || allProductPartnerships[0];
+        }
         
         // If product is in product_partnerships, it's partnership stock regardless of who owns it
         const isInPartnership = !!productPartnershipData?.group_id;
