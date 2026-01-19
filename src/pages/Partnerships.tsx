@@ -202,17 +202,20 @@ export default function Partnerships() {
     enabled: !!user,
   });
 
-  // Fetch product partnerships
+  // Fetch product partnerships (scoped to user's groups to avoid 1000-row limit)
+  const groupIds = groupMemberships.map((m) => m.group_id);
   const { data: productPartnerships = [] } = useQuery({
-    queryKey: ["product-partnerships"],
+    queryKey: ["product-partnerships", groupIds.sort().join(",")],
     queryFn: async () => {
+      if (groupIds.length === 0) return [];
       const { data, error } = await supabase
         .from("product_partnerships")
-        .select("*");
+        .select("*")
+        .in("group_id", groupIds);
       if (error) throw error;
       return data as ProductPartnership[];
     },
-    enabled: !!user,
+    enabled: !!user && groupIds.length > 0,
   });
 
   // Fetch auto-share settings
@@ -390,10 +393,13 @@ export default function Partnerships() {
           .eq("group_id", groupId);
         if (error) throw error;
       } else {
-        // Add partnership - use upsert to handle constraint
+        // Add partnership - ignore duplicates (no UPDATE policy on this table)
         const { error } = await supabase
           .from("product_partnerships")
-          .upsert({ product_id: productId, group_id: groupId }, { onConflict: "group_id,product_id" });
+          .upsert(
+            { product_id: productId, group_id: groupId },
+            { onConflict: "product_id,group_id", ignoreDuplicates: true }
+          );
         if (error) throw error;
       }
     },
