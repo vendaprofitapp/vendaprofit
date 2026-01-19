@@ -50,6 +50,8 @@ interface Product {
   name: string;
   description: string | null;
   category: string;
+  category_2: string | null;
+  category_3: string | null;
   price: number;
   cost_price: number | null;
   
@@ -464,8 +466,9 @@ export default function StockControl() {
       const matchesTerm = !term || 
         p.name.toLowerCase().includes(term);
       
-      // Category
-      const matchesCategory = filters.category === "all" || p.category === filters.category;
+      // Category - check all 3 category fields
+      const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean) as string[];
+      const matchesCategory = filters.category === "all" || productCategories.includes(filters.category);
       
       // Status
       const matchesStatus = filters.status === "all" || statusKey === filters.status;

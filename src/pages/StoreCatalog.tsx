@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Search, MessageCircle, Store, Package, Sparkles, ShoppingCart, Plus, Minus, Trash2, X } from "lucide-react";
 import { AIFittingRoomDialog } from "@/components/catalog/AIFittingRoomDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
@@ -46,6 +46,8 @@ interface CatalogDisplayItem {
   description: string | null;
   price: number;
   category: string;
+  category_2?: string | null;
+  category_3?: string | null;
   color: string | null;
   sizes: string[];
   image_url: string | null;
@@ -370,8 +372,11 @@ export default function StoreCatalog() {
     enabled: !!store,
   });
 
-  // Get unique categories
-  const categories = [...new Set(catalogItems.map(p => p.category))].filter(Boolean);
+  // Get unique categories (including all 3 category fields)
+  const categories = useMemo(() => {
+    const allCats = catalogItems.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean));
+    return [...new Set(allCats)];
+  }, [catalogItems]);
 
   // Filter products
   const filteredItems = catalogItems.filter(p => {
@@ -379,7 +384,8 @@ export default function StoreCatalog() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
       (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
-    const matchesCategory = !selectedCategory || p.category === selectedCategory;
+    const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean);
+    const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory);
     return matchesSearch && matchesCategory;
   });
 

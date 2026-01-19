@@ -83,6 +83,8 @@ interface Product {
   id: string;
   name: string;
   category: string;
+  category_2: string | null;
+  category_3: string | null;
   color: string | null;
   cost_price: number | null;
   owner_id: string;
@@ -246,10 +248,10 @@ export default function Reports() {
     return map;
   }, [customPaymentMethods]);
 
-  // Get unique categories and colors from products
+  // Get unique categories and colors from products (including all 3 category fields)
   const categories = useMemo(() => {
-    const cats = [...new Set(products.map(p => p.category).filter(Boolean))];
-    return cats.sort();
+    const allCats = products.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean)) as string[];
+    return [...new Set(allCats)].sort();
   }, [products]);
 
   const colors = useMemo(() => {
@@ -306,7 +308,11 @@ export default function Reports() {
 
       if (categoryFilter !== "all") {
         const saleItemProducts = sale.sale_items.map(item => productMap.get(item.product_id));
-        const hasCategory = saleItemProducts.some(p => p && p.category === categoryFilter);
+        const hasCategory = saleItemProducts.some(p => {
+          if (!p) return false;
+          const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean);
+          return productCategories.includes(categoryFilter);
+        });
         if (!hasCategory) return false;
       }
 
