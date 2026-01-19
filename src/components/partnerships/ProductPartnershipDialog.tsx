@@ -35,6 +35,8 @@ interface Product {
   name: string;
   price: number;
   category: string;
+  category_2?: string | null;
+  category_3?: string | null;
   stock_quantity: number;
 }
 
@@ -72,16 +74,19 @@ export function ProductPartnershipDialog({
   const queryClient = useQueryClient();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // Get unique categories
+  // Get unique categories (including all 3 category fields)
   const categories = useMemo(() => {
-    const cats = [...new Set(products.map((p) => p.category))];
-    return cats.sort();
+    const allCats = products.flatMap((p) => [p.category, p.category_2, p.category_3].filter(Boolean)) as string[];
+    return [...new Set(allCats)].sort();
   }, [products]);
 
-  // Filter products by category
+  // Filter products by category (check all 3 category fields)
   const filteredProducts = useMemo(() => {
     if (categoryFilter === "all") return products;
-    return products.filter((p) => p.category === categoryFilter);
+    return products.filter((p) => {
+      const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean);
+      return productCategories.includes(categoryFilter);
+    });
   }, [products, categoryFilter]);
 
   // Check if a product is in partnership
@@ -187,9 +192,10 @@ export function ProductPartnershipDialog({
   // Release by category mutation
   const releaseByCategoryMutation = useMutation({
     mutationFn: async (category: string) => {
-      const productsInCategory = products.filter(
-        (p) => p.category === category && !isProductInPartnership(p.id)
-      );
+      const productsInCategory = products.filter((p) => {
+        const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean);
+        return productCategories.includes(category) && !isProductInPartnership(p.id);
+      });
 
       if (productsInCategory.length === 0) {
         throw new Error("Todos os produtos desta categoria já estão liberados");
