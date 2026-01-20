@@ -143,9 +143,11 @@ export function VoiceSaleDialog({
     setIsLoading(true);
     
     try {
-      // Extract search words for ilike query
-      const searchWords = searchTerm.trim().split(/\s+/).filter(w => w.length > 1);
-      const primarySearch = searchWords.slice(0, 2).join(' ');
+      const normalizedSearch = normalizeText(searchTerm);
+      const normalizedWords = normalizedSearch.split(/\s+/).filter(w => w.length > 1);
+      
+      // Search for products with first word(s) - more flexible search
+      const primarySearch = normalizedWords.slice(0, 2).join(' ');
       
       // Search for products with ilike
       const { data: similarData, error: similarError } = await supabase
@@ -155,7 +157,7 @@ export function VoiceSaleDialog({
         .eq('is_active', true)
         .gt('stock_quantity', 0)
         .ilike('name', `%${primarySearch}%`)
-        .limit(10);
+        .limit(20);
 
       if (similarError) throw similarError;
 
@@ -177,38 +179,80 @@ export function VoiceSaleDialog({
         return;
       }
 
-      const normalizedSearch = normalizeText(searchTerm);
-      const normalizedWords = normalizedSearch.split(/\s+/).filter(w => w.length > 1);
+      // Fetch variants to match color/size in search term
+      const productIds = products.map(p => p.id);
+      const { data: variantsData } = await supabase
+        .from('product_variants')
+        .select('product_id, color, size, stock_quantity')
+        .in('product_id', productIds)
+        .gt('stock_quantity', 0);
 
-      // Score products by match quality
+      const variantsByProduct = new Map<string, Array<{ color: string | null; size: string; stock_quantity: number }>>();
+      (variantsData || []).forEach(v => {
+        const existing = variantsByProduct.get(v.product_id) || [];
+        existing.push({ color: v.color, size: v.size, stock_quantity: v.stock_quantity });
+        variantsByProduct.set(v.product_id, existing);
+      });
+
+      // Score products by match quality - considering variants
       const scoredProducts = products.map(product => {
         const normalizedName = normalizeText(product.name);
+        const productVariants = variantsByProduct.get(product.id) || [];
         let score = 0;
+        let matchedColor: string | null = null;
+        let matchedSize: string | null = null;
         
+        // Identify words that match product name vs potential color/size
+        const nameWords = normalizedName.split(/\s+/);
+        const searchWordsMatchingName: string[] = [];
+        const remainingSearchWords: string[] = [];
+        
+        for (const searchWord of normalizedWords) {
+          const matchesName = nameWords.some(nw => nw.includes(searchWord) || searchWord.includes(nw));
+          if (matchesName) {
+            searchWordsMatchingName.push(searchWord);
+          } else {
+            remainingSearchWords.push(searchWord);
+          }
+        }
+
+        // Score based on name match
         if (normalizedName === normalizedSearch) {
           score = 100;
-        } else {
-          const matchedWords = normalizedWords.filter(word => normalizedName.includes(word));
-          score = (matchedWords.length / normalizedWords.length) * 80;
+        } else if (searchWordsMatchingName.length > 0) {
+          // Good match if most name words are found
+          score = (searchWordsMatchingName.length / Math.max(nameWords.length, 1)) * 70;
           
-          if (normalizedName.includes(normalizedSearch)) {
-            score += 15;
+          if (normalizedName.includes(primarySearch)) {
+            score += 20;
           }
-          
-          // Partial word matching
-          for (const word of normalizedWords) {
-            if (word.length >= 3) {
-              const nameWords = normalizedName.split(/\s+/);
-              for (const nameWord of nameWords) {
-                if (nameWord.startsWith(word) || word.startsWith(nameWord)) {
-                  score += 10;
-                }
-              }
+        }
+        
+        // Check if remaining words match variant colors/sizes
+        for (const word of remainingSearchWords) {
+          for (const variant of productVariants) {
+            if (variant.color && normalizeText(variant.color).includes(word)) {
+              matchedColor = variant.color;
+              score += 15; // Bonus for color match in variant
+            }
+            if (normalizeText(variant.size).includes(word)) {
+              matchedSize = variant.size;
+              score += 10; // Bonus for size match in variant
             }
           }
         }
 
-        return { product, score };
+        // Also check product's direct color field
+        if (product.color) {
+          for (const word of remainingSearchWords) {
+            if (normalizeText(product.color).includes(word)) {
+              matchedColor = product.color;
+              score += 15;
+            }
+          }
+        }
+
+        return { product, score, matchedColor, matchedSize };
       });
 
       const matches = scoredProducts
@@ -227,9 +271,19 @@ export function VoiceSaleDialog({
         return;
       }
 
-      // If single strong match, process it directly
-      if (matches.length === 1 || (matches[0].score >= 85 && matches[0].score - (matches[1]?.score || 0) > 20)) {
-        await processSelectedProduct(matches[0].product as Product);
+      // If single strong match or best match has color/size already matched
+      const bestMatch = matches[0];
+      if (matches.length === 1 || 
+          (bestMatch.score >= 70 && bestMatch.score - (matches[1]?.score || 0) > 15) ||
+          (bestMatch.matchedColor || bestMatch.matchedSize)) {
+        // Pass detected color/size to command for auto-selection
+        if (bestMatch.matchedColor && command) {
+          command.color = bestMatch.matchedColor;
+        }
+        if (bestMatch.matchedSize && command) {
+          command.size = bestMatch.matchedSize;
+        }
+        await processSelectedProduct(bestMatch.product as Product);
       } else {
         // Multiple potential matches - show selection
         const uniqueProducts = new Map<string, Product>();
