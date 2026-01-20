@@ -668,11 +668,11 @@ export default function StoreCatalog() {
             const logoSize = store.logo_size || 'medium';
             
             // Classes de tamanho para logo conforme especificação:
-            // Pequena: 200x200px | Média: 400x400px | Grande: 800x800px
-            // Mobile tem metade do tamanho para melhor visualização
+            // Pequena: 800x800px | Média: 1200x1200px | Grande: 2000x2000px
+            // Mobile tem tamanho reduzido para caber na tela
             const logoSizeClasses: Record<string, string> = {
-              small: 'h-[100px] md:h-[200px] max-w-[100px] md:max-w-[200px]',
-              medium: 'h-[200px] md:h-[400px] max-w-[200px] md:max-w-[400px]',
+              small: 'h-[200px] md:h-[400px] max-w-[200px] md:max-w-[400px]',
+              medium: 'h-[300px] md:h-[600px] max-w-[300px] md:max-w-[600px]',
               large: 'h-[400px] md:h-[800px] max-w-[400px] md:max-w-[800px]'
             };
             
