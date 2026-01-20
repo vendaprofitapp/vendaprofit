@@ -667,13 +667,13 @@ export default function StoreCatalog() {
             const logoPosition = store.logo_position || 'center';
             const logoSize = store.logo_size || 'medium';
             
-            // Classes de tamanho para logo - altura definida para cada configuração
-            // Mobile: h-10 = 40px, h-16 = 64px, h-24 = 96px
-            // Desktop: h-12 = 48px, h-20 = 80px, h-36 = 144px
+            // Classes de tamanho para logo conforme especificação:
+            // Pequena: 200x200px | Média: 400x400px | Grande: 800x800px
+            // Mobile tem metade do tamanho para melhor visualização
             const logoSizeClasses: Record<string, string> = {
-              small: 'h-10 md:h-12',
-              medium: 'h-16 md:h-20',
-              large: 'h-24 md:h-36'
+              small: 'h-[100px] md:h-[200px] max-w-[100px] md:max-w-[200px]',
+              medium: 'h-[200px] md:h-[400px] max-w-[200px] md:max-w-[400px]',
+              large: 'h-[400px] md:h-[800px] max-w-[400px] md:max-w-[800px]'
             };
             
             // Alinhamento baseado na posição
