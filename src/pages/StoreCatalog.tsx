@@ -541,7 +541,7 @@ export default function StoreCatalog() {
       )}
       
       {/* Minimal Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody }}>
+      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody, maxHeight: '15vh', overflow: 'hidden' }}>
         <div className="max-w-7xl mx-auto px-4 py-2">
           {/* Carrinho no canto superior direito */}
           <div className="absolute right-4 top-4 z-10">
