@@ -541,7 +541,7 @@ export default function StoreCatalog() {
       )}
       
       {/* Minimal Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody, maxHeight: '15vh', overflow: 'hidden' }}>
+      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative" style={{ backgroundColor: `${backgroundColor}f5`, fontFamily: fontBody }}>
         <div className="max-w-7xl mx-auto px-4 py-2">
           {/* Carrinho no canto superior direito */}
           <div className="absolute right-4 top-4 z-10">
@@ -669,12 +669,14 @@ export default function StoreCatalog() {
             const logoPosition = store.logo_position || 'center';
             const logoSize = store.logo_size || 'medium';
             
-            // Classes de tamanho para logo - limitado a 15vh do header
-            // Pequena: 8vh | Média: 10vh | Grande: 12vh
+            // Classes de tamanho para logo - altura fixa responsiva
+            // Pequena: 40px mobile / 60px desktop
+            // Média: 50px mobile / 80px desktop  
+            // Grande: 60px mobile / 100px desktop
             const logoSizeClasses: Record<string, string> = {
-              small: 'max-h-[8vh]',
-              medium: 'max-h-[10vh]',
-              large: 'max-h-[12vh]'
+              small: 'h-10 md:h-[60px]',
+              medium: 'h-[50px] md:h-20',
+              large: 'h-[60px] md:h-[100px]'
             };
             
             // Alinhamento baseado na posição
