@@ -41,6 +41,8 @@ interface StoreSettings {
   show_opportunities_button: boolean;
   opportunities_button_text: string | null;
   opportunities_button_color: string | null;
+  show_store_url: boolean;
+  show_store_description: boolean;
 }
 
 interface Group {
@@ -82,6 +84,8 @@ export default function StoreSettings() {
     opportunities_button_color: "#f97316",
     logo_position: "center",
     logo_size: "medium",
+    show_store_url: true,
+    show_store_description: true,
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -193,6 +197,8 @@ export default function StoreSettings() {
         opportunities_button_color: storeSettings.opportunities_button_color || "#f97316",
         logo_position: storeSettings.logo_position || "center",
         logo_size: storeSettings.logo_size || "medium",
+        show_store_url: storeSettings.show_store_url ?? true,
+        show_store_description: storeSettings.show_store_description ?? true,
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -488,6 +494,8 @@ export default function StoreSettings() {
             opportunities_button_color: formData.opportunities_button_color,
             logo_position: formData.logo_position,
             logo_size: formData.logo_size,
+            show_store_url: formData.show_store_url,
+            show_store_description: formData.show_store_description,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -518,6 +526,8 @@ export default function StoreSettings() {
             opportunities_button_color: formData.opportunities_button_color,
             logo_position: formData.logo_position,
             logo_size: formData.logo_size,
+            show_store_url: formData.show_store_url,
+            show_store_description: formData.show_store_description,
             ...fontData,
           })
           .select("id")
@@ -1175,6 +1185,39 @@ export default function StoreSettings() {
               <p className="text-xs text-muted-foreground">
                 💡 Cada linha será exibida como um bullet point abaixo da logo. Use para destacar diferenciais da sua loja.
               </p>
+            </div>
+
+            {/* Visibility Toggles */}
+            <div className="border-t pt-4 space-y-3">
+              <Label className="text-sm font-medium">Visibilidade na Vitrine</Label>
+              
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                <div>
+                  <Label htmlFor="show_store_url" className="text-sm cursor-pointer">Exibir Nome da Loja</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Mostra o nome da loja abaixo da logo na vitrine
+                  </p>
+                </div>
+                <Switch
+                  id="show_store_url"
+                  checked={formData.show_store_url}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, show_store_url: checked }))}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                <div>
+                  <Label htmlFor="show_store_description" className="text-sm cursor-pointer">Exibir Descrição</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Mostra os bullet points de descrição na vitrine
+                  </p>
+                </div>
+                <Switch
+                  id="show_store_description"
+                  checked={formData.show_store_description}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, show_store_description: checked }))}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
