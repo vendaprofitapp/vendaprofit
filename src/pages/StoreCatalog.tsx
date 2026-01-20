@@ -72,6 +72,8 @@ interface StoreSettings {
   whatsapp_number: string | null;
   show_own_products: boolean;
   logo_url: string | null;
+  logo_position: string | null;
+  logo_size: string | null;
   banner_url: string | null;
   banner_url_mobile: string | null;
   primary_color: string | null;
@@ -660,39 +662,78 @@ export default function StoreCatalog() {
             </Sheet>
           </div>
 
-          {/* Conteúdo centralizado */}
-          <div className={cn(
-            "flex flex-col items-center",
-            (store.logo_url || store.store_name || store.store_description) ? "gap-2 pt-2" : ""
-          )}>
-            {/* Logo centralizada e maior */}
-            {store.logo_url && (
-              <img 
-                src={store.logo_url} 
-                alt={store.store_name || "Logo"}
-                className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover shadow-md"
-              />
-            )}
+          {/* Conteúdo - posição baseada em logo_position */}
+          {(() => {
+            const logoPosition = store.logo_position || 'center';
+            const logoSize = store.logo_size || 'medium';
             
-            {/* Nome da loja - só aparece se preenchido */}
-            {store.store_name && (
-              <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
-                {store.store_name}
-              </h1>
-            )}
+            // Tamanhos do logo baseados na configuração
+            const sizeClasses = {
+              small: 'w-12 h-12 md:w-16 md:h-16',
+              medium: 'w-20 h-20 md:w-28 md:h-28',
+              large: 'w-32 h-32 md:w-44 md:h-44'
+            };
             
-            {/* Descrição em bullet points - só aparece se preenchido */}
-            {store.store_description && store.store_description.trim() && (
-              <div className="text-xs text-gray-600 text-center max-w-md">
-                {store.store_description.split('\n').filter(line => line.trim()).map((line, i) => (
-                  <p key={i} className="flex items-center justify-center gap-1">
-                    <span className="text-gray-400">•</span>
-                    <span>{line.trim().replace(/^[-•]\s*/, '')}</span>
-                  </p>
-                ))}
+            // Max height para conter a imagem
+            const maxSizeClasses = {
+              small: 'max-w-[48px] max-h-[48px] md:max-w-[64px] md:max-h-[64px]',
+              medium: 'max-w-[80px] max-h-[80px] md:max-w-[112px] md:max-h-[112px]',
+              large: 'max-w-[128px] max-h-[128px] md:max-w-[176px] md:max-h-[176px]'
+            };
+            
+            // Alinhamento baseado na posição
+            const alignClasses = {
+              left: 'items-start text-left',
+              center: 'items-center text-center',
+              right: 'items-end text-right'
+            };
+            
+            return (
+              <div className={cn(
+                "flex flex-col w-full",
+                alignClasses[logoPosition as keyof typeof alignClasses] || 'items-center text-center',
+                (store.logo_url || store.store_name || store.store_description) ? "gap-2 pt-2" : ""
+              )}>
+                {/* Logo com formato livre */}
+                {store.logo_url && (
+                  <img 
+                    src={store.logo_url} 
+                    alt={store.store_name || "Logo"}
+                    className={cn(
+                      "object-contain shadow-md",
+                      maxSizeClasses[logoSize as keyof typeof maxSizeClasses] || maxSizeClasses.medium
+                    )}
+                  />
+                )}
+            
+                {/* Nome da loja - só aparece se preenchido */}
+                {store.store_name && (
+                  <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
+                    {store.store_name}
+                  </h1>
+                )}
+                
+                {/* Descrição em bullet points - só aparece se preenchido */}
+                {store.store_description && store.store_description.trim() && (
+                  <div className={cn(
+                    "text-xs text-gray-600 max-w-md",
+                    logoPosition === 'center' ? "text-center" : logoPosition === 'right' ? "text-right" : "text-left"
+                  )}>
+                    {store.store_description.split('\n').filter(line => line.trim()).map((line, i) => (
+                      <p key={i} className={cn(
+                        "flex gap-1",
+                        logoPosition === 'center' ? "items-center justify-center" : 
+                        logoPosition === 'right' ? "items-center justify-end" : "items-center justify-start"
+                      )}>
+                        <span className="text-gray-400">•</span>
+                        <span>{line.trim().replace(/^[-•]\s*/, '')}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </header>
 
