@@ -23,6 +23,8 @@ interface StoreSettings {
   show_own_products: boolean;
   is_active: boolean;
   logo_url: string | null;
+  logo_position: string | null;
+  logo_size: string | null;
   banner_url: string | null;
   banner_url_mobile: string | null;
   primary_color: string | null;
@@ -78,6 +80,8 @@ export default function StoreSettings() {
     show_opportunities_button: true,
     opportunities_button_text: "OPORTUNIDADES",
     opportunities_button_color: "#f97316",
+    logo_position: "center",
+    logo_size: "medium",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -187,6 +191,8 @@ export default function StoreSettings() {
         show_opportunities_button: storeSettings.show_opportunities_button ?? true,
         opportunities_button_text: storeSettings.opportunities_button_text || "OPORTUNIDADES",
         opportunities_button_color: storeSettings.opportunities_button_color || "#f97316",
+        logo_position: storeSettings.logo_position || "center",
+        logo_size: storeSettings.logo_size || "medium",
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -480,6 +486,8 @@ export default function StoreSettings() {
             show_opportunities_button: formData.show_opportunities_button,
             opportunities_button_text: formData.opportunities_button_text || null,
             opportunities_button_color: formData.opportunities_button_color,
+            logo_position: formData.logo_position,
+            logo_size: formData.logo_size,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -508,6 +516,8 @@ export default function StoreSettings() {
             show_opportunities_button: formData.show_opportunities_button,
             opportunities_button_text: formData.opportunities_button_text || null,
             opportunities_button_color: formData.opportunities_button_color,
+            logo_position: formData.logo_position,
+            logo_size: formData.logo_size,
             ...fontData,
           })
           .select("id")
@@ -613,16 +623,17 @@ export default function StoreSettings() {
               <ImageIcon className="h-5 w-5" />
               Logomarca
             </CardTitle>
-            <CardDescription>Adicione a logo da sua loja</CardDescription>
+            <CardDescription>Adicione a logo da sua loja - aceita qualquer formato e tamanho</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
+          <CardContent className="space-y-6">
+            {/* Upload Section */}
+            <div className="flex items-start gap-4">
               {logoUrl ? (
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                   <img
                     src={logoUrl}
                     alt="Logo da loja"
-                    className="w-24 h-24 object-cover rounded-full border-2 border-primary/20 bg-muted shadow-md"
+                    className="max-w-32 max-h-32 object-contain border-2 border-primary/20 bg-muted shadow-md rounded-lg"
                   />
                   <Button
                     variant="destructive"
@@ -634,7 +645,7 @@ export default function StoreSettings() {
                   </Button>
                 </div>
               ) : (
-                <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center bg-muted/50">
+                <div className="w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 flex-shrink-0">
                   <ImageIcon className="h-8 w-8 text-muted-foreground" />
                 </div>
               )}
@@ -656,8 +667,60 @@ export default function StoreSettings() {
                 </Button>
                 <div className="text-xs text-muted-foreground space-y-1">
                   <p>PNG, JPG ou WebP. Máximo 2MB.</p>
-                  <p className="font-medium text-amber-600">📐 Tamanho recomendado: 200x200px a 400x400px</p>
-                  <p>Imagens quadradas funcionam melhor. A logo será exibida em formato circular.</p>
+                  <p className="text-green-600 font-medium">✓ Formato livre: redonda, quadrada ou retangular</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Position and Size Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+              {/* Logo Position */}
+              <div className="space-y-3">
+                <Label className="font-medium">Posição da Logo</Label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'left', label: '← Esquerda' },
+                    { value: 'center', label: 'Centro' },
+                    { value: 'right', label: 'Direita →' },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, logo_position: option.value }))}
+                      className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-all ${
+                        formData.logo_position === option.value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted/50 hover:bg-muted border-border'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Logo Size */}
+              <div className="space-y-3">
+                <Label className="font-medium">Tamanho da Logo</Label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'small', label: 'Pequena' },
+                    { value: 'medium', label: 'Média' },
+                    { value: 'large', label: 'Grande' },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, logo_size: option.value }))}
+                      className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-all ${
+                        formData.logo_size === option.value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted/50 hover:bg-muted border-border'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

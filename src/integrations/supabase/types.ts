@@ -1195,6 +1195,8 @@ export type Database = {
           id: string
           is_active: boolean
           is_banner_visible: boolean | null
+          logo_position: string | null
+          logo_size: string | null
           logo_url: string | null
           opportunities_button_color: string | null
           opportunities_button_text: string | null
@@ -1224,6 +1226,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_banner_visible?: boolean | null
+          logo_position?: string | null
+          logo_size?: string | null
           logo_url?: string | null
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
@@ -1253,6 +1257,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_banner_visible?: boolean | null
+          logo_position?: string | null
+          logo_size?: string | null
           logo_url?: string | null
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
