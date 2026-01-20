@@ -90,6 +90,8 @@ interface StoreSettings {
   show_opportunities_button: boolean;
   opportunities_button_text: string | null;
   opportunities_button_color: string | null;
+  show_store_url: boolean;
+  show_store_description: boolean;
 }
 
 export default function StoreCatalog() {
@@ -701,15 +703,15 @@ export default function StoreCatalog() {
                   />
                 )}
             
-                {/* Nome da loja - só aparece se preenchido */}
-                {store.store_name && (
+                {/* Nome da loja - só aparece se preenchido E show_store_url for true */}
+                {store.store_name && (store.show_store_url ?? true) && (
                   <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900" style={{ fontFamily: fontHeading }}>
                     {store.store_name}
                   </h1>
                 )}
                 
-                {/* Descrição em bullet points - só aparece se preenchido */}
-                {store.store_description && store.store_description.trim() && (
+                {/* Descrição em bullet points - só aparece se preenchido E show_store_description for true */}
+                {store.store_description && store.store_description.trim() && (store.show_store_description ?? true) && (
                   <div className={cn(
                     "text-xs text-gray-600 max-w-md",
                     logoPosition === 'center' ? "text-center" : logoPosition === 'right' ? "text-right" : "text-left"

@@ -1204,6 +1204,8 @@ export type Database = {
           primary_color: string | null
           show_opportunities_button: boolean | null
           show_own_products: boolean
+          show_store_description: boolean | null
+          show_store_url: boolean | null
           store_description: string | null
           store_name: string
           store_slug: string
@@ -1235,6 +1237,8 @@ export type Database = {
           primary_color?: string | null
           show_opportunities_button?: boolean | null
           show_own_products?: boolean
+          show_store_description?: boolean | null
+          show_store_url?: boolean | null
           store_description?: string | null
           store_name: string
           store_slug: string
@@ -1266,6 +1270,8 @@ export type Database = {
           primary_color?: string | null
           show_opportunities_button?: boolean | null
           show_own_products?: boolean
+          show_store_description?: boolean | null
+          show_store_url?: boolean | null
           store_description?: string | null
           store_name?: string
           store_slug?: string
