@@ -667,22 +667,17 @@ export default function StoreCatalog() {
             const logoPosition = store.logo_position || 'center';
             const logoSize = store.logo_size || 'medium';
             
-            // Tamanhos do logo baseados na configuração
-            const sizeClasses = {
-              small: 'w-12 h-12 md:w-16 md:h-16',
-              medium: 'w-20 h-20 md:w-28 md:h-28',
-              large: 'w-32 h-32 md:w-44 md:h-44'
-            };
-            
-            // Max height para conter a imagem
-            const maxSizeClasses = {
-              small: 'max-w-[48px] max-h-[48px] md:max-w-[64px] md:max-h-[64px]',
-              medium: 'max-w-[80px] max-h-[80px] md:max-w-[112px] md:max-h-[112px]',
-              large: 'max-w-[128px] max-h-[128px] md:max-w-[176px] md:max-h-[176px]'
+            // Classes de tamanho para logo - altura definida para cada configuração
+            // Mobile: h-10 = 40px, h-16 = 64px, h-24 = 96px
+            // Desktop: h-12 = 48px, h-20 = 80px, h-36 = 144px
+            const logoSizeClasses: Record<string, string> = {
+              small: 'h-10 md:h-12',
+              medium: 'h-16 md:h-20',
+              large: 'h-24 md:h-36'
             };
             
             // Alinhamento baseado na posição
-            const alignClasses = {
+            const alignClasses: Record<string, string> = {
               left: 'items-start text-left',
               center: 'items-center text-center',
               right: 'items-end text-right'
@@ -691,17 +686,17 @@ export default function StoreCatalog() {
             return (
               <div className={cn(
                 "flex flex-col w-full",
-                alignClasses[logoPosition as keyof typeof alignClasses] || 'items-center text-center',
+                alignClasses[logoPosition] || 'items-center text-center',
                 (store.logo_url || store.store_name || store.store_description) ? "gap-2 pt-2" : ""
               )}>
-                {/* Logo com formato livre */}
+                {/* Logo com formato livre - preserva proporção original */}
                 {store.logo_url && (
                   <img 
                     src={store.logo_url} 
                     alt={store.store_name || "Logo"}
                     className={cn(
-                      "object-contain shadow-md",
-                      maxSizeClasses[logoSize as keyof typeof maxSizeClasses] || maxSizeClasses.medium
+                      "object-contain w-auto",
+                      logoSizeClasses[logoSize] || logoSizeClasses.medium
                     )}
                   />
                 )}
