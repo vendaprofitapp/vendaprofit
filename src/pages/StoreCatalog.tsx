@@ -190,7 +190,7 @@ export default function StoreCatalog() {
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
-          .select("id, name, description, price, category, size, color, image_url, video_url, stock_quantity, owner_id")
+          .select("id, name, description, price, category, category_2, category_3, size, color, image_url, video_url, stock_quantity, owner_id")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
@@ -210,7 +210,7 @@ export default function StoreCatalog() {
           .select(`
             product_id,
             products!inner (
-              id, name, description, price, category, size, color, image_url, video_url, stock_quantity, owner_id, is_active
+              id, name, description, price, category, category_2, category_3, size, color, image_url, video_url, stock_quantity, owner_id, is_active
             )
           `)
           .in("group_id", partnerships);
@@ -273,6 +273,8 @@ export default function StoreCatalog() {
               description: product.description,
               price: product.price,
               category: product.category,
+              category_2: (product as any).category_2,
+              category_3: (product as any).category_3,
               color: color === '__no_color__' ? null : color,
               sizes: [...new Set(sizes)],
               image_url: variantImage,
@@ -294,6 +296,8 @@ export default function StoreCatalog() {
             description: product.description,
             price: product.price,
             category: product.category,
+            category_2: (product as any).category_2,
+            category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
             image_url: product.image_url,
@@ -339,6 +343,8 @@ export default function StoreCatalog() {
               description: product.description,
               price: product.price,
               category: product.category,
+              category_2: (product as any).category_2,
+              category_3: (product as any).category_3,
               color: displayColor,
               sizes: [...new Set(availableSizes)],
               image_url: variantImage,
@@ -360,6 +366,8 @@ export default function StoreCatalog() {
             description: product.description,
             price: product.price,
             category: product.category,
+            category_2: (product as any).category_2,
+            category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
             image_url: product.image_url,
@@ -376,10 +384,13 @@ export default function StoreCatalog() {
     enabled: !!store,
   });
 
-  // Get unique categories
+  // Get unique categories - sorted alphabetically, excluding "oportunidades"
   const categories = useMemo(() => {
     const allCats = catalogItems.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean));
-    return [...new Set(allCats)];
+    const uniqueCats = [...new Set(allCats)]
+      .filter(cat => cat?.toLowerCase() !== "oportunidades")
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return uniqueCats;
   }, [catalogItems]);
 
   // Filter products
@@ -779,39 +790,27 @@ export default function StoreCatalog() {
           />
         </div>
 
-        {/* Category Pills */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          <button
-            className={cn(
-              "px-4 py-2 rounded-full text-sm font-medium transition-all",
-              selectedCategory === null && !showOpportunities
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
-            onClick={() => {
-              setSelectedCategory(null);
-              setShowOpportunities(false);
-            }}
-          >
-            Todos
-          </button>
-          {categories.filter(cat => cat?.toLowerCase() !== "oportunidades").map(cat => (
-            <button
-              key={cat}
-              className={cn(
-                "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                selectedCategory === cat
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-              onClick={() => {
-                setSelectedCategory(cat);
-                setShowOpportunities(false);
-              }}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Category Pills - horizontal scroll on mobile */}
+        <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-6 scrollbar-hide">
+          <div className="flex gap-2 min-w-max">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                className={cn(
+                  "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
+                  selectedCategory === cat
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+                onClick={() => {
+                  setSelectedCategory(selectedCategory === cat ? null : cat);
+                  setShowOpportunities(false);
+                }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Products Grid - 2 cols mobile, 4 cols desktop */}
