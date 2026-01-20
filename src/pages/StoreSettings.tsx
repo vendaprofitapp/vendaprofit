@@ -944,8 +944,11 @@ export default function StoreSettings() {
                         </div>
                       </div>
                       <div 
-                        className="h-8 rounded-full mt-2 flex items-center justify-center text-white text-sm font-semibold gap-2"
-                        style={{ backgroundColor: formData.opportunities_button_color }}
+                        className="h-8 rounded-full mt-2 flex items-center justify-center text-sm font-semibold gap-2"
+                        style={{ 
+                          backgroundColor: `${formData.opportunities_button_color}15`,
+                          color: formData.opportunities_button_color
+                        }}
                       >
                         <Flame className="h-4 w-4" />
                         {formData.opportunities_button_text || "OPORTUNIDADES"}
