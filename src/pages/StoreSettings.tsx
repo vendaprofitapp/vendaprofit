@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface StoreSettings {
   id: string;
@@ -101,21 +102,23 @@ export default function StoreSettings() {
 
   // Available Google Fonts
   const availableFonts = [
-    "Inter",
-    "Roboto", 
-    "Open Sans",
-    "Montserrat",
-    "Poppins",
-    "Playfair Display",
-    "Lora",
-    "Raleway",
-    "Oswald",
-    "Bebas Neue",
-    "Dancing Script",
-    "Pacifico",
-    "Great Vibes",
-    "Fonte Personalizada"
+    { name: "Inter", category: "Sans-serif" },
+    { name: "Roboto", category: "Sans-serif" },
+    { name: "Open Sans", category: "Sans-serif" },
+    { name: "Montserrat", category: "Sans-serif" },
+    { name: "Poppins", category: "Sans-serif" },
+    { name: "Playfair Display", category: "Serif" },
+    { name: "Lora", category: "Serif" },
+    { name: "Raleway", category: "Sans-serif" },
+    { name: "Oswald", category: "Sans-serif" },
+    { name: "Bebas Neue", category: "Display" },
+    { name: "Dancing Script", category: "Script" },
+    { name: "Pacifico", category: "Script" },
+    { name: "Great Vibes", category: "Script" },
   ];
+
+  // Google Fonts to load for preview
+  const googleFontsForPreview = availableFonts.map(f => f.name).filter(f => f !== "Inter");
 
   // Fetch store settings
   const { data: storeSettings, isLoading } = useQuery({
@@ -1057,90 +1060,69 @@ export default function StoreSettings() {
                 Tipografia
               </h4>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Heading Font */}
-                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
-                  <Label htmlFor="font_heading" className="font-medium">
-                    Fonte dos Títulos
-                  </Label>
-                  <select
-                    id="font_heading"
-                    value={formData.font_heading}
-                    onChange={(e) => setFormData(prev => ({ ...prev, font_heading: e.target.value }))}
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    {availableFonts.map(font => (
-                      <option key={font} value={font}>{font}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Body Font */}
-                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
-                  <Label htmlFor="font_body" className="font-medium">
-                    Fonte do Corpo
-                  </Label>
-                  <select
-                    id="font_body"
-                    value={formData.font_body}
-                    onChange={(e) => setFormData(prev => ({ ...prev, font_body: e.target.value }))}
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    {availableFonts.map(font => (
-                      <option key={font} value={font}>{font}</option>
-                    ))}
-                  </select>
+              {/* Google Fonts Loader for Preview */}
+              <link
+                rel="stylesheet"
+                href={`https://fonts.googleapis.com/css2?${googleFontsForPreview.map(f => `family=${f.replace(/\s+/g, '+')}:wght@400;600`).join('&')}&display=swap`}
+              />
+              
+              {/* Heading Font */}
+              <div className="space-y-3 mb-6">
+                <Label className="font-medium">Fonte dos Títulos</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {availableFonts.map(font => (
+                    <button
+                      key={font.name}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, font_heading: font.name }))}
+                      className={cn(
+                        "p-3 rounded-lg border-2 transition-all text-left hover:border-primary/50",
+                        formData.font_heading === font.name
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-background"
+                      )}
+                    >
+                      <span 
+                        className="text-lg font-semibold block truncate"
+                        style={{ fontFamily: font.name }}
+                      >
+                        Título
+                      </span>
+                      <span className="text-xs text-muted-foreground">{font.name}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Custom Font Upload */}
-              {(formData.font_heading === "Fonte Personalizada" || formData.font_body === "Fonte Personalizada") && (
-                <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
-                  <Label className="font-medium text-amber-900 flex items-center gap-2">
-                    <Upload className="h-4 w-4" />
-                    Fonte Personalizada (TTF, OTF, WOFF)
-                  </Label>
-                  
-                  {customFontUrl && formData.custom_font_name ? (
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="flex-1 p-3 bg-white rounded-lg border">
-                        <p className="font-medium text-sm">{formData.custom_font_name}</p>
-                        <p className="text-xs text-muted-foreground">Fonte carregada com sucesso</p>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={removeCustomFont}
+              {/* Body Font */}
+              <div className="space-y-3">
+                <Label className="font-medium">Fonte do Corpo</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {availableFonts.map(font => (
+                    <button
+                      key={font.name}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, font_body: font.name }))}
+                      className={cn(
+                        "p-3 rounded-lg border-2 transition-all text-left hover:border-primary/50",
+                        formData.font_body === font.name
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-background"
+                      )}
+                    >
+                      <span 
+                        className="text-sm block truncate"
+                        style={{ fontFamily: font.name }}
                       >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-3 space-y-2">
-                      <input
-                        ref={fontInputRef}
-                        type="file"
-                        accept=".ttf,.otf,.woff,.woff2"
-                        onChange={handleFontUpload}
-                        className="hidden"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => fontInputRef.current?.click()}
-                        disabled={uploadingFont}
-                        className="w-full"
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        {uploadingFont ? "Enviando..." : "Enviar Arquivo de Fonte"}
-                      </Button>
-                      <p className="text-xs text-amber-700">
-                        Formatos aceitos: TTF, OTF, WOFF, WOFF2. Máximo 5MB.
-                      </p>
-                    </div>
-                  )}
+                        Texto exemplo
+                      </span>
+                      <span className="text-xs text-muted-foreground">{font.name}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
+
           </CardContent>
         </Card>
         <Card>

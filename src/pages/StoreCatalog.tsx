@@ -537,8 +537,21 @@ export default function StoreCatalog() {
     return <div className="w-full">{bannerContent}</div>;
   };
 
+  // Google Fonts to load
+  const googleFontsToLoad = [fontHeading, fontBody]
+    .filter(f => f && f !== "Inter" && !customFontName)
+    .filter((f, i, arr) => arr.indexOf(f) === i); // unique
+
   return (
     <div className="min-h-screen" style={{ backgroundColor, fontFamily: fontBody }}>
+      {/* Google Fonts Loader */}
+      {googleFontsToLoad.length > 0 && (
+        <link
+          rel="stylesheet"
+          href={`https://fonts.googleapis.com/css2?${googleFontsToLoad.map(f => `family=${f.replace(/\s+/g, '+')}:wght@400;500;600;700`).join('&')}&display=swap`}
+        />
+      )}
+      
       {/* Custom Font Loader */}
       {customFontUrl && customFontName && (
         <style>{`
