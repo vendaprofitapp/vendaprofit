@@ -201,10 +201,10 @@ export default function StockControl() {
 
   const fetchCategories = async () => {
     if (!user) return;
+    // Fetch all categories globally so all users see the same list
     const { data } = await supabase
       .from("categories")
       .select("id, name, owner_id")
-      .eq("owner_id", user.id)
       .order("name");
     setCategories(data ?? []);
   };
