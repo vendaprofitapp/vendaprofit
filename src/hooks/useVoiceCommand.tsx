@@ -415,7 +415,7 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
   }, [shouldUseBackend, isListening, createRecognition, startBackendRecording]);
 
   const stopListening = useCallback(() => {
-    console.log('stopListening called, isUsingBackend:', isUsingBackendRef.current);
+    console.log('stopListening called, isUsingBackend:', isUsingBackendRef.current, 'isListening:', isListening);
     
     if (isUsingBackendRef.current) {
       stopBackendRecording();
@@ -426,8 +426,13 @@ export function useVoiceCommand(options: UseVoiceCommandOptions = {}) {
         console.error('Error stopping recognition:', e);
       }
     }
-    // Note: setIsListening(false) is handled by the onend/onstop callbacks
-  }, [stopBackendRecording]);
+    
+    // Force state update in case callbacks don't fire (e.g., recognition already ended)
+    // Use setTimeout to ensure this runs after any pending callbacks
+    setTimeout(() => {
+      setIsListening(false);
+    }, 100);
+  }, [stopBackendRecording, isListening]);
 
   // isSupported is always true because we have backend fallback
   return {
