@@ -668,8 +668,8 @@ export default function StockControl() {
                                 <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                               </div>
                             )}
-                            <div className="min-w-0">
-                              <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
+                            <div className="min-w-0 flex-1">
+                              <span className="font-medium block break-words">{product.name}</span>
                             </div>
                           </div>
                         </TableCell>
@@ -773,8 +773,8 @@ export default function StockControl() {
                                 <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                               </div>
                             )}
-                            <div className="min-w-0">
-                              <span className="font-medium block truncate max-w-[120px] sm:max-w-none">{product.name}</span>
+                            <div className="min-w-0 flex-1">
+                              <span className="font-medium block break-words">{product.name}</span>
                             </div>
                           </div>
                         </TableCell>
