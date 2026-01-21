@@ -1065,8 +1065,8 @@ export function VoiceStockDialog({
               </div>
             )}
             
-            <ScrollArea className="max-h-[300px]">
-              <div className="space-y-2">
+            <ScrollArea className="max-h-[50dvh] sm:max-h-[400px]">
+              <div className="space-y-2 pr-2">
                 {/* New Product Option */}
                 <button
                   onClick={handleCreateNew}
