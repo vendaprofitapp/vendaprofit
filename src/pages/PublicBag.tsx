@@ -78,9 +78,10 @@ export default function PublicBag() {
   const { token } = useParams<{ token: string }>();
   const [isApproving, setIsApproving] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [localItems, setLocalItems] = useState<Map<string, "kept" | "returned" | "swap_requested">>(new Map());
+  // Use plain objects instead of Map for iOS Safari compatibility
+  const [localItems, setLocalItems] = useState<Record<string, "kept" | "returned" | "swap_requested">>({});
   const [swapItem, setSwapItem] = useState<ConsignmentItem | null>(null);
-  const [swapRequests, setSwapRequests] = useState<Map<string, SwapRequest>>(new Map());
+  const [swapRequests, setSwapRequests] = useState<Record<string, SwapRequest>>({});
   // Fetch consignment by token
   const { data: consignment, isLoading, error, refetch } = useQuery({
     queryKey: ["public-consignment", token],
@@ -178,11 +179,7 @@ export default function PublicBag() {
 
   const handleItemChoice = async (itemId: string, choice: "kept" | "returned") => {
     // Update local state for immediate feedback
-    setLocalItems(prev => {
-      const next = new Map(prev);
-      next.set(itemId, choice);
-      return next;
-    });
+    setLocalItems(prev => ({ ...prev, [itemId]: choice }));
 
     // Update in database
     try {
@@ -197,9 +194,8 @@ export default function PublicBag() {
       toast.error("Erro ao atualizar escolha");
       // Revert local state
       setLocalItems(prev => {
-        const next = new Map(prev);
-        next.delete(itemId);
-        return next;
+        const { [itemId]: _, ...rest } = prev;
+        return rest;
       });
     }
   };
@@ -210,7 +206,7 @@ export default function PublicBag() {
     // Check if all items have been decided
     const items = consignment.consignment_items;
     const allDecided = items.every(item => {
-      const localChoice = localItems.get(item.id);
+      const localChoice = localItems[item.id];
       return localChoice || item.status === "kept" || item.status === "returned" || item.status === "swap_requested";
     });
 
@@ -246,17 +242,17 @@ export default function PublicBag() {
 
     const items = consignment.consignment_items;
     const keptItems = items.filter(item => {
-      const choice = localItems.get(item.id) || item.status;
+      const choice = localItems[item.id] || item.status;
       return choice === "kept";
     });
     
     const returnedItems = items.filter(item => {
-      const choice = localItems.get(item.id) || item.status;
+      const choice = localItems[item.id] || item.status;
       return choice === "returned";
     });
 
     const swapItems = items.filter(item => {
-      const choice = localItems.get(item.id);
+      const choice = localItems[item.id];
       return choice === "swap_requested";
     });
 
@@ -265,7 +261,7 @@ export default function PublicBag() {
     
     // Calculate swap items total (new items to be added)
     const swapTotal = swapItems.reduce((sum, item) => {
-      const swapRequest = swapRequests.get(item.id);
+      const swapRequest = swapRequests[item.id];
       return sum + (swapRequest?.newPrice || 0);
     }, 0);
 
@@ -290,7 +286,7 @@ export default function PublicBag() {
     if (swapItems.length > 0) {
       message += `🔄 *QUERO TROCAR (adicionar ao pedido):*\n`;
       swapItems.forEach(item => {
-        const swapRequest = swapRequests.get(item.id);
+        const swapRequest = swapRequests[item.id];
         if (swapRequest) {
           // Original item details
           const originalSize = item.product_variants?.size || item.products?.size || "único";
@@ -391,12 +387,12 @@ export default function PublicBag() {
   const isFinalizedState = consignment.status === "finalized_by_client" || consignment.status === "completed";
   
   const keptItems = items.filter(item => {
-    const choice = localItems.get(item.id) || item.status;
+    const choice = localItems[item.id] || item.status;
     return choice === "kept";
   });
 
   const swapItemsList = items.filter(item => {
-    const choice = localItems.get(item.id);
+    const choice = localItems[item.id];
     return choice === "swap_requested";
   });
   
@@ -404,7 +400,7 @@ export default function PublicBag() {
   
   // Calculate swap items total
   const swapTotal = swapItemsList.reduce((sum, item) => {
-    const swapRequest = swapRequests.get(item.id);
+    const swapRequest = swapRequests[item.id];
     return sum + (swapRequest?.newPrice || 0);
   }, 0);
   
@@ -477,12 +473,12 @@ export default function PublicBag() {
             const size = item.product_variants?.size || item.products?.size;
             const color = item.product_variants?.color || item.products?.color;
             const imageUrl = item.product_variants?.image_url || item.products?.image_url;
-            const localChoice = localItems.get(item.id);
+            const localChoice = localItems[item.id];
             const currentStatus = localChoice || item.status;
             const isKept = currentStatus === "kept";
             const isReturned = currentStatus === "returned";
             const isSwapRequested = currentStatus === "swap_requested";
-            const swapRequest = swapRequests.get(item.id);
+            const swapRequest = swapRequests[item.id];
 
             return (
               <Card 
@@ -535,14 +531,12 @@ export default function PublicBag() {
                             onClick={() => {
                               // Remove swap request and reset to no choice
                               setSwapRequests(prev => {
-                                const next = new Map(prev);
-                                next.delete(item.id);
-                                return next;
+                                const { [item.id]: _, ...rest } = prev;
+                                return rest;
                               });
                               setLocalItems(prev => {
-                                const next = new Map(prev);
-                                next.delete(item.id);
-                                return next;
+                                const { [item.id]: _, ...rest } = prev;
+                                return rest;
                               });
                             }}
                           >
@@ -732,16 +726,12 @@ export default function PublicBag() {
           onSwapComplete={(selection) => {
             if (selection) {
               // Set the item as swap_requested
-              setLocalItems(prev => {
-                const next = new Map(prev);
-                next.set(swapItem.id, "swap_requested");
-                return next;
-              });
+              setLocalItems(prev => ({ ...prev, [swapItem.id]: "swap_requested" as const }));
               
               // Store the swap request details
-              setSwapRequests(prev => {
-                const next = new Map(prev);
-                next.set(swapItem.id, {
+              setSwapRequests(prev => ({
+                ...prev,
+                [swapItem.id]: {
                   originalItemId: swapItem.id,
                   originalProductName: swapItem.products.name,
                   originalSize: swapItem.product_variants?.size || swapItem.products.size,
@@ -752,9 +742,8 @@ export default function PublicBag() {
                   newColor: selection.color,
                   newProductName: selection.productName,
                   newPrice: selection.price,
-                });
-                return next;
-              });
+                },
+              }));
               
               toast.success(`Troca pelo tamanho ${selection.size || "novo"} solicitada!`);
             }
