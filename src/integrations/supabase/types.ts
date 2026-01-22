@@ -272,40 +272,49 @@ export type Database = {
         Row: {
           consortium_id: string
           created_at: string
+          current_balance: number
           customer_name: string
           customer_phone: string | null
           drawn_at: string | null
+          first_shipping_used: boolean
           id: string
           is_drawn: boolean
           notes: string | null
           payment_due_day: number | null
           payment_method: string
+          status: string
           updated_at: string
         }
         Insert: {
           consortium_id: string
           created_at?: string
+          current_balance?: number
           customer_name: string
           customer_phone?: string | null
           drawn_at?: string | null
+          first_shipping_used?: boolean
           id?: string
           is_drawn?: boolean
           notes?: string | null
           payment_due_day?: number | null
           payment_method?: string
+          status?: string
           updated_at?: string
         }
         Update: {
           consortium_id?: string
           created_at?: string
+          current_balance?: number
           customer_name?: string
           customer_phone?: string | null
           drawn_at?: string | null
+          first_shipping_used?: boolean
           id?: string
           is_drawn?: boolean
           notes?: string | null
           payment_due_day?: number | null
           payment_method?: string
+          status?: string
           updated_at?: string
         }
         Relationships: [
@@ -361,6 +370,50 @@ export type Database = {
             columns: ["participant_id"]
             isOneToOne: false
             referencedRelation: "consortium_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consortium_settings: {
+        Row: {
+          consortium_id: string
+          created_at: string
+          grace_period_days: number
+          id: string
+          penalty_money_pct: number
+          penalty_product_pct: number
+          rebalance_mode: string
+          shipping_policy: string
+          updated_at: string
+        }
+        Insert: {
+          consortium_id: string
+          created_at?: string
+          grace_period_days?: number
+          id?: string
+          penalty_money_pct?: number
+          penalty_product_pct?: number
+          rebalance_mode?: string
+          shipping_policy?: string
+          updated_at?: string
+        }
+        Update: {
+          consortium_id?: string
+          created_at?: string
+          grace_period_days?: number
+          id?: string
+          penalty_money_pct?: number
+          penalty_product_pct?: number
+          rebalance_mode?: string
+          shipping_policy?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consortium_settings_consortium_id_fkey"
+            columns: ["consortium_id"]
+            isOneToOne: true
+            referencedRelation: "consortiums"
             referencedColumns: ["id"]
           },
         ]
@@ -1613,6 +1666,22 @@ export type Database = {
       }
       merge_categories: {
         Args: { destination_name: string; source_name: string }
+        Returns: undefined
+      }
+      process_consortium_withdrawal: {
+        Args: {
+          _participant_id: string
+          _penalty_pct: number
+          _withdrawal_type: string
+        }
+        Returns: Json
+      }
+      rebalance_consortium_installments: {
+        Args: {
+          _consortium_id: string
+          _remaining_unpaid: number
+          _withdrawn_participant_id: string
+        }
         Returns: undefined
       }
       rename_category_in_products: {
