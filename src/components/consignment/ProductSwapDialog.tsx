@@ -11,6 +11,8 @@ interface SwapSelection {
   productName: string;
   variantId?: string;
   size: string | null;
+  color: string | null;
+  price: number;
 }
 
 interface ProductSwapDialogProps {
@@ -70,6 +72,8 @@ export function ProductSwapDialog({
       productName: suggestion.name,
       variantId: suggestion.variant_id,
       size: suggestion.size,
+      color: suggestion.color,
+      price: suggestion.price,
     });
   };
 
