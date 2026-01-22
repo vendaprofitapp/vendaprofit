@@ -78,17 +78,22 @@ export default function Consignments() {
       
       const { data } = await supabase
         .from("store_settings")
-        .select("store_slug, whatsapp_number")
+        .select("store_slug, whatsapp_number, custom_domain")
         .eq("owner_id", user.id)
         .single();
 
-      return data;
+      return data as { store_slug: string; whatsapp_number: string | null; custom_domain: string | null } | null;
     },
     enabled: !!user,
   });
 
   const getPublicUrl = (token: string) => {
-    return `${window.location.origin}/bag/${token}`;
+    // Prioriza domínio personalizado, depois usa o padrão
+    if (storeSettings?.custom_domain) {
+      const domain = storeSettings.custom_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return `https://${domain}/bag/${token}`;
+    }
+    return `https://vendaprofit.com.br/bag/${token}`;
   };
 
   const copyLink = async (token: string) => {

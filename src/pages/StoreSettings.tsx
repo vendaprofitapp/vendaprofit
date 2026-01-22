@@ -44,6 +44,7 @@ interface StoreSettings {
   opportunities_button_color: string | null;
   show_store_url: boolean;
   show_store_description: boolean;
+  custom_domain: string | null;
 }
 
 interface Group {
@@ -87,6 +88,7 @@ export default function StoreSettings() {
     logo_size: "medium",
     show_store_url: true,
     show_store_description: true,
+    custom_domain: "",
   });
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -202,6 +204,7 @@ export default function StoreSettings() {
         logo_size: storeSettings.logo_size || "medium",
         show_store_url: storeSettings.show_store_url ?? true,
         show_store_description: storeSettings.show_store_description ?? true,
+        custom_domain: storeSettings.custom_domain || "",
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -499,6 +502,7 @@ export default function StoreSettings() {
             logo_size: formData.logo_size,
             show_store_url: formData.show_store_url,
             show_store_description: formData.show_store_description,
+            custom_domain: formData.custom_domain || null,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -531,6 +535,7 @@ export default function StoreSettings() {
             logo_size: formData.logo_size,
             show_store_url: formData.show_store_url,
             show_store_description: formData.show_store_description,
+            custom_domain: formData.custom_domain || null,
             ...fontData,
           })
           .select("id")
@@ -579,7 +584,16 @@ export default function StoreSettings() {
     );
   };
 
-  const storeUrl = `https://www.vendaprofit.com.br/${formData.store_slug}`;
+  // Prioriza domínio personalizado, depois usa o padrão
+  const getBaseUrl = () => {
+    if (formData.custom_domain) {
+      const domain = formData.custom_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return `https://${domain}`;
+    }
+    return "https://vendaprofit.com.br";
+  };
+
+  const storeUrl = `${getBaseUrl()}/${formData.store_slug}`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(storeUrl);
@@ -1156,6 +1170,23 @@ export default function StoreSettings() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Custom Domain */}
+            <div className="space-y-2 p-4 bg-muted/30 rounded-lg border border-dashed">
+              <Label htmlFor="custom_domain" className="flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                Domínio Personalizado
+              </Label>
+              <Input
+                id="custom_domain"
+                value={formData.custom_domain}
+                onChange={(e) => setFormData(prev => ({ ...prev, custom_domain: e.target.value }))}
+                placeholder="vendaprofit.com.br"
+              />
+              <p className="text-xs text-muted-foreground">
+                💡 Configure seu domínio próprio para os links da loja e malinhas. Ex: <strong>vendaprofit.com.br</strong>
+              </p>
             </div>
             
             <div className="space-y-2">
