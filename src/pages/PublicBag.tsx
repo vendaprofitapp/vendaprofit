@@ -658,6 +658,7 @@ export default function PublicBag() {
       {swapItem && (
         <ProductSwapDialog
           item={swapItem}
+          sellerId={consignment?.seller_id}
           open={!!swapItem}
           onOpenChange={(open) => !open && setSwapItem(null)}
           onSwapComplete={(selection) => {

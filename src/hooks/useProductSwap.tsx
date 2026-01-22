@@ -11,6 +11,8 @@ interface SwapSuggestion {
   availableStock: number;
   image_url: string | null;
   variant_id?: string;
+  isFromPartner?: boolean;
+  partnerName?: string;
 }
 
 interface Product {
@@ -157,21 +159,25 @@ export function useProductSwap() {
 
   /**
    * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
+   * Primeiro busca no estoque do vendedor, depois em parceiros/grupos
    */
   const findSizeAlternatives = async (
     productId: string,
     currentSize: string | null,
-    currentColor: string | null
+    currentColor: string | null,
+    sellerId?: string
   ): Promise<SwapSuggestion[]> => {
     setLoading(true);
     try {
-      const { data: product } = await supabase
+      // Get original product info first
+      const { data: originalProduct } = await supabase
         .from('products')
         .select(`
           id,
           name,
           price,
           image_url,
+          owner_id,
           product_variants (
             id,
             size,
@@ -183,40 +189,163 @@ export function useProductSwap() {
         .eq('id', productId)
         .single();
 
-      if (!product || !product.product_variants) {
+      if (!originalProduct) {
         setSuggestions([]);
         return [];
       }
 
       const alternatives: SwapSuggestion[] = [];
-
-      // Normalize current color for comparison
       const normalizedCurrentColor = (currentColor || "").trim().toLowerCase();
+      const normalizedCurrentSize = (currentSize || "").trim().toLowerCase();
+      const ownerId = sellerId || originalProduct.owner_id;
 
-      for (const variant of product.product_variants) {
-        // Skip if same size
-        if (variant.size === currentSize) continue;
+      // 1. First, check variants of the same product
+      if (originalProduct.product_variants && originalProduct.product_variants.length > 0) {
+        for (const variant of originalProduct.product_variants) {
+          const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
+          const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
 
-        // Normalize variant color for comparison
-        const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
+          // Skip if same size
+          if (normalizedVariantSize === normalizedCurrentSize) continue;
 
-        // Only include variants with the same color (or both null/empty)
-        const sameColor = normalizedCurrentColor === normalizedVariantColor;
-        if (!sameColor) continue;
+          // Only include variants with the same color (or both null/empty)
+          const sameColor = normalizedCurrentColor === normalizedVariantColor;
+          if (!sameColor) continue;
 
-        const availableStock = await getAvailableStock(productId, variant.id);
-        
-        if (availableStock > 0) {
-          alternatives.push({
-            id: product.id,
-            name: product.name,
-            size: variant.size,
-            color: variant.color,
-            price: product.price,
-            availableStock,
-            image_url: variant.image_url || product.image_url,
-            variant_id: variant.id,
-          });
+          const availableStock = await getAvailableStock(productId, variant.id);
+          
+          if (availableStock > 0) {
+            alternatives.push({
+              id: originalProduct.id,
+              name: originalProduct.name,
+              size: variant.size,
+              color: variant.color,
+              price: originalProduct.price,
+              availableStock,
+              image_url: variant.image_url || originalProduct.image_url,
+              variant_id: variant.id,
+            });
+          }
+        }
+      }
+
+      // 2. If no alternatives in own stock, search in partner products with the same name
+      if (alternatives.length === 0) {
+        // Find products with exact same name from other owners (partners)
+        const { data: partnerProducts } = await supabase
+          .from('products')
+          .select(`
+            id,
+            name,
+            price,
+            image_url,
+            owner_id,
+            profiles:owner_id (full_name),
+            product_variants (
+              id,
+              size,
+              color,
+              stock_quantity,
+              image_url
+            )
+          `)
+          .ilike('name', originalProduct.name)
+          .neq('owner_id', ownerId)
+          .eq('is_active', true);
+
+        if (partnerProducts && partnerProducts.length > 0) {
+          for (const p of partnerProducts) {
+            const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
+            
+            if (p.product_variants && p.product_variants.length > 0) {
+              for (const variant of p.product_variants) {
+                const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
+                const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
+
+                // Skip if same size as current
+                if (normalizedVariantSize === normalizedCurrentSize) continue;
+
+                // Only include variants with the same color
+                const sameColor = normalizedCurrentColor === normalizedVariantColor;
+                if (!sameColor) continue;
+
+                // Check stock directly from variant since we want partner stock
+                if (variant.stock_quantity > 0) {
+                  alternatives.push({
+                    id: p.id,
+                    name: p.name,
+                    size: variant.size,
+                    color: variant.color,
+                    price: p.price,
+                    availableStock: variant.stock_quantity,
+                    image_url: variant.image_url || p.image_url,
+                    variant_id: variant.id,
+                    isFromPartner: true,
+                    partnerName,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 3. If still no alternatives with same color, look for any color
+        if (alternatives.length === 0) {
+          // Check own product variants with any color
+          if (originalProduct.product_variants && originalProduct.product_variants.length > 0) {
+            for (const variant of originalProduct.product_variants) {
+              const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
+
+              // Skip if same size
+              if (normalizedVariantSize === normalizedCurrentSize) continue;
+
+              const availableStock = await getAvailableStock(productId, variant.id);
+              
+              if (availableStock > 0) {
+                alternatives.push({
+                  id: originalProduct.id,
+                  name: originalProduct.name,
+                  size: variant.size,
+                  color: variant.color,
+                  price: originalProduct.price,
+                  availableStock,
+                  image_url: variant.image_url || originalProduct.image_url,
+                  variant_id: variant.id,
+                });
+              }
+            }
+          }
+
+          // Also check partner products with any color
+          if (alternatives.length === 0 && partnerProducts && partnerProducts.length > 0) {
+            for (const p of partnerProducts) {
+              const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
+              
+              if (p.product_variants && p.product_variants.length > 0) {
+                for (const variant of p.product_variants) {
+                  const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
+
+                  // Skip if same size as current
+                  if (normalizedVariantSize === normalizedCurrentSize) continue;
+
+                  if (variant.stock_quantity > 0) {
+                    alternatives.push({
+                      id: p.id,
+                      name: p.name,
+                      size: variant.size,
+                      color: variant.color,
+                      price: p.price,
+                      availableStock: variant.stock_quantity,
+                      image_url: variant.image_url || p.image_url,
+                      variant_id: variant.id,
+                      isFromPartner: true,
+                      partnerName,
+                    });
+                  }
+                }
+              }
+            }
+          }
         }
       }
 
