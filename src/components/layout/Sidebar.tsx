@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package, Lock } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package, Lock, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,6 +31,10 @@ const navItems: NavItem[] = [{
   icon: Truck,
   label: "Fornecedores",
   path: "/suppliers"
+}, {
+  icon: Tag,
+  label: "Categorias",
+  path: "/categories"
 }, {
   icon: ShoppingCart,
   label: "Vendas",
