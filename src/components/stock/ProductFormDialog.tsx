@@ -425,8 +425,20 @@ export function ProductFormDialog({
       return;
     }
     
-    const validVariants = productVariants.filter(v => v.size.trim() || v.color.trim());
-    if (validVariants.length === 0) {
+    // Normalize variants (trim) and only keep rows that have at least size or color
+    const normalizedVariants = productVariants
+      .map((v) => {
+        const size = (v.size || "").trim();
+        const color = (v.color || "").trim();
+        return {
+          ...v,
+          size,
+          color,
+        };
+      })
+      .filter((v) => Boolean(v.size) || Boolean(v.color));
+
+    if (normalizedVariants.length === 0) {
       toast.error("Adicione pelo menos uma variante com tamanho ou cor");
       return;
     }
@@ -469,11 +481,13 @@ export function ProductFormDialog({
 
         if (error) throw error;
         
-        // Delete existing variants
-        await supabase
+        // Delete existing variants (must succeed, otherwise inserts may conflict with existing rows)
+        const { error: deleteVariantsError } = await supabase
           .from("product_variants")
           .delete()
           .eq("product_id", productId);
+
+        if (deleteVariantsError) throw deleteVariantsError;
         
       } else {
         const { data: newProduct, error } = await supabase
@@ -496,30 +510,42 @@ export function ProductFormDialog({
       }
       
       // Insert all variants with their color's images
-      // First, deduplicate variants by size+color combination
-      const variantMap = new Map<string, typeof validVariants[0]>();
-      validVariants.forEach(v => {
-        const size = (v.size?.trim() || "Único").toLowerCase();
-        const color = (v.color?.trim() || "").toLowerCase();
-        const key = `${size}_${color}`;
-        // If duplicate, sum stock quantities
+      // IMPORTANT: deduplicate using the *exact* values we will insert into DB.
+      // The unique index treats NULL color as '' (COALESCE), so we must key on (size, coalescedColor).
+      const variantMap = new Map<
+        string,
+        { size: string; color: string; stock_quantity: number }
+      >();
+
+      normalizedVariants.forEach((v) => {
+        const sizeToInsert = v.size || "Único";
+        const colorToInsert = v.color; // may be '' => will be stored as NULL
+        const colorKey = (colorToInsert || "");
+        const key = `${sizeToInsert}__${colorKey}`;
+
         const existing = variantMap.get(key);
         if (existing) {
-          existing.stock_quantity = (existing.stock_quantity || 0) + (v.stock_quantity || 0);
+          existing.stock_quantity =
+            (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
         } else {
-          variantMap.set(key, { ...v });
+          variantMap.set(key, {
+            size: sizeToInsert,
+            color: colorToInsert,
+            stock_quantity: Number(v.stock_quantity) || 0,
+          });
         }
       });
-      
+
       const deduplicatedVariants = Array.from(variantMap.values());
-      
-      const variantsToInsert = deduplicatedVariants.map(v => {
-        const urls = v.color ? (colorImageUrls[v.color] || []) : [];
+
+      const variantsToInsert = deduplicatedVariants.map((v) => {
+        const colorTrimmed = (v.color || "").trim();
+        const urls = colorTrimmed ? (colorImageUrls[colorTrimmed] || []) : [];
         return {
           product_id: productId,
-          size: v.size?.trim() || "Único",
-          color: v.color?.trim() || null,
-          stock_quantity: v.stock_quantity || 0,
+          size: v.size,
+          color: colorTrimmed || null,
+          stock_quantity: v.stock_quantity,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
           image_url_3: urls[2] || null
