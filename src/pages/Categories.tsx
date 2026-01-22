@@ -42,6 +42,20 @@ export default function Categories() {
   const [editCategory, setEditCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if current user is admin
+  useEffect(() => {
+    async function checkAdmin() {
+      if (!user) return;
+      const { data } = await supabase.rpc("has_role", {
+        _user_id: user.id,
+        _role: "admin",
+      });
+      setIsAdmin(!!data);
+    }
+    checkAdmin();
+  }, [user]);
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -240,8 +254,8 @@ export default function Categories() {
       if (!window.confirm(`Excluir categoria "${category.name}"?`)) return;
     }
 
-    // Check if user owns this category
-    if (category.owner_id !== user?.id) {
+    // Check if user owns this category or is admin
+    if (category.owner_id !== user?.id && !isAdmin) {
       toast.error("Você só pode excluir categorias que você criou");
       return;
     }
