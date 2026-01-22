@@ -201,6 +201,19 @@ export function useConsignment() {
   const cancelConsignment = async (consignmentId: string) => {
     setLoading(true);
     try {
+      // First, update all items to 'cancelled' status
+      // This ensures they are immediately released from virtual stock
+      const { error: itemsError } = await supabase
+        .from('consignment_items')
+        .update({ status: 'cancelled' })
+        .eq('consignment_id', consignmentId);
+
+      if (itemsError) {
+        console.error('Erro ao cancelar itens:', itemsError);
+        // Continue with consignment cancellation even if items fail
+      }
+
+      // Then cancel the consignment itself
       const { error } = await supabase
         .from('consignments')
         .update({ status: 'cancelled' })
@@ -208,7 +221,7 @@ export function useConsignment() {
 
       if (error) throw error;
 
-      toast.success('Bolsa cancelada');
+      toast.success('Bolsa cancelada - produtos voltaram ao estoque');
       return true;
     } catch (error: any) {
       console.error('Erro ao cancelar bolsa:', error);
