@@ -156,11 +156,12 @@ export function useProductSwap() {
   };
 
   /**
-   * Busca opções de tamanho diferente para o mesmo produto
+   * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
    */
   const findSizeAlternatives = async (
     productId: string,
-    currentSize: string | null
+    currentSize: string | null,
+    currentColor: string | null
   ): Promise<SwapSuggestion[]> => {
     setLoading(true);
     try {
@@ -189,8 +190,19 @@ export function useProductSwap() {
 
       const alternatives: SwapSuggestion[] = [];
 
+      // Normalize current color for comparison
+      const normalizedCurrentColor = (currentColor || "").trim().toLowerCase();
+
       for (const variant of product.product_variants) {
+        // Skip if same size
         if (variant.size === currentSize) continue;
+
+        // Normalize variant color for comparison
+        const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
+
+        // Only include variants with the same color (or both null/empty)
+        const sameColor = normalizedCurrentColor === normalizedVariantColor;
+        if (!sameColor) continue;
 
         const availableStock = await getAvailableStock(productId, variant.id);
         

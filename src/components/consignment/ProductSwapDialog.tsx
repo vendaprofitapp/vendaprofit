@@ -45,10 +45,10 @@ export function ProductSwapDialog({
 
   useEffect(() => {
     if (open && item.products) {
-      // First try to find size alternatives for the same product
-      findSizeAlternatives(item.product_id, item.products.size).then(alternatives => {
+      // First try to find size alternatives for the same product (same color)
+      findSizeAlternatives(item.product_id, item.products.size, item.products.color).then(alternatives => {
         if (alternatives.length === 0) {
-          // If no size alternatives, look for similar products
+          // If no size alternatives with same color, look for similar products
           findSwapOptions({
             id: item.product_id,
             name: item.products.name,
