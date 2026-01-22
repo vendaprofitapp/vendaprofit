@@ -1362,6 +1362,10 @@ export type Database = {
         Returns: Json
       }
       cleanup_old_fitting_room_usage: { Args: never; Returns: undefined }
+      clear_category_from_products: {
+        Args: { category_name: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1384,6 +1388,10 @@ export type Database = {
       is_product_shared_with_user: {
         Args: { _product_id: string; _user_id: string }
         Returns: boolean
+      }
+      rename_category_in_products: {
+        Args: { new_name: string; old_name: string }
+        Returns: undefined
       }
       set_partnership_auto_share: {
         Args: { _enabled: boolean; _group_id: string }
