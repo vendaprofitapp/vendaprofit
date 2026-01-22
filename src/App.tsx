@@ -20,7 +20,8 @@ import NotFound from "./pages/NotFound";
 import StoreSettingsPage from "./pages/StoreSettings";
 import StoreCatalog from "./pages/StoreCatalog";
 import Customers from "./pages/Customers";
-import Consortiums from "./pages/Consortiums";
+import Consignments from "./pages/Consignments";
+import PublicBag from "./pages/PublicBag";
 import LandingPage from "./pages/LandingPage";
 import Suppliers from "./pages/Suppliers";
 import Categories from "./pages/Categories";
@@ -56,7 +57,7 @@ const AppRoutes = () => (
     <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-    <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
+    <Route path="/consignments" element={<ProtectedRoute><Consignments /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
     <Route path="/partner-reports" element={<ProtectedRoute><PartnerReports /></ProtectedRoute>} />
     <Route path="/financial" element={<ProtectedRoute><Financial /></ProtectedRoute>} />
@@ -65,6 +66,7 @@ const AppRoutes = () => (
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
+    <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<StoreCatalog />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
