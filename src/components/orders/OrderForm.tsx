@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrders, OrderFormData } from "@/hooks/useOrders";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,12 +101,15 @@ export function OrderForm() {
     e.preventDefault();
 
     if (!formData.customer_name.trim()) {
+      toast.error("Preencha o nome do cliente");
       return;
     }
     if (!formData.product_name.trim()) {
+      toast.error("Selecione ou digite o nome do produto");
       return;
     }
     if (!formData.supplier_name.trim()) {
+      toast.error("Preencha o nome do fornecedor");
       return;
     }
 
