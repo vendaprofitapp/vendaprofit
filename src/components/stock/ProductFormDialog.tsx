@@ -41,6 +41,7 @@ import { MultiCategoryManager } from "@/components/products/MultiCategoryManager
 import { ColorManager } from "@/components/products/ColorManager";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
+import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
 
 interface Product {
   id: string;
@@ -79,6 +80,7 @@ interface ProductVariant {
   image_url?: string | null;
   image_url_2?: string | null;
   image_url_3?: string | null;
+  marketing_status?: MarketingStatus;
 }
 
 // Structure to hold images per color
@@ -197,7 +199,8 @@ export function ProductFormDialog({
         stock_quantity: v.stock_quantity,
         image_url: v.image_url,
         image_url_2: v.image_url_2,
-        image_url_3: v.image_url_3
+        image_url_3: v.image_url_3,
+        marketing_status: (v.marketing_status as MarketingStatus) || null
       }));
       setProductVariants(variants);
       
@@ -224,7 +227,7 @@ export function ProductFormDialog({
       setColorImages(images);
       setExpandedColors(expanded);
     } else {
-      setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
+      setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null }]);
       setColorImages({});
     }
   };
@@ -256,7 +259,7 @@ export function ProductFormDialog({
     });
     setColorImages({});
     setExpandedColors({});
-    setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
+    setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null }]);
   };
 
 
@@ -355,7 +358,7 @@ export function ProductFormDialog({
 
   // Variant handlers
   const addProductVariant = () => {
-    setProductVariants(prev => [...prev, { size: "", color: "", sku: "", stock_quantity: 0 }]);
+    setProductVariants(prev => [...prev, { size: "", color: "", stock_quantity: 0, marketing_status: null }]);
   };
 
   const removeProductVariant = (index: number) => {
@@ -377,7 +380,7 @@ export function ProductFormDialog({
     }
   };
 
-  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number) => {
+  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number | MarketingStatus) => {
     const oldVariant = productVariants[index];
     
     setProductVariants(prev => prev.map((v, i) => 
@@ -509,7 +512,7 @@ export function ProductFormDialog({
       // The unique index treats NULL color as '' (COALESCE), so we must key on (size, coalescedColor).
       const variantMap = new Map<
         string,
-        { size: string; color: string; stock_quantity: number }
+        { size: string; color: string; stock_quantity: number; marketing_status: MarketingStatus }
       >();
 
       normalizedVariants.forEach((v) => {
@@ -522,11 +525,14 @@ export function ProductFormDialog({
         if (existing) {
           existing.stock_quantity =
             (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
+          // Keep the marketing_status from the last occurrence
+          existing.marketing_status = v.marketing_status || existing.marketing_status;
         } else {
           variantMap.set(key, {
             size: sizeToInsert,
             color: colorToInsert,
             stock_quantity: Number(v.stock_quantity) || 0,
+            marketing_status: v.marketing_status || null,
           });
         }
       });
@@ -541,6 +547,7 @@ export function ProductFormDialog({
           size: v.size,
           color: colorTrimmed || null,
           stock_quantity: v.stock_quantity,
+          marketing_status: v.marketing_status,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
           image_url_3: urls[2] || null
@@ -572,6 +579,7 @@ export function ProductFormDialog({
               .from("product_variants")
               .update({
                 stock_quantity: variant.stock_quantity,
+                marketing_status: variant.marketing_status,
                 image_url: variant.image_url,
                 image_url_2: variant.image_url_2,
                 image_url_3: variant.image_url_3,
@@ -919,7 +927,11 @@ export function ProductFormDialog({
                           onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
                         />
                         
-                        
+                        <MarketingStatusSelector
+                          value={variant.marketing_status || null}
+                          onChange={(status) => updateProductVariant(index, "marketing_status", status as any)}
+                          compact
+                        />
                         {productVariants.length > 1 && (
                           <Button
                             type="button"
