@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useProductSwap } from "@/hooks/useProductSwap";
-import { Package, ArrowRight, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Package, ArrowRight, Loader2, Users } from "lucide-react";
 
 interface SwapSelection {
   productId: string;
@@ -27,6 +26,7 @@ interface ProductSwapDialogProps {
       color: string | null;
     };
   };
+  sellerId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSwapComplete: (selection?: SwapSelection) => void;
@@ -35,6 +35,7 @@ interface ProductSwapDialogProps {
 
 export function ProductSwapDialog({ 
   item, 
+  sellerId,
   open, 
   onOpenChange, 
   onSwapComplete,
@@ -46,7 +47,8 @@ export function ProductSwapDialog({
   useEffect(() => {
     if (open && item.products) {
       // First try to find size alternatives for the same product (same color)
-      findSizeAlternatives(item.product_id, item.products.size, item.products.color).then(alternatives => {
+      // Pass sellerId to properly check partner products
+      findSizeAlternatives(item.product_id, item.products.size, item.products.color, sellerId).then(alternatives => {
         if (alternatives.length === 0) {
           // If no size alternatives with same color, look for similar products
           findSwapOptions({
@@ -59,7 +61,7 @@ export function ProductSwapDialog({
         }
       });
     }
-  }, [open, item]);
+  }, [open, item, sellerId]);
 
   const handleSwapRequest = (suggestion: typeof suggestions[0]) => {
     // Pass the selected swap details back to the parent
@@ -80,11 +82,10 @@ export function ProductSwapDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Trocar Tamanho</DialogTitle>
+          <DialogDescription>
+            O tamanho não serviu? Veja outras opções disponíveis:
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="text-sm text-muted-foreground mb-4">
-          <p>O tamanho não serviu? Veja outras opções disponíveis:</p>
-        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-8">
@@ -134,12 +135,18 @@ export function ProductSwapDialog({
                   
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{suggestion.name}</p>
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
                       {suggestion.size && (
                         <Badge variant="outline" className="text-xs">{suggestion.size}</Badge>
                       )}
                       {suggestion.color && (
                         <Badge variant="outline" className="text-xs">{suggestion.color}</Badge>
+                      )}
+                      {suggestion.isFromPartner && (
+                        <Badge variant="secondary" className="text-xs gap-1">
+                          <Users className="h-3 w-3" />
+                          {suggestion.partnerName || "Parceiro"}
+                        </Badge>
                       )}
                     </div>
                   </div>
