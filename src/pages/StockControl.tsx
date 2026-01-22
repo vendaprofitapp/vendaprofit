@@ -39,7 +39,7 @@ import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
 import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
 import { Category } from "@/components/products/CategoryManager";
-import { StockExportButton } from "@/components/stock/StockExportButton";
+import { StockExportDialog } from "@/components/stock/StockExportDialog";
 
 interface Supplier {
   id: string;
@@ -548,7 +548,7 @@ export default function StockControl() {
           <p className="text-muted-foreground text-sm">Gerencie seu estoque e requisições de parceiros</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <StockExportButton 
+          <StockExportDialog 
             products={filteredProducts} 
             suppliers={suppliers} 
             activeFiltersCount={activeFiltersCount} 
