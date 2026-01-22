@@ -137,12 +137,14 @@ export default function Categories() {
 
     try {
       if (editCategory) {
-        // Check if it's an orphan category being registered
+        const oldName = editCategory.name;
+        const newName = categoryName.trim();
+
         if (editCategory.id.startsWith("orphan-")) {
           // Create a new category with the new name
           const { error } = await supabase
             .from("categories")
-            .insert({ name: categoryName.trim(), owner_id: user.id });
+            .insert({ name: newName, owner_id: user.id });
 
           if (error) {
             toast.error("Erro ao cadastrar categoria");
@@ -150,33 +152,17 @@ export default function Categories() {
             return;
           }
 
-          // Update all products that use the old name
-          const oldName = editCategory.name;
-          const newName = categoryName.trim();
-          
+          // Update all products that use the old name using the SECURITY DEFINER function
           if (oldName !== newName) {
-            await supabase
-              .from("products")
-              .update({ category: newName })
-              .eq("category", oldName);
-            
-            await supabase
-              .from("products")
-              .update({ category_2: newName })
-              .eq("category_2", oldName);
-            
-            await supabase
-              .from("products")
-              .update({ category_3: newName })
-              .eq("category_3", oldName);
+            await (supabase.rpc as any)("rename_category_in_products", {
+              old_name: oldName,
+              new_name: newName,
+            });
           }
 
           toast.success("Categoria cadastrada e produtos atualizados!");
         } else {
           // Update existing category
-          const oldName = editCategory.name;
-          const newName = categoryName.trim();
-          
           const { error } = await supabase
             .from("categories")
             .update({ name: newName })
@@ -188,22 +174,12 @@ export default function Categories() {
             return;
           }
 
-          // Update products with the old category name
+          // Update products with the old category name using SECURITY DEFINER function
           if (oldName !== newName) {
-            await supabase
-              .from("products")
-              .update({ category: newName })
-              .eq("category", oldName);
-            
-            await supabase
-              .from("products")
-              .update({ category_2: newName })
-              .eq("category_2", oldName);
-            
-            await supabase
-              .from("products")
-              .update({ category_3: newName })
-              .eq("category_3", oldName);
+            await (supabase.rpc as any)("rename_category_in_products", {
+              old_name: oldName,
+              new_name: newName,
+            });
           }
 
           toast.success("Categoria atualizada!");
@@ -262,21 +238,10 @@ export default function Categories() {
 
     const categoryName = category.name;
 
-    // Clear category references from all products before deleting
-    await supabase
-      .from("products")
-      .update({ category: null })
-      .eq("category", categoryName);
-    
-    await supabase
-      .from("products")
-      .update({ category_2: null })
-      .eq("category_2", categoryName);
-    
-    await supabase
-      .from("products")
-      .update({ category_3: null })
-      .eq("category_3", categoryName);
+    // Clear category references from all products before deleting using SECURITY DEFINER function
+    await (supabase.rpc as any)("clear_category_from_products", {
+      category_name: categoryName,
+    });
 
     const { error } = await supabase
       .from("categories")
