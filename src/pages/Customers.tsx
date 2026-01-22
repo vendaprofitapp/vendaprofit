@@ -54,6 +54,7 @@ interface Customer {
   photo_url: string | null;
   notes: string | null;
   birth_date: string | null;
+  size: string | null;
   created_at: string;
 }
 
@@ -98,6 +99,7 @@ export default function Customers() {
     notes: "",
     photo_url: "",
     birth_date: "",
+    size: "",
   });
 
   // Fetch customers from database
@@ -112,7 +114,7 @@ export default function Customers() {
         .order("name");
 
       if (error) throw error;
-      return data as Customer[];
+      return (data || []) as unknown as Customer[];
     },
     enabled: !!user?.id,
   });
@@ -210,6 +212,7 @@ export default function Customers() {
             notes: formData.notes || null,
             photo_url: formData.photo_url || null,
             birth_date: formData.birth_date || null,
+            size: formData.size || null,
           })
           .eq("id", editingCustomer.id);
         if (error) throw error;
@@ -222,6 +225,7 @@ export default function Customers() {
           notes: formData.notes || null,
           photo_url: formData.photo_url || null,
           birth_date: formData.birth_date || null,
+          size: formData.size || null,
         });
         if (error) throw error;
       }
@@ -280,7 +284,7 @@ export default function Customers() {
 
   const openNewForm = () => {
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "" });
     setIsFormOpen(true);
   };
 
@@ -293,6 +297,7 @@ export default function Customers() {
       notes: customer.notes || "",
       photo_url: customer.photo_url || "",
       birth_date: customer.birth_date || "",
+      size: customer.size || "",
     });
     setIsFormOpen(true);
   };
@@ -300,7 +305,7 @@ export default function Customers() {
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "" });
+    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "" });
   };
 
   // Check if today is the customer's birthday (same month and day) - iOS safe
@@ -733,6 +738,15 @@ export default function Customers() {
                   type="date"
                   value={formData.birth_date}
                   onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Tamanho que usa</Label>
+                <Input
+                  value={formData.size}
+                  onChange={(e) => setFormData({ ...formData, size: e.target.value })}
+                  placeholder="Ex: M, 38, G, 42..."
                 />
               </div>
 
