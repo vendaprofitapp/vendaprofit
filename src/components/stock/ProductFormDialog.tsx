@@ -481,13 +481,8 @@ export function ProductFormDialog({
 
         if (error) throw error;
         
-        // Delete existing variants (must succeed, otherwise inserts may conflict with existing rows)
-        const { error: deleteVariantsError } = await supabase
-          .from("product_variants")
-          .delete()
-          .eq("product_id", productId);
-
-        if (deleteVariantsError) throw deleteVariantsError;
+        // For editing: We will use UPSERT logic below instead of delete+insert.
+        // This prevents foreign key violations when variants are referenced by consignment_items.
         
       } else {
         const { data: newProduct, error } = await supabase
@@ -538,7 +533,7 @@ export function ProductFormDialog({
 
       const deduplicatedVariants = Array.from(variantMap.values());
 
-      const variantsToInsert = deduplicatedVariants.map((v) => {
+      const variantsToUpsert = deduplicatedVariants.map((v) => {
         const colorTrimmed = (v.color || "").trim();
         const urls = colorTrimmed ? (colorImageUrls[colorTrimmed] || []) : [];
         return {
@@ -551,13 +546,71 @@ export function ProductFormDialog({
           image_url_3: urls[2] || null
         };
       });
-      
-      if (variantsToInsert.length > 0) {
-        const { error: variantError } = await supabase
+
+      if (editingProduct) {
+        // UPSERT strategy: for editing, we need to handle variants carefully
+        // 1. Fetch existing variants for the product
+        const { data: existingVariants } = await supabase
           .from("product_variants")
-          .insert(variantsToInsert);
-        
-        if (variantError) throw variantError;
+          .select("id, size, color")
+          .eq("product_id", productId);
+
+        const existingMap = new Map<string, string>();
+        (existingVariants || []).forEach((ev) => {
+          const key = `${ev.size}__${ev.color || ""}`;
+          existingMap.set(key, ev.id);
+        });
+
+        // 2. For each variant to save, check if it exists and update, otherwise insert
+        for (const variant of variantsToUpsert) {
+          const key = `${variant.size}__${variant.color || ""}`;
+          const existingId = existingMap.get(key);
+
+          if (existingId) {
+            // Update existing variant
+            const { error: updateError } = await supabase
+              .from("product_variants")
+              .update({
+                stock_quantity: variant.stock_quantity,
+                image_url: variant.image_url,
+                image_url_2: variant.image_url_2,
+                image_url_3: variant.image_url_3,
+              })
+              .eq("id", existingId);
+
+            if (updateError) throw updateError;
+            existingMap.delete(key); // Mark as processed
+          } else {
+            // Insert new variant
+            const { error: insertError } = await supabase
+              .from("product_variants")
+              .insert(variant);
+
+            if (insertError) throw insertError;
+          }
+        }
+
+        // 3. Delete variants that are no longer in the form (if not referenced)
+        for (const [, variantId] of existingMap) {
+          const { error: deleteError } = await supabase
+            .from("product_variants")
+            .delete()
+            .eq("id", variantId);
+
+          // Silently ignore delete errors (variant may be in use by consignment)
+          if (deleteError) {
+            console.warn("Could not delete variant (may be in use):", variantId, deleteError);
+          }
+        }
+      } else {
+        // For new products, just insert all variants
+        if (variantsToUpsert.length > 0) {
+          const { error: variantError } = await supabase
+            .from("product_variants")
+            .insert(variantsToUpsert);
+          
+          if (variantError) throw variantError;
+        }
       }
 
       // Update product with first color's first image as main image
