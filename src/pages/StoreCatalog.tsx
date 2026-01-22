@@ -24,6 +24,8 @@ interface ProductVariant {
   image_url_2: string | null;
   image_url_3: string | null;
   marketing_status: MarketingStatus;
+  marketing_price: number | null;
+  marketing_delivery_days: number | null;
 }
 
 interface Product {
@@ -44,15 +46,21 @@ interface Product {
 interface CatalogDisplayItem {
   id: string;
   productId: string;
+  variantId?: string; // When showing individual variants
   name: string;
   description: string | null;
   price: number;
+  marketingPrice: number | null; // Special price for this item
+  marketingDeliveryDays: number | null; // Delivery days for presale
   category: string;
   category_2?: string | null;
   category_3?: string | null;
   color: string | null;
+  size?: string; // Specific size when showing individual variants
   sizes: string[];
   sizeMarketingStatus: Record<string, MarketingStatus>; // marketing status per size
+  sizeMarketingPrice: Record<string, number | null>; // marketing price per size
+  sizeMarketingDeliveryDays: Record<string, number | null>; // delivery days per size
   marketingStatus: MarketingStatus; // highest priority marketing status for the card
   image_url: string | null;
   video_url: string | null;
@@ -234,10 +242,10 @@ export default function StoreCatalog() {
       const allProducts = [...ownProducts, ...partnerProducts];
       if (allProducts.length === 0) return [];
 
-      // Fetch variants for all products (including marketing_status)
+      // Fetch variants for all products (including marketing fields)
       const { data: variants } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, marketing_status")
+        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, marketing_status, marketing_price, marketing_delivery_days")
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
@@ -259,9 +267,11 @@ export default function StoreCatalog() {
 
       // Process own products first
       for (const product of ownProducts) {
-        const productVariants = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
+        const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
-          marketing_status: (v.marketing_status as MarketingStatus) || null
+          marketing_status: (v.marketing_status as MarketingStatus) || null,
+          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+          marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
         
         if (productVariants.length > 0) {
@@ -280,17 +290,26 @@ export default function StoreCatalog() {
             const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             const variantImage = colorVariants.find(v => v.image_url)?.image_url || product.image_url;
             
-            // Build marketing status map per size
+            // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+            const sizeMarketingPrice: Record<string, number | null> = {};
+            const sizeMarketingDeliveryDays: Record<string, number | null> = {};
             colorVariants.forEach(v => {
               if (v.size) {
                 sizeMarketingStatus[v.size] = v.marketing_status;
+                sizeMarketingPrice[v.size] = v.marketing_price;
+                sizeMarketingDeliveryDays[v.size] = v.marketing_delivery_days;
               }
             });
             
             // Get highest priority marketing status for the card badge
             const allStatuses = colorVariants.map(v => v.marketing_status);
             const marketingStatus = getPriorityMarketingStatus(allStatuses);
+            
+            // Get the marketing price/delivery from the highest priority variant
+            const priorityVariant = colorVariants.find(v => v.marketing_status === marketingStatus);
+            const marketingPrice = priorityVariant?.marketing_price ?? null;
+            const marketingDeliveryDays = priorityVariant?.marketing_delivery_days ?? null;
             
             sizes.forEach(size => {
               ownStockCombinations.add(makeKey(product.name, color === '__no_color__' ? null : color, size));
@@ -302,12 +321,16 @@ export default function StoreCatalog() {
               name: product.name,
               description: product.description,
               price: product.price,
+              marketingPrice,
+              marketingDeliveryDays,
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
               color: color === '__no_color__' ? null : color,
               sizes: [...new Set(sizes)],
               sizeMarketingStatus,
+              sizeMarketingPrice,
+              sizeMarketingDeliveryDays,
               marketingStatus,
               image_url: variantImage,
               video_url: product.video_url,
@@ -327,12 +350,16 @@ export default function StoreCatalog() {
             name: product.name,
             description: product.description,
             price: product.price,
+            marketingPrice: null,
+            marketingDeliveryDays: null,
             category: product.category,
             category_2: (product as any).category_2,
             category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
             sizeMarketingStatus: {},
+            sizeMarketingPrice: {},
+            sizeMarketingDeliveryDays: {},
             marketingStatus: null,
             image_url: product.image_url,
             video_url: product.video_url,
@@ -345,9 +372,11 @@ export default function StoreCatalog() {
 
       // Process partner products
       for (const product of partnerProducts) {
-        const productVariants = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
+        const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
-          marketing_status: (v.marketing_status as MarketingStatus) || null
+          marketing_status: (v.marketing_status as MarketingStatus) || null,
+          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+          marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
         
         if (productVariants.length > 0) {
@@ -373,17 +402,26 @@ export default function StoreCatalog() {
             const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             const variantImage = filteredVariants.find(v => v.image_url)?.image_url || product.image_url;
 
-            // Build marketing status map per size
+            // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+            const sizeMarketingPrice: Record<string, number | null> = {};
+            const sizeMarketingDeliveryDays: Record<string, number | null> = {};
             filteredVariants.forEach(v => {
               if (v.size) {
                 sizeMarketingStatus[v.size] = v.marketing_status;
+                sizeMarketingPrice[v.size] = v.marketing_price;
+                sizeMarketingDeliveryDays[v.size] = v.marketing_delivery_days;
               }
             });
             
             // Get highest priority marketing status for the card badge
             const allStatuses = filteredVariants.map(v => v.marketing_status);
             const marketingStatus = getPriorityMarketingStatus(allStatuses);
+            
+            // Get the marketing price/delivery from the highest priority variant
+            const priorityVariant = filteredVariants.find(v => v.marketing_status === marketingStatus);
+            const marketingPrice = priorityVariant?.marketing_price ?? null;
+            const marketingDeliveryDays = priorityVariant?.marketing_delivery_days ?? null;
 
             displayItems.push({
               id: `${product.id}_${color}_partner`,
@@ -391,12 +429,16 @@ export default function StoreCatalog() {
               name: product.name,
               description: product.description,
               price: product.price,
+              marketingPrice,
+              marketingDeliveryDays,
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
               color: displayColor,
               sizes: [...new Set(availableSizes)],
               sizeMarketingStatus,
+              sizeMarketingPrice,
+              sizeMarketingDeliveryDays,
               marketingStatus,
               image_url: variantImage,
               video_url: product.video_url,
@@ -416,12 +458,16 @@ export default function StoreCatalog() {
             name: product.name,
             description: product.description,
             price: product.price,
+            marketingPrice: null,
+            marketingDeliveryDays: null,
             category: product.category,
             category_2: (product as any).category_2,
             category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
             sizeMarketingStatus: {},
+            sizeMarketingPrice: {},
+            sizeMarketingDeliveryDays: {},
             marketingStatus: null,
             image_url: product.image_url,
             video_url: product.video_url,
@@ -446,31 +492,60 @@ export default function StoreCatalog() {
     return uniqueCats;
   }, [catalogItems]);
 
-  // Filter products
-  const filteredItems = catalogItems.filter(p => {
-    const matchesSearch = search === "" || 
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
-      (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
-    const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
-    const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
-    
-    // Legacy opportunity filter (category-based)
-    if (showOpportunities) {
-      const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
-      if (!hasOpportunity) return false;
-    }
-    
-    // Marketing status filter (variant-based)
+  // Filter and transform products
+  // When a marketing filter is active, we show individual variant cards instead of grouped products
+  const filteredItems = useMemo(() => {
+    // If a marketing filter is active, we need to show individual variants
     if (selectedMarketingFilter !== "all") {
-      // Check if at least one variant has this marketing status
-      const hasMarketingStatus = p.marketingStatus === selectedMarketingFilter ||
-        Object.values(p.sizeMarketingStatus).some(s => s === selectedMarketingFilter);
-      if (!hasMarketingStatus) return false;
+      const variantCards: CatalogDisplayItem[] = [];
+      
+      catalogItems.forEach(item => {
+        // For each size with matching marketing status, create a separate card
+        Object.entries(item.sizeMarketingStatus).forEach(([size, status]) => {
+          if (status === selectedMarketingFilter) {
+            const matchesSearch = search === "" || 
+              item.name.toLowerCase().includes(search.toLowerCase()) ||
+              (item.description && item.description.toLowerCase().includes(search.toLowerCase())) ||
+              (item.color && item.color.toLowerCase().includes(search.toLowerCase()));
+            const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
+            const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+            
+            if (matchesSearch && matchesCategory) {
+              variantCards.push({
+                ...item,
+                id: `${item.id}_${size}_marketing`,
+                size, // Specific size for this variant card
+                sizes: [size], // Only show this size
+                marketingStatus: status,
+                marketingPrice: item.sizeMarketingPrice[size] ?? null,
+                marketingDeliveryDays: item.sizeMarketingDeliveryDays[size] ?? null,
+              });
+            }
+          }
+        });
+      });
+      
+      return variantCards;
     }
     
-    return matchesSearch && matchesCategory;
-  });
+    // Normal filtering (show grouped products)
+    return catalogItems.filter(p => {
+      const matchesSearch = search === "" || 
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
+        (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
+      const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
+      const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+      
+      // Legacy opportunity filter (category-based)
+      if (showOpportunities) {
+        const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
+        if (!hasOpportunity) return false;
+      }
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -1144,16 +1219,56 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
 
         {/* Product Info */}
         <div className="px-1 flex flex-col gap-2">
-          {/* Name and Color */}
+          {/* Name, Color and Size (for individual variant cards) */}
           <div>
             <h3 className="text-sm font-medium text-gray-900 line-clamp-1">{item.name}</h3>
-            {item.color && (
-              <p className="text-xs text-gray-500">{item.color}</p>
-            )}
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              {item.color && <span>{item.color}</span>}
+              {item.color && item.size && <span>•</span>}
+              {item.size && <span>Tam: {item.size}</span>}
+            </div>
           </div>
 
-          {/* Price */}
-          <span className="text-base font-bold text-gray-900">{formatPrice(item.price)}</span>
+          {/* Price - Show marketing price if available */}
+          {(() => {
+            const displayMarketingPrice = selectedSize 
+              ? item.sizeMarketingPrice?.[selectedSize] 
+              : item.marketingPrice;
+            const hasSpecialPrice = displayMarketingPrice && displayMarketingPrice !== item.price;
+            
+            return (
+              <div className="flex items-baseline gap-2">
+                {hasSpecialPrice ? (
+                  <>
+                    <span className="text-base font-bold text-orange-600">{formatPrice(displayMarketingPrice)}</span>
+                    <span className="text-xs text-gray-400 line-through">{formatPrice(item.price)}</span>
+                  </>
+                ) : (
+                  <span className="text-base font-bold text-gray-900">{formatPrice(item.price)}</span>
+                )}
+              </div>
+            );
+          })()}
+          
+          {/* Delivery days indicator for presale */}
+          {(() => {
+            const deliveryDays = selectedSize 
+              ? item.sizeMarketingDeliveryDays?.[selectedSize] 
+              : item.marketingDeliveryDays;
+            const isPresaleItem = selectedSize 
+              ? item.sizeMarketingStatus?.[selectedSize] === "presale"
+              : item.marketingStatus === "presale";
+              
+            if (isPresaleItem && deliveryDays) {
+              return (
+                <div className="flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">
+                  <Clock className="h-3 w-3" />
+                  <span>Entrega em ~{deliveryDays} dias</span>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Size Selector - Clean Pills with marketing status indicators */}
           {item.sizes.length > 0 && (

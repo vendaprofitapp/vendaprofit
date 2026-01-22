@@ -955,6 +955,8 @@ export type Database = {
           image_url: string | null
           image_url_2: string | null
           image_url_3: string | null
+          marketing_delivery_days: number | null
+          marketing_price: number | null
           marketing_status: string | null
           product_id: string
           size: string
@@ -969,6 +971,8 @@ export type Database = {
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
+          marketing_delivery_days?: number | null
+          marketing_price?: number | null
           marketing_status?: string | null
           product_id: string
           size: string
@@ -983,6 +987,8 @@ export type Database = {
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
+          marketing_delivery_days?: number | null
+          marketing_price?: number | null
           marketing_status?: string | null
           product_id?: string
           size?: string

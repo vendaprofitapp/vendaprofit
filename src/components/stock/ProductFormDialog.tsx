@@ -81,6 +81,8 @@ interface ProductVariant {
   image_url_2?: string | null;
   image_url_3?: string | null;
   marketing_status?: MarketingStatus;
+  marketing_price?: number | null;
+  marketing_delivery_days?: number | null;
 }
 
 // Structure to hold images per color
@@ -200,7 +202,9 @@ export function ProductFormDialog({
         image_url: v.image_url,
         image_url_2: v.image_url_2,
         image_url_3: v.image_url_3,
-        marketing_status: (v.marketing_status as MarketingStatus) || null
+        marketing_status: (v.marketing_status as MarketingStatus) || null,
+        marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+        marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
       }));
       setProductVariants(variants);
       
@@ -227,7 +231,7 @@ export function ProductFormDialog({
       setColorImages(images);
       setExpandedColors(expanded);
     } else {
-      setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null }]);
+      setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
       setColorImages({});
     }
   };
@@ -259,7 +263,7 @@ export function ProductFormDialog({
     });
     setColorImages({});
     setExpandedColors({});
-    setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null }]);
+    setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
   };
 
 
@@ -358,7 +362,7 @@ export function ProductFormDialog({
 
   // Variant handlers
   const addProductVariant = () => {
-    setProductVariants(prev => [...prev, { size: "", color: "", stock_quantity: 0, marketing_status: null }]);
+    setProductVariants(prev => [...prev, { size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
   };
 
   const removeProductVariant = (index: number) => {
@@ -380,11 +384,18 @@ export function ProductFormDialog({
     }
   };
 
-  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number | MarketingStatus) => {
+  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number | MarketingStatus | null) => {
     const oldVariant = productVariants[index];
     
+    // When marketing_status changes, reset marketing-specific fields if status becomes null
+    let updates: Partial<ProductVariant> = { [field]: value };
+    if (field === 'marketing_status' && value === null) {
+      updates.marketing_price = null;
+      updates.marketing_delivery_days = null;
+    }
+    
     setProductVariants(prev => prev.map((v, i) => 
-      i === index ? { ...v, [field]: value } : v
+      i === index ? { ...v, ...updates } : v
     ));
     
     // If color changed, initialize color images for new color
@@ -512,7 +523,7 @@ export function ProductFormDialog({
       // The unique index treats NULL color as '' (COALESCE), so we must key on (size, coalescedColor).
       const variantMap = new Map<
         string,
-        { size: string; color: string; stock_quantity: number; marketing_status: MarketingStatus }
+        { size: string; color: string; stock_quantity: number; marketing_status: MarketingStatus; marketing_price: number | null; marketing_delivery_days: number | null }
       >();
 
       normalizedVariants.forEach((v) => {
@@ -525,14 +536,18 @@ export function ProductFormDialog({
         if (existing) {
           existing.stock_quantity =
             (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
-          // Keep the marketing_status from the last occurrence
+          // Keep the marketing fields from the last occurrence
           existing.marketing_status = v.marketing_status || existing.marketing_status;
+          existing.marketing_price = v.marketing_price ?? existing.marketing_price;
+          existing.marketing_delivery_days = v.marketing_delivery_days ?? existing.marketing_delivery_days;
         } else {
           variantMap.set(key, {
             size: sizeToInsert,
             color: colorToInsert,
             stock_quantity: Number(v.stock_quantity) || 0,
             marketing_status: v.marketing_status || null,
+            marketing_price: v.marketing_price ?? null,
+            marketing_delivery_days: v.marketing_delivery_days ?? null,
           });
         }
       });
@@ -548,6 +563,8 @@ export function ProductFormDialog({
           color: colorTrimmed || null,
           stock_quantity: v.stock_quantity,
           marketing_status: v.marketing_status,
+          marketing_price: v.marketing_price,
+          marketing_delivery_days: v.marketing_delivery_days,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
           image_url_3: urls[2] || null
@@ -580,6 +597,8 @@ export function ProductFormDialog({
               .update({
                 stock_quantity: variant.stock_quantity,
                 marketing_status: variant.marketing_status,
+                marketing_price: variant.marketing_price,
+                marketing_delivery_days: variant.marketing_delivery_days,
                 image_url: variant.image_url,
                 image_url_2: variant.image_url_2,
                 image_url_3: variant.image_url_3,
@@ -893,55 +912,91 @@ export function ProductFormDialog({
                   {/* Variants for this color */}
                   <div className="space-y-2 mt-3">
                     {items.map(({ variant, index }) => (
-                      <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-                        <Select
-                          value={variant.size}
-                          onValueChange={(value) => updateProductVariant(index, "size", value)}
-                        >
-                          <SelectTrigger className="w-20 sm:w-24">
-                            <SelectValue placeholder="Tam." />
-                          </SelectTrigger>
-                          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-                            {availableSizes.map((size) => (
-                              <SelectItem key={size} value={size}>
-                                {size}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        
-                        <ColorManager
-                          key={`color-${index}-${colorRefreshKey}`}
-                          value={variant.color}
-                          onChange={(value) => updateProductVariant(index, "color", value)}
-                          placeholder="Cor"
-                          onColorCreated={() => setColorRefreshKey(k => k + 1)}
-                        />
-                        
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="Qtd"
-                          className="w-16 sm:w-20"
-                          value={variant.stock_quantity || ""}
-                          onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
-                        />
-                        
-                        <MarketingStatusSelector
-                          value={variant.marketing_status || null}
-                          onChange={(status) => updateProductVariant(index, "marketing_status", status as any)}
-                          compact
-                        />
-                        {productVariants.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
-                            onClick={() => removeProductVariant(index)}
+                      <div key={index} className="space-y-2">
+                        <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                          <Select
+                            value={variant.size}
+                            onValueChange={(value) => updateProductVariant(index, "size", value)}
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                            <SelectTrigger className="w-20 sm:w-24">
+                              <SelectValue placeholder="Tam." />
+                            </SelectTrigger>
+                            <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
+                              {availableSizes.map((size) => (
+                                <SelectItem key={size} value={size}>
+                                  {size}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          
+                          <ColorManager
+                            key={`color-${index}-${colorRefreshKey}`}
+                            value={variant.color}
+                            onChange={(value) => updateProductVariant(index, "color", value)}
+                            placeholder="Cor"
+                            onColorCreated={() => setColorRefreshKey(k => k + 1)}
+                          />
+                          
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Qtd"
+                            className="w-16 sm:w-20"
+                            value={variant.stock_quantity || ""}
+                            onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
+                          />
+                          
+                          <MarketingStatusSelector
+                            value={variant.marketing_status || null}
+                            onChange={(status) => updateProductVariant(index, "marketing_status", status as any)}
+                            compact
+                          />
+                          {productVariants.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
+                              onClick={() => removeProductVariant(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {/* Marketing-specific fields - shown when a marketing status is selected */}
+                        {variant.marketing_status && (
+                          <div className="flex gap-2 items-center flex-wrap pl-4 border-l-2 border-primary/20 ml-1">
+                            {/* Price field for all marketing statuses */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">R$</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                inputMode="decimal"
+                                placeholder="Preço especial"
+                                className="w-24 h-8 text-sm"
+                                value={variant.marketing_price ?? ""}
+                                onChange={(e) => updateProductVariant(index, "marketing_price", e.target.value ? parseFloat(e.target.value) : null)}
+                              />
+                            </div>
+                            
+                            {/* Delivery days field - only for presale */}
+                            {variant.marketing_status === "presale" && (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  placeholder="Prazo"
+                                  className="w-16 h-8 text-sm"
+                                  value={variant.marketing_delivery_days ?? ""}
+                                  onChange={(e) => updateProductVariant(index, "marketing_delivery_days", e.target.value ? parseInt(e.target.value) : null)}
+                                />
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">dias</span>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}
