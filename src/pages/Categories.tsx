@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Tag, Search, Users } from "lucide-react";
+import { Plus, Edit, Trash2, Tag, Search, Users, Merge } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,10 @@ export default function Categories() {
   const [categoryName, setCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeSource, setMergeSource] = useState("");
+  const [mergeDestination, setMergeDestination] = useState("");
+  const [merging, setMerging] = useState(false);
 
   // Check if current user is admin
   useEffect(() => {
@@ -274,6 +279,53 @@ export default function Categories() {
     setDialogOpen(true);
   };
 
+  const handleMergeCategories = async () => {
+    if (!mergeSource || !mergeDestination) {
+      toast.error("Selecione as categorias de origem e destino");
+      return;
+    }
+
+    if (mergeSource === mergeDestination) {
+      toast.error("As categorias de origem e destino devem ser diferentes");
+      return;
+    }
+
+    const sourceCategory = categories.find(c => c.name === mergeSource);
+    if (!window.confirm(
+      `Mesclar "${mergeSource}" em "${mergeDestination}"?\n\n${sourceCategory?.product_count || 0} produto(s) serão movidos para "${mergeDestination}" e a categoria "${mergeSource}" será excluída.`
+    )) {
+      return;
+    }
+
+    setMerging(true);
+    try {
+      // Transfer all products from source to destination
+      await (supabase.rpc as any)("merge_categories", {
+        source_name: mergeSource,
+        destination_name: mergeDestination,
+      });
+
+      // Delete the source category if it's registered
+      if (sourceCategory && !sourceCategory.id.startsWith("orphan-")) {
+        await supabase
+          .from("categories")
+          .delete()
+          .eq("id", sourceCategory.id);
+      }
+
+      toast.success(`Categoria "${mergeSource}" mesclada com "${mergeDestination}"!`);
+      setMergeDialogOpen(false);
+      setMergeSource("");
+      setMergeDestination("");
+      fetchCategories();
+    } catch (err) {
+      console.error("Merge error:", err);
+      toast.error("Erro ao mesclar categorias");
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const filteredCategories = categories.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -291,10 +343,21 @@ export default function Categories() {
               Gerencie as categorias de produtos do sistema
             </p>
           </div>
-          <Button onClick={openNewDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nova Categoria
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setMergeDialogOpen(true)} 
+              className="gap-2"
+              disabled={categories.length < 2}
+            >
+              <Merge className="h-4 w-4" />
+              Mesclar
+            </Button>
+            <Button onClick={openNewDialog} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Nova Categoria
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -487,6 +550,81 @@ export default function Categories() {
               </Button>
               <Button onClick={handleSaveCategory} disabled={saving || !categoryName.trim()}>
                 {saving ? "Salvando..." : editCategory ? "Salvar" : "Criar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Merge Categories Dialog */}
+        <Dialog open={mergeDialogOpen} onOpenChange={(open) => {
+          setMergeDialogOpen(open);
+          if (!open) {
+            setMergeSource("");
+            setMergeDestination("");
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Mesclar Categorias</DialogTitle>
+              <DialogDescription>
+                Transfira todos os produtos de uma categoria para outra. A categoria de origem será excluída.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Categoria de origem (será excluída)</label>
+                <Select value={mergeSource} onValueChange={setMergeSource}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria de origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories
+                      .filter(c => c.name !== mergeDestination)
+                      .map((c) => (
+                        <SelectItem key={c.id} value={c.name}>
+                          {c.name} ({c.product_count || 0} produtos)
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Categoria de destino (receberá os produtos)</label>
+                <Select value={mergeDestination} onValueChange={setMergeDestination}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria de destino" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories
+                      .filter(c => c.name !== mergeSource && !c.id.startsWith("orphan-"))
+                      .map((c) => (
+                        <SelectItem key={c.id} value={c.name}>
+                          {c.name} ({c.product_count || 0} produtos)
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mergeSource && mergeDestination && (
+                <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                  ⚠️ Esta ação é irreversível. Todos os produtos de "{mergeSource}" serão movidos para "{mergeDestination}" e a categoria de origem será excluída.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleMergeCategories} 
+                disabled={merging || !mergeSource || !mergeDestination}
+                variant="destructive"
+              >
+                {merging ? "Mesclando..." : "Mesclar Categorias"}
               </Button>
             </DialogFooter>
           </DialogContent>

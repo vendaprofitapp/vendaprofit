@@ -1389,6 +1389,10 @@ export type Database = {
         Args: { _product_id: string; _user_id: string }
         Returns: boolean
       }
+      merge_categories: {
+        Args: { destination_name: string; source_name: string }
+        Returns: undefined
+      }
       rename_category_in_products: {
         Args: { new_name: string; old_name: string }
         Returns: undefined
