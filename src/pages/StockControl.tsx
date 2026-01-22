@@ -39,6 +39,7 @@ import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
 import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
 import { Category } from "@/components/products/CategoryManager";
+import { StockExportButton } from "@/components/stock/StockExportButton";
 
 interface Supplier {
   id: string;
@@ -54,6 +55,7 @@ interface Product {
   category_3: string | null;
   price: number;
   cost_price: number | null;
+  sku: string | null;
   
   // OBS: tamanho/cor principais ficam nas variantes
   size: string | null;
@@ -68,8 +70,10 @@ interface Product {
   image_url_3: string | null;
   supplier_id: string | null;
   product_variants?: Array<{
+    id: string;
     size: string;
     color: string | null;
+    stock_quantity: number;
   }>;
 }
 
@@ -214,7 +218,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( size, color )
+        product_variants ( id, size, color, stock_quantity )
       `)
       .eq("owner_id", user?.id)
       .order("created_at", { ascending: false });
@@ -269,7 +273,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( size, color )
+        product_variants ( id, size, color, stock_quantity )
       `)
       .in("id", productIds)
       .neq("owner_id", user.id)
@@ -544,6 +548,12 @@ export default function StockControl() {
           <p className="text-muted-foreground text-sm">Gerencie seu estoque e requisições de parceiros</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <StockExportButton 
+            products={filteredProducts} 
+            suppliers={suppliers} 
+            activeFiltersCount={activeFiltersCount} 
+          />
+          
           <VoiceCommandButton
             isListening={isListening}
             isSupported={isSupported}
