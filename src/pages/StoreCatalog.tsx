@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+type MarketingStatus = "opportunity" | "presale" | "launch" | null;
 
 interface ProductVariant {
   id: string;
@@ -21,6 +23,7 @@ interface ProductVariant {
   image_url: string | null;
   image_url_2: string | null;
   image_url_3: string | null;
+  marketing_status: MarketingStatus;
 }
 
 interface Product {
@@ -49,6 +52,8 @@ interface CatalogDisplayItem {
   category_3?: string | null;
   color: string | null;
   sizes: string[];
+  sizeMarketingStatus: Record<string, MarketingStatus>; // marketing status per size
+  marketingStatus: MarketingStatus; // highest priority marketing status for the card
   image_url: string | null;
   video_url: string | null;
   totalStock: number;
@@ -99,6 +104,7 @@ export default function StoreCatalog() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showOpportunities, setShowOpportunities] = useState(false);
+  const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatus | "all">("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
 
@@ -228,12 +234,21 @@ export default function StoreCatalog() {
       const allProducts = [...ownProducts, ...partnerProducts];
       if (allProducts.length === 0) return [];
 
-      // Fetch variants for all products
+      // Fetch variants for all products (including marketing_status)
       const { data: variants } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3")
+        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, marketing_status")
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
+
+      // Helper to determine the highest priority marketing status
+      const getPriorityMarketingStatus = (statuses: MarketingStatus[]): MarketingStatus => {
+        // Priority: opportunity > presale > launch > null
+        if (statuses.includes("opportunity")) return "opportunity";
+        if (statuses.includes("presale")) return "presale";
+        if (statuses.includes("launch")) return "launch";
+        return null;
+      };
 
       // Create display items
       const displayItems: CatalogDisplayItem[] = [];
@@ -244,7 +259,10 @@ export default function StoreCatalog() {
 
       // Process own products first
       for (const product of ownProducts) {
-        const productVariants = variants?.filter(v => v.product_id === product.id) || [];
+        const productVariants = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
+          ...v,
+          marketing_status: (v.marketing_status as MarketingStatus) || null
+        }));
         
         if (productVariants.length > 0) {
           const colorGroups = new Map<string, ProductVariant[]>();
@@ -262,6 +280,18 @@ export default function StoreCatalog() {
             const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             const variantImage = colorVariants.find(v => v.image_url)?.image_url || product.image_url;
             
+            // Build marketing status map per size
+            const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+            colorVariants.forEach(v => {
+              if (v.size) {
+                sizeMarketingStatus[v.size] = v.marketing_status;
+              }
+            });
+            
+            // Get highest priority marketing status for the card badge
+            const allStatuses = colorVariants.map(v => v.marketing_status);
+            const marketingStatus = getPriorityMarketingStatus(allStatuses);
+            
             sizes.forEach(size => {
               ownStockCombinations.add(makeKey(product.name, color === '__no_color__' ? null : color, size));
             });
@@ -277,6 +307,8 @@ export default function StoreCatalog() {
               category_3: (product as any).category_3,
               color: color === '__no_color__' ? null : color,
               sizes: [...new Set(sizes)],
+              sizeMarketingStatus,
+              marketingStatus,
               image_url: variantImage,
               video_url: product.video_url,
               totalStock,
@@ -300,6 +332,8 @@ export default function StoreCatalog() {
             category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
+            sizeMarketingStatus: {},
+            marketingStatus: null,
             image_url: product.image_url,
             video_url: product.video_url,
             totalStock: product.stock_quantity,
@@ -311,7 +345,10 @@ export default function StoreCatalog() {
 
       // Process partner products
       for (const product of partnerProducts) {
-        const productVariants = variants?.filter(v => v.product_id === product.id) || [];
+        const productVariants = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
+          ...v,
+          marketing_status: (v.marketing_status as MarketingStatus) || null
+        }));
         
         if (productVariants.length > 0) {
           const colorGroups = new Map<string, ProductVariant[]>();
@@ -336,6 +373,18 @@ export default function StoreCatalog() {
             const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             const variantImage = filteredVariants.find(v => v.image_url)?.image_url || product.image_url;
 
+            // Build marketing status map per size
+            const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+            filteredVariants.forEach(v => {
+              if (v.size) {
+                sizeMarketingStatus[v.size] = v.marketing_status;
+              }
+            });
+            
+            // Get highest priority marketing status for the card badge
+            const allStatuses = filteredVariants.map(v => v.marketing_status);
+            const marketingStatus = getPriorityMarketingStatus(allStatuses);
+
             displayItems.push({
               id: `${product.id}_${color}_partner`,
               productId: product.id,
@@ -347,6 +396,8 @@ export default function StoreCatalog() {
               category_3: (product as any).category_3,
               color: displayColor,
               sizes: [...new Set(availableSizes)],
+              sizeMarketingStatus,
+              marketingStatus,
               image_url: variantImage,
               video_url: product.video_url,
               totalStock,
@@ -370,6 +421,8 @@ export default function StoreCatalog() {
             category_3: (product as any).category_3,
             color: product.color,
             sizes: product.size ? [product.size] : [],
+            sizeMarketingStatus: {},
+            marketingStatus: null,
             image_url: product.image_url,
             video_url: product.video_url,
             totalStock: product.stock_quantity,
@@ -402,9 +455,18 @@ export default function StoreCatalog() {
     const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
     const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
     
+    // Legacy opportunity filter (category-based)
     if (showOpportunities) {
       const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
       if (!hasOpportunity) return false;
+    }
+    
+    // Marketing status filter (variant-based)
+    if (selectedMarketingFilter !== "all") {
+      // Check if at least one variant has this marketing status
+      const hasMarketingStatus = p.marketingStatus === selectedMarketingFilter ||
+        Object.values(p.sizeMarketingStatus).some(s => s === selectedMarketingFilter);
+      if (!hasMarketingStatus) return false;
     }
     
     return matchesSearch && matchesCategory;
@@ -764,33 +826,70 @@ export default function StoreCatalog() {
 
       {/* Search and Filters */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Opportunities Button */}
-        {showOpportunitiesButton && (
-          <div className="flex justify-center mb-6">
+        {/* Marketing Status Filter Pills */}
+        <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-4 scrollbar-hide">
+          <div className="flex gap-2 min-w-max justify-center">
             <button
               className={cn(
-                "flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all",
-                showOpportunities
-                  ? "text-white shadow-lg"
-                  : "hover:opacity-80"
+                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                selectedMarketingFilter === "all"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               )}
-              style={{
-                backgroundColor: showOpportunities ? opportunitiesButtonColor : `${opportunitiesButtonColor}15`,
-                color: showOpportunities ? "white" : opportunitiesButtonColor,
-                boxShadow: showOpportunities ? `0 10px 15px -3px ${opportunitiesButtonColor}40` : undefined,
-              }}
               onClick={() => {
-                setShowOpportunities(!showOpportunities);
-                if (!showOpportunities) {
-                  setSelectedCategory(null);
-                }
+                setSelectedMarketingFilter("all");
+                setShowOpportunities(false);
               }}
             >
-              <Flame className="h-4 w-4" />
-              {opportunitiesButtonText}
+              Todos
+            </button>
+            <button
+              className={cn(
+                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                selectedMarketingFilter === "opportunity"
+                  ? "bg-orange-500 text-white shadow-lg"
+                  : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20"
+              )}
+              onClick={() => {
+                setSelectedMarketingFilter(selectedMarketingFilter === "opportunity" ? "all" : "opportunity");
+                setShowOpportunities(false);
+              }}
+            >
+              <Flame className="h-3.5 w-3.5" />
+              Oportunidades
+            </button>
+            <button
+              className={cn(
+                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                selectedMarketingFilter === "presale"
+                  ? "bg-purple-500 text-white shadow-lg"
+                  : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+              )}
+              onClick={() => {
+                setSelectedMarketingFilter(selectedMarketingFilter === "presale" ? "all" : "presale");
+                setShowOpportunities(false);
+              }}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Pré-venda
+            </button>
+            <button
+              className={cn(
+                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                selectedMarketingFilter === "launch"
+                  ? "bg-green-500 text-white shadow-lg"
+                  : "bg-green-500/10 text-green-600 hover:bg-green-500/20"
+              )}
+              onClick={() => {
+                setSelectedMarketingFilter(selectedMarketingFilter === "launch" ? "all" : "launch");
+                setShowOpportunities(false);
+              }}
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              Lançamentos
             </button>
           </div>
-        )}
+        </div>
 
         {/* Search Bar */}
         <div className="relative max-w-md mx-auto mb-6">
@@ -951,21 +1050,46 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
           onClick={() => item.image_url && setImageOpen(true)}
         >
-          {/* Category Badge */}
+          {/* Marketing Status Badge - Top Right */}
+          {item.marketingStatus && (
+            <Badge 
+              className={cn(
+                "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1",
+                item.marketingStatus === "opportunity" && "bg-orange-500 text-white",
+                item.marketingStatus === "presale" && "bg-purple-500 text-white",
+                item.marketingStatus === "launch" && "bg-green-500 text-white"
+              )}
+            >
+              {item.marketingStatus === "opportunity" && <><Flame className="h-3 w-3" /> Oportunidade</>}
+              {item.marketingStatus === "presale" && <><Clock className="h-3 w-3" /> Pré-venda</>}
+              {item.marketingStatus === "launch" && <><Rocket className="h-3 w-3" /> Lançamento</>}
+            </Badge>
+          )}
+
+          {/* Low Stock Badge - Below marketing badge if exists */}
+          {item.totalStock <= 3 && !item.marketingStatus && (
+            <Badge 
+              className="absolute right-2 top-2 z-20 bg-red-500 text-white text-[10px] font-semibold border-0"
+            >
+              Últimas peças
+            </Badge>
+          )}
+          
+          {/* Low Stock Badge - When marketing badge exists, show below */}
+          {item.totalStock <= 3 && item.marketingStatus && (
+            <Badge 
+              className="absolute right-2 top-9 z-20 bg-red-500 text-white text-[10px] font-semibold border-0"
+            >
+              Últimas peças
+            </Badge>
+          )}
+
+          {/* Category Badge - Bottom Left */}
           {item.category && (
             <Badge 
               className="absolute left-2 top-2 z-20 bg-white/90 text-[10px] font-semibold uppercase text-gray-700 backdrop-blur-sm border-0 shadow-sm"
             >
               {item.category}
-            </Badge>
-          )}
-
-          {/* Low Stock Badge */}
-          {item.totalStock <= 3 && (
-            <Badge 
-              className="absolute right-2 top-2 z-20 bg-red-500 text-white text-[10px] font-semibold border-0"
-            >
-              Últimas peças
             </Badge>
           )}
 
@@ -1031,36 +1155,73 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           {/* Price */}
           <span className="text-base font-bold text-gray-900">{formatPrice(item.price)}</span>
 
-          {/* Size Selector - Clean Pills */}
+          {/* Size Selector - Clean Pills with marketing status indicators */}
           {item.sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {item.sizes.map(size => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => setSelectedSize(size === selectedSize ? "" : size)}
-                  className={cn(
-                    "min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium border transition-all touch-manipulation",
-                    selectedSize === size
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-400"
-                  )}
-                >
-                  {size}
-                </button>
-              ))}
+              {item.sizes.map(size => {
+                const sizeStatus = item.sizeMarketingStatus[size];
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setSelectedSize(size === selectedSize ? "" : size)}
+                    className={cn(
+                      "min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium border transition-all touch-manipulation relative",
+                      selectedSize === size
+                        ? "border-gray-900 bg-gray-900 text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
+                      // Marketing status ring indicator
+                      sizeStatus === "opportunity" && selectedSize !== size && "ring-1 ring-orange-400",
+                      sizeStatus === "presale" && selectedSize !== size && "ring-1 ring-purple-400",
+                      sizeStatus === "launch" && selectedSize !== size && "ring-1 ring-green-400"
+                    )}
+                  >
+                    {size}
+                    {/* Small dot indicator for marketing status */}
+                    {sizeStatus && selectedSize !== size && (
+                      <span className={cn(
+                        "absolute -top-1 -right-1 w-2 h-2 rounded-full",
+                        sizeStatus === "opportunity" && "bg-orange-500",
+                        sizeStatus === "presale" && "bg-purple-500",
+                        sizeStatus === "launch" && "bg-green-500"
+                      )} />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Add to Cart Button */}
-          <Button
-            className="w-full h-10 rounded-xl font-semibold text-xs sm:text-sm transition-all hover:shadow-lg whitespace-nowrap overflow-hidden px-2"
-            style={{ backgroundColor: primaryColor, color: 'white' }}
-            onClick={handleAddToCart}
-          >
-            <ShoppingBag className="h-4 w-4 mr-1 flex-shrink-0" />
-            <span className="truncate">Adicionar</span>
-          </Button>
+          {/* Add to Cart Button - Changes text for presale */}
+          {(() => {
+            // Determine if selected size is presale or if product has presale marketing
+            const selectedSizeStatus = selectedSize ? item.sizeMarketingStatus[selectedSize] : null;
+            const isPresale = selectedSizeStatus === "presale" || 
+              (!selectedSize && item.marketingStatus === "presale");
+            
+            return (
+              <Button
+                className={cn(
+                  "w-full h-10 rounded-xl font-semibold text-xs sm:text-sm transition-all hover:shadow-lg whitespace-nowrap overflow-hidden px-2",
+                  isPresale && "bg-purple-500 hover:bg-purple-600"
+                )}
+                style={!isPresale ? { backgroundColor: primaryColor, color: 'white' } : { color: 'white' }}
+                onClick={handleAddToCart}
+              >
+                {isPresale ? (
+                  <>
+                    <Clock className="h-4 w-4 mr-1 flex-shrink-0" />
+                    <span className="truncate">Reservar Agora</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag className="h-4 w-4 mr-1 flex-shrink-0" />
+                    <span className="truncate">Adicionar</span>
+                  </>
+                )}
+              </Button>
+            );
+          })()}
         </div>
       </div>
 
