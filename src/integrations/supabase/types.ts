@@ -955,6 +955,7 @@ export type Database = {
           image_url: string | null
           image_url_2: string | null
           image_url_3: string | null
+          marketing_status: string | null
           product_id: string
           size: string
           sku: string | null
@@ -968,6 +969,7 @@ export type Database = {
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
+          marketing_status?: string | null
           product_id: string
           size: string
           sku?: string | null
@@ -981,6 +983,7 @@ export type Database = {
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
+          marketing_status?: string | null
           product_id?: string
           size?: string
           sku?: string | null
@@ -1060,6 +1063,7 @@ export type Database = {
           image_url_2: string | null
           image_url_3: string | null
           is_active: boolean
+          marketing_status: string | null
           min_stock_level: number
           name: string
           owner_id: string
@@ -1085,6 +1089,7 @@ export type Database = {
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
+          marketing_status?: string | null
           min_stock_level?: number
           name: string
           owner_id: string
@@ -1110,6 +1115,7 @@ export type Database = {
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
+          marketing_status?: string | null
           min_stock_level?: number
           name?: string
           owner_id?: string
