@@ -287,6 +287,8 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="1">1 dia</SelectItem>
+                  <SelectItem value="2">2 dias</SelectItem>
                   <SelectItem value="3">3 dias</SelectItem>
                   <SelectItem value="5">5 dias</SelectItem>
                   <SelectItem value="7">7 dias</SelectItem>
