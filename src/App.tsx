@@ -23,6 +23,7 @@ import Customers from "./pages/Customers";
 import Consortiums from "./pages/Consortiums";
 import LandingPage from "./pages/LandingPage";
 import Suppliers from "./pages/Suppliers";
+import Categories from "./pages/Categories";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const AppRoutes = () => (
     <Route path="/stock" element={<ProtectedRoute><StockControl /></ProtectedRoute>} />
     
     <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+    <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
     <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
