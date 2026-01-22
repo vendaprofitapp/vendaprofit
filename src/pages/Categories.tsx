@@ -583,7 +583,12 @@ export default function Categories() {
                       .filter(c => c.name !== mergeDestination)
                       .map((c) => (
                         <SelectItem key={c.id} value={c.name}>
-                          {c.name} ({c.product_count || 0} produtos)
+                          <span className="flex items-center gap-2">
+                            {c.name} ({c.product_count || 0} produtos)
+                            {c.id.startsWith("orphan-") && (
+                              <span className="text-xs text-amber-500">(não cadastrada)</span>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                   </SelectContent>
