@@ -161,6 +161,11 @@ export function useProductSwap() {
    * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
    * Primeiro busca no estoque do vendedor, depois em parceiros/grupos
    */
+  /**
+   * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
+   * Versão otimizada para funcionar sem autenticação (página pública)
+   * Usa stock_quantity diretamente das variantes ao invés de getAvailableStock
+   */
   const findSizeAlternatives = async (
     productId: string,
     currentSize: string | null,
@@ -170,7 +175,7 @@ export function useProductSwap() {
     setLoading(true);
     try {
       // Get original product info first
-      const { data: originalProduct } = await supabase
+      const { data: originalProduct, error: productError } = await supabase
         .from('products')
         .select(`
           id,
@@ -189,6 +194,12 @@ export function useProductSwap() {
         .eq('id', productId)
         .single();
 
+      if (productError) {
+        console.error('Erro ao buscar produto original:', productError);
+        setSuggestions([]);
+        return [];
+      }
+
       if (!originalProduct) {
         setSuggestions([]);
         return [];
@@ -199,7 +210,7 @@ export function useProductSwap() {
       const normalizedCurrentSize = (currentSize || "").trim().toLowerCase();
       const ownerId = sellerId || originalProduct.owner_id;
 
-      // 1. First, check variants of the same product
+      // 1. First, check variants of the same product (same color)
       if (originalProduct.product_variants && originalProduct.product_variants.length > 0) {
         for (const variant of originalProduct.product_variants) {
           const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
@@ -212,16 +223,15 @@ export function useProductSwap() {
           const sameColor = normalizedCurrentColor === normalizedVariantColor;
           if (!sameColor) continue;
 
-          const availableStock = await getAvailableStock(productId, variant.id);
-          
-          if (availableStock > 0) {
+          // Use stock_quantity directly (works without auth)
+          if (variant.stock_quantity > 0) {
             alternatives.push({
               id: originalProduct.id,
               name: originalProduct.name,
               size: variant.size,
               color: variant.color,
               price: originalProduct.price,
-              availableStock,
+              availableStock: variant.stock_quantity,
               image_url: variant.image_url || originalProduct.image_url,
               variant_id: variant.id,
             });
@@ -229,10 +239,33 @@ export function useProductSwap() {
         }
       }
 
-      // 2. If no alternatives in own stock, search in partner products with the same name
+      // 2. If no alternatives with same color, check variants with any color (own product)
+      if (alternatives.length === 0 && originalProduct.product_variants && originalProduct.product_variants.length > 0) {
+        for (const variant of originalProduct.product_variants) {
+          const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
+
+          // Skip if same size
+          if (normalizedVariantSize === normalizedCurrentSize) continue;
+
+          // Use stock_quantity directly
+          if (variant.stock_quantity > 0) {
+            alternatives.push({
+              id: originalProduct.id,
+              name: originalProduct.name,
+              size: variant.size,
+              color: variant.color,
+              price: originalProduct.price,
+              availableStock: variant.stock_quantity,
+              image_url: variant.image_url || originalProduct.image_url,
+              variant_id: variant.id,
+            });
+          }
+        }
+      }
+
+      // 3. If still no alternatives, search in partner products with the same name
       if (alternatives.length === 0) {
-        // Find products with exact same name from other owners (partners)
-        const { data: partnerProducts } = await supabase
+        const { data: partnerProducts, error: partnerError } = await supabase
           .from('products')
           .select(`
             id,
@@ -253,7 +286,10 @@ export function useProductSwap() {
           .neq('owner_id', ownerId)
           .eq('is_active', true);
 
-        if (partnerProducts && partnerProducts.length > 0) {
+        if (partnerError) {
+          console.error('Erro ao buscar produtos de parceiros:', partnerError);
+        } else if (partnerProducts && partnerProducts.length > 0) {
+          // First pass: look for same color
           for (const p of partnerProducts) {
             const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
             
@@ -269,7 +305,6 @@ export function useProductSwap() {
                 const sameColor = normalizedCurrentColor === normalizedVariantColor;
                 if (!sameColor) continue;
 
-                // Check stock directly from variant since we want partner stock
                 if (variant.stock_quantity > 0) {
                   alternatives.push({
                     id: p.id,
@@ -287,37 +322,9 @@ export function useProductSwap() {
               }
             }
           }
-        }
 
-        // 3. If still no alternatives with same color, look for any color
-        if (alternatives.length === 0) {
-          // Check own product variants with any color
-          if (originalProduct.product_variants && originalProduct.product_variants.length > 0) {
-            for (const variant of originalProduct.product_variants) {
-              const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
-
-              // Skip if same size
-              if (normalizedVariantSize === normalizedCurrentSize) continue;
-
-              const availableStock = await getAvailableStock(productId, variant.id);
-              
-              if (availableStock > 0) {
-                alternatives.push({
-                  id: originalProduct.id,
-                  name: originalProduct.name,
-                  size: variant.size,
-                  color: variant.color,
-                  price: originalProduct.price,
-                  availableStock,
-                  image_url: variant.image_url || originalProduct.image_url,
-                  variant_id: variant.id,
-                });
-              }
-            }
-          }
-
-          // Also check partner products with any color
-          if (alternatives.length === 0 && partnerProducts && partnerProducts.length > 0) {
+          // Second pass: if still nothing, look for any color from partners
+          if (alternatives.length === 0) {
             for (const p of partnerProducts) {
               const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
               
