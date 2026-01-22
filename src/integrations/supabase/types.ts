@@ -490,6 +490,7 @@ export type Database = {
           owner_id: string
           phone: string | null
           photo_url: string | null
+          size: string | null
           updated_at: string
         }
         Insert: {
@@ -502,6 +503,7 @@ export type Database = {
           owner_id: string
           phone?: string | null
           photo_url?: string | null
+          size?: string | null
           updated_at?: string
         }
         Update: {
@@ -514,6 +516,7 @@ export type Database = {
           owner_id?: string
           phone?: string | null
           photo_url?: string | null
+          size?: string | null
           updated_at?: string
         }
         Relationships: []
