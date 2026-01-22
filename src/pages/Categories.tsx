@@ -246,7 +246,7 @@ export default function Categories() {
 
     if ((category.product_count || 0) > 0) {
       if (!window.confirm(
-        `A categoria "${category.name}" está sendo usada em ${category.product_count} produto(s). Deseja excluir mesmo assim? Os produtos ficarão sem categoria.`
+        `A categoria "${category.name}" está sendo usada em ${category.product_count} produto(s). Deseja excluir mesmo assim? A categoria será removida dos produtos.`
       )) {
         return;
       }
@@ -259,6 +259,24 @@ export default function Categories() {
       toast.error("Você só pode excluir categorias que você criou");
       return;
     }
+
+    const categoryName = category.name;
+
+    // Clear category references from all products before deleting
+    await supabase
+      .from("products")
+      .update({ category: null })
+      .eq("category", categoryName);
+    
+    await supabase
+      .from("products")
+      .update({ category_2: null })
+      .eq("category_2", categoryName);
+    
+    await supabase
+      .from("products")
+      .update({ category_3: null })
+      .eq("category_3", categoryName);
 
     const { error } = await supabase
       .from("categories")
@@ -275,7 +293,7 @@ export default function Categories() {
       return;
     }
 
-    toast.success("Categoria excluída!");
+    toast.success("Categoria excluída e removida dos produtos!");
     fetchCategories();
   };
 
