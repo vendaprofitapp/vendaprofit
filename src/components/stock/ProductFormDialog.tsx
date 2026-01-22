@@ -496,12 +496,29 @@ export function ProductFormDialog({
       }
       
       // Insert all variants with their color's images
-      const variantsToInsert = validVariants.map(v => {
+      // First, deduplicate variants by size+color combination
+      const variantMap = new Map<string, typeof validVariants[0]>();
+      validVariants.forEach(v => {
+        const size = (v.size?.trim() || "Único").toLowerCase();
+        const color = (v.color?.trim() || "").toLowerCase();
+        const key = `${size}_${color}`;
+        // If duplicate, sum stock quantities
+        const existing = variantMap.get(key);
+        if (existing) {
+          existing.stock_quantity = (existing.stock_quantity || 0) + (v.stock_quantity || 0);
+        } else {
+          variantMap.set(key, { ...v });
+        }
+      });
+      
+      const deduplicatedVariants = Array.from(variantMap.values());
+      
+      const variantsToInsert = deduplicatedVariants.map(v => {
         const urls = v.color ? (colorImageUrls[v.color] || []) : [];
         return {
           product_id: productId,
-          size: v.size || "Único",
-          color: v.color || null,
+          size: v.size?.trim() || "Único",
+          color: v.color?.trim() || null,
           stock_quantity: v.stock_quantity || 0,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
