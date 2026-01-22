@@ -101,30 +101,13 @@ export default function Categories() {
       });
     });
 
-    // Find orphan categories (used in products but not in categories table)
-    const registeredNames = new Set(categoriesData?.map(c => c.name) || []);
-    const orphanCategories: Category[] = [];
-    
-    categoryCountMap.forEach((count, name) => {
-      if (!registeredNames.has(name)) {
-        orphanCategories.push({
-          id: `orphan-${name}`,
-          name,
-          owner_id: "",
-          owner_email: "Não cadastrada",
-          product_count: count,
-        });
-      }
-    });
-
     const enrichedCategories: Category[] = (categoriesData || []).map(c => ({
       ...c,
       owner_email: profileMap.get(c.owner_id) || "Desconhecido",
       product_count: categoryCountMap.get(c.name) || 0,
     }));
 
-    // Combine registered and orphan categories
-    setCategories([...enrichedCategories, ...orphanCategories]);
+    setCategories(enrichedCategories);
     setLoading(false);
   };
 
@@ -145,50 +128,27 @@ export default function Categories() {
         const oldName = editCategory.name;
         const newName = categoryName.trim();
 
-        if (editCategory.id.startsWith("orphan-")) {
-          // Create a new category with the new name
-          const { error } = await supabase
-            .from("categories")
-            .insert({ name: newName, owner_id: user.id });
+        // Update existing category
+        const { error } = await supabase
+          .from("categories")
+          .update({ name: newName })
+          .eq("id", editCategory.id);
 
-          if (error) {
-            toast.error("Erro ao cadastrar categoria");
-            setSaving(false);
-            return;
-          }
-
-          // Update all products that use the old name using the SECURITY DEFINER function
-          if (oldName !== newName) {
-            await (supabase.rpc as any)("rename_category_in_products", {
-              old_name: oldName,
-              new_name: newName,
-            });
-          }
-
-          toast.success("Categoria cadastrada e produtos atualizados!");
-        } else {
-          // Update existing category
-          const { error } = await supabase
-            .from("categories")
-            .update({ name: newName })
-            .eq("id", editCategory.id);
-
-          if (error) {
-            toast.error("Erro ao atualizar categoria");
-            setSaving(false);
-            return;
-          }
-
-          // Update products with the old category name using SECURITY DEFINER function
-          if (oldName !== newName) {
-            await (supabase.rpc as any)("rename_category_in_products", {
-              old_name: oldName,
-              new_name: newName,
-            });
-          }
-
-          toast.success("Categoria atualizada!");
+        if (error) {
+          toast.error("Erro ao atualizar categoria");
+          setSaving(false);
+          return;
         }
+
+        // Update products with the old category name using SECURITY DEFINER function
+        if (oldName !== newName) {
+          await (supabase.rpc as any)("rename_category_in_products", {
+            old_name: oldName,
+            new_name: newName,
+          });
+        }
+
+        toast.success("Categoria atualizada!");
       } else {
         // Create new category
         const { error } = await supabase
@@ -220,11 +180,6 @@ export default function Categories() {
   };
 
   const handleDeleteCategory = async (category: Category) => {
-    if (category.id.startsWith("orphan-")) {
-      toast.error("Esta categoria precisa ser cadastrada primeiro");
-      return;
-    }
-
     if ((category.product_count || 0) > 0) {
       if (!window.confirm(
         `A categoria "${category.name}" está sendo usada em ${category.product_count} produto(s). Deseja excluir mesmo assim? A categoria será removida dos produtos.`
@@ -305,8 +260,8 @@ export default function Categories() {
         destination_name: mergeDestination,
       });
 
-      // Delete the source category if it's registered
-      if (sourceCategory && !sourceCategory.id.startsWith("orphan-")) {
+      // Delete the source category
+      if (sourceCategory) {
         await supabase
           .from("categories")
           .delete()
@@ -329,9 +284,6 @@ export default function Categories() {
   const filteredCategories = categories.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const registeredCount = categories.filter(c => !c.id.startsWith("orphan-")).length;
-  const orphanCount = categories.filter(c => c.id.startsWith("orphan-")).length;
 
   return (
     <MainLayout>
@@ -360,42 +312,17 @@ export default function Categories() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Categorias Cadastradas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{registeredCount}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Categorias Órfãs
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Usadas em produtos mas não cadastradas
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-500">{orphanCount}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total de Categorias
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{categories.length}</div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Stats Card */}
+        <Card className="max-w-xs">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total de Categorias
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{categories.length}</div>
+          </CardContent>
+        </Card>
 
         {/* Search */}
         <div className="relative max-w-md">
@@ -417,20 +344,19 @@ export default function Categories() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Criada por</TableHead>
                   <TableHead className="text-center">Produtos</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
+                    <TableCell colSpan={4} className="text-center py-8">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredCategories.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       {searchTerm ? "Nenhuma categoria encontrada" : "Nenhuma categoria cadastrada"}
                     </TableCell>
                   </TableRow>
@@ -454,17 +380,6 @@ export default function Categories() {
                           {category.product_count || 0}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">
-                        {category.id.startsWith("orphan-") ? (
-                          <Badge variant="outline" className="text-amber-500 border-amber-500">
-                            Não cadastrada
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-green-500 border-green-500">
-                            Cadastrada
-                          </Badge>
-                        )}
-                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button
@@ -472,20 +387,18 @@ export default function Categories() {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => openEditDialog(category)}
-                            title={category.id.startsWith("orphan-") ? "Cadastrar categoria" : "Editar"}
+                            title="Editar"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          {!category.id.startsWith("orphan-") && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleDeleteCategory(category)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleDeleteCategory(category)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -507,19 +420,12 @@ export default function Categories() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {editCategory 
-                  ? editCategory.id.startsWith("orphan-") 
-                    ? "Cadastrar Categoria" 
-                    : "Editar Categoria"
-                  : "Nova Categoria"
-                }
+                {editCategory ? "Editar Categoria" : "Nova Categoria"}
               </DialogTitle>
               <DialogDescription>
-                {editCategory?.id.startsWith("orphan-")
-                  ? "Esta categoria está sendo usada em produtos mas não foi cadastrada formalmente. Cadastre-a agora."
-                  : editCategory
-                    ? "Altere o nome da categoria. Os produtos serão atualizados automaticamente."
-                    : "Digite o nome da nova categoria"
+                {editCategory
+                  ? "Altere o nome da categoria. Os produtos serão atualizados automaticamente."
+                  : "Digite o nome da nova categoria"
                 }
               </DialogDescription>
             </DialogHeader>
@@ -583,12 +489,7 @@ export default function Categories() {
                       .filter(c => c.name !== mergeDestination)
                       .map((c) => (
                         <SelectItem key={c.id} value={c.name}>
-                          <span className="flex items-center gap-2">
-                            {c.name} ({c.product_count || 0} produtos)
-                            {c.id.startsWith("orphan-") && (
-                              <span className="text-xs text-amber-500">(não cadastrada)</span>
-                            )}
-                          </span>
+                          {c.name} ({c.product_count || 0} produtos)
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -603,7 +504,7 @@ export default function Categories() {
                   </SelectTrigger>
                   <SelectContent>
                     {categories
-                      .filter(c => c.name !== mergeSource && !c.id.startsWith("orphan-"))
+                      .filter(c => c.name !== mergeSource)
                       .map((c) => (
                         <SelectItem key={c.id} value={c.name}>
                           {c.name} ({c.product_count || 0} produtos)
