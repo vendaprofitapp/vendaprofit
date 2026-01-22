@@ -13,8 +13,9 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useConsignment } from "@/hooks/useConsignment";
 import { getAvailableStock } from "@/utils/stockHelpers";
-import { Search, Plus, Trash2, Package, Send, MessageCircle, Copy, Check } from "lucide-react";
+import { Search, Plus, Trash2, Package, Send, MessageCircle, Copy, Check, Star } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { Switch } from "@/components/ui/switch";
 
 interface NewConsignmentDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ interface Customer {
   id: string;
   name: string;
   phone: string | null;
+  size: string | null;
 }
 
 interface Product {
@@ -66,6 +68,8 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   const [createdConsignment, setCreatedConsignment] = useState<{ id: string; access_token: string } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [filterByCustomerSize, setFilterByCustomerSize] = useState(true);
+
   // Fetch customers
   const { data: customers = [] } = useQuery({
     queryKey: ["customers", user?.id],
@@ -73,7 +77,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
       if (!user) return [];
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone")
+        .select("id, name, phone, size")
         .eq("owner_id", user.id)
         .order("name");
       if (error) throw error;
@@ -117,9 +121,46 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
     enabled: !!user,
   });
 
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(productSearch.toLowerCase())
-  );
+  const selectedCustomer = customers.find(c => c.id === customerId);
+  const customerSize = selectedCustomer?.size?.toUpperCase()?.trim() || null;
+
+  // Filter products - only include those with own available stock (not partner stock)
+  // And filter variants to only show those with stock > 0
+  const filteredProducts = products
+    .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+    .map(p => ({
+      ...p,
+      // Filter variants to only show those with stock > 0
+      product_variants: p.product_variants?.filter(v => v.stock_quantity > 0) || [],
+    }))
+    // Only show product if it has stock (variants with stock or base product stock for non-variant products)
+    .filter(p => {
+      const hasVariantsWithStock = p.product_variants && p.product_variants.length > 0;
+      const hasBaseStock = p.stock_quantity > 0 && (!p.product_variants || p.product_variants.length === 0);
+      return hasVariantsWithStock || hasBaseStock;
+    });
+
+  // Helper to check if a size matches customer's preferred size
+  const matchesCustomerSize = (size: string | null): boolean => {
+    if (!customerSize || !size) return false;
+    return size.toUpperCase().trim() === customerSize;
+  };
+
+  // Sort products: customer size matches first if filter is enabled
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (!customerSize || !filterByCustomerSize) return 0;
+    
+    // Check if product A has any matching sizes
+    const aHasMatch = matchesCustomerSize(a.size) || 
+      a.product_variants?.some(v => matchesCustomerSize(v.size));
+    // Check if product B has any matching sizes  
+    const bHasMatch = matchesCustomerSize(b.size) || 
+      b.product_variants?.some(v => matchesCustomerSize(v.size));
+    
+    if (aHasMatch && !bHasMatch) return -1;
+    if (!aHasMatch && bHasMatch) return 1;
+    return 0;
+  });
 
   const addProduct = async (product: Product, variantId?: string) => {
     const variant = variantId 
@@ -322,14 +363,27 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
 
         {step === "products" && (
           <div className="flex flex-col flex-1 overflow-hidden">
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar produtos..."
-                className="pl-10"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-              />
+            <div className="flex gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar produtos..."
+                  className="pl-10"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                />
+              </div>
+              {customerSize && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/30">
+                  <Star className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm font-medium">Tam. {customerSize}</span>
+                  <Switch
+                    checked={filterByCustomerSize}
+                    onCheckedChange={setFilterByCustomerSize}
+                    className="scale-90"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4">
@@ -340,53 +394,73 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
                 </div>
                 <ScrollArea className="h-[300px]">
                   <div className="p-2 space-y-2">
-                    {filteredProducts.map(product => (
-                      <Card key={product.id} className="p-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-12 bg-muted rounded overflow-hidden flex-shrink-0">
-                            {product.image_url ? (
-                              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Package className="h-6 w-6 text-muted-foreground" />
+                    {sortedProducts.map(product => {
+                      const productHasMatchingSize = matchesCustomerSize(product.size) || 
+                        product.product_variants?.some(v => matchesCustomerSize(v.size));
+                      
+                      return (
+                        <Card 
+                          key={product.id} 
+                          className={`p-2 ${customerSize && filterByCustomerSize && productHasMatchingSize ? 'ring-2 ring-amber-400 bg-amber-50/50' : ''}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-12 h-12 bg-muted rounded overflow-hidden flex-shrink-0">
+                              {product.image_url ? (
+                                <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Package className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1">
+                                <p className="text-sm font-medium truncate">{product.name}</p>
+                                {customerSize && filterByCustomerSize && productHasMatchingSize && (
+                                  <Star className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                                )}
                               </div>
-                            )}
+                              <p className="text-xs text-muted-foreground">
+                                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(product.price)}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{product.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(product.price)}
-                            </p>
-                          </div>
-                        </div>
-                        
-                        {product.product_variants && product.product_variants.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {product.product_variants.map(variant => (
-                              <Button
-                                key={variant.id}
-                                size="sm"
-                                variant="outline"
-                                className="h-6 text-xs px-2"
-                                onClick={() => addProduct(product, variant.id)}
-                              >
-                                {variant.size} {variant.color && `- ${variant.color}`}
-                              </Button>
-                            ))}
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full mt-2"
-                            onClick={() => addProduct(product)}
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Adicionar
-                          </Button>
-                        )}
-                      </Card>
-                    ))}
+                          
+                          {product.product_variants && product.product_variants.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {product.product_variants.map(variant => {
+                                const isMatchingSize = matchesCustomerSize(variant.size);
+                                return (
+                                  <Button
+                                    key={variant.id}
+                                    size="sm"
+                                    variant={customerSize && filterByCustomerSize && isMatchingSize ? "default" : "outline"}
+                                    className={`h-6 text-xs px-2 ${
+                                      customerSize && filterByCustomerSize && isMatchingSize 
+                                        ? 'bg-amber-500 hover:bg-amber-600 text-white' 
+                                        : ''
+                                    }`}
+                                    onClick={() => addProduct(product, variant.id)}
+                                  >
+                                    {variant.size} {variant.color && `- ${variant.color}`}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full mt-2"
+                              onClick={() => addProduct(product)}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Adicionar
+                            </Button>
+                          )}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </div>
