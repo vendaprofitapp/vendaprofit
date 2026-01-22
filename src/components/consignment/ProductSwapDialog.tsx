@@ -7,6 +7,13 @@ import { useProductSwap } from "@/hooks/useProductSwap";
 import { Package, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+interface SwapSelection {
+  productId: string;
+  productName: string;
+  variantId?: string;
+  size: string | null;
+}
+
 interface ProductSwapDialogProps {
   item: {
     id: string;
@@ -22,7 +29,7 @@ interface ProductSwapDialogProps {
   };
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSwapComplete: () => void;
+  onSwapComplete: (selection?: SwapSelection) => void;
   primaryColor: string;
 }
 
@@ -54,11 +61,14 @@ export function ProductSwapDialog({
     }
   }, [open, item]);
 
-  const handleSwapRequest = (suggestionId: string) => {
-    // In a real implementation, this would add the swap request to the consignment
-    // For now, we'll just show a toast and close
-    toast.success("Solicitação de troca enviada! A vendedora entrará em contato.");
-    onSwapComplete();
+  const handleSwapRequest = (suggestion: typeof suggestions[0]) => {
+    // Pass the selected swap details back to the parent
+    onSwapComplete({
+      productId: suggestion.id,
+      productName: suggestion.name,
+      variantId: suggestion.variant_id,
+      size: suggestion.size,
+    });
   };
 
   const formatPrice = (price: number) => {
@@ -160,7 +170,10 @@ export function ProductSwapDialog({
             className="flex-1 gap-2"
             style={{ backgroundColor: primaryColor }}
             disabled={!selectedSwap || loading}
-            onClick={() => selectedSwap && handleSwapRequest(selectedSwap)}
+            onClick={() => {
+              const selected = suggestions.find(s => (s.variant_id || s.id) === selectedSwap);
+              if (selected) handleSwapRequest(selected);
+            }}
           >
             Solicitar Troca
             <ArrowRight className="h-4 w-4" />
