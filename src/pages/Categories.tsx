@@ -240,13 +240,24 @@ export default function Categories() {
       if (!window.confirm(`Excluir categoria "${category.name}"?`)) return;
     }
 
+    // Check if user owns this category
+    if (category.owner_id !== user?.id) {
+      toast.error("Você só pode excluir categorias que você criou");
+      return;
+    }
+
     const { error } = await supabase
       .from("categories")
       .delete()
       .eq("id", category.id);
 
     if (error) {
-      toast.error("Erro ao excluir categoria");
+      console.error("Delete error:", error);
+      if (error.code === "42501" || error.message?.includes("policy")) {
+        toast.error("Você não tem permissão para excluir esta categoria");
+      } else {
+        toast.error("Erro ao excluir categoria");
+      }
       return;
     }
 
