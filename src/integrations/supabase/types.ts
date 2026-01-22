@@ -1341,6 +1341,7 @@ export type Database = {
           banner_url_mobile: string | null
           card_background_color: string | null
           created_at: string
+          custom_domain: string | null
           custom_font_name: string | null
           custom_font_url: string | null
           font_body: string | null
@@ -1374,6 +1375,7 @@ export type Database = {
           banner_url_mobile?: string | null
           card_background_color?: string | null
           created_at?: string
+          custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
           font_body?: string | null
@@ -1407,6 +1409,7 @@ export type Database = {
           banner_url_mobile?: string | null
           card_background_color?: string | null
           created_at?: string
+          custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
           font_body?: string | null
