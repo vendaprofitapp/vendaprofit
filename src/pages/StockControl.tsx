@@ -451,26 +451,33 @@ export default function StockControl() {
   }, [products]);
 
   const getStockStatusKey = (stock: number, minLevel: number): StockStatusKey => {
-    if (stock <= 0) return "out";
-    if (stock <= minLevel) return "low";
+    // Ensure we're working with numbers
+    const stockNum = Number(stock) || 0;
+    const minLevelNum = Number(minLevel) || 0;
+    
+    if (stockNum <= 0) return "out";
+    if (stockNum <= minLevelNum) return "low";
     return "available";
   };
 
   const filteredProducts = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    // Normalize search term - remove extra spaces and convert to lowercase
+    const term = searchTerm.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return products.filter((p) => {
-      const statusKey = getStockStatusKey(p.stock_quantity, p.min_stock_level);
+      const stockNum = Number(p.stock_quantity) || 0;
+      const minLevelNum = Number(p.min_stock_level) || 0;
+      const statusKey = getStockStatusKey(stockNum, minLevelNum);
       
-      // Search term
-      const matchesTerm = !term || 
-        p.name.toLowerCase().includes(term);
+      // Search term - normalize product name for comparison
+      const normalizedName = p.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matchesTerm = !term || normalizedName.includes(term);
       
       // Category - check all 3 category fields
       const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean) as string[];
       const matchesCategory = filters.category === "all" || productCategories.includes(filters.category);
       
-      // Status
+      // Status filter
       const matchesStatus = filters.status === "all" || statusKey === filters.status;
       
       // Supplier
@@ -493,8 +500,8 @@ export default function StockControl() {
       // Stock range
       const minStock = filters.minStock ? Number(filters.minStock) : null;
       const maxStock = filters.maxStock ? Number(filters.maxStock) : null;
-      const matchesMinStock = minStock === null || p.stock_quantity >= minStock;
-      const matchesMaxStock = maxStock === null || p.stock_quantity <= maxStock;
+      const matchesMinStock = minStock === null || stockNum >= minStock;
+      const matchesMaxStock = maxStock === null || stockNum <= maxStock;
 
       return (
         matchesTerm &&
