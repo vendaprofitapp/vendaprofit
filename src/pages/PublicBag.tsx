@@ -65,10 +65,13 @@ interface SwapRequest {
   originalItemId: string;
   originalProductName: string;
   originalSize: string | null;
+  originalColor: string | null;
   newProductId: string;
   newVariantId?: string;
   newSize: string | null;
+  newColor: string | null;
   newProductName: string;
+  newPrice: number;
 }
 
 export default function PublicBag() {
@@ -257,7 +260,17 @@ export default function PublicBag() {
       return choice === "swap_requested";
     });
 
+    // Calculate totals
     const keptTotal = keptItems.reduce((sum, item) => sum + item.original_price, 0);
+    
+    // Calculate swap items total (new items to be added)
+    const swapTotal = swapItems.reduce((sum, item) => {
+      const swapRequest = swapRequests.get(item.id);
+      return sum + (swapRequest?.newPrice || 0);
+    }, 0);
+
+    const shippingCostValue = consignment.shipping_cost || 0;
+    const grandTotal = keptTotal + swapTotal + shippingCostValue;
 
     let message = `Olá! Finalizei minhas escolhas da malinha! 🛍️\n\n`;
     
@@ -267,20 +280,31 @@ export default function PublicBag() {
         const size = item.product_variants?.size || item.products?.size;
         const color = item.product_variants?.color || item.products?.color;
         message += `• ${item.products?.name}`;
-        if (size) message += ` - ${size}`;
-        if (color) message += ` - ${color}`;
+        if (color) message += ` | ${color}`;
+        if (size) message += ` | Tam ${size}`;
         message += ` (${formatPrice(item.original_price)})\n`;
       });
-      message += `\n*TOTAL: ${formatPrice(keptTotal)}*\n\n`;
+      message += `\n`;
     }
 
     if (swapItems.length > 0) {
-      message += `📦 *ITENS PARA TROCA:*\n`;
+      message += `🔄 *QUERO TROCAR (adicionar ao pedido):*\n`;
       swapItems.forEach(item => {
         const swapRequest = swapRequests.get(item.id);
         if (swapRequest) {
+          // Original item details
           const originalSize = item.product_variants?.size || item.products?.size || "único";
-          message += `• ${item.products?.name} (Tam ${originalSize}) ➡️ Trocar pelo (Tam ${swapRequest.newSize || "único"})\n`;
+          const originalColor = item.product_variants?.color || item.products?.color;
+          
+          message += `• De: ${item.products?.name}`;
+          if (originalColor) message += ` | ${originalColor}`;
+          message += ` | Tam ${originalSize}\n`;
+          
+          // New item details with price
+          message += `  ➡️ Para: ${swapRequest.newProductName}`;
+          if (swapRequest.newColor) message += ` | ${swapRequest.newColor}`;
+          message += ` | Tam ${swapRequest.newSize || "único"}`;
+          message += ` (${formatPrice(swapRequest.newPrice)})\n`;
         }
       });
       message += `\n`;
@@ -290,15 +314,32 @@ export default function PublicBag() {
       message += `*VOU DEVOLVER:* ↩️\n`;
       returnedItems.forEach(item => {
         const size = item.product_variants?.size || item.products?.size;
+        const color = item.product_variants?.color || item.products?.color;
         message += `• ${item.products?.name}`;
-        if (size) message += ` - ${size}`;
+        if (color) message += ` | ${color}`;
+        if (size) message += ` | Tam ${size}`;
         message += `\n`;
       });
+      message += `\n`;
     }
 
-    if (consignment.shipping_cost && consignment.shipping_cost > 0) {
-      message += `\n📦 Frete: ${formatPrice(consignment.shipping_cost)}`;
+    // Summary section
+    message += `━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `*RESUMO DO PEDIDO:*\n`;
+    
+    if (keptItems.length > 0) {
+      message += `Itens da malinha: ${formatPrice(keptTotal)}\n`;
     }
+    
+    if (swapItems.length > 0) {
+      message += `Itens de troca: ${formatPrice(swapTotal)}\n`;
+    }
+    
+    if (shippingCostValue > 0) {
+      message += `Frete: ${formatPrice(shippingCostValue)}\n`;
+    }
+    
+    message += `\n*💰 TOTAL A PAGAR: ${formatPrice(grandTotal)}*`;
 
     const phone = storeSettings.whatsapp_number.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
@@ -353,10 +394,25 @@ export default function PublicBag() {
     const choice = localItems.get(item.id) || item.status;
     return choice === "kept";
   });
+
+  const swapItemsList = items.filter(item => {
+    const choice = localItems.get(item.id);
+    return choice === "swap_requested";
+  });
   
   const keptTotal = keptItems.reduce((sum, item) => sum + item.original_price, 0);
+  
+  // Calculate swap items total
+  const swapTotal = swapItemsList.reduce((sum, item) => {
+    const swapRequest = swapRequests.get(item.id);
+    return sum + (swapRequest?.newPrice || 0);
+  }, 0);
+  
   const totalValue = items.reduce((sum, item) => sum + item.original_price, 0);
   const shippingCost = consignment.shipping_cost || 0;
+  
+  // Grand total includes kept items + swap items + shipping
+  const grandTotal = keptTotal + swapTotal + shippingCost;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor }}>
@@ -601,10 +657,22 @@ export default function PublicBag() {
                 <span className="text-muted-foreground">Itens que vão ficar:</span>
                 <span className="font-medium">{keptItems.length} de {items.length}</span>
               </div>
-              <div className="flex justify-between mb-3">
+              {swapItemsList.length > 0 && (
+                <div className="flex justify-between mb-1">
+                  <span className="text-muted-foreground">Itens de troca:</span>
+                  <span className="font-medium">{swapItemsList.length} ({formatPrice(swapTotal)})</span>
+                </div>
+              )}
+              {shippingCost > 0 && (
+                <div className="flex justify-between mb-1">
+                  <span className="text-muted-foreground">Frete:</span>
+                  <span className="font-medium">{formatPrice(shippingCost)}</span>
+                </div>
+              )}
+              <div className="flex justify-between mb-3 pt-2 border-t">
                 <span className="font-medium">Total a pagar:</span>
                 <span className="text-xl font-bold" style={{ color: primaryColor }}>
-                  {formatPrice(keptTotal + shippingCost)}
+                  {formatPrice(grandTotal)}
                 </span>
               </div>
               <Button 
@@ -677,10 +745,13 @@ export default function PublicBag() {
                   originalItemId: swapItem.id,
                   originalProductName: swapItem.products.name,
                   originalSize: swapItem.product_variants?.size || swapItem.products.size,
+                  originalColor: swapItem.product_variants?.color || swapItem.products.color,
                   newProductId: selection.productId,
                   newVariantId: selection.variantId,
                   newSize: selection.size,
+                  newColor: selection.color,
                   newProductName: selection.productName,
+                  newPrice: selection.price,
                 });
                 return next;
               });
