@@ -106,17 +106,17 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
     enabled: !!user && open && step === "products",
   });
 
-  // Fetch store settings for WhatsApp
+  // Fetch store settings for WhatsApp and custom domain
   const { data: storeSettings } = useQuery({
     queryKey: ["store-settings-consignment", user?.id],
     queryFn: async () => {
       if (!user) return null;
       const { data } = await supabase
         .from("store_settings")
-        .select("whatsapp_number")
+        .select("whatsapp_number, custom_domain")
         .eq("owner_id", user.id)
         .single();
-      return data;
+      return data as { whatsapp_number: string | null; custom_domain: string | null } | null;
     },
     enabled: !!user,
   });
@@ -251,7 +251,12 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
 
   const getPublicUrl = () => {
     if (!createdConsignment) return "";
-    return `${window.location.origin}/bag/${createdConsignment.access_token}`;
+    // Prioriza domínio personalizado, depois usa o padrão
+    if (storeSettings?.custom_domain) {
+      const domain = storeSettings.custom_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return `https://${domain}/bag/${createdConsignment.access_token}`;
+    }
+    return `https://vendaprofit.com.br/bag/${createdConsignment.access_token}`;
   };
 
   const copyLink = async () => {
