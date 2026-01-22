@@ -83,6 +83,108 @@ export type Database = {
         }
         Relationships: []
       }
+      consignment_items: {
+        Row: {
+          consignment_id: string
+          created_at: string
+          id: string
+          original_price: number
+          product_id: string
+          status: string
+          updated_at: string
+          variant_id: string | null
+        }
+        Insert: {
+          consignment_id: string
+          created_at?: string
+          id?: string
+          original_price: number
+          product_id: string
+          status?: string
+          updated_at?: string
+          variant_id?: string | null
+        }
+        Update: {
+          consignment_id?: string
+          created_at?: string
+          id?: string
+          original_price?: number
+          product_id?: string
+          status?: string
+          updated_at?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consignment_items_consignment_id_fkey"
+            columns: ["consignment_id"]
+            isOneToOne: false
+            referencedRelation: "consignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consignment_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consignment_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consignments: {
+        Row: {
+          access_token: string
+          approved_at: string | null
+          created_at: string
+          customer_id: string | null
+          deadline_at: string | null
+          id: string
+          seller_id: string
+          shipping_cost: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string
+          approved_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          deadline_at?: string | null
+          id?: string
+          seller_id: string
+          shipping_cost?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          approved_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          deadline_at?: string | null
+          id?: string
+          seller_id?: string
+          shipping_cost?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consignments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consortium_drawings: {
         Row: {
           consortium_id: string
@@ -835,6 +937,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_waitlist: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          product_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          product_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          product_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_waitlist_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_waitlist_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
