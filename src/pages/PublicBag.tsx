@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { 
   Package, MessageCircle, Check, CheckCircle, Heart, RotateCcw, 
-  ShoppingBag, AlertCircle, ArrowRight, Loader2
+  ShoppingBag, AlertCircle, ArrowRight, Loader2, Repeat
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -60,13 +60,24 @@ interface Consignment {
   consignment_items: ConsignmentItem[];
 }
 
+// Interface for swap requests
+interface SwapRequest {
+  originalItemId: string;
+  originalProductName: string;
+  originalSize: string | null;
+  newProductId: string;
+  newVariantId?: string;
+  newSize: string | null;
+  newProductName: string;
+}
+
 export default function PublicBag() {
   const { token } = useParams<{ token: string }>();
   const [isApproving, setIsApproving] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [localItems, setLocalItems] = useState<Map<string, "kept" | "returned">>(new Map());
+  const [localItems, setLocalItems] = useState<Map<string, "kept" | "returned" | "swap_requested">>(new Map());
   const [swapItem, setSwapItem] = useState<ConsignmentItem | null>(null);
-
+  const [swapRequests, setSwapRequests] = useState<Map<string, SwapRequest>>(new Map());
   // Fetch consignment by token
   const { data: consignment, isLoading, error, refetch } = useQuery({
     queryKey: ["public-consignment", token],
@@ -197,7 +208,7 @@ export default function PublicBag() {
     const items = consignment.consignment_items;
     const allDecided = items.every(item => {
       const localChoice = localItems.get(item.id);
-      return localChoice || item.status === "kept" || item.status === "returned";
+      return localChoice || item.status === "kept" || item.status === "returned" || item.status === "swap_requested";
     });
 
     if (!allDecided) {
@@ -241,6 +252,11 @@ export default function PublicBag() {
       return choice === "returned";
     });
 
+    const swapItems = items.filter(item => {
+      const choice = localItems.get(item.id);
+      return choice === "swap_requested";
+    });
+
     const keptTotal = keptItems.reduce((sum, item) => sum + item.original_price, 0);
 
     let message = `Olá! Finalizei minhas escolhas da malinha! 🛍️\n\n`;
@@ -256,6 +272,18 @@ export default function PublicBag() {
         message += ` (${formatPrice(item.original_price)})\n`;
       });
       message += `\n*TOTAL: ${formatPrice(keptTotal)}*\n\n`;
+    }
+
+    if (swapItems.length > 0) {
+      message += `📦 *ITENS PARA TROCA:*\n`;
+      swapItems.forEach(item => {
+        const swapRequest = swapRequests.get(item.id);
+        if (swapRequest) {
+          const originalSize = item.product_variants?.size || item.products?.size || "único";
+          message += `• ${item.products?.name} (Tam ${originalSize}) ➡️ Trocar pelo (Tam ${swapRequest.newSize || "único"})\n`;
+        }
+      });
+      message += `\n`;
     }
 
     if (returnedItems.length > 0) {
@@ -397,12 +425,15 @@ export default function PublicBag() {
             const currentStatus = localChoice || item.status;
             const isKept = currentStatus === "kept";
             const isReturned = currentStatus === "returned";
+            const isSwapRequested = currentStatus === "swap_requested";
+            const swapRequest = swapRequests.get(item.id);
 
             return (
               <Card 
                 key={item.id} 
                 className={`overflow-hidden transition-all ${
                   isKept ? "ring-2 ring-green-500" : 
+                  isSwapRequested ? "ring-2 ring-yellow-500" :
                   isReturned ? "opacity-60" : ""
                 }`}
               >
@@ -434,8 +465,38 @@ export default function PublicBag() {
                         {formatPrice(item.original_price)}
                       </p>
 
-                      {/* Action buttons for active state */}
-                      {isActiveState && (
+                      {/* Swap requested status badge */}
+                      {isActiveState && isSwapRequested && swapRequest && (
+                        <div className="mt-2">
+                          <Badge className="bg-yellow-500 text-white gap-1">
+                            <Repeat className="h-3 w-3" />
+                            Trocar pelo Tam {swapRequest.newSize || "único"}
+                          </Badge>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="px-0 h-auto mt-1 text-xs text-muted-foreground"
+                            onClick={() => {
+                              // Remove swap request and reset to no choice
+                              setSwapRequests(prev => {
+                                const next = new Map(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
+                              setLocalItems(prev => {
+                                const next = new Map(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
+                            }}
+                          >
+                            Cancelar troca
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Action buttons for active state - only show if not swap requested */}
+                      {isActiveState && !isSwapRequested && (
                         <div className="flex gap-2 mt-2">
                           <Button
                             size="sm"
@@ -459,15 +520,17 @@ export default function PublicBag() {
                         </div>
                       )}
 
-                      {/* Swap button */}
-                      {isActiveState && isReturned && (
+                      {/* Swap button - always visible in active state when not kept and not already swap requested */}
+                      {isActiveState && !isKept && !isSwapRequested && (
                         <Button
                           variant="link"
                           size="sm"
-                          className="px-0 h-auto mt-1 text-xs"
+                          className="px-0 h-auto mt-1 text-xs gap-1"
+                          style={{ color: primaryColor }}
                           onClick={() => setSwapItem(item)}
                         >
-                          Não serviu? Ver outros tamanhos →
+                          <Repeat className="h-3 w-3" />
+                          🔄 Não serviu? Ver tamanhos
                         </Button>
                       )}
 
@@ -475,10 +538,14 @@ export default function PublicBag() {
                       {isFinalizedState && (
                         <Badge 
                           className={`mt-2 ${
-                            currentStatus === "kept" ? "bg-green-500" : "bg-orange-500"
+                            currentStatus === "kept" ? "bg-green-500" : 
+                            currentStatus === "swap_requested" ? "bg-yellow-500" :
+                            "bg-orange-500"
                           } text-white`}
                         >
-                          {currentStatus === "kept" ? "Vai ficar ❤️" : "Devolvido ↩️"}
+                          {currentStatus === "kept" ? "Vai ficar ❤️" : 
+                           currentStatus === "swap_requested" ? `Trocar pelo Tam ${swapRequest?.newSize || "outro"} 🔄` :
+                           "Devolvido ↩️"}
                         </Badge>
                       )}
                     </div>
@@ -593,9 +660,33 @@ export default function PublicBag() {
           item={swapItem}
           open={!!swapItem}
           onOpenChange={(open) => !open && setSwapItem(null)}
-          onSwapComplete={() => {
+          onSwapComplete={(selection) => {
+            if (selection) {
+              // Set the item as swap_requested
+              setLocalItems(prev => {
+                const next = new Map(prev);
+                next.set(swapItem.id, "swap_requested");
+                return next;
+              });
+              
+              // Store the swap request details
+              setSwapRequests(prev => {
+                const next = new Map(prev);
+                next.set(swapItem.id, {
+                  originalItemId: swapItem.id,
+                  originalProductName: swapItem.products.name,
+                  originalSize: swapItem.product_variants?.size || swapItem.products.size,
+                  newProductId: selection.productId,
+                  newVariantId: selection.variantId,
+                  newSize: selection.size,
+                  newProductName: selection.productName,
+                });
+                return next;
+              });
+              
+              toast.success(`Troca pelo tamanho ${selection.size || "novo"} solicitada!`);
+            }
             setSwapItem(null);
-            refetch();
           }}
           primaryColor={primaryColor}
         />
