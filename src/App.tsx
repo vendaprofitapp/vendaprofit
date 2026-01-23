@@ -21,6 +21,7 @@ import StoreSettingsPage from "./pages/StoreSettings";
 import StoreCatalog from "./pages/StoreCatalog";
 import Customers from "./pages/Customers";
 import Consignments from "./pages/Consignments";
+import Consortiums from "./pages/Consortiums";
 import PublicBag from "./pages/PublicBag";
 import LandingPage from "./pages/LandingPage";
 import Suppliers from "./pages/Suppliers";
@@ -60,6 +61,7 @@ const AppRoutes = () => (
     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
     <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
     <Route path="/consignments" element={<ProtectedRoute><Consignments /></ProtectedRoute>} />
+    <Route path="/consortiums" element={<ProtectedRoute><Consortiums /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
     <Route path="/partner-reports" element={<ProtectedRoute><PartnerReports /></ProtectedRoute>} />
     <Route path="/financial" element={<ProtectedRoute><Financial /></ProtectedRoute>} />

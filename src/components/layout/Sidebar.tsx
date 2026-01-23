@@ -54,9 +54,7 @@ const navItems: NavItem[] = [{
 }, {
   icon: Gift,
   label: "Consórcios",
-  path: "/consortiums",
-  disabled: true,
-  comingSoon: true
+  path: "/consortiums"
 }, {
   icon: ShoppingBag,
   label: "Bazar",
