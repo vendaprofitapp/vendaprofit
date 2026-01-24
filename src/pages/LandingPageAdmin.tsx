@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -805,13 +805,13 @@ function FeatureDialog({
   onSave: (feature: Partial<LandingPageFeature>) => void;
 }) {
   const [form, setForm] = useState({
-    icon_name: dialog.feature?.icon_name || "Package",
-    title: dialog.feature?.title || "",
-    description: dialog.feature?.description || "",
+    icon_name: "Package",
+    title: "",
+    description: "",
   });
 
   // Reset form when dialog opens with new data
-  useState(() => {
+  useEffect(() => {
     if (dialog.open) {
       setForm({
         icon_name: dialog.feature?.icon_name || "Package",
@@ -819,7 +819,7 @@ function FeatureDialog({
         description: dialog.feature?.description || "",
       });
     }
-  });
+  }, [dialog.open, dialog.feature]);
 
   return (
     <Dialog open={dialog.open} onOpenChange={onClose}>
@@ -880,11 +880,22 @@ function TestimonialDialog({
   onSave: (testimonial: Partial<LandingPageTestimonial>) => void;
 }) {
   const [form, setForm] = useState({
-    customer_name: dialog.testimonial?.customer_name || "",
-    customer_role: dialog.testimonial?.customer_role || "",
-    content: dialog.testimonial?.content || "",
-    rating: dialog.testimonial?.rating || 5,
+    customer_name: "",
+    customer_role: "",
+    content: "",
+    rating: 5,
   });
+
+  useEffect(() => {
+    if (dialog.open) {
+      setForm({
+        customer_name: dialog.testimonial?.customer_name || "",
+        customer_role: dialog.testimonial?.customer_role || "",
+        content: dialog.testimonial?.content || "",
+        rating: dialog.testimonial?.rating || 5,
+      });
+    }
+  }, [dialog.open, dialog.testimonial]);
 
   return (
     <Dialog open={dialog.open} onOpenChange={onClose}>
@@ -949,18 +960,36 @@ function PricingDialog({
   onSave: (pricing: Partial<LandingPagePricing>) => void;
 }) {
   const [form, setForm] = useState({
-    plan_name: dialog.pricing?.plan_name || "",
-    plan_subtitle: dialog.pricing?.plan_subtitle || "",
-    price: dialog.pricing?.price || "",
-    price_period: dialog.pricing?.price_period || "/mês",
-    price_note: dialog.pricing?.price_note || "",
-    features: dialog.pricing?.features?.join("\n") || "",
-    button_text: dialog.pricing?.button_text || "Assinar",
-    button_link: dialog.pricing?.button_link || "/auth",
-    is_popular: dialog.pricing?.is_popular || false,
-    badge_text: dialog.pricing?.badge_text || "",
-    badge_color: dialog.pricing?.badge_color || "primary",
+    plan_name: "",
+    plan_subtitle: "",
+    price: "",
+    price_period: "/mês",
+    price_note: "",
+    features: "",
+    button_text: "Assinar",
+    button_link: "/auth",
+    is_popular: false,
+    badge_text: "",
+    badge_color: "primary",
   });
+
+  useEffect(() => {
+    if (dialog.open) {
+      setForm({
+        plan_name: dialog.pricing?.plan_name || "",
+        plan_subtitle: dialog.pricing?.plan_subtitle || "",
+        price: dialog.pricing?.price || "",
+        price_period: dialog.pricing?.price_period || "/mês",
+        price_note: dialog.pricing?.price_note || "",
+        features: dialog.pricing?.features?.join("\n") || "",
+        button_text: dialog.pricing?.button_text || "Assinar",
+        button_link: dialog.pricing?.button_link || "/auth",
+        is_popular: dialog.pricing?.is_popular || false,
+        badge_text: dialog.pricing?.badge_text || "",
+        badge_color: dialog.pricing?.badge_color || "primary",
+      });
+    }
+  }, [dialog.open, dialog.pricing]);
 
   return (
     <Dialog open={dialog.open} onOpenChange={onClose}>
@@ -1087,9 +1116,18 @@ function FAQDialog({
   onSave: (faq: Partial<LandingPageFAQ>) => void;
 }) {
   const [form, setForm] = useState({
-    question: dialog.faq?.question || "",
-    answer: dialog.faq?.answer || "",
+    question: "",
+    answer: "",
   });
+
+  useEffect(() => {
+    if (dialog.open) {
+      setForm({
+        question: dialog.faq?.question || "",
+        answer: dialog.faq?.answer || "",
+      });
+    }
+  }, [dialog.open, dialog.faq]);
 
   return (
     <Dialog open={dialog.open} onOpenChange={onClose}>
