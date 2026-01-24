@@ -49,11 +49,49 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Componente para rota raiz - mostra landing page se não autenticado
+function RootRoute() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Se não está logado, mostra a landing page
+  if (!user) {
+    return <LandingPage />;
+  }
+
+  // Se está logado, mostra o dashboard
+  return <Index />;
+}
+
+// Componente para rota de slug - verifica se é o domínio principal
+function SlugRoute() {
+  const hostname = window.location.hostname;
+  
+  // Se é o domínio principal sem slug específico, redireciona para a landing
+  const isMainDomain = hostname === 'vendaprofit.com.br' || 
+                       hostname === 'www.vendaprofit.com.br' ||
+                       hostname === 'vendaprofit.lovable.app';
+  
+  // Para o domínio principal, não trata como slug de loja
+  if (isMainDomain) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <StoreCatalog />;
+}
+
 const AppRoutes = () => (
   <Routes>
+    <Route path="/" element={<RootRoute />} />
     <Route path="/landing" element={<LandingPage />} />
     <Route path="/auth" element={<Auth />} />
-    <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/stock" element={<ProtectedRoute><StockControl /></ProtectedRoute>} />
     
     <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
@@ -73,7 +111,7 @@ const AppRoutes = () => (
     <Route path="/admin/landing-page" element={<ProtectedRoute><LandingPageAdmin /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
-    <Route path="/:slug" element={<StoreCatalog />} />
+    <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
