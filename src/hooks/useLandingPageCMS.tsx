@@ -313,6 +313,9 @@ export function useUpdateLandingPageSettings() {
   });
 }
 
+// Helper to check if ID is a default placeholder
+const isDefaultId = (id?: string) => id?.startsWith("default-");
+
 export function useManageLandingPageFeature() {
   const queryClient = useQueryClient();
 
@@ -321,26 +324,38 @@ export function useManageLandingPageFeature() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      if (action === "create") {
+      // Treat default IDs as create operations
+      const effectiveAction = (action === "update" || action === "delete") && isDefaultId(feature.id) 
+        ? (action === "delete" ? "skip" : "create") 
+        : action;
+
+      if (effectiveAction === "skip") {
+        // Skip delete for default items - they don't exist in DB
+        return;
+      }
+
+      if (effectiveAction === "create") {
+        const { id, owner_id, ...rest } = feature;
         const { error } = await supabase
           .from("landing_page_features")
           .insert({ 
-            section_type: feature.section_type || "features",
-            icon_name: feature.icon_name || "Package",
-            title: feature.title || "",
-            description: feature.description || "",
-            display_order: feature.display_order || 0,
-            is_active: feature.is_active ?? true,
+            section_type: rest.section_type || "features",
+            icon_name: rest.icon_name || "Package",
+            title: rest.title || "",
+            description: rest.description || "",
+            display_order: rest.display_order || 0,
+            is_active: rest.is_active ?? true,
             owner_id: user.id 
           });
         if (error) throw error;
-      } else if (action === "update" && feature.id) {
+      } else if (effectiveAction === "update" && feature.id) {
+        const { id, owner_id, ...updateData } = feature;
         const { error } = await supabase
           .from("landing_page_features")
-          .update(feature)
+          .update(updateData)
           .eq("id", feature.id);
         if (error) throw error;
-      } else if (action === "delete" && feature.id) {
+      } else if (effectiveAction === "delete" && feature.id) {
         const { error } = await supabase
           .from("landing_page_features")
           .delete()
@@ -366,27 +381,38 @@ export function useManageLandingPageTestimonial() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      if (action === "create") {
+      // Treat default IDs as create operations
+      const effectiveAction = (action === "update" || action === "delete") && isDefaultId(testimonial.id) 
+        ? (action === "delete" ? "skip" : "create") 
+        : action;
+
+      if (effectiveAction === "skip") {
+        return;
+      }
+
+      if (effectiveAction === "create") {
+        const { id, owner_id, ...rest } = testimonial;
         const { error } = await supabase
           .from("landing_page_testimonials")
           .insert({ 
-            customer_name: testimonial.customer_name || "",
-            customer_role: testimonial.customer_role || "",
-            content: testimonial.content || "",
-            rating: testimonial.rating || 5,
-            avatar_url: testimonial.avatar_url,
-            display_order: testimonial.display_order || 0,
-            is_active: testimonial.is_active ?? true,
+            customer_name: rest.customer_name || "",
+            customer_role: rest.customer_role || "",
+            content: rest.content || "",
+            rating: rest.rating || 5,
+            avatar_url: rest.avatar_url,
+            display_order: rest.display_order || 0,
+            is_active: rest.is_active ?? true,
             owner_id: user.id 
           });
         if (error) throw error;
-      } else if (action === "update" && testimonial.id) {
+      } else if (effectiveAction === "update" && testimonial.id) {
+        const { id, owner_id, ...updateData } = testimonial;
         const { error } = await supabase
           .from("landing_page_testimonials")
-          .update(testimonial)
+          .update(updateData)
           .eq("id", testimonial.id);
         if (error) throw error;
-      } else if (action === "delete" && testimonial.id) {
+      } else if (effectiveAction === "delete" && testimonial.id) {
         const { error } = await supabase
           .from("landing_page_testimonials")
           .delete()
@@ -412,33 +438,44 @@ export function useManageLandingPagePricing() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      if (action === "create") {
+      // Treat default IDs as create operations
+      const effectiveAction = (action === "update" || action === "delete") && isDefaultId(pricing.id) 
+        ? (action === "delete" ? "skip" : "create") 
+        : action;
+
+      if (effectiveAction === "skip") {
+        return;
+      }
+
+      if (effectiveAction === "create") {
+        const { id, owner_id, ...rest } = pricing;
         const { error } = await supabase
           .from("landing_page_pricing")
           .insert({ 
-            plan_name: pricing.plan_name || "",
-            plan_subtitle: pricing.plan_subtitle || "",
-            price: pricing.price || "",
-            price_period: pricing.price_period || "",
-            price_note: pricing.price_note,
-            features: pricing.features || [],
-            button_text: pricing.button_text || "",
-            button_link: pricing.button_link || "/auth",
-            is_popular: pricing.is_popular ?? false,
-            badge_text: pricing.badge_text,
-            badge_color: pricing.badge_color || "primary",
-            display_order: pricing.display_order || 0,
-            is_active: pricing.is_active ?? true,
+            plan_name: rest.plan_name || "",
+            plan_subtitle: rest.plan_subtitle || "",
+            price: rest.price || "",
+            price_period: rest.price_period || "",
+            price_note: rest.price_note,
+            features: rest.features || [],
+            button_text: rest.button_text || "",
+            button_link: rest.button_link || "/auth",
+            is_popular: rest.is_popular ?? false,
+            badge_text: rest.badge_text,
+            badge_color: rest.badge_color || "primary",
+            display_order: rest.display_order || 0,
+            is_active: rest.is_active ?? true,
             owner_id: user.id 
           });
         if (error) throw error;
-      } else if (action === "update" && pricing.id) {
+      } else if (effectiveAction === "update" && pricing.id) {
+        const { id, owner_id, ...updateData } = pricing;
         const { error } = await supabase
           .from("landing_page_pricing")
-          .update(pricing)
+          .update(updateData)
           .eq("id", pricing.id);
         if (error) throw error;
-      } else if (action === "delete" && pricing.id) {
+      } else if (effectiveAction === "delete" && pricing.id) {
         const { error } = await supabase
           .from("landing_page_pricing")
           .delete()
@@ -464,24 +501,35 @@ export function useManageLandingPageFAQ() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      if (action === "create") {
+      // Treat default IDs as create operations
+      const effectiveAction = (action === "update" || action === "delete") && isDefaultId(faq.id) 
+        ? (action === "delete" ? "skip" : "create") 
+        : action;
+
+      if (effectiveAction === "skip") {
+        return;
+      }
+
+      if (effectiveAction === "create") {
+        const { id, owner_id, ...rest } = faq;
         const { error } = await supabase
           .from("landing_page_faqs")
           .insert({ 
-            question: faq.question || "",
-            answer: faq.answer || "",
-            display_order: faq.display_order || 0,
-            is_active: faq.is_active ?? true,
+            question: rest.question || "",
+            answer: rest.answer || "",
+            display_order: rest.display_order || 0,
+            is_active: rest.is_active ?? true,
             owner_id: user.id 
           });
         if (error) throw error;
-      } else if (action === "update" && faq.id) {
+      } else if (effectiveAction === "update" && faq.id) {
+        const { id, owner_id, ...updateData } = faq;
         const { error } = await supabase
           .from("landing_page_faqs")
-          .update(faq)
+          .update(updateData)
           .eq("id", faq.id);
         if (error) throw error;
-      } else if (action === "delete" && faq.id) {
+      } else if (effectiveAction === "delete" && faq.id) {
         const { error } = await supabase
           .from("landing_page_faqs")
           .delete()
