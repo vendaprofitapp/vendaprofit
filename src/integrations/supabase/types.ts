@@ -799,6 +799,294 @@ export type Database = {
         }
         Relationships: []
       }
+      landing_page_faqs: {
+        Row: {
+          answer: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          owner_id: string
+          question: string
+          updated_at: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          owner_id: string
+          question: string
+          updated_at?: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          owner_id?: string
+          question?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      landing_page_features: {
+        Row: {
+          created_at: string
+          description: string
+          display_order: number
+          icon_name: string
+          id: string
+          is_active: boolean
+          owner_id: string
+          section_type: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          display_order?: number
+          icon_name: string
+          id?: string
+          is_active?: boolean
+          owner_id: string
+          section_type: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          display_order?: number
+          icon_name?: string
+          id?: string
+          is_active?: boolean
+          owner_id?: string
+          section_type?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      landing_page_pricing: {
+        Row: {
+          badge_color: string | null
+          badge_text: string | null
+          button_link: string | null
+          button_text: string
+          created_at: string
+          display_order: number
+          features: Json
+          id: string
+          is_active: boolean
+          is_popular: boolean
+          owner_id: string
+          plan_name: string
+          plan_subtitle: string
+          price: string
+          price_note: string | null
+          price_period: string
+          updated_at: string
+        }
+        Insert: {
+          badge_color?: string | null
+          badge_text?: string | null
+          button_link?: string | null
+          button_text: string
+          created_at?: string
+          display_order?: number
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          owner_id: string
+          plan_name: string
+          plan_subtitle: string
+          price: string
+          price_note?: string | null
+          price_period: string
+          updated_at?: string
+        }
+        Update: {
+          badge_color?: string | null
+          badge_text?: string | null
+          button_link?: string | null
+          button_text?: string
+          created_at?: string
+          display_order?: number
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          owner_id?: string
+          plan_name?: string
+          plan_subtitle?: string
+          price?: string
+          price_note?: string | null
+          price_period?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      landing_page_settings: {
+        Row: {
+          created_at: string
+          cta_button_text: string | null
+          cta_features: Json | null
+          cta_subtitle: string | null
+          cta_title: string | null
+          faq_title: string | null
+          faq_title_highlight: string | null
+          features_subtitle: string | null
+          features_title: string | null
+          features_title_highlight: string | null
+          footer_copyright: string | null
+          hero_badge_text: string | null
+          hero_cta_primary_text: string | null
+          hero_cta_secondary_text: string | null
+          hero_footer_text: string | null
+          hero_subtitle: string | null
+          hero_title: string | null
+          hero_title_highlight: string | null
+          id: string
+          logo_url: string | null
+          owner_id: string
+          pricing_subtitle: string | null
+          pricing_title: string | null
+          pricing_title_highlight: string | null
+          primary_color: string | null
+          testimonials_subtitle: string | null
+          testimonials_title: string | null
+          testimonials_title_highlight: string | null
+          updated_at: string
+          video_badge_text: string | null
+          video_footer_text: string | null
+          video_subtitle: string | null
+          video_title: string | null
+          video_title_highlight: string | null
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          cta_button_text?: string | null
+          cta_features?: Json | null
+          cta_subtitle?: string | null
+          cta_title?: string | null
+          faq_title?: string | null
+          faq_title_highlight?: string | null
+          features_subtitle?: string | null
+          features_title?: string | null
+          features_title_highlight?: string | null
+          footer_copyright?: string | null
+          hero_badge_text?: string | null
+          hero_cta_primary_text?: string | null
+          hero_cta_secondary_text?: string | null
+          hero_footer_text?: string | null
+          hero_subtitle?: string | null
+          hero_title?: string | null
+          hero_title_highlight?: string | null
+          id?: string
+          logo_url?: string | null
+          owner_id: string
+          pricing_subtitle?: string | null
+          pricing_title?: string | null
+          pricing_title_highlight?: string | null
+          primary_color?: string | null
+          testimonials_subtitle?: string | null
+          testimonials_title?: string | null
+          testimonials_title_highlight?: string | null
+          updated_at?: string
+          video_badge_text?: string | null
+          video_footer_text?: string | null
+          video_subtitle?: string | null
+          video_title?: string | null
+          video_title_highlight?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          cta_button_text?: string | null
+          cta_features?: Json | null
+          cta_subtitle?: string | null
+          cta_title?: string | null
+          faq_title?: string | null
+          faq_title_highlight?: string | null
+          features_subtitle?: string | null
+          features_title?: string | null
+          features_title_highlight?: string | null
+          footer_copyright?: string | null
+          hero_badge_text?: string | null
+          hero_cta_primary_text?: string | null
+          hero_cta_secondary_text?: string | null
+          hero_footer_text?: string | null
+          hero_subtitle?: string | null
+          hero_title?: string | null
+          hero_title_highlight?: string | null
+          id?: string
+          logo_url?: string | null
+          owner_id?: string
+          pricing_subtitle?: string | null
+          pricing_title?: string | null
+          pricing_title_highlight?: string | null
+          primary_color?: string | null
+          testimonials_subtitle?: string | null
+          testimonials_title?: string | null
+          testimonials_title_highlight?: string | null
+          updated_at?: string
+          video_badge_text?: string | null
+          video_footer_text?: string | null
+          video_subtitle?: string | null
+          video_title?: string | null
+          video_title_highlight?: string | null
+          video_url?: string | null
+        }
+        Relationships: []
+      }
+      landing_page_testimonials: {
+        Row: {
+          avatar_url: string | null
+          content: string
+          created_at: string
+          customer_name: string
+          customer_role: string
+          display_order: number
+          id: string
+          is_active: boolean
+          owner_id: string
+          rating: number
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          content: string
+          created_at?: string
+          customer_name: string
+          customer_role: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          owner_id: string
+          rating?: number
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          content?: string
+          created_at?: string
+          customer_name?: string
+          customer_role?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          owner_id?: string
+          rating?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partnership_auto_share: {
         Row: {
           created_at: string

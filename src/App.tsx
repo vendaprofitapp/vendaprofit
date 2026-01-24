@@ -24,6 +24,7 @@ import Consignments from "./pages/Consignments";
 import Consortiums from "./pages/Consortiums";
 import PublicBag from "./pages/PublicBag";
 import LandingPage from "./pages/LandingPage";
+import LandingPageAdmin from "./pages/LandingPageAdmin";
 import Suppliers from "./pages/Suppliers";
 import Categories from "./pages/Categories";
 import Orders from "./pages/Orders";
@@ -69,6 +70,7 @@ const AppRoutes = () => (
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+    <Route path="/admin/landing-page" element={<ProtectedRoute><LandingPageAdmin /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<StoreCatalog />} />
