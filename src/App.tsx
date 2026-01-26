@@ -28,6 +28,7 @@ import LandingPageAdmin from "./pages/LandingPageAdmin";
 import Suppliers from "./pages/Suppliers";
 import Categories from "./pages/Categories";
 import Orders from "./pages/Orders";
+import Tutorial from "./pages/Tutorial";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +111,7 @@ const AppRoutes = () => (
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
     <Route path="/admin/landing-page" element={<ProtectedRoute><LandingPageAdmin /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
+    <Route path="/tutorial" element={<ProtectedRoute><Tutorial /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
