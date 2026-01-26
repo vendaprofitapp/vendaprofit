@@ -32,7 +32,9 @@ import {
   Shield,
   Smartphone,
   GripVertical,
+  BookOpen,
 } from "lucide-react";
+import { TutorialTab } from "@/components/admin/TutorialTab";
 import { toast } from "sonner";
 import {
   useLandingPageSettings,
@@ -157,6 +159,10 @@ export default function LandingPageAdmin() {
             <TabsTrigger value="cta" className="gap-2">
               <Settings className="w-4 h-4" />
               CTA & Rodapé
+            </TabsTrigger>
+            <TabsTrigger value="tutorial" className="gap-2">
+              <BookOpen className="w-4 h-4" />
+              Tutorial
             </TabsTrigger>
           </TabsList>
 
@@ -731,6 +737,11 @@ export default function LandingPageAdmin() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Tutorial Tab */}
+          <TabsContent value="tutorial">
+            <TutorialTab />
           </TabsContent>
         </Tabs>
       </div>
