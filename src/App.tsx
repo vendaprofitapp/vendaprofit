@@ -71,20 +71,9 @@ function RootRoute() {
   return <Index />;
 }
 
-// Componente para rota de slug - verifica se é o domínio principal
+// Componente para rota de slug - sempre mostra o catálogo da loja
+// O StoreCatalog irá buscar a loja pelo slug e mostrar 404 se não existir
 function SlugRoute() {
-  const hostname = window.location.hostname;
-  
-  // Se é o domínio principal sem slug específico, redireciona para a landing
-  const isMainDomain = hostname === 'vendaprofit.com.br' || 
-                       hostname === 'www.vendaprofit.com.br' ||
-                       hostname === 'vendaprofit.lovable.app';
-  
-  // Para o domínio principal, não trata como slug de loja
-  if (isMainDomain) {
-    return <Navigate to="/" replace />;
-  }
-  
   return <StoreCatalog />;
 }
 
