@@ -35,6 +35,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { TutorialTab } from "@/components/admin/TutorialTab";
+import { VideoUploader } from "@/components/admin/VideoUploader";
 import { toast } from "sonner";
 import {
   useLandingPageSettings,
@@ -754,71 +755,51 @@ export default function LandingPageAdmin() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Vídeo da Bolinha (Preview - Mudo/Loop)</Label>
-                    <Input 
-                      defaultValue={settings?.bio_video_preview || ""}
-                      onChange={(e) => handleSettingsChange("bio_video_preview", e.target.value)}
-                      placeholder="https://exemplo.com/video-preview.mp4"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Vídeo curto que aparece na bolinha flutuante. Recomendado: até 10 segundos, formato quadrado.
-                    </p>
-                  </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <VideoUploader
+                    label="Vídeo da Bolinha (Preview - Mudo/Loop)"
+                    description="Vídeo curto que aparece na bolinha flutuante. Recomendado: até 10 segundos, formato quadrado."
+                    value={localSettings.bio_video_preview ?? settings?.bio_video_preview}
+                    onChange={(url) => handleSettingsChange("bio_video_preview", url)}
+                    maxSizeMB={10}
+                  />
                   
-                  <div className="space-y-2">
-                    <Label>Vídeo de Apresentação (Stories)</Label>
-                    <Input 
-                      defaultValue={settings?.bio_video_full || ""}
-                      onChange={(e) => handleSettingsChange("bio_video_full", e.target.value)}
-                      placeholder="https://exemplo.com/video-full.mp4"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Vídeo completo exibido ao clicar na bolinha. Formato vertical (9:16) recomendado, estilo Stories.
-                    </p>
-                  </div>
+                  <VideoUploader
+                    label="Vídeo de Apresentação (Stories)"
+                    description="Vídeo completo exibido ao clicar na bolinha. Formato vertical (9:16) recomendado, estilo Stories."
+                    value={localSettings.bio_video_full ?? settings?.bio_video_full}
+                    onChange={(url) => handleSettingsChange("bio_video_full", url)}
+                    maxSizeMB={50}
+                  />
                 </div>
 
                 <div className="p-4 bg-muted rounded-lg space-y-2">
                   <h4 className="font-medium text-sm">💡 Dicas para seus vídeos:</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• Use vídeos hospedados (Cloudinary, AWS S3, etc.) ou URLs diretas de MP4</li>
-                    <li>• O vídeo da bolinha deve ser curto e chamar atenção</li>
-                    <li>• O vídeo de apresentação pode ter até 60 segundos</li>
+                    <li>• Faça upload diretamente ou cole uma URL externa (MP4)</li>
+                    <li>• O vídeo da bolinha deve ser curto e chamar atenção (máx. 10MB)</li>
+                    <li>• O vídeo de apresentação pode ter até 60 segundos (máx. 50MB)</li>
                     <li>• Fale diretamente com seu cliente, seja autêntico!</li>
                   </ul>
                 </div>
 
-                {/* Preview Section */}
-                {(settings?.bio_video_preview || settings?.bio_video_full) && (
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Pré-visualização:</h4>
-                    <div className="flex items-center gap-4">
-                      {settings?.bio_video_preview && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Bolinha:</p>
-                          <video 
-                            src={settings.bio_video_preview}
-                            autoPlay 
-                            loop 
-                            muted 
-                            playsInline
-                            className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-lg"
-                          />
-                        </div>
-                      )}
-                      {settings?.bio_video_full && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Stories (clique para ver):</p>
-                          <video 
-                            src={settings.bio_video_full}
-                            controls
-                            playsInline
-                            className="w-32 h-56 rounded-lg object-cover border shadow"
-                          />
-                        </div>
-                      )}
+                {/* Combined Preview */}
+                {(settings?.bio_video_preview || localSettings.bio_video_preview) && (
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm">Como ficará na Landing Page:</h4>
+                    <div className="relative bg-muted/50 rounded-lg p-6 flex items-end justify-end min-h-[200px]">
+                      <div className="relative cursor-pointer group">
+                        <video 
+                          src={localSettings.bio_video_preview ?? settings?.bio_video_preview}
+                          autoPlay 
+                          loop 
+                          muted 
+                          playsInline
+                          className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg"
+                        />
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                        <p className="text-xs text-center mt-2 text-muted-foreground">Clique para abrir</p>
+                      </div>
                     </div>
                   </div>
                 )}
