@@ -1292,23 +1292,6 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </Badge>
           )}
 
-          {/* Low Stock Badge - Below marketing badge if exists */}
-          {item.totalStock <= 3 && !item.marketingStatus && (
-            <Badge 
-              className="absolute right-2 top-2 z-20 bg-red-500 text-white text-[10px] font-semibold border-0"
-            >
-              Últimas peças
-            </Badge>
-          )}
-          
-          {/* Low Stock Badge - When marketing badge exists, show below */}
-          {item.totalStock <= 3 && item.marketingStatus && (
-            <Badge 
-              className="absolute right-2 top-9 z-20 bg-red-500 text-white text-[10px] font-semibold border-0"
-            >
-              Últimas peças
-            </Badge>
-          )}
 
 
           {/* Wishlist Button */}
