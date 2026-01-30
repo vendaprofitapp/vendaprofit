@@ -933,6 +933,8 @@ export type Database = {
       }
       landing_page_settings: {
         Row: {
+          bio_video_full: string | null
+          bio_video_preview: string | null
           created_at: string
           cta_button_text: string | null
           cta_features: Json | null
@@ -970,6 +972,8 @@ export type Database = {
           video_url: string | null
         }
         Insert: {
+          bio_video_full?: string | null
+          bio_video_preview?: string | null
           created_at?: string
           cta_button_text?: string | null
           cta_features?: Json | null
@@ -1007,6 +1011,8 @@ export type Database = {
           video_url?: string | null
         }
         Update: {
+          bio_video_full?: string | null
+          bio_video_preview?: string | null
           created_at?: string
           cta_button_text?: string | null
           cta_features?: Json | null

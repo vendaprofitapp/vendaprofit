@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -31,6 +32,11 @@ import {
   useLandingPagePricing,
   useLandingPageFAQs,
 } from "@/hooks/useLandingPageCMS";
+
+// Lazy load the VideoSalesBubble for better performance
+const VideoSalesBubble = lazy(() => 
+  import("@/components/marketing/VideoSalesBubble").then(m => ({ default: m.VideoSalesBubble }))
+);
 
 // Icon mapping
 const iconMap: Record<string, LucideIcon> = {
@@ -428,6 +434,14 @@ const LandingPage = () => {
           </div>
         </div>
       </footer>
+
+      {/* Video Sales Bubble - Lazy loaded */}
+      <Suspense fallback={null}>
+        <VideoSalesBubble 
+          previewUrl={settings?.bio_video_preview} 
+          fullUrl={settings?.bio_video_full} 
+        />
+      </Suspense>
     </div>
   );
 };

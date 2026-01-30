@@ -160,6 +160,10 @@ export default function LandingPageAdmin() {
               <Settings className="w-4 h-4" />
               CTA & Rodapé
             </TabsTrigger>
+            <TabsTrigger value="marketing" className="gap-2">
+              <Video className="w-4 h-4" />
+              Marketing
+            </TabsTrigger>
             <TabsTrigger value="tutorial" className="gap-2">
               <BookOpen className="w-4 h-4" />
               Tutorial
@@ -735,6 +739,89 @@ export default function LandingPageAdmin() {
                     onChange={(e) => handleSettingsChange("footer_copyright", e.target.value)}
                   />
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Marketing Tab - Video Sales Bubble */}
+          <TabsContent value="marketing">
+            <Card>
+              <CardHeader>
+                <CardTitle>Vídeo Vendedor (Bolinha Flutuante)</CardTitle>
+                <CardDescription>
+                  Configure os vídeos que aparecerão na bolinha flutuante da Landing Page.
+                  A bolinha só aparece se os vídeos estiverem configurados.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Vídeo da Bolinha (Preview - Mudo/Loop)</Label>
+                    <Input 
+                      defaultValue={settings?.bio_video_preview || ""}
+                      onChange={(e) => handleSettingsChange("bio_video_preview", e.target.value)}
+                      placeholder="https://exemplo.com/video-preview.mp4"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Vídeo curto que aparece na bolinha flutuante. Recomendado: até 10 segundos, formato quadrado.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Vídeo de Apresentação (Stories)</Label>
+                    <Input 
+                      defaultValue={settings?.bio_video_full || ""}
+                      onChange={(e) => handleSettingsChange("bio_video_full", e.target.value)}
+                      placeholder="https://exemplo.com/video-full.mp4"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Vídeo completo exibido ao clicar na bolinha. Formato vertical (9:16) recomendado, estilo Stories.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-muted rounded-lg space-y-2">
+                  <h4 className="font-medium text-sm">💡 Dicas para seus vídeos:</h4>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• Use vídeos hospedados (Cloudinary, AWS S3, etc.) ou URLs diretas de MP4</li>
+                    <li>• O vídeo da bolinha deve ser curto e chamar atenção</li>
+                    <li>• O vídeo de apresentação pode ter até 60 segundos</li>
+                    <li>• Fale diretamente com seu cliente, seja autêntico!</li>
+                  </ul>
+                </div>
+
+                {/* Preview Section */}
+                {(settings?.bio_video_preview || settings?.bio_video_full) && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Pré-visualização:</h4>
+                    <div className="flex items-center gap-4">
+                      {settings?.bio_video_preview && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Bolinha:</p>
+                          <video 
+                            src={settings.bio_video_preview}
+                            autoPlay 
+                            loop 
+                            muted 
+                            playsInline
+                            className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-lg"
+                          />
+                        </div>
+                      )}
+                      {settings?.bio_video_full && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Stories (clique para ver):</p>
+                          <video 
+                            src={settings.bio_video_full}
+                            controls
+                            playsInline
+                            className="w-32 h-56 rounded-lg object-cover border shadow"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

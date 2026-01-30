@@ -36,6 +36,8 @@ export interface LandingPageSettings {
   footer_copyright: string;
   primary_color: string | null;
   logo_url: string | null;
+  bio_video_preview: string | null;
+  bio_video_full: string | null;
 }
 
 export interface LandingPageFeature {
@@ -121,6 +123,8 @@ const defaultSettings: Omit<LandingPageSettings, "id" | "owner_id"> = {
   footer_copyright: "Venda PROFIT. Todos os direitos reservados.",
   primary_color: null,
   logo_url: null,
+  bio_video_preview: null,
+  bio_video_full: null,
 };
 
 const defaultFeatures: Omit<LandingPageFeature, "id" | "owner_id">[] = [
