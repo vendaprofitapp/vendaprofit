@@ -42,6 +42,7 @@ import { ColorManager } from "@/components/products/ColorManager";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
+import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
 
 interface Product {
   id: string;
@@ -706,6 +707,35 @@ export function ProductFormDialog({
     toast.success(`${urlsToAdd.length} imagem(ns) adicionada(s) para ${color}`);
   };
 
+  // Handle reordering images for a color
+  const handleColorImageReorder = (color: string, newExistingUrls: string[], newNewUrls: string[]) => {
+    setColorImages(prev => {
+      const current = prev[color];
+      if (!current) return prev;
+      
+      // Map new URLs back to files (preserving file associations)
+      const newFiles: File[] = [];
+      const newPreviewUrls: string[] = [];
+      
+      newNewUrls.forEach(url => {
+        const idx = current.newPreviewUrls.indexOf(url);
+        if (idx !== -1 && current.newFiles[idx]) {
+          newFiles.push(current.newFiles[idx]);
+          newPreviewUrls.push(url);
+        }
+      });
+      
+      return {
+        ...prev,
+        [color]: {
+          existingUrls: newExistingUrls,
+          newFiles,
+          newPreviewUrls,
+        }
+      };
+    });
+  };
+
   // Render image section for a color
   const renderColorImages = (color: string) => {
     const images = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
@@ -726,66 +756,25 @@ export function ProductFormDialog({
           currentSupplierId={form.supplier_id}
         />
         
-        {/* Current images for this color */}
-        <div className="flex gap-2 items-center flex-wrap">
-          {images.existingUrls.map((url, idx) => (
-            <div key={`existing-${idx}`} className="relative w-14 h-14">
-              <img 
-                src={url} 
-                alt={`Foto ${idx + 1}`} 
-                className="w-full h-full object-cover rounded-lg border"
-              />
-              <button
-                type="button"
-                onClick={() => removeColorImage(color, idx, true)}
-                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          
-          {images.newPreviewUrls.map((url, idx) => (
-            <div key={`new-${idx}`} className="relative w-14 h-14">
-              <img 
-                src={url} 
-                alt={`Nova foto ${idx + 1}`} 
-                className="w-full h-full object-cover rounded-lg border"
-              />
-              <button
-                type="button"
-                onClick={() => removeColorImage(color, idx, false)}
-                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-md"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          
-          {totalColorImages < 3 && (
-            <>
-              <input
-                ref={el => { imageInputRefs.current[color] = el; }}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => handleColorImageUpload(color, e.target.files)}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => imageInputRefs.current[color]?.click()}
-                className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-              >
-                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-[8px] text-muted-foreground mt-0.5">Foto</span>
-              </button>
-            </>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {totalColorImages}/3 fotos para esta cor
-        </p>
+        {/* Hidden file input */}
+        <input
+          ref={el => { imageInputRefs.current[color] = el; }}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleColorImageUpload(color, e.target.files)}
+          className="hidden"
+        />
+        
+        {/* Reorderable image list */}
+        <ReorderableImageList
+          existingUrls={images.existingUrls}
+          newPreviewUrls={images.newPreviewUrls}
+          maxImages={3}
+          onReorder={(newExisting, newNew) => handleColorImageReorder(color, newExisting, newNew)}
+          onRemove={(index, isExisting) => removeColorImage(color, index, isExisting)}
+          onAddClick={() => imageInputRefs.current[color]?.click()}
+        />
       </div>
     );
   };

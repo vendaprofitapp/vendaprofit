@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -94,11 +94,14 @@ interface CatalogDisplayItem {
   sizeMarketingDeliveryDays: Record<string, number | null>; // delivery days per size
   marketingStatus: MarketingStatus; // highest priority marketing status for the card
   image_url: string | null;
+  image_url_2: string | null;
+  image_url_3: string | null;
   video_url: string | null;
   totalStock: number;
   owner_id: string;
   isPartner: boolean;
 }
+
 
 // Cart item with selected size
 interface CartItem {
@@ -319,7 +322,12 @@ export default function StoreCatalog() {
           for (const [color, colorVariants] of colorGroups) {
             const sizes = colorVariants.map(v => v.size).filter(Boolean);
             const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
-            const variantImage = colorVariants.find(v => v.image_url)?.image_url || product.image_url;
+            
+            // Get all images from variants for this color (in order)
+            const variantWithImages = colorVariants.find(v => v.image_url);
+            const variantImage = variantWithImages?.image_url || product.image_url;
+            const variantImage2 = variantWithImages?.image_url_2 || null;
+            const variantImage3 = variantWithImages?.image_url_3 || null;
             
             // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
@@ -364,6 +372,8 @@ export default function StoreCatalog() {
               sizeMarketingDeliveryDays,
               marketingStatus,
               image_url: variantImage,
+              image_url_2: variantImage2,
+              image_url_3: variantImage3,
               video_url: product.video_url,
               totalStock,
               owner_id: product.owner_id,
@@ -393,6 +403,8 @@ export default function StoreCatalog() {
             sizeMarketingDeliveryDays: {},
             marketingStatus: null,
             image_url: product.image_url,
+            image_url_2: null,
+            image_url_3: null,
             video_url: product.video_url,
             totalStock: product.stock_quantity,
             owner_id: product.owner_id,
@@ -431,7 +443,12 @@ export default function StoreCatalog() {
             
             const filteredVariants = colorVariants.filter(v => availableSizes.includes(v.size));
             const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
-            const variantImage = filteredVariants.find(v => v.image_url)?.image_url || product.image_url;
+            
+            // Get all images from variants for this color (in order)
+            const variantWithImages = filteredVariants.find(v => v.image_url);
+            const variantImage = variantWithImages?.image_url || product.image_url;
+            const variantImage2 = variantWithImages?.image_url_2 || null;
+            const variantImage3 = variantWithImages?.image_url_3 || null;
 
             // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
@@ -472,6 +489,8 @@ export default function StoreCatalog() {
               sizeMarketingDeliveryDays,
               marketingStatus,
               image_url: variantImage,
+              image_url_2: variantImage2,
+              image_url_3: variantImage3,
               video_url: product.video_url,
               totalStock,
               owner_id: product.owner_id,
@@ -501,6 +520,8 @@ export default function StoreCatalog() {
             sizeMarketingDeliveryDays: {},
             marketingStatus: null,
             image_url: product.image_url,
+            image_url_2: null,
+            image_url_3: null,
             video_url: product.video_url,
             totalStock: product.stock_quantity,
             owner_id: product.owner_id,
@@ -1107,9 +1128,46 @@ interface BoutiqueProductCardProps {
 function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart }: BoutiqueProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [isHovering, setIsHovering] = useState(false);
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Build media array: all images + video (if exists)
+  const mediaItems = useMemo(() => {
+    const items: { type: 'image' | 'video'; url: string }[] = [];
+    if (item.image_url) items.push({ type: 'image', url: item.image_url });
+    if (item.image_url_2) items.push({ type: 'image', url: item.image_url_2 });
+    if (item.image_url_3) items.push({ type: 'image', url: item.image_url_3 });
+    if (item.video_url) items.push({ type: 'video', url: item.video_url });
+    return items;
+  }, [item.image_url, item.image_url_2, item.image_url_3, item.video_url]);
+
+  // Auto-cycle through media every 3 seconds
+  useEffect(() => {
+    if (mediaItems.length <= 1) return;
+
+    intervalRef.current = setInterval(() => {
+      setCurrentMediaIndex(prev => (prev + 1) % mediaItems.length);
+    }, 3000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [mediaItems.length]);
+
+  // Handle video playback when it becomes current
+  useEffect(() => {
+    const currentMedia = mediaItems[currentMediaIndex];
+    if (currentMedia?.type === 'video' && videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    } else if (videoRef.current) {
+      videoRef.current.pause();
+    }
+  }, [currentMediaIndex, mediaItems]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -1210,35 +1268,68 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             <Heart className="h-4 w-4" />
           </button>
 
-          {/* Product Image */}
-          <img
-            src={item.image_url || "/placeholder.svg"}
-            alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
-            className={cn(
-              "h-full w-full object-cover transition-all duration-500 group-hover:scale-105",
-              isHovering && isVideoLoaded && item.video_url ? "opacity-0" : "opacity-100"
-            )}
-          />
+          {/* Auto-cycling media carousel */}
+          {mediaItems.map((media, index) => (
+            media.type === 'image' ? (
+              <img
+                key={`img-${index}`}
+                src={media.url}
+                alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
+                className={cn(
+                  "absolute inset-0 h-full w-full object-cover transition-opacity duration-700",
+                  currentMediaIndex === index ? "opacity-100" : "opacity-0"
+                )}
+              />
+            ) : (
+              <video
+                key={`vid-${index}`}
+                ref={videoRef}
+                src={media.url}
+                muted
+                loop
+                playsInline
+                className={cn(
+                  "absolute inset-0 h-full w-full object-cover transition-opacity duration-700",
+                  currentMediaIndex === index ? "opacity-100" : "opacity-0"
+                )}
+              />
+            )
+          ))}
 
-          {/* Video (plays on hover if available) */}
-          {item.video_url && (
-            <video
-              ref={videoRef}
-              src={item.video_url}
-              muted
-              loop
-              playsInline
-              onLoadedData={() => setIsVideoLoaded(true)}
-              className={cn(
-                "absolute inset-0 h-full w-full object-cover transition-opacity duration-500",
-                isHovering && isVideoLoaded ? "opacity-100" : "opacity-0"
-              )}
+          {/* Fallback if no media */}
+          {mediaItems.length === 0 && (
+            <img
+              src="/placeholder.svg"
+              alt={item.name}
+              className="h-full w-full object-cover"
             />
+          )}
+
+          {/* Media indicators (dots) */}
+          {mediaItems.length > 1 && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
+              {mediaItems.map((_, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentMediaIndex(index);
+                  }}
+                  className={cn(
+                    "w-1.5 h-1.5 rounded-full transition-all",
+                    currentMediaIndex === index 
+                      ? "bg-white w-3" 
+                      : "bg-white/50 hover:bg-white/80"
+                  )}
+                />
+              ))}
+            </div>
           )}
 
           {/* Partner Shipping Notice */}
           {item.isPartner && (
-            <div className="absolute bottom-2 left-2 right-2 z-20">
+            <div className="absolute bottom-6 left-2 right-2 z-20">
               <div className="bg-amber-50/95 backdrop-blur-sm border border-amber-200 rounded-lg px-2 py-1.5">
                 <p className="text-[10px] text-amber-700 font-medium text-center">
                   📦 Envio: 7-10 dias úteis
