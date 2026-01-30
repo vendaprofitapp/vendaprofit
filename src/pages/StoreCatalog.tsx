@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
 
 // Standard size order for clothing
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -162,6 +163,8 @@ interface StoreSettings {
   show_store_url: boolean;
   show_store_description: boolean;
   filter_buttons_config: FilterButtonsConfig | null;
+  bio_video_preview: string | null;
+  bio_video_full: string | null;
 }
 
 export default function StoreCatalog() {
@@ -1163,6 +1166,12 @@ export default function StoreCatalog() {
           </button>
         </div>
       )}
+
+      {/* Video Sales Bubble */}
+      <VideoSalesBubble 
+        previewUrl={store.bio_video_preview} 
+        fullUrl={store.bio_video_full} 
+      />
 
       {/* Minimal Footer */}
       <footer className="py-8 px-4 border-t border-gray-100 mt-12">

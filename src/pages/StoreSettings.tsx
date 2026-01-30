@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers, Video } from "lucide-react";
+import { VideoUploader } from "@/components/admin/VideoUploader";
 import { cn } from "@/lib/utils";
 
 // Filter button configuration type
@@ -68,6 +69,8 @@ interface StoreSettings {
   show_store_description: boolean;
   custom_domain: string | null;
   filter_buttons_config: FilterButtonsConfig | null;
+  bio_video_preview: string | null;
+  bio_video_full: string | null;
 }
 
 interface Group {
@@ -120,6 +123,8 @@ export default function StoreSettings() {
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const [bannerUrlMobile, setBannerUrlMobile] = useState<string | null>(null);
   const [customFontUrl, setCustomFontUrl] = useState<string | null>(null);
+  const [bioVideoPreview, setBioVideoPreview] = useState<string | null>(null);
+  const [bioVideoFull, setBioVideoFull] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [uploadingBannerMobile, setUploadingBannerMobile] = useState(false);
@@ -243,6 +248,8 @@ export default function StoreSettings() {
       setBannerUrl(storeSettings.banner_url);
       setBannerUrlMobile(storeSettings.banner_url_mobile);
       setCustomFontUrl(storeSettings.custom_font_url);
+      setBioVideoPreview(storeSettings.bio_video_preview);
+      setBioVideoFull(storeSettings.bio_video_full);
     }
   }, [storeSettings]);
 
@@ -537,6 +544,8 @@ export default function StoreSettings() {
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
+            bio_video_preview: bioVideoPreview,
+            bio_video_full: bioVideoFull,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -571,6 +580,8 @@ export default function StoreSettings() {
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
+            bio_video_preview: bioVideoPreview,
+            bio_video_full: bioVideoFull,
             ...fontData,
           })
           .select("id")
@@ -1172,6 +1183,47 @@ export default function StoreSettings() {
               </div>
             </div>
 
+          </CardContent>
+        </Card>
+
+        {/* Video Bubble Section */}
+        <Card className="border-2 border-pink-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Video className="h-5 w-5 text-pink-500" />
+              Vídeo Vendedor (Bolinha Flutuante)
+            </CardTitle>
+            <CardDescription>
+              Configure os vídeos que aparecerão na bolinha flutuante da sua loja. A bolinha só aparece se os vídeos estiverem configurados.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <VideoUploader
+                label="Vídeo da Bolinha (Preview - Mudo/Loop)"
+                description="Vídeo curto que aparece na bolinha flutuante. Recomendado: até 10 segundos, formato quadrado."
+                value={bioVideoPreview}
+                onChange={setBioVideoPreview}
+                maxSizeMB={10}
+              />
+              <VideoUploader
+                label="Vídeo de Apresentação (Stories)"
+                description="Vídeo completo exibido ao clicar na bolinha. Formato vertical (9:16) recomendado, estilo Stories."
+                value={bioVideoFull}
+                onChange={setBioVideoFull}
+                maxSizeMB={50}
+              />
+            </div>
+            
+            <div className="bg-pink-50 dark:bg-pink-950/20 p-4 rounded-lg">
+              <p className="text-sm font-medium text-pink-800 dark:text-pink-200 mb-2">💡 Dicas para seus vídeos:</p>
+              <ul className="text-sm text-pink-700 dark:text-pink-300 space-y-1">
+                <li>• Faça upload diretamente ou cole uma URL externa (MP4)</li>
+                <li>• O vídeo da bolinha deve ser curto e chamar atenção (máx. 10MB)</li>
+                <li>• O vídeo de apresentação pode ter até 60 segundos (máx. 50MB)</li>
+                <li>• Fale diretamente com seu cliente, seja autêntico!</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
 
