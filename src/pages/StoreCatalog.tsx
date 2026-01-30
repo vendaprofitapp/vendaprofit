@@ -1248,14 +1248,6 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </Badge>
           )}
 
-          {/* Category Badge - Bottom Left */}
-          {item.category && (
-            <Badge 
-              className="absolute left-2 top-2 z-20 bg-white/90 text-[10px] font-semibold uppercase text-gray-700 backdrop-blur-sm border-0 shadow-sm"
-            >
-              {item.category}
-            </Badge>
-          )}
 
           {/* Wishlist Button */}
           <button 
