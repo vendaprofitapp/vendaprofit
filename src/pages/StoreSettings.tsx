@@ -11,8 +11,30 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Filter button configuration type
+interface FilterButtonConfig {
+  visible: boolean;
+  color: string;
+  order: number;
+  label: string;
+}
+
+interface FilterButtonsConfig {
+  categories: FilterButtonConfig;
+  opportunity: FilterButtonConfig;
+  presale: FilterButtonConfig;
+  launch: FilterButtonConfig;
+}
+
+const defaultFilterButtonsConfig: FilterButtonsConfig = {
+  categories: { visible: true, color: "#1f2937", order: 0, label: "Categorias" },
+  opportunity: { visible: true, color: "#f97316", order: 1, label: "Oportunidades" },
+  presale: { visible: true, color: "#a855f7", order: 2, label: "Pré-venda" },
+  launch: { visible: true, color: "#22c55e", order: 3, label: "Lançamentos" },
+};
 
 interface StoreSettings {
   id: string;
@@ -45,6 +67,7 @@ interface StoreSettings {
   show_store_url: boolean;
   show_store_description: boolean;
   custom_domain: string | null;
+  filter_buttons_config: FilterButtonsConfig | null;
 }
 
 interface Group {
@@ -89,7 +112,9 @@ export default function StoreSettings() {
     show_store_url: true,
     show_store_description: true,
     custom_domain: "",
+    filter_buttons_config: defaultFilterButtonsConfig,
   });
+  const [draggedButton, setDraggedButton] = useState<string | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
@@ -133,7 +158,14 @@ export default function StoreSettings() {
         .maybeSingle();
       
       if (error) throw error;
-      return data as StoreSettings | null;
+      if (!data) return null;
+      
+      // Parse filter_buttons_config from JSON
+      const result = {
+        ...data,
+        filter_buttons_config: (data.filter_buttons_config as unknown as FilterButtonsConfig) || defaultFilterButtonsConfig
+      };
+      return result as StoreSettings;
     },
     enabled: !!user,
   });
@@ -205,6 +237,7 @@ export default function StoreSettings() {
         show_store_url: storeSettings.show_store_url ?? true,
         show_store_description: storeSettings.show_store_description ?? true,
         custom_domain: storeSettings.custom_domain || "",
+        filter_buttons_config: storeSettings.filter_buttons_config || defaultFilterButtonsConfig,
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -503,6 +536,7 @@ export default function StoreSettings() {
             show_store_url: formData.show_store_url,
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
+            filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -536,6 +570,7 @@ export default function StoreSettings() {
             show_store_url: formData.show_store_url,
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
+            filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
             ...fontData,
           })
           .select("id")
@@ -1139,6 +1174,173 @@ export default function StoreSettings() {
 
           </CardContent>
         </Card>
+
+        {/* Filter Buttons Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Botões de Filtro
+            </CardTitle>
+            <CardDescription>
+              Configure cores, ordem e visibilidade dos botões de filtro na sua loja
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Filter Buttons Reorder & Customize */}
+            <div className="space-y-4">
+              <Label className="font-medium flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Arraste para reordenar
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                A ordem dos botões na lista abaixo será a ordem exibida na loja
+              </p>
+              
+              <div className="space-y-2">
+                {([...["categories", "opportunity", "presale", "launch"]] as ("categories" | "opportunity" | "presale" | "launch")[])
+                  .sort((a, b) => formData.filter_buttons_config[a].order - formData.filter_buttons_config[b].order)
+                  .map((buttonKey) => {
+                    const config = formData.filter_buttons_config[buttonKey];
+                    const icons: Record<string, typeof Flame> = {
+                      categories: Layers,
+                      opportunity: Flame,
+                      presale: Clock,
+                      launch: Rocket,
+                    };
+                    const Icon = icons[buttonKey];
+
+                    return (
+                      <div
+                        key={buttonKey}
+                        draggable
+                        onDragStart={() => setDraggedButton(buttonKey)}
+                        onDragEnd={() => setDraggedButton(null)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (draggedButton && draggedButton !== buttonKey) {
+                            const draggedOrder = formData.filter_buttons_config[draggedButton as keyof FilterButtonsConfig].order;
+                            const targetOrder = config.order;
+                            
+                            setFormData(prev => ({
+                              ...prev,
+                              filter_buttons_config: {
+                                ...prev.filter_buttons_config,
+                                [draggedButton]: { 
+                                  ...prev.filter_buttons_config[draggedButton as keyof FilterButtonsConfig], 
+                                  order: targetOrder 
+                                },
+                                [buttonKey]: { 
+                                  ...prev.filter_buttons_config[buttonKey], 
+                                  order: draggedOrder 
+                                },
+                              }
+                            }));
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-lg border-2 transition-all cursor-grab active:cursor-grabbing",
+                          draggedButton === buttonKey 
+                            ? "border-primary bg-primary/5 opacity-50" 
+                            : "border-border bg-background hover:border-primary/30"
+                        )}
+                      >
+                        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        
+                        {/* Color Picker */}
+                        <input
+                          type="color"
+                          value={config.color}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            filter_buttons_config: {
+                              ...prev.filter_buttons_config,
+                              [buttonKey]: { ...config, color: e.target.value }
+                            }
+                          }))}
+                          className="w-8 h-8 rounded cursor-pointer border border-border flex-shrink-0"
+                        />
+                        
+                        {/* Preview Button */}
+                        <div 
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium"
+                          style={{ 
+                            backgroundColor: config.visible ? `${config.color}15` : '#f3f4f6',
+                            color: config.visible ? config.color : '#9ca3af'
+                          }}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          <span>{config.label}</span>
+                        </div>
+
+                        {/* Label Input */}
+                        <Input
+                          value={config.label}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            filter_buttons_config: {
+                              ...prev.filter_buttons_config,
+                              [buttonKey]: { ...config, label: e.target.value }
+                            }
+                          }))}
+                          className="w-32 h-8 text-sm"
+                          placeholder="Rótulo"
+                        />
+                        
+                        {/* Visibility Toggle */}
+                        <Switch
+                          checked={config.visible}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            filter_buttons_config: {
+                              ...prev.filter_buttons_config,
+                              [buttonKey]: { ...config, visible: checked }
+                            }
+                          }))}
+                        />
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="border-t pt-4">
+              <Label className="font-medium mb-3 block">Prévia dos Botões</Label>
+              <div className="flex flex-wrap gap-2 justify-center p-4 bg-muted/30 rounded-lg">
+                {([...["categories", "opportunity", "presale", "launch"]] as ("categories" | "opportunity" | "presale" | "launch")[])
+                  .filter(k => formData.filter_buttons_config[k].visible)
+                  .sort((a, b) => formData.filter_buttons_config[a].order - formData.filter_buttons_config[b].order)
+                  .map((buttonKey) => {
+                    const config = formData.filter_buttons_config[buttonKey];
+                    const icons: Record<string, typeof Flame> = {
+                      categories: Layers,
+                      opportunity: Flame,
+                      presale: Clock,
+                      launch: Rocket,
+                    };
+                    const Icon = icons[buttonKey];
+
+                    return (
+                      <button
+                        key={buttonKey}
+                        type="button"
+                        className="px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5"
+                        style={{ 
+                          backgroundColor: `${config.color}15`,
+                          color: config.color
+                        }}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Informações Básicas</CardTitle>

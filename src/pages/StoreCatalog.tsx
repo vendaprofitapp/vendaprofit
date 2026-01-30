@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -110,6 +110,28 @@ interface CartItem {
   quantity: number;
 }
 
+// Filter button configuration type
+interface FilterButtonConfig {
+  visible: boolean;
+  color: string;
+  order: number;
+  label: string;
+}
+
+interface FilterButtonsConfig {
+  categories: FilterButtonConfig;
+  opportunity: FilterButtonConfig;
+  presale: FilterButtonConfig;
+  launch: FilterButtonConfig;
+}
+
+const defaultFilterButtonsConfig: FilterButtonsConfig = {
+  categories: { visible: true, color: "#1f2937", order: 0, label: "Categorias" },
+  opportunity: { visible: true, color: "#f97316", order: 1, label: "Oportunidades" },
+  presale: { visible: true, color: "#a855f7", order: 2, label: "Pré-venda" },
+  launch: { visible: true, color: "#22c55e", order: 3, label: "Lançamentos" },
+};
+
 interface StoreSettings {
   id: string;
   owner_id: string;
@@ -139,6 +161,7 @@ interface StoreSettings {
   opportunities_button_color: string | null;
   show_store_url: boolean;
   show_store_description: boolean;
+  filter_buttons_config: FilterButtonsConfig | null;
 }
 
 export default function StoreCatalog() {
@@ -206,7 +229,13 @@ export default function StoreCatalog() {
         .single();
       
       if (error) throw error;
-      return data as StoreSettings;
+      
+      // Parse filter_buttons_config
+      const result = {
+        ...data,
+        filter_buttons_config: (data.filter_buttons_config as unknown as FilterButtonsConfig) || defaultFilterButtonsConfig
+      };
+      return result as StoreSettings;
     },
     enabled: !!slug,
   });
@@ -956,6 +985,7 @@ export default function StoreCatalog() {
         {/* Marketing Status Filter Pills */}
         <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-4 scrollbar-hide">
           <div className="flex gap-2 min-w-max justify-center">
+            {/* "Todos" button always first */}
             <button
               className={cn(
                 "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
@@ -970,51 +1000,49 @@ export default function StoreCatalog() {
             >
               Todos
             </button>
-            <button
-              className={cn(
-                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
-                selectedMarketingFilter === "opportunity"
-                  ? "bg-orange-500 text-white shadow-lg"
-                  : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20"
-              )}
-              onClick={() => {
-                setSelectedMarketingFilter(selectedMarketingFilter === "opportunity" ? "all" : "opportunity");
-                setShowOpportunities(false);
-              }}
-            >
-              <Flame className="h-3.5 w-3.5" />
-              Oportunidades
-            </button>
-            <button
-              className={cn(
-                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
-                selectedMarketingFilter === "presale"
-                  ? "bg-purple-500 text-white shadow-lg"
-                  : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
-              )}
-              onClick={() => {
-                setSelectedMarketingFilter(selectedMarketingFilter === "presale" ? "all" : "presale");
-                setShowOpportunities(false);
-              }}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Pré-venda
-            </button>
-            <button
-              className={cn(
-                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
-                selectedMarketingFilter === "launch"
-                  ? "bg-green-500 text-white shadow-lg"
-                  : "bg-green-500/10 text-green-600 hover:bg-green-500/20"
-              )}
-              onClick={() => {
-                setSelectedMarketingFilter(selectedMarketingFilter === "launch" ? "all" : "launch");
-                setShowOpportunities(false);
-              }}
-            >
-              <Rocket className="h-3.5 w-3.5" />
-              Lançamentos
-            </button>
+            
+            {/* Dynamic filter buttons based on store config */}
+            {(() => {
+              const filterConfig = store.filter_buttons_config || defaultFilterButtonsConfig;
+              const buttonKeys = ["opportunity", "presale", "launch"] as const;
+              const icons: Record<string, typeof Flame> = {
+                opportunity: Flame,
+                presale: Clock,
+                launch: Rocket,
+              };
+              
+              return buttonKeys
+                .filter(key => filterConfig[key].visible)
+                .sort((a, b) => filterConfig[a].order - filterConfig[b].order)
+                .map((key) => {
+                  const config = filterConfig[key];
+                  const Icon = icons[key];
+                  const isSelected = selectedMarketingFilter === key;
+                  
+                  return (
+                    <button
+                      key={key}
+                      className={cn(
+                        "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                        isSelected
+                          ? "text-white shadow-lg"
+                          : "hover:opacity-80"
+                      )}
+                      style={{
+                        backgroundColor: isSelected ? config.color : `${config.color}15`,
+                        color: isSelected ? 'white' : config.color
+                      }}
+                      onClick={() => {
+                        setSelectedMarketingFilter(selectedMarketingFilter === key ? "all" : key);
+                        setShowOpportunities(false);
+                      }}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {config.label}
+                    </button>
+                  );
+                });
+            })()}
           </div>
         </div>
 
@@ -1030,27 +1058,38 @@ export default function StoreCatalog() {
         </div>
 
         {/* Category Pills - horizontal scroll on mobile */}
-        <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-6 scrollbar-hide">
-          <div className="flex gap-2 min-w-max">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                className={cn(
-                  "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
-                  selectedCategory === cat
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
-                onClick={() => {
-                  setSelectedCategory(selectedCategory === cat ? null : cat);
-                  setShowOpportunities(false);
-                }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
+        {(() => {
+          const filterConfig = store.filter_buttons_config || defaultFilterButtonsConfig;
+          const categoriesConfig = filterConfig.categories;
+          
+          // Only show if categories are visible and there are categories to show
+          if (!categoriesConfig.visible || categories.length === 0) return null;
+          
+          return (
+            <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-6 scrollbar-hide">
+              <div className="flex gap-2 min-w-max">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    className={cn(
+                      "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
+                    )}
+                    style={{
+                      backgroundColor: selectedCategory === cat ? categoriesConfig.color : '#f3f4f6',
+                      color: selectedCategory === cat ? 'white' : '#4b5563'
+                    }}
+                    onClick={() => {
+                      setSelectedCategory(selectedCategory === cat ? null : cat);
+                      setShowOpportunities(false);
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Products Grid - 2 cols mobile, 4 cols desktop */}
         {productsLoading ? (

@@ -1,0 +1,3 @@
+-- Add filter button customization columns to store_settings
+ALTER TABLE public.store_settings
+ADD COLUMN IF NOT EXISTS filter_buttons_config JSONB DEFAULT '{"categories":{"visible":true,"color":"#1f2937","order":0,"label":"Categorias"},"opportunity":{"visible":true,"color":"#f97316","order":1,"label":"Oportunidades"},"presale":{"visible":true,"color":"#a855f7","order":2,"label":"Pré-venda"},"launch":{"visible":true,"color":"#22c55e","order":3,"label":"Lançamentos"}}'::jsonb;
