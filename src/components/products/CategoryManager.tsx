@@ -46,10 +46,11 @@ export function CategoryManager({ value, onChange, onCategoriesChange }: Categor
   const fetchCategories = async () => {
     if (!user) return;
     
-    // Fetch all categories globally so all users see the same list
+    // Fetch only categories owned by the current user (isolated per user)
     const { data, error } = await supabase
       .from("categories")
       .select("id, name, owner_id")
+      .eq("owner_id", user.id)
       .order("name");
 
     if (error) {
