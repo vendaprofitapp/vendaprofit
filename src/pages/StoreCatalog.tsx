@@ -12,6 +12,37 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+// Standard size order for clothing
+const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
+
+const sortSizes = (sizes: string[]): string[] => {
+  return [...sizes].sort((a, b) => {
+    const upperA = a.toUpperCase();
+    const upperB = b.toUpperCase();
+    const indexA = SIZE_ORDER.indexOf(upperA);
+    const indexB = SIZE_ORDER.indexOf(upperB);
+    
+    // Both are standard sizes - sort by order
+    if (indexA !== -1 && indexB !== -1) {
+      return indexA - indexB;
+    }
+    // Only A is standard - A comes first
+    if (indexA !== -1) return -1;
+    // Only B is standard - B comes first
+    if (indexB !== -1) return 1;
+    
+    // Both are numeric - sort numerically
+    const numA = parseFloat(a);
+    const numB = parseFloat(b);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return numA - numB;
+    }
+    
+    // Fallback to alphabetical
+    return a.localeCompare(b);
+  });
+};
+
 type MarketingStatus = "opportunity" | "presale" | "launch" | null;
 
 interface ProductVariant {
@@ -1273,7 +1304,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           {/* Size Selector - Clean Pills with marketing status indicators */}
           {item.sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {item.sizes.map(size => {
+              {sortSizes(item.sizes).map(size => {
                 const sizeStatus = item.sizeMarketingStatus[size];
                 return (
                   <button
