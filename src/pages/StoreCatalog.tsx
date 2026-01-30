@@ -1205,20 +1205,23 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
     return items;
   }, [item.image_url, item.image_url_2, item.image_url_3, item.video_url]);
 
-  // Auto-cycle through media every 3 seconds
+  // Auto-cycle through media - 3 seconds for images, 10 seconds for videos
   useEffect(() => {
     if (mediaItems.length <= 1) return;
 
-    intervalRef.current = setInterval(() => {
+    const currentMedia = mediaItems[currentMediaIndex];
+    const delay = currentMedia?.type === 'video' ? 10000 : 3000;
+
+    intervalRef.current = setTimeout(() => {
       setCurrentMediaIndex(prev => (prev + 1) % mediaItems.length);
-    }, 3000);
+    }, delay);
 
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
       }
     };
-  }, [mediaItems.length]);
+  }, [mediaItems.length, currentMediaIndex, mediaItems]);
 
   // Handle video playback when it becomes current
   useEffect(() => {
