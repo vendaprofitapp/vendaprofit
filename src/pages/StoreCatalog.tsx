@@ -574,39 +574,62 @@ export default function StoreCatalog() {
   }, [catalogItems]);
 
   // Filter and transform products
-  // When a marketing filter is active, we show individual variant cards instead of grouped products
+  // When a marketing filter is active, we group sizes with the same status into one card per product/color
   const filteredItems = useMemo(() => {
-    // If a marketing filter is active, we need to show individual variants
+    // If a marketing filter is active, group by product+color with matching sizes
     if (selectedMarketingFilter !== "all") {
-      const variantCards: CatalogDisplayItem[] = [];
+      const groupedCards = new Map<string, CatalogDisplayItem>();
       
       catalogItems.forEach(item => {
-        // For each size with matching marketing status, create a separate card
+        // Collect all sizes with matching marketing status for this product/color
+        const matchingSizes: string[] = [];
+        const matchingSizeStatuses: Record<string, MarketingStatus> = {};
+        const matchingSizePrices: Record<string, number | null> = {};
+        const matchingSizeDeliveryDays: Record<string, number | null> = {};
+        
         Object.entries(item.sizeMarketingStatus).forEach(([size, status]) => {
           if (status === selectedMarketingFilter) {
-            const matchesSearch = search === "" || 
-              item.name.toLowerCase().includes(search.toLowerCase()) ||
-              (item.description && item.description.toLowerCase().includes(search.toLowerCase())) ||
-              (item.color && item.color.toLowerCase().includes(search.toLowerCase()));
-            const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
-            const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
-            
-            if (matchesSearch && matchesCategory) {
-              variantCards.push({
-                ...item,
-                id: `${item.id}_${size}_marketing`,
-                size, // Specific size for this variant card
-                sizes: [size], // Only show this size
-                marketingStatus: status,
-                marketingPrice: item.sizeMarketingPrice[size] ?? null,
-                marketingDeliveryDays: item.sizeMarketingDeliveryDays[size] ?? null,
-              });
-            }
+            matchingSizes.push(size);
+            matchingSizeStatuses[size] = status;
+            matchingSizePrices[size] = item.sizeMarketingPrice[size] ?? null;
+            matchingSizeDeliveryDays[size] = item.sizeMarketingDeliveryDays[size] ?? null;
           }
         });
+        
+        // If no sizes match, skip this item
+        if (matchingSizes.length === 0) return;
+        
+        const matchesSearch = search === "" || 
+          item.name.toLowerCase().includes(search.toLowerCase()) ||
+          (item.description && item.description.toLowerCase().includes(search.toLowerCase())) ||
+          (item.color && item.color.toLowerCase().includes(search.toLowerCase()));
+        const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
+        const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+        
+        if (matchesSearch && matchesCategory) {
+          // Use the original item.id (product_color) as the grouping key
+          const groupKey = item.id;
+          
+          // Get marketing price from the first matching size
+          const firstSize = matchingSizes[0];
+          const marketingPrice = matchingSizePrices[firstSize] ?? null;
+          const marketingDeliveryDays = matchingSizeDeliveryDays[firstSize] ?? null;
+          
+          groupedCards.set(groupKey, {
+            ...item,
+            id: `${item.id}_marketing`,
+            sizes: sortSizes(matchingSizes), // All matching sizes grouped
+            sizeMarketingStatus: matchingSizeStatuses,
+            sizeMarketingPrice: matchingSizePrices,
+            sizeMarketingDeliveryDays: matchingSizeDeliveryDays,
+            marketingStatus: selectedMarketingFilter,
+            marketingPrice,
+            marketingDeliveryDays,
+          });
+        }
       });
       
-      return variantCards;
+      return Array.from(groupedCards.values());
     }
     
     // Normal filtering (show grouped products)
