@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
+import { useAuth } from "@/hooks/useAuth";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Standard size order for clothing
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -170,6 +172,7 @@ interface StoreSettings {
 
 export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showOpportunities, setShowOpportunities] = useState(false);
@@ -244,7 +247,12 @@ export default function StoreCatalog() {
     enabled: !!slug,
   });
 
-  // Fetch store partnerships
+  // Check if current user is the store owner
+  const isStoreOwner = useMemo(() => {
+    return user?.id === store?.owner_id;
+  }, [user?.id, store?.owner_id]);
+
+  // Fetch store partnerships (groups linked to store)
   const { data: partnerships } = useQuery({
     queryKey: ["store-partnerships", store?.id],
     queryFn: async () => {
@@ -259,9 +267,38 @@ export default function StoreCatalog() {
     enabled: !!store?.id,
   });
 
+  // Fetch 1-1 direct partnership groups for the store owner
+  const { data: directPartnershipGroupIds = [] } = useQuery({
+    queryKey: ["store-direct-partnerships", store?.owner_id],
+    queryFn: async () => {
+      // Get groups where the store owner is a member and the group is_direct = true
+      const { data: memberGroups, error } = await supabase
+        .from("group_members")
+        .select("group_id, groups!inner(id, is_direct)")
+        .eq("user_id", store!.owner_id);
+      
+      if (error) throw error;
+      
+      const directGroupIds = memberGroups
+        ?.filter((gm: any) => gm.groups?.is_direct === true)
+        .map((gm: any) => gm.group_id) || [];
+      
+      return directGroupIds;
+    },
+    enabled: !!store?.owner_id,
+  });
+
+  // Combine all partnership group IDs
+  const allPartnershipGroupIds = useMemo(() => {
+    const combined = new Set<string>();
+    partnerships?.forEach(id => combined.add(id));
+    directPartnershipGroupIds?.forEach(id => combined.add(id));
+    return Array.from(combined);
+  }, [partnerships, directPartnershipGroupIds]);
+
   // Fetch products with their variants (now includes video_url)
   const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
-    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, partnerships],
+    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, allPartnershipGroupIds],
     queryFn: async () => {
       const ownProductIds = new Set<string>();
       const ownProducts: (Product & { isPartner: boolean })[] = [];
@@ -284,8 +321,8 @@ export default function StoreCatalog() {
         }
       }
 
-      // Get partnership products
-      if (partnerships && partnerships.length > 0) {
+      // Get partnership products from all groups (including 1-1 direct partnerships)
+      if (allPartnershipGroupIds && allPartnershipGroupIds.length > 0) {
         const { data: partnershipProducts, error } = await supabase
           .from("product_partnerships")
           .select(`
@@ -294,12 +331,13 @@ export default function StoreCatalog() {
               id, name, description, price, category, category_2, category_3, size, color, image_url, video_url, stock_quantity, owner_id, is_active
             )
           `)
-          .in("group_id", partnerships);
+          .in("group_id", allPartnershipGroupIds);
         
         if (!error && partnershipProducts) {
           partnershipProducts.forEach((pp: any) => {
             const p = pp.products;
-            if (p && p.is_active && p.stock_quantity > 0 && !ownProductIds.has(p.id)) {
+            // Partner products: not owned by the store owner
+            if (p && p.is_active && p.stock_quantity > 0 && !ownProductIds.has(p.id) && p.owner_id !== store?.owner_id) {
               partnerProducts.push({ ...p, isPartner: true });
             }
           });
@@ -1150,6 +1188,7 @@ export default function StoreCatalog() {
                 primaryColor={primaryColor}
                 cardBackgroundColor={cardBackgroundColor}
                 onAddToCart={addToCart}
+                isStoreOwner={isStoreOwner}
               />
             ))}
           </div>
@@ -1201,9 +1240,10 @@ interface BoutiqueProductCardProps {
   primaryColor: string;
   cardBackgroundColor: string;
   onAddToCart: (item: CatalogDisplayItem, size: string) => void;
+  isStoreOwner: boolean;
 }
 
-function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart }: BoutiqueProductCardProps) {
+function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart, isStoreOwner }: BoutiqueProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [isHovering, setIsHovering] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
@@ -1295,6 +1335,22 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
           onClick={() => item.image_url && setImageOpen(true)}
         >
+          {/* Partner indicator - Only visible to store owner */}
+          {isStoreOwner && item.isPartner && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="absolute left-2 top-2 z-20 w-6 h-6 rounded-full bg-primary/90 backdrop-blur-sm flex items-center justify-center shadow-sm">
+                    <Link2 className="h-3 w-3 text-primary-foreground" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  Produto de parceira
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           {/* Marketing Status Badge - Top Right */}
           {item.marketingStatus && (
             <Badge 
@@ -1310,8 +1366,6 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
               {item.marketingStatus === "launch" && <><Rocket className="h-3 w-3" /> Lançamento</>}
             </Badge>
           )}
-
-
 
           {/* Wishlist Button */}
           <button 
