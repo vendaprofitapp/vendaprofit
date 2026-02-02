@@ -96,6 +96,7 @@ interface CatalogDisplayItem {
   sizeMarketingStatus: Record<string, MarketingStatus>; // marketing status per size
   sizeMarketingPrice: Record<string, number | null>; // marketing price per size
   sizeMarketingDeliveryDays: Record<string, number | null>; // delivery days per size
+  sizeIsPartner: Record<string, boolean>; // track which sizes are from partner stock
   marketingStatus: MarketingStatus; // highest priority marketing status for the card
   image_url: string | null;
   image_url_2: string | null;
@@ -103,7 +104,8 @@ interface CatalogDisplayItem {
   video_url: string | null;
   totalStock: number;
   owner_id: string;
-  isPartner: boolean;
+  isPartner: boolean; // true if ALL sizes are from partner (for icon display)
+  hasPartnerSizes: boolean; // true if ANY size is from partner
 }
 
 
@@ -363,14 +365,43 @@ export default function StoreCatalog() {
         return null;
       };
 
-      // Create display items
+      // Create display items - unifying own and partner products by name+color
       const displayItems: CatalogDisplayItem[] = [];
-      const ownStockCombinations = new Set<string>();
+      
+      // Key: normalized name + color
+      const makeCardKey = (name: string, color: string | null) => 
+        `${name.toLowerCase().trim()}_${(color || '').toLowerCase().trim()}`;
 
-      const makeKey = (name: string, color: string | null, size: string) => 
-        `${name.toLowerCase().trim()}_${(color || '').toLowerCase().trim()}_${size.toLowerCase().trim()}`;
+      // First pass: collect all variants from own and partner products organized by name+color
+      interface SizeInfo {
+        size: string;
+        isPartner: boolean;
+        marketingStatus: MarketingStatus;
+        marketingPrice: number | null;
+        marketingDeliveryDays: number | null;
+        stock: number;
+      }
+      
+      interface CardData {
+        productId: string;
+        name: string;
+        description: string | null;
+        price: number;
+        category: string;
+        category_2?: string | null;
+        category_3?: string | null;
+        color: string | null;
+        image_url: string | null;
+        image_url_2: string | null;
+        image_url_3: string | null;
+        video_url: string | null;
+        owner_id: string;
+        sizes: SizeInfo[];
+      }
 
-      // Process own products first
+      const cardDataMap = new Map<string, CardData>();
+
+      // Process own products first (they have priority)
       for (const product of ownProducts) {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
@@ -391,103 +422,78 @@ export default function StoreCatalog() {
           });
 
           for (const [color, colorVariants] of colorGroups) {
-            const sizes = colorVariants.map(v => v.size).filter(Boolean);
-            const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
+            const displayColor = color === '__no_color__' ? null : color;
+            const cardKey = makeCardKey(product.name, displayColor);
             
-            // Get all images and video from variants for this color (in order)
+            // Get images and video
             const variantWithImages = colorVariants.find(v => v.image_url);
             const variantImage = variantWithImages?.image_url || product.image_url;
             const variantImage2 = variantWithImages?.image_url_2 || null;
             const variantImage3 = variantWithImages?.image_url_3 || null;
-            // Video: prioritize variant video, fallback to product video
             const variantWithVideo = colorVariants.find(v => v.video_url);
             const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
             
-            // Build marketing status/price/delivery maps per size
-            const sizeMarketingStatus: Record<string, MarketingStatus> = {};
-            const sizeMarketingPrice: Record<string, number | null> = {};
-            const sizeMarketingDeliveryDays: Record<string, number | null> = {};
-            colorVariants.forEach(v => {
-              if (v.size) {
-                sizeMarketingStatus[v.size] = v.marketing_status;
-                sizeMarketingPrice[v.size] = v.marketing_price;
-                sizeMarketingDeliveryDays[v.size] = v.marketing_delivery_days;
-              }
-            });
-            
-            // Get highest priority marketing status for the card badge
-            const allStatuses = colorVariants.map(v => v.marketing_status);
-            const marketingStatus = getPriorityMarketingStatus(allStatuses);
-            
-            // Get the marketing price/delivery from the highest priority variant
-            const priorityVariant = colorVariants.find(v => v.marketing_status === marketingStatus);
-            const marketingPrice = priorityVariant?.marketing_price ?? null;
-            const marketingDeliveryDays = priorityVariant?.marketing_delivery_days ?? null;
-            
-            sizes.forEach(size => {
-              ownStockCombinations.add(makeKey(product.name, color === '__no_color__' ? null : color, size));
-            });
+            const sizeInfos: SizeInfo[] = colorVariants
+              .filter(v => v.size)
+              .map(v => ({
+                size: v.size,
+                isPartner: false,
+                marketingStatus: v.marketing_status,
+                marketingPrice: v.marketing_price,
+                marketingDeliveryDays: v.marketing_delivery_days,
+                stock: v.stock_quantity,
+              }));
 
-            displayItems.push({
-              id: `${product.id}_${color}`,
+            cardDataMap.set(cardKey, {
               productId: product.id,
               name: product.name,
               description: product.description,
               price: product.price,
-              marketingPrice,
-              marketingDeliveryDays,
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
-              color: color === '__no_color__' ? null : color,
-              sizes: [...new Set(sizes)],
-              sizeMarketingStatus,
-              sizeMarketingPrice,
-              sizeMarketingDeliveryDays,
-              marketingStatus,
+              color: displayColor,
               image_url: variantImage,
               image_url_2: variantImage2,
               image_url_3: variantImage3,
               video_url: variantVideoUrl,
-              totalStock,
               owner_id: product.owner_id,
-              isPartner: false,
+              sizes: sizeInfos,
             });
           }
         } else {
-          if (product.size) {
-            ownStockCombinations.add(makeKey(product.name, product.color, product.size));
-          }
+          // Product without variants
+          const cardKey = makeCardKey(product.name, product.color);
           
-          displayItems.push({
-            id: product.id,
+          const sizeInfos: SizeInfo[] = product.size ? [{
+            size: product.size,
+            isPartner: false,
+            marketingStatus: null,
+            marketingPrice: null,
+            marketingDeliveryDays: null,
+            stock: product.stock_quantity,
+          }] : [];
+          
+          cardDataMap.set(cardKey, {
             productId: product.id,
             name: product.name,
             description: product.description,
             price: product.price,
-            marketingPrice: null,
-            marketingDeliveryDays: null,
             category: product.category,
             category_2: (product as any).category_2,
             category_3: (product as any).category_3,
             color: product.color,
-            sizes: product.size ? [product.size] : [],
-            sizeMarketingStatus: {},
-            sizeMarketingPrice: {},
-            sizeMarketingDeliveryDays: {},
-            marketingStatus: null,
             image_url: product.image_url,
             image_url_2: null,
             image_url_3: null,
             video_url: product.video_url,
-            totalStock: product.stock_quantity,
             owner_id: product.owner_id,
-            isPartner: false,
+            sizes: sizeInfos,
           });
         }
       }
 
-      // Process partner products
+      // Process partner products - add sizes that don't exist in own stock
       for (const product of partnerProducts) {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
@@ -509,102 +515,171 @@ export default function StoreCatalog() {
 
           for (const [color, colorVariants] of colorGroups) {
             const displayColor = color === '__no_color__' ? null : color;
-            const availableSizes = colorVariants
-              .map(v => v.size)
-              .filter(size => size && !ownStockCombinations.has(makeKey(product.name, displayColor, size)));
+            const cardKey = makeCardKey(product.name, displayColor);
             
-            if (availableSizes.length === 0) continue;
+            const existing = cardDataMap.get(cardKey);
             
-            const filteredVariants = colorVariants.filter(v => availableSizes.includes(v.size));
-            const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
-            
-            // Get all images and video from variants for this color (in order)
-            const variantWithImages = filteredVariants.find(v => v.image_url);
-            const variantImage = variantWithImages?.image_url || product.image_url;
-            const variantImage2 = variantWithImages?.image_url_2 || null;
-            const variantImage3 = variantWithImages?.image_url_3 || null;
-            // Video: prioritize variant video, fallback to product video
-            const variantWithVideo = filteredVariants.find(v => v.video_url);
-            const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
+            if (existing) {
+              // Card exists (from own products) - add partner sizes that don't exist
+              const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
+              
+              colorVariants.forEach(v => {
+                if (v.size && !existingSizeSet.has(v.size.toLowerCase().trim())) {
+                  existing.sizes.push({
+                    size: v.size,
+                    isPartner: true,
+                    marketingStatus: v.marketing_status,
+                    marketingPrice: v.marketing_price,
+                    marketingDeliveryDays: v.marketing_delivery_days,
+                    stock: v.stock_quantity,
+                  });
+                }
+              });
+            } else {
+              // No own card exists - create new card with partner products
+              const variantWithImages = colorVariants.find(v => v.image_url);
+              const variantImage = variantWithImages?.image_url || product.image_url;
+              const variantImage2 = variantWithImages?.image_url_2 || null;
+              const variantImage3 = variantWithImages?.image_url_3 || null;
+              const variantWithVideo = colorVariants.find(v => v.video_url);
+              const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
+              
+              const sizeInfos: SizeInfo[] = colorVariants
+                .filter(v => v.size)
+                .map(v => ({
+                  size: v.size,
+                  isPartner: true,
+                  marketingStatus: v.marketing_status,
+                  marketingPrice: v.marketing_price,
+                  marketingDeliveryDays: v.marketing_delivery_days,
+                  stock: v.stock_quantity,
+                }));
 
-            // Build marketing status/price/delivery maps per size
-            const sizeMarketingStatus: Record<string, MarketingStatus> = {};
-            const sizeMarketingPrice: Record<string, number | null> = {};
-            const sizeMarketingDeliveryDays: Record<string, number | null> = {};
-            filteredVariants.forEach(v => {
-              if (v.size) {
-                sizeMarketingStatus[v.size] = v.marketing_status;
-                sizeMarketingPrice[v.size] = v.marketing_price;
-                sizeMarketingDeliveryDays[v.size] = v.marketing_delivery_days;
-              }
-            });
+              cardDataMap.set(cardKey, {
+                productId: product.id,
+                name: product.name,
+                description: product.description,
+                price: product.price,
+                category: product.category,
+                category_2: (product as any).category_2,
+                category_3: (product as any).category_3,
+                color: displayColor,
+                image_url: variantImage,
+                image_url_2: variantImage2,
+                image_url_3: variantImage3,
+                video_url: variantVideoUrl,
+                owner_id: product.owner_id,
+                sizes: sizeInfos,
+              });
+            }
+          }
+        } else {
+          // Product without variants
+          const cardKey = makeCardKey(product.name, product.color);
+          const existing = cardDataMap.get(cardKey);
+          
+          if (existing) {
+            // Card exists - check if this size already exists
+            const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
+            if (product.size && !existingSizeSet.has(product.size.toLowerCase().trim())) {
+              existing.sizes.push({
+                size: product.size,
+                isPartner: true,
+                marketingStatus: null,
+                marketingPrice: null,
+                marketingDeliveryDays: null,
+                stock: product.stock_quantity,
+              });
+            }
+          } else {
+            // Create new card
+            const sizeInfos: SizeInfo[] = product.size ? [{
+              size: product.size,
+              isPartner: true,
+              marketingStatus: null,
+              marketingPrice: null,
+              marketingDeliveryDays: null,
+              stock: product.stock_quantity,
+            }] : [];
             
-            // Get highest priority marketing status for the card badge
-            const allStatuses = filteredVariants.map(v => v.marketing_status);
-            const marketingStatus = getPriorityMarketingStatus(allStatuses);
-            
-            // Get the marketing price/delivery from the highest priority variant
-            const priorityVariant = filteredVariants.find(v => v.marketing_status === marketingStatus);
-            const marketingPrice = priorityVariant?.marketing_price ?? null;
-            const marketingDeliveryDays = priorityVariant?.marketing_delivery_days ?? null;
-
-            displayItems.push({
-              id: `${product.id}_${color}_partner`,
+            cardDataMap.set(cardKey, {
               productId: product.id,
               name: product.name,
               description: product.description,
               price: product.price,
-              marketingPrice,
-              marketingDeliveryDays,
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
-              color: displayColor,
-              sizes: [...new Set(availableSizes)],
-              sizeMarketingStatus,
-              sizeMarketingPrice,
-              sizeMarketingDeliveryDays,
-              marketingStatus,
-              image_url: variantImage,
-              image_url_2: variantImage2,
-              image_url_3: variantImage3,
-              video_url: variantVideoUrl,
-              totalStock,
+              color: product.color,
+              image_url: product.image_url,
+              image_url_2: null,
+              image_url_3: null,
+              video_url: product.video_url,
               owner_id: product.owner_id,
-              isPartner: true,
+              sizes: sizeInfos,
             });
           }
-        } else {
-          if (product.size && ownStockCombinations.has(makeKey(product.name, product.color, product.size))) {
-            continue;
-          }
-          
-          displayItems.push({
-            id: `${product.id}_partner`,
-            productId: product.id,
-            name: product.name,
-            description: product.description,
-            price: product.price,
-            marketingPrice: null,
-            marketingDeliveryDays: null,
-            category: product.category,
-            category_2: (product as any).category_2,
-            category_3: (product as any).category_3,
-            color: product.color,
-            sizes: product.size ? [product.size] : [],
-            sizeMarketingStatus: {},
-            sizeMarketingPrice: {},
-            sizeMarketingDeliveryDays: {},
-            marketingStatus: null,
-            image_url: product.image_url,
-            image_url_2: null,
-            image_url_3: null,
-            video_url: product.video_url,
-            totalStock: product.stock_quantity,
-            owner_id: product.owner_id,
-            isPartner: true,
-          });
         }
+      }
+
+      // Convert card data map to display items
+      for (const [cardKey, cardData] of cardDataMap) {
+        const sizes = cardData.sizes.map(s => s.size);
+        const totalStock = cardData.sizes.reduce((sum, s) => sum + s.stock, 0);
+        
+        // Build maps per size
+        const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+        const sizeMarketingPrice: Record<string, number | null> = {};
+        const sizeMarketingDeliveryDays: Record<string, number | null> = {};
+        const sizeIsPartner: Record<string, boolean> = {};
+        
+        cardData.sizes.forEach(s => {
+          sizeMarketingStatus[s.size] = s.marketingStatus;
+          sizeMarketingPrice[s.size] = s.marketingPrice;
+          sizeMarketingDeliveryDays[s.size] = s.marketingDeliveryDays;
+          sizeIsPartner[s.size] = s.isPartner;
+        });
+        
+        // Determine marketing status for the card
+        const allStatuses = cardData.sizes.map(s => s.marketingStatus);
+        const marketingStatus = getPriorityMarketingStatus(allStatuses);
+        
+        const prioritySizeInfo = cardData.sizes.find(s => s.marketingStatus === marketingStatus);
+        const marketingPrice = prioritySizeInfo?.marketingPrice ?? null;
+        const marketingDeliveryDays = prioritySizeInfo?.marketingDeliveryDays ?? null;
+        
+        // isPartner = true only if ALL sizes are from partner
+        const allSizesArePartner = cardData.sizes.length > 0 && cardData.sizes.every(s => s.isPartner);
+        // hasPartnerSizes = true if ANY size is from partner
+        const hasPartnerSizes = cardData.sizes.some(s => s.isPartner);
+        
+        displayItems.push({
+          id: cardKey,
+          productId: cardData.productId,
+          name: cardData.name,
+          description: cardData.description,
+          price: cardData.price,
+          marketingPrice,
+          marketingDeliveryDays,
+          category: cardData.category,
+          category_2: cardData.category_2,
+          category_3: cardData.category_3,
+          color: cardData.color,
+          sizes: [...new Set(sizes)],
+          sizeMarketingStatus,
+          sizeMarketingPrice,
+          sizeMarketingDeliveryDays,
+          sizeIsPartner,
+          marketingStatus,
+          image_url: cardData.image_url,
+          image_url_2: cardData.image_url_2,
+          image_url_3: cardData.image_url_3,
+          video_url: cardData.video_url,
+          totalStock,
+          owner_id: cardData.owner_id,
+          isPartner: allSizesArePartner,
+          hasPartnerSizes,
+        });
       }
 
       return displayItems;
@@ -1335,8 +1410,8 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
           onClick={() => item.image_url && setImageOpen(true)}
         >
-          {/* Partner indicator - Visible to all users */}
-          {item.isPartner && (
+          {/* Partner indicator - Show if card has any sizes from partner */}
+          {item.hasPartnerSizes && (
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1345,7 +1420,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="text-xs">
-                  Produto de parceira
+                  {item.isPartner ? "Produto de parceira" : "Alguns tamanhos de parceira"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1463,16 +1538,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </div>
           )}
 
-          {/* Partner Shipping Notice */}
-          {item.isPartner && (
-            <div className="absolute bottom-6 left-2 right-2 z-20">
-              <div className="bg-amber-50/95 backdrop-blur-sm border border-amber-200 rounded-lg px-2 py-1.5">
-                <p className="text-[10px] text-amber-700 font-medium text-center">
-                  📦 Envio: 7-10 dias úteis
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Partner Shipping Notice removed - customer should not see explicit partner info */}
         </div>
 
         {/* Product Info */}
@@ -1528,38 +1594,57 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             return null;
           })()}
 
-          {/* Size Selector - Clean Pills with marketing status indicators */}
+          {/* Size Selector - Clean Pills with marketing status and partner indicators */}
           {item.sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {sortSizes(item.sizes).map(size => {
                 const sizeStatus = item.sizeMarketingStatus[size];
+                const isSizeFromPartner = item.sizeIsPartner?.[size] || false;
                 return (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => setSelectedSize(size === selectedSize ? "" : size)}
-                    className={cn(
-                      "min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium border transition-all touch-manipulation relative",
-                      selectedSize === size
-                        ? "border-gray-900 bg-gray-900 text-white"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
-                      // Marketing status ring indicator
-                      sizeStatus === "opportunity" && selectedSize !== size && "ring-1 ring-orange-400",
-                      sizeStatus === "presale" && selectedSize !== size && "ring-1 ring-purple-400",
-                      sizeStatus === "launch" && selectedSize !== size && "ring-1 ring-green-400"
-                    )}
-                  >
-                    {size}
-                    {/* Small dot indicator for marketing status */}
-                    {sizeStatus && selectedSize !== size && (
-                      <span className={cn(
-                        "absolute -top-1 -right-1 w-2 h-2 rounded-full",
-                        sizeStatus === "opportunity" && "bg-orange-500",
-                        sizeStatus === "presale" && "bg-purple-500",
-                        sizeStatus === "launch" && "bg-green-500"
-                      )} />
-                    )}
-                  </button>
+                  <TooltipProvider key={size} delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSize(size === selectedSize ? "" : size)}
+                          className={cn(
+                            "min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium border transition-all touch-manipulation relative",
+                            selectedSize === size
+                              ? "border-gray-900 bg-gray-900 text-white"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
+                            // Marketing status ring indicator
+                            sizeStatus === "opportunity" && selectedSize !== size && "ring-1 ring-orange-400",
+                            sizeStatus === "presale" && selectedSize !== size && "ring-1 ring-purple-400",
+                            sizeStatus === "launch" && selectedSize !== size && "ring-1 ring-green-400"
+                          )}
+                        >
+                          <span className="flex items-center gap-0.5">
+                            {size}
+                            {isSizeFromPartner && (
+                              <Link2 className={cn(
+                                "h-2.5 w-2.5 ml-0.5",
+                                selectedSize === size ? "text-white/70" : "text-primary/70"
+                              )} />
+                            )}
+                          </span>
+                          {/* Small dot indicator for marketing status */}
+                          {sizeStatus && selectedSize !== size && (
+                            <span className={cn(
+                              "absolute -top-1 -right-1 w-2 h-2 rounded-full",
+                              sizeStatus === "opportunity" && "bg-orange-500",
+                              sizeStatus === "presale" && "bg-purple-500",
+                              sizeStatus === "launch" && "bg-green-500"
+                            )} />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      {isSizeFromPartner && (
+                        <TooltipContent side="top" className="text-xs">
+                          Estoque de parceira
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 );
               })}
             </div>
