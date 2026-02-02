@@ -69,6 +69,7 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
+  suppliers?: { name: string } | null;
   product_variants?: Array<{
     id: string;
     size: string;
@@ -218,7 +219,8 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( id, size, color, stock_quantity )
+        product_variants ( id, size, color, stock_quantity ),
+        suppliers ( name )
       `)
       .eq("owner_id", user?.id)
       .order("created_at", { ascending: false });
@@ -484,8 +486,14 @@ export default function StockControl() {
       // Status filter
       const matchesStatus = filters.status === "all" || statusKey === filters.status;
       
-      // Supplier
-      const matchesSupplier = filters.supplier === "all" || p.supplier_id === filters.supplier;
+      // Supplier - compare by name to handle duplicated suppliers across users
+      const selectedSupplierName = filters.supplier === "all" 
+        ? null 
+        : suppliers.find(s => s.id === filters.supplier)?.name;
+      const productSupplierName = p.suppliers?.name;
+      const matchesSupplier = filters.supplier === "all" || 
+        (selectedSupplierName && productSupplierName && 
+         productSupplierName.toLowerCase() === selectedSupplierName.toLowerCase());
       
       // Color - check product color and variants
       const productColors = [p.color, ...(p.product_variants || []).map(v => v.color)].filter(Boolean);
