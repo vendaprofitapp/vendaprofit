@@ -1335,8 +1335,8 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
           onClick={() => item.image_url && setImageOpen(true)}
         >
-          {/* Partner indicator - Only visible to store owner */}
-          {isStoreOwner && item.isPartner && (
+          {/* Partner indicator - Visible to all users */}
+          {item.isPartner && (
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
