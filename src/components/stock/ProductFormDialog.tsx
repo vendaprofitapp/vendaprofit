@@ -81,16 +81,18 @@ interface ProductVariant {
   image_url?: string | null;
   image_url_2?: string | null;
   image_url_3?: string | null;
+  video_url?: string | null;
   marketing_status?: MarketingStatus;
   marketing_price?: number | null;
   marketing_delivery_days?: number | null;
 }
 
-// Structure to hold images per color
-interface ColorImages {
+// Structure to hold images and video per color
+interface ColorMedia {
   existingUrls: string[];
   newFiles: File[];
   newPreviewUrls: string[];
+  videoUrl: string | null;
 }
 
 interface ProductFormDialogProps {
@@ -119,7 +121,7 @@ export function ProductFormDialog({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
-  const [colorImages, setColorImages] = useState<{ [color: string]: ColorImages }>({});
+  const [colorImages, setColorImages] = useState<{ [color: string]: ColorMedia }>({});
   const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
   const [colorRefreshKey, setColorRefreshKey] = useState(0);
   
@@ -203,14 +205,15 @@ export function ProductFormDialog({
         image_url: v.image_url,
         image_url_2: v.image_url_2,
         image_url_3: v.image_url_3,
+        video_url: v.video_url || null,
         marketing_status: (v.marketing_status as MarketingStatus) || null,
         marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
         marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
       }));
       setProductVariants(variants);
       
-      // Build color images from variants
-      const images: { [color: string]: ColorImages } = {};
+      // Build color media from variants
+      const images: { [color: string]: ColorMedia } = {};
       const expanded: { [color: string]: boolean } = {};
       
       variants.forEach(v => {
@@ -223,9 +226,10 @@ export function ProductFormDialog({
           images[v.color] = {
             existingUrls,
             newFiles: [],
-            newPreviewUrls: []
+            newPreviewUrls: [],
+            videoUrl: v.video_url || null
           };
-          expanded[v.color] = existingUrls.length > 0;
+          expanded[v.color] = existingUrls.length > 0 || !!v.video_url;
         }
       });
       
@@ -281,8 +285,8 @@ export function ProductFormDialog({
   const handleColorImageUpload = (color: string, files: FileList | null) => {
     if (!files || !color) return;
     
-    const currentImages = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
-    const totalCurrent = currentImages.existingUrls.length + currentImages.newFiles.length;
+    const currentMedia = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
+    const totalCurrent = currentMedia.existingUrls.length + currentMedia.newFiles.length;
     const available = 3 - totalCurrent;
     
     if (available <= 0) {
@@ -296,9 +300,21 @@ export function ProductFormDialog({
     setColorImages(prev => ({
       ...prev,
       [color]: {
-        existingUrls: currentImages.existingUrls,
-        newFiles: [...currentImages.newFiles, ...newFiles],
-        newPreviewUrls: [...currentImages.newPreviewUrls, ...newUrls]
+        existingUrls: currentMedia.existingUrls,
+        newFiles: [...currentMedia.newFiles, ...newFiles],
+        newPreviewUrls: [...currentMedia.newPreviewUrls, ...newUrls],
+        videoUrl: currentMedia.videoUrl
+      }
+    }));
+  };
+
+  // Handle video change for a specific color
+  const handleColorVideoChange = (color: string, videoUrl: string | null) => {
+    setColorImages(prev => ({
+      ...prev,
+      [color]: {
+        ...(prev[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null }),
+        videoUrl
       }
     }));
   };
@@ -404,7 +420,7 @@ export function ProductFormDialog({
       if (value && !colorImages[value]) {
         setColorImages(prev => ({
           ...prev,
-          [value]: { existingUrls: [], newFiles: [], newPreviewUrls: [] }
+          [value]: { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null }
         }));
       }
       
@@ -558,6 +574,7 @@ export function ProductFormDialog({
       const variantsToUpsert = deduplicatedVariants.map((v) => {
         const colorTrimmed = (v.color || "").trim();
         const urls = colorTrimmed ? (colorImageUrls[colorTrimmed] || []) : [];
+        const colorMedia = colorTrimmed ? colorImages[colorTrimmed] : null;
         return {
           product_id: productId,
           size: v.size,
@@ -568,7 +585,8 @@ export function ProductFormDialog({
           marketing_delivery_days: v.marketing_delivery_days,
           image_url: urls[0] || null,
           image_url_2: urls[1] || null,
-          image_url_3: urls[2] || null
+          image_url_3: urls[2] || null,
+          video_url: colorMedia?.videoUrl || null
         };
       });
 
@@ -603,6 +621,7 @@ export function ProductFormDialog({
                 image_url: variant.image_url,
                 image_url_2: variant.image_url_2,
                 image_url_3: variant.image_url_3,
+                video_url: variant.video_url,
               })
               .eq("id", existingId);
 
@@ -684,8 +703,8 @@ export function ProductFormDialog({
 
   // Handle images imported from supplier link for a specific color
   const handleColorImagesFromSupplier = (color: string, urls: string[]) => {
-    const currentImages = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
-    const totalCurrent = currentImages.existingUrls.length + currentImages.newFiles.length;
+    const currentMedia = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
+    const totalCurrent = currentMedia.existingUrls.length + currentMedia.newFiles.length;
     const available = 3 - totalCurrent;
     
     if (available <= 0) {
@@ -698,9 +717,10 @@ export function ProductFormDialog({
     setColorImages(prev => ({
       ...prev,
       [color]: {
-        existingUrls: [...currentImages.existingUrls, ...urlsToAdd],
-        newFiles: currentImages.newFiles,
-        newPreviewUrls: currentImages.newPreviewUrls
+        existingUrls: [...currentMedia.existingUrls, ...urlsToAdd],
+        newFiles: currentMedia.newFiles,
+        newPreviewUrls: currentMedia.newPreviewUrls,
+        videoUrl: currentMedia.videoUrl
       }
     }));
     
@@ -731,15 +751,16 @@ export function ProductFormDialog({
           existingUrls: newExistingUrls,
           newFiles,
           newPreviewUrls,
+          videoUrl: current.videoUrl
         }
       };
     });
   };
 
-  // Render image section for a color
-  const renderColorImages = (color: string) => {
-    const images = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [] };
-    const totalColorImages = images.existingUrls.length + images.newPreviewUrls.length;
+  // Render media section for a color (images + video)
+  const renderColorMedia = (color: string) => {
+    const media = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
+    const totalColorImages = media.existingUrls.length + media.newPreviewUrls.length;
     
     return (
       <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2 space-y-3">
@@ -768,13 +789,21 @@ export function ProductFormDialog({
         
         {/* Reorderable image list */}
         <ReorderableImageList
-          existingUrls={images.existingUrls}
-          newPreviewUrls={images.newPreviewUrls}
+          existingUrls={media.existingUrls}
+          newPreviewUrls={media.newPreviewUrls}
           maxImages={3}
           onReorder={(newExisting, newNew) => handleColorImageReorder(color, newExisting, newNew)}
           onRemove={(index, isExisting) => removeColorImage(color, index, isExisting)}
           onAddClick={() => imageInputRefs.current[color]?.click()}
         />
+        
+        {/* Video upload for this color */}
+        <div className="pt-2 border-t border-dashed">
+          <ProductVideoUpload
+            value={media.videoUrl}
+            onChange={(url) => handleColorVideoChange(color, url)}
+          />
+        </div>
       </div>
     );
   };
@@ -851,14 +880,6 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Video Upload Section */}
-      <div className="col-span-1 sm:col-span-2">
-        <ProductVideoUpload
-          value={form.video_url}
-          onChange={(url) => setForm({ ...form, video_url: url })}
-        />
-      </div>
-      
       {/* Variants Section grouped by Color */}
       <div className="col-span-1 sm:col-span-2 space-y-3">
         <div className="flex items-center justify-between">
@@ -895,8 +916,8 @@ export function ProductFormDialog({
                 </CollapsibleTrigger>
                 
                 <CollapsibleContent>
-                  {/* Images for this color */}
-                  {color !== "__no_color__" && renderColorImages(color)}
+                  {/* Media (images + video) for this color */}
+                  {color !== "__no_color__" && renderColorMedia(color)}
                   
                   {/* Variants for this color */}
                   <div className="space-y-2 mt-3">

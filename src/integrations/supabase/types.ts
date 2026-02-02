@@ -1310,6 +1310,7 @@ export type Database = {
           sku: string | null
           stock_quantity: number
           updated_at: string
+          video_url: string | null
         }
         Insert: {
           color?: string | null
@@ -1326,6 +1327,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number
           updated_at?: string
+          video_url?: string | null
         }
         Update: {
           color?: string | null
@@ -1342,6 +1344,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number
           updated_at?: string
+          video_url?: string | null
         }
         Relationships: [
           {
