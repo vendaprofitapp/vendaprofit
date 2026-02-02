@@ -513,13 +513,17 @@ export default function StockControl() {
         (selectedSupplierName && productSupplierName && 
          productSupplierName.toLowerCase() === selectedSupplierName.toLowerCase());
       
-      // Color - check product color and variants
+      // Color - check product color and variants (case-insensitive)
       const productColors = [p.color, ...(p.product_variants || []).map(v => v.color)].filter(Boolean);
-      const matchesColor = filters.color === "all" || productColors.includes(filters.color);
+      const normalizedFilterColor = normalize(filters.color);
+      const matchesColor = filters.color === "all" || 
+        productColors.some(c => normalize(c) === normalizedFilterColor);
       
-      // Size - check product size and variants
+      // Size - check product size and variants (case-insensitive)
       const productSizes = [p.size, ...(p.product_variants || []).map(v => v.size)].filter(Boolean);
-      const matchesSize = filters.size === "all" || productSizes.includes(filters.size);
+      const normalizedFilterSize = normalize(filters.size);
+      const matchesSize = filters.size === "all" || 
+        productSizes.some(s => normalize(s) === normalizedFilterSize);
       
       // Price range
       const minPrice = filters.minPrice ? Number(filters.minPrice) : null;
