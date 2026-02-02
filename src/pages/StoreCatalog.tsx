@@ -1341,7 +1341,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
     if (mediaItems.length <= 1) return;
 
     const currentMedia = mediaItems[currentMediaIndex];
-    const delay = currentMedia?.type === 'video' ? 10000 : 3000;
+    const delay = currentMedia?.type === 'video' ? 15000 : 3000;
 
     intervalRef.current = setTimeout(() => {
       setCurrentMediaIndex(prev => (prev + 1) % mediaItems.length);
