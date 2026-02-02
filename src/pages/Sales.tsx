@@ -150,6 +150,7 @@ export default function Sales() {
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
   const [selectedProductForVariant, setSelectedProductForVariant] = useState<Product | null>(null);
+  const [selectedProductPartnerInfo, setSelectedProductPartnerInfo] = useState<{ isPartner: boolean; ownerName?: string } | null>(null);
 
   // Partner stock dialog
   const [partnerProducts, setPartnerProducts] = useState<PartnerProduct[]>([]);
@@ -260,18 +261,70 @@ export default function Sales() {
     enabled: !!user,
   });
 
-  // Fetch user's groups
-  const { data: userGroups = [] } = useQuery({
-    queryKey: ["user-groups"],
+  // Fetch user's groups (with is_direct flag)
+  const { data: userGroupsData = [] } = useQuery({
+    queryKey: ["user-groups-with-direct"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("group_members")
-        .select("group_id")
+        .select("group_id, groups!inner(id, is_direct)")
         .eq("user_id", user?.id);
       if (error) throw error;
-      return data.map(g => g.group_id);
+      return data;
     },
     enabled: !!user,
+  });
+
+  // Extract just group IDs for queries that need them
+  const userGroups = useMemo(() => userGroupsData.map(g => g.group_id), [userGroupsData]);
+  
+  // Get direct (1-1) partnership group IDs
+  const directGroupIds = useMemo(() => 
+    userGroupsData
+      .filter(g => (g.groups as any)?.is_direct === true)
+      .map(g => g.group_id),
+    [userGroupsData]
+  );
+
+  // Fetch products from 1-1 partners to show in product list
+  const { data: partnerProductsForList = [] } = useQuery({
+    queryKey: ["partner-products-for-sale-list", directGroupIds, profiles],
+    queryFn: async () => {
+      if (directGroupIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("product_partnerships")
+        .select(`
+          product_id,
+          group_id,
+          product:products!inner(
+            id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size
+          )
+        `)
+        .in("group_id", directGroupIds)
+        .neq("products.owner_id", user?.id)
+        .eq("products.is_active", true)
+        .gt("products.stock_quantity", 0);
+      
+      if (error) throw error;
+      
+      // Deduplicate by product id
+      const uniqueById = new Map<string, any>();
+      for (const row of data || []) {
+        const product = (row as any).product;
+        if (product?.id && !uniqueById.has(product.id)) {
+          const owner = profiles.find(p => p.id === product.owner_id);
+          uniqueById.set(product.id, {
+            ...product,
+            isPartner: true,
+            ownerName: owner?.full_name || "Parceira",
+          });
+        }
+      }
+      
+      return Array.from(uniqueById.values()) as (Product & { isPartner: boolean; ownerName: string })[];
+    },
+    enabled: !!user && directGroupIds.length > 0 && profiles.length > 0,
   });
 
   // Fetch product partnerships for user's own products (to detect when own stock is in a partnership)
@@ -900,8 +953,13 @@ export default function Sales() {
   };
 
   // Opens variant selection dialog before adding to cart
-  const handleProductClick = (product: Product) => {
+  const handleProductClick = (product: Product & { isPartner?: boolean; ownerName?: string }) => {
     setSelectedProductForVariant(product);
+    setSelectedProductPartnerInfo(
+      product.isPartner 
+        ? { isPartner: true, ownerName: product.ownerName } 
+        : null
+    );
     setShowVariantDialog(true);
     setProductSearch("");
   };
@@ -946,6 +1004,7 @@ export default function Sales() {
 
     setShowVariantDialog(false);
     setSelectedProductForVariant(null);
+    setSelectedProductPartnerInfo(null);
   };
 
   const addToCart = (product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
@@ -1184,6 +1243,28 @@ export default function Sales() {
   const filteredOwnProducts = ownProducts.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
+
+  // Filter partner products for the search list
+  const filteredPartnerProducts = useMemo(() => {
+    if (!productSearch || productSearch.length < 2) return [];
+    const search = productSearch.toLowerCase();
+    return partnerProductsForList.filter((p) =>
+      p.name.toLowerCase().includes(search)
+    );
+  }, [partnerProductsForList, productSearch]);
+
+  // Combined list: own products first, then partner products (excluding duplicates by name)
+  const combinedProductsList = useMemo(() => {
+    const ownNames = new Set(filteredOwnProducts.map(p => p.name.toLowerCase().trim()));
+    // Filter out partner products that the user already has with the same name
+    const uniquePartnerProducts = filteredPartnerProducts.filter(
+      pp => !ownNames.has(pp.name.toLowerCase().trim())
+    );
+    return {
+      ownProducts: filteredOwnProducts,
+      partnerProducts: uniquePartnerProducts,
+    };
+  }, [filteredOwnProducts, filteredPartnerProducts]);
 
   const filteredSales = sales.filter(
     (sale) =>
@@ -1574,7 +1655,7 @@ export default function Sales() {
             {/* Left: Product Selection */}
             <div className="space-y-4">
               <div>
-                <Label>Buscar Produto (Seu Estoque)</Label>
+                <Label>Buscar Produto</Label>
                 <Input
                   ref={productSearchInputRef}
                   placeholder="Digite o nome do produto..."
@@ -1587,16 +1668,18 @@ export default function Sales() {
                   }}
                   autoComplete="off"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Se não encontrar no seu estoque, buscaremos nos parceiros
-                </p>
+                {directGroupIds.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Mostrando seu estoque e de parceiras 1-1
+                  </p>
+                )}
               </div>
 
               {productSearch && productSearch.length >= 2 && (
-                <div className="border rounded-lg max-h-48 overflow-y-auto">
-                  {filteredOwnProducts.length === 0 ? (
+                <div className="border rounded-lg max-h-64 overflow-y-auto">
+                  {combinedProductsList.ownProducts.length === 0 && combinedProductsList.partnerProducts.length === 0 ? (
                     <div className="p-3">
-                      <p className="text-sm text-muted-foreground">Nenhum produto encontrado no seu estoque</p>
+                      <p className="text-sm text-muted-foreground">Nenhum produto encontrado</p>
                       <Button 
                         variant="link" 
                         className="p-0 h-auto text-sm text-primary hover:text-primary/80"
@@ -1606,29 +1689,66 @@ export default function Sales() {
                           handleProductSearch(productSearch, { forcePartner: true });
                         }}
                       >
-                        Buscar nos estoques parceiros
+                        Buscar nos estoques de grupos
                       </Button>
                     </div>
                   ) : (
                     <>
-                      {filteredOwnProducts.slice(0, 20).map((product) => (
-                        <button
-                          type="button"
-                          key={product.id}
-                          className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
-                          onClick={() => handleProductClick(product)}
-                        >
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Estoque: {product.stock_quantity} • Toque para selecionar variante
-                            </p>
+                      {/* Own products section */}
+                      {combinedProductsList.ownProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-secondary/30 text-xs font-medium text-muted-foreground">
+                            Seu Estoque
                           </div>
-                          <p className="font-semibold">
-                            R$ {product.price.toFixed(2).replace(".", ",")}
-                          </p>
-                        </button>
-                      ))}
+                          {combinedProductsList.ownProducts.slice(0, 10).map((product) => (
+                            <button
+                              type="button"
+                              key={product.id}
+                              className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => handleProductClick(product)}
+                            >
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Estoque: {product.stock_quantity} • Toque para selecionar
+                                </p>
+                              </div>
+                              <p className="font-semibold">
+                                R$ {product.price.toFixed(2).replace(".", ",")}
+                              </p>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      
+                      {/* Partner products section */}
+                      {combinedProductsList.partnerProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-primary/10 text-xs font-medium text-primary flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            Estoque de Parceiras
+                          </div>
+                          {combinedProductsList.partnerProducts.slice(0, 10).map((product) => (
+                            <button
+                              type="button"
+                              key={`partner-${product.id}`}
+                              className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => handleProductClick(product as Product)}
+                            >
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-primary">
+                                  {product.ownerName} • {product.stock_quantity} un
+                                </p>
+                              </div>
+                              <p className="font-semibold">
+                                R$ {product.price.toFixed(2).replace(".", ",")}
+                              </p>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      
                       <div className="p-2 border-t">
                         <Button 
                           variant="link" 
@@ -1639,7 +1759,7 @@ export default function Sales() {
                             handleProductSearch(productSearch, { forcePartner: true });
                           }}
                         >
-                          Buscar também nos estoques parceiros
+                          Buscar também em outros grupos
                         </Button>
                       </div>
                     </>

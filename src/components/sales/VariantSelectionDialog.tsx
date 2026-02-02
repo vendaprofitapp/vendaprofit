@@ -119,7 +119,11 @@ export function VariantSelectionDialog({
       let partnerExtended: ExtendedVariant[] = [];
       
       if (userGroups.length > 0 && userId) {
+        // Normalize the product name for comparison (remove extra spaces, lowercase)
+        const normalizedName = prod.name.toLowerCase().trim().replace(/\s+/g, ' ');
+        
         // Find partner products with same name that are shared with user
+        // Use % wildcards for more flexible matching
         const { data: partnerProducts, error: partnerError } = await supabase
           .from("product_partnerships")
           .select(`
@@ -134,19 +138,24 @@ export function VariantSelectionDialog({
           `)
           .in("group_id", userGroups)
           .neq("products.owner_id", userId)
-          .eq("products.is_active", true)
-          .ilike("products.name", prod.name);
+          .eq("products.is_active", true);
 
         if (!partnerError && partnerProducts) {
-          // Get unique partner product IDs
+          // Get unique partner product IDs that match the name (normalized comparison)
           const partnerProductIds = new Set<string>();
           const productOwnerMap = new Map<string, string>();
           
           for (const pp of partnerProducts) {
             const p = (pp as any).product;
             if (p && p.id !== prod.id) {
-              partnerProductIds.add(p.id);
-              productOwnerMap.set(p.id, p.owner_id);
+              // Normalize partner product name for comparison
+              const partnerNormalizedName = p.name.toLowerCase().trim().replace(/\s+/g, ' ');
+              
+              // Match if names are equal after normalization
+              if (partnerNormalizedName === normalizedName) {
+                partnerProductIds.add(p.id);
+                productOwnerMap.set(p.id, p.owner_id);
+              }
             }
           }
 
