@@ -55,6 +55,7 @@ interface ProductVariant {
   image_url: string | null;
   image_url_2: string | null;
   image_url_3: string | null;
+  video_url: string | null;
   marketing_status: MarketingStatus;
   marketing_price: number | null;
   marketing_delivery_days: number | null;
@@ -308,10 +309,10 @@ export default function StoreCatalog() {
       const allProducts = [...ownProducts, ...partnerProducts];
       if (allProducts.length === 0) return [];
 
-      // Fetch variants for all products (including marketing fields)
+      // Fetch variants for all products (including marketing fields and video)
       const { data: variants } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, marketing_status, marketing_price, marketing_delivery_days")
+        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_price, marketing_delivery_days")
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
@@ -355,11 +356,14 @@ export default function StoreCatalog() {
             const sizes = colorVariants.map(v => v.size).filter(Boolean);
             const totalStock = colorVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             
-            // Get all images from variants for this color (in order)
+            // Get all images and video from variants for this color (in order)
             const variantWithImages = colorVariants.find(v => v.image_url);
             const variantImage = variantWithImages?.image_url || product.image_url;
             const variantImage2 = variantWithImages?.image_url_2 || null;
             const variantImage3 = variantWithImages?.image_url_3 || null;
+            // Video: prioritize variant video, fallback to product video
+            const variantWithVideo = colorVariants.find(v => v.video_url);
+            const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
             
             // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
@@ -406,7 +410,7 @@ export default function StoreCatalog() {
               image_url: variantImage,
               image_url_2: variantImage2,
               image_url_3: variantImage3,
-              video_url: product.video_url,
+              video_url: variantVideoUrl,
               totalStock,
               owner_id: product.owner_id,
               isPartner: false,
@@ -476,11 +480,14 @@ export default function StoreCatalog() {
             const filteredVariants = colorVariants.filter(v => availableSizes.includes(v.size));
             const totalStock = filteredVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
             
-            // Get all images from variants for this color (in order)
+            // Get all images and video from variants for this color (in order)
             const variantWithImages = filteredVariants.find(v => v.image_url);
             const variantImage = variantWithImages?.image_url || product.image_url;
             const variantImage2 = variantWithImages?.image_url_2 || null;
             const variantImage3 = variantWithImages?.image_url_3 || null;
+            // Video: prioritize variant video, fallback to product video
+            const variantWithVideo = filteredVariants.find(v => v.video_url);
+            const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
 
             // Build marketing status/price/delivery maps per size
             const sizeMarketingStatus: Record<string, MarketingStatus> = {};
@@ -523,7 +530,7 @@ export default function StoreCatalog() {
               image_url: variantImage,
               image_url_2: variantImage2,
               image_url_3: variantImage3,
-              video_url: product.video_url,
+              video_url: variantVideoUrl,
               totalStock,
               owner_id: product.owner_id,
               isPartner: true,
@@ -1537,7 +1544,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
         </div>
       </div>
 
-      {/* Image Lightbox Dialog */}
+      {/* Image Lightbox Dialog with Navigation */}
       <Dialog open={imageOpen} onOpenChange={setImageOpen}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none">
           <button
@@ -1546,19 +1553,79 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           >
             <X className="h-6 w-6" />
           </button>
-          {item.image_url && (
-            <div className="flex items-center justify-center p-4 min-h-[50vh]">
+          
+          {/* Lightbox Navigation - Previous */}
+          {mediaItems.length > 1 && (
+            <button
+              onClick={() => setCurrentMediaIndex(prev => (prev - 1 + mediaItems.length) % mediaItems.length)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            >
+              <ChevronLeft className="h-8 w-8" />
+            </button>
+          )}
+          
+          {/* Lightbox Navigation - Next */}
+          {mediaItems.length > 1 && (
+            <button
+              onClick={() => setCurrentMediaIndex(prev => (prev + 1) % mediaItems.length)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            >
+              <ChevronRight className="h-8 w-8" />
+            </button>
+          )}
+          
+          {/* Current Media Display */}
+          <div className="flex items-center justify-center p-4 min-h-[50vh]">
+            {mediaItems.length > 0 && mediaItems[currentMediaIndex]?.type === 'image' ? (
+              <img
+                src={mediaItems[currentMediaIndex].url}
+                alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              />
+            ) : mediaItems.length > 0 && mediaItems[currentMediaIndex]?.type === 'video' ? (
+              <video
+                src={mediaItems[currentMediaIndex].url}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+                controls
+                autoPlay
+                muted
+              />
+            ) : item.image_url ? (
               <img
                 src={item.image_url}
                 alt={`${item.name}${item.color ? ` - ${item.color}` : ''}`}
                 className="max-w-full max-h-[85vh] object-contain rounded-lg"
               />
+            ) : null}
+          </div>
+          
+          {/* Media Indicators */}
+          {mediaItems.length > 1 && (
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex gap-2">
+              {mediaItems.map((media, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentMediaIndex(index)}
+                  className={cn(
+                    "w-2.5 h-2.5 rounded-full transition-all",
+                    currentMediaIndex === index 
+                      ? "bg-white w-6" 
+                      : "bg-white/50 hover:bg-white/80"
+                  )}
+                />
+              ))}
             </div>
           )}
+          
           <div className="absolute bottom-4 left-0 right-0 text-center">
             <p className="text-white font-medium text-lg drop-shadow-lg">
               {item.name}
               {item.color && <span className="text-white/80"> - {item.color}</span>}
+              {mediaItems.length > 1 && (
+                <span className="text-white/60 ml-2">
+                  ({currentMediaIndex + 1}/{mediaItems.length})
+                </span>
+              )}
             </p>
           </div>
         </DialogContent>
