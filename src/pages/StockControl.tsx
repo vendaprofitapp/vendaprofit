@@ -475,9 +475,27 @@ export default function StockControl() {
       const minLevelNum = Number(p.min_stock_level) || 0;
       const statusKey = getStockStatusKey(stockNum, minLevelNum);
       
-      // Search term - normalize product name for comparison
-      const normalizedName = p.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const matchesTerm = !term || normalizedName.includes(term);
+      // Search term - normalize and search in name, SKU, colors, and sizes
+      const normalize = (str: string | null | undefined) => 
+        (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      const normalizedName = normalize(p.name);
+      const normalizedSku = normalize(p.sku);
+      const normalizedProductColor = normalize(p.color);
+      const normalizedProductSize = normalize(p.size);
+      
+      // Get all variant colors and sizes
+      const variantColors = (p.product_variants || []).map(v => normalize(v.color));
+      const variantSizes = (p.product_variants || []).map(v => normalize(v.size));
+      
+      // Search across name, SKU, colors, and sizes
+      const matchesTerm = !term || 
+        normalizedName.includes(term) ||
+        normalizedSku.includes(term) ||
+        normalizedProductColor.includes(term) ||
+        normalizedProductSize.includes(term) ||
+        variantColors.some(c => c.includes(term)) ||
+        variantSizes.some(s => s.includes(term));
       
       // Category - check all 3 category fields
       const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean) as string[];
@@ -528,7 +546,7 @@ export default function StockControl() {
         matchesMaxStock
       );
     });
-  }, [products, searchTerm, filters]);
+  }, [products, searchTerm, filters, suppliers]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
