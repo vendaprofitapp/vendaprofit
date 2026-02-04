@@ -48,7 +48,22 @@ const sortSizes = (sizes: string[]): string[] => {
   });
 };
 
-type MarketingStatus = "opportunity" | "presale" | "launch" | "secret" | null;
+type MarketingStatusValue = "opportunity" | "presale" | "launch" | "secret";
+type MarketingStatus = MarketingStatusValue[] | null;
+
+// Helper to check if a marketing status array includes a specific value
+const hasStatus = (status: MarketingStatus, value: MarketingStatusValue): boolean => 
+  status?.includes(value) ?? false;
+
+// Helper to get display status (priority: opportunity > presale > launch > secret)
+const getDisplayStatus = (status: MarketingStatus): MarketingStatusValue | null => {
+  if (!status || status.length === 0) return null;
+  if (status.includes("opportunity")) return "opportunity";
+  if (status.includes("presale")) return "presale";
+  if (status.includes("launch")) return "launch";
+  if (status.includes("secret")) return "secret";
+  return null;
+};
 
 interface ProductVariant {
   id: string;
@@ -183,7 +198,7 @@ export default function StoreCatalog() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showOpportunities, setShowOpportunities] = useState(false);
-  const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatus | "all">("all");
+  const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatusValue | "all">("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [customerFilters, setCustomerFilters] = useState<CustomerFiltersState>({
@@ -409,10 +424,19 @@ export default function StoreCatalog() {
       // Note: 'secret' is handled separately and not prioritized here
       const getPriorityMarketingStatus = (statuses: MarketingStatus[]): MarketingStatus => {
         // Priority: opportunity > presale > launch > secret > null
-        if (statuses.includes("opportunity")) return "opportunity";
-        if (statuses.includes("presale")) return "presale";
-        if (statuses.includes("launch")) return "launch";
-        if (statuses.includes("secret")) return "secret";
+        // Flatten all arrays and check for each status
+        for (const s of statuses) {
+          if (s?.includes("opportunity")) return ["opportunity"];
+        }
+        for (const s of statuses) {
+          if (s?.includes("presale")) return ["presale"];
+        }
+        for (const s of statuses) {
+          if (s?.includes("launch")) return ["launch"];
+        }
+        for (const s of statuses) {
+          if (s?.includes("secret")) return ["secret"];
+        }
         return null;
       };
 
@@ -456,7 +480,7 @@ export default function StoreCatalog() {
       for (const product of ownProducts) {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
-          marketing_status: (v.marketing_status as MarketingStatus) || null,
+          marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
           marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
@@ -548,7 +572,7 @@ export default function StoreCatalog() {
       for (const product of partnerProducts) {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
-          marketing_status: (v.marketing_status as MarketingStatus) || null,
+          marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
           marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
@@ -807,7 +831,7 @@ export default function StoreCatalog() {
       if (secretAreaUnlocked) return item; // If unlocked, show all
       
       // Filter sizes that are NOT secret
-      const nonSecretSizes = item.sizes.filter(size => item.sizeMarketingStatus[size] !== 'secret');
+      const nonSecretSizes = item.sizes.filter(size => !hasStatus(item.sizeMarketingStatus[size], "secret"));
       
       // If all sizes are secret, exclude the entire item
       if (nonSecretSizes.length === 0) return null;
@@ -829,9 +853,9 @@ export default function StoreCatalog() {
         // Recalculate marketing status for the card (excluding secret)
         const nonSecretStatuses = nonSecretSizes.map(s => newSizeMarketingStatus[s]);
         let newMarketingStatus: MarketingStatus = null;
-        if (nonSecretStatuses.includes("opportunity")) newMarketingStatus = "opportunity";
-        else if (nonSecretStatuses.includes("presale")) newMarketingStatus = "presale";
-        else if (nonSecretStatuses.includes("launch")) newMarketingStatus = "launch";
+        if (nonSecretStatuses.some(s => hasStatus(s, "opportunity"))) newMarketingStatus = ["opportunity"];
+        else if (nonSecretStatuses.some(s => hasStatus(s, "presale"))) newMarketingStatus = ["presale"];
+        else if (nonSecretStatuses.some(s => hasStatus(s, "launch"))) newMarketingStatus = ["launch"];
         
         return {
           ...item,
@@ -864,7 +888,7 @@ export default function StoreCatalog() {
         const matchingSizeDeliveryDays: Record<string, number | null> = {};
         
         Object.entries(item.sizeMarketingStatus).forEach(([size, status]) => {
-          if (status === selectedMarketingFilter) {
+          if (hasStatus(status, selectedMarketingFilter as MarketingStatusValue)) {
             matchingSizes.push(size);
             matchingSizeStatuses[size] = status;
             matchingSizePrices[size] = item.sizeMarketingPrice[size] ?? null;
@@ -901,7 +925,7 @@ export default function StoreCatalog() {
             sizeMarketingStatus: matchingSizeStatuses,
             sizeMarketingPrice: matchingSizePrices,
             sizeMarketingDeliveryDays: matchingSizeDeliveryDays,
-            marketingStatus: selectedMarketingFilter,
+            marketingStatus: [selectedMarketingFilter as MarketingStatusValue],
             marketingPrice,
             marketingDeliveryDays,
           });
@@ -1750,20 +1774,20 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           )}
 
           {/* Marketing Status Badge - Top Right */}
-          {item.marketingStatus && (
+          {item.marketingStatus && item.marketingStatus.length > 0 && (
             <Badge 
               className={cn(
                 "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1",
-                item.marketingStatus === "opportunity" && "bg-orange-500 text-white",
-                item.marketingStatus === "presale" && "bg-purple-500 text-white",
-                item.marketingStatus === "launch" && "bg-green-500 text-white",
-                item.marketingStatus === "secret" && "bg-rose-500 text-white"
+                hasStatus(item.marketingStatus, "opportunity") && "bg-orange-500 text-white",
+                hasStatus(item.marketingStatus, "presale") && !hasStatus(item.marketingStatus, "opportunity") && "bg-purple-500 text-white",
+                hasStatus(item.marketingStatus, "launch") && !hasStatus(item.marketingStatus, "opportunity") && !hasStatus(item.marketingStatus, "presale") && "bg-green-500 text-white",
+                hasStatus(item.marketingStatus, "secret") && !hasStatus(item.marketingStatus, "opportunity") && !hasStatus(item.marketingStatus, "presale") && !hasStatus(item.marketingStatus, "launch") && "bg-rose-500 text-white"
               )}
             >
-              {item.marketingStatus === "opportunity" && <><Flame className="h-3 w-3" /> Oportunidade</>}
-              {item.marketingStatus === "presale" && <><Clock className="h-3 w-3" /> Pré-venda</>}
-              {item.marketingStatus === "launch" && <><Rocket className="h-3 w-3" /> Lançamento</>}
-              {item.marketingStatus === "secret" && <><Lock className="h-3 w-3" /> Exclusivo</>}
+              {hasStatus(item.marketingStatus, "opportunity") && <><Flame className="h-3 w-3" /> Oportunidade</>}
+              {hasStatus(item.marketingStatus, "presale") && !hasStatus(item.marketingStatus, "opportunity") && <><Clock className="h-3 w-3" /> Pré-venda</>}
+              {hasStatus(item.marketingStatus, "launch") && !hasStatus(item.marketingStatus, "opportunity") && !hasStatus(item.marketingStatus, "presale") && <><Rocket className="h-3 w-3" /> Lançamento</>}
+              {hasStatus(item.marketingStatus, "secret") && !hasStatus(item.marketingStatus, "opportunity") && !hasStatus(item.marketingStatus, "presale") && !hasStatus(item.marketingStatus, "launch") && <><Lock className="h-3 w-3" /> Exclusivo</>}
             </Badge>
           )}
 
@@ -1905,8 +1929,8 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
               ? item.sizeMarketingDeliveryDays?.[selectedSize] 
               : item.marketingDeliveryDays;
             const isPresaleItem = selectedSize 
-              ? item.sizeMarketingStatus?.[selectedSize] === "presale"
-              : item.marketingStatus === "presale";
+              ? hasStatus(item.sizeMarketingStatus?.[selectedSize], "presale")
+              : hasStatus(item.marketingStatus, "presale");
               
             if (isPresaleItem && deliveryDays) {
               return (
@@ -1938,9 +1962,9 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                               ? "border-gray-900 bg-gray-900 text-white"
                               : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
                             // Marketing status ring indicator
-                            sizeStatus === "opportunity" && selectedSize !== size && "ring-1 ring-orange-400",
-                            sizeStatus === "presale" && selectedSize !== size && "ring-1 ring-purple-400",
-                            sizeStatus === "launch" && selectedSize !== size && "ring-1 ring-green-400"
+                            hasStatus(sizeStatus, "opportunity") && selectedSize !== size && "ring-1 ring-orange-400",
+                            hasStatus(sizeStatus, "presale") && selectedSize !== size && "ring-1 ring-purple-400",
+                            hasStatus(sizeStatus, "launch") && selectedSize !== size && "ring-1 ring-green-400"
                           )}
                         >
                           <span className="flex items-center gap-0.5">
@@ -1953,12 +1977,12 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                             )}
                           </span>
                           {/* Small dot indicator for marketing status */}
-                          {sizeStatus && selectedSize !== size && (
+                          {sizeStatus && sizeStatus.length > 0 && selectedSize !== size && (
                             <span className={cn(
                               "absolute -top-1 -right-1 w-2 h-2 rounded-full",
-                              sizeStatus === "opportunity" && "bg-orange-500",
-                              sizeStatus === "presale" && "bg-purple-500",
-                              sizeStatus === "launch" && "bg-green-500"
+                              hasStatus(sizeStatus, "opportunity") && "bg-orange-500",
+                              hasStatus(sizeStatus, "presale") && !hasStatus(sizeStatus, "opportunity") && "bg-purple-500",
+                              hasStatus(sizeStatus, "launch") && !hasStatus(sizeStatus, "opportunity") && !hasStatus(sizeStatus, "presale") && "bg-green-500"
                             )} />
                           )}
                         </button>
@@ -1979,8 +2003,8 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           {(() => {
             // Determine if selected size is presale or if product has presale marketing
             const selectedSizeStatus = selectedSize ? item.sizeMarketingStatus[selectedSize] : null;
-            const isPresale = selectedSizeStatus === "presale" || 
-              (!selectedSize && item.marketingStatus === "presale");
+            const isPresale = hasStatus(selectedSizeStatus, "presale") || 
+              (!selectedSize && hasStatus(item.marketingStatus, "presale"));
             
             return (
               <Button
