@@ -195,6 +195,41 @@ export default function StoreCatalog() {
   const [secretAreaUnlocked, setSecretAreaUnlocked] = useState(false);
   const [showSecretDialog, setShowSecretDialog] = useState(false);
   const [secretPassword, setSecretPassword] = useState("");
+  const [viewingSecretArea, setViewingSecretArea] = useState(false);
+
+  // Session persistence for secret area
+  useEffect(() => {
+    if (slug) {
+      const sessionKey = `secret_area_${slug}`;
+      const isUnlocked = sessionStorage.getItem(sessionKey) === 'true';
+      if (isUnlocked) {
+        setSecretAreaUnlocked(true);
+      }
+    }
+  }, [slug]);
+
+  // Save to session when unlocked
+  const handleSecretAreaUnlock = (password: string) => {
+    if (password === store?.secret_area_password) {
+      setSecretAreaUnlocked(true);
+      setViewingSecretArea(true);
+      setShowSecretDialog(false);
+      setSecretPassword("");
+      setSelectedMarketingFilter("secret");
+      if (slug) {
+        sessionStorage.setItem(`secret_area_${slug}`, 'true');
+      }
+      toast.success(`Bem-vindo(a) à ${store?.secret_area_name || "Área VIP"}! 🎉`);
+    } else {
+      toast.error("Senha incorreta. Tente novamente.");
+    }
+  };
+
+  // Exit secret area
+  const handleExitSecretArea = () => {
+    setViewingSecretArea(false);
+    setSelectedMarketingFilter("all");
+  };
 
   // Cart functions
   const addToCart = (item: CatalogDisplayItem, size: string) => {
@@ -1462,6 +1497,62 @@ export default function StoreCatalog() {
         </div>
       )}
 
+      {/* Secret Area Floating Badge */}
+      {store.secret_area_active && store.secret_area_password && !viewingSecretArea && (
+        <button
+          onClick={() => {
+            if (secretAreaUnlocked) {
+              setViewingSecretArea(true);
+              setSelectedMarketingFilter("secret");
+            } else {
+              setShowSecretDialog(true);
+            }
+          }}
+          className={cn(
+            "fixed z-50 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg text-white font-semibold text-sm transition-all hover:scale-105 hover:shadow-xl",
+            "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]",
+            "bottom-20 right-4 md:bottom-6 md:right-6"
+          )}
+          style={{ 
+            backgroundColor: primaryColor,
+            boxShadow: `0 0 20px ${primaryColor}40, 0 4px 20px rgba(0,0,0,0.2)`
+          }}
+        >
+          <Lock className="h-4 w-4" />
+          <span>{store.secret_area_name || "Área VIP"}</span>
+          {secretAreaUnlocked && (
+            <span className="ml-1 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          )}
+        </button>
+      )}
+
+      {/* Exit Secret Area Banner */}
+      {viewingSecretArea && (
+        <div 
+          className="fixed bottom-0 left-0 right-0 z-50 py-3 px-4 backdrop-blur-sm border-t shadow-lg"
+          style={{ backgroundColor: `${primaryColor}f0` }}
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-white">
+              <Lock className="h-5 w-5" />
+              <span className="font-semibold">{store.secret_area_name || "Área VIP"}</span>
+              <span className="text-white/80 text-sm hidden sm:inline">
+                — Produtos exclusivos para você
+              </span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExitSecretArea}
+              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Sair da Área
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Video Sales Bubble */}
       <VideoSalesBubble 
         previewUrl={store.bio_video_preview} 
@@ -1481,62 +1572,56 @@ export default function StoreCatalog() {
       <Dialog open={showSecretDialog} onOpenChange={setShowSecretDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-rose-500" />
-              {store?.secret_area_name || "Área VIP"}
+            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+              <Lock className="h-8 w-8" style={{ color: primaryColor }} />
+            </div>
+            <DialogTitle className="text-center text-xl">
+              Acesso Restrito
             </DialogTitle>
-            <DialogDescription>
-              Digite a senha para acessar os produtos exclusivos desta área.
+            <DialogDescription className="text-center">
+              Esta área contém produtos exclusivos.
+              <br />
+              Digite a senha para acessar.
             </DialogDescription>
           </DialogHeader>
           <form 
             onSubmit={(e) => {
               e.preventDefault();
-              if (secretPassword === store?.secret_area_password) {
-                setSecretAreaUnlocked(true);
-                setShowSecretDialog(false);
-                setSecretPassword("");
-                setSelectedMarketingFilter("secret");
-                toast.success(`Bem-vindo à ${store?.secret_area_name || "Área VIP"}!`);
-              } else {
-                toast.error("Senha incorreta. Tente novamente.");
-              }
+              handleSecretAreaUnlock(secretPassword);
             }}
-            className="space-y-4"
+            className="space-y-4 mt-2"
           >
             <div className="space-y-2">
-              <Label htmlFor="secret-password">Senha</Label>
-              <div className="relative">
-                <Input
-                  id="secret-password"
-                  type="password"
-                  placeholder="Digite a senha..."
-                  value={secretPassword}
-                  onChange={(e) => setSecretPassword(e.target.value)}
-                  className="pr-10"
-                  autoFocus
-                />
-              </div>
+              <Label htmlFor="secret-password" className="sr-only">Senha de Acesso</Label>
+              <Input
+                id="secret-password"
+                type="password"
+                placeholder="Digite a senha de acesso..."
+                value={secretPassword}
+                onChange={(e) => setSecretPassword(e.target.value)}
+                className="h-12 text-center text-lg tracking-wider"
+                autoFocus
+              />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowSecretDialog(false);
-                  setSecretPassword("");
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button 
-                type="submit"
-                className="bg-rose-500 hover:bg-rose-600"
-                disabled={!secretPassword.trim()}
-              >
-                Acessar
-              </Button>
-            </div>
+            <Button 
+              type="submit"
+              className="w-full h-12 text-base font-semibold"
+              style={{ backgroundColor: primaryColor }}
+              disabled={!secretPassword.trim()}
+            >
+              <Lock className="h-4 w-4 mr-2" />
+              Entrar
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSecretDialog(false);
+                setSecretPassword("");
+              }}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Voltar para a loja
+            </button>
           </form>
         </DialogContent>
       </Dialog>
