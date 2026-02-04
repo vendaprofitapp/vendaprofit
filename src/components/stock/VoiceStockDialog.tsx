@@ -26,7 +26,6 @@ import { toast } from 'sonner';
 
 interface ProductVariant {
   id: string;
-  color: string | null;
   size: string;
   stock_quantity: number;
   image_url: string | null;
@@ -128,7 +127,7 @@ export function VoiceStockDialog({
   const fetchProductVariants = async (productId: string): Promise<ProductVariant[]> => {
     const { data, error } = await supabase
       .from('product_variants')
-      .select('id, color, size, stock_quantity, image_url')
+      .select('id, size, stock_quantity, image_url')
       .eq('product_id', productId);
     
     if (error) {

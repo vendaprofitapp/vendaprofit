@@ -41,7 +41,6 @@ interface ConsignmentItem {
   };
   product_variants?: {
     size: string;
-    color: string | null;
     image_url: string | null;
   } | null;
 }

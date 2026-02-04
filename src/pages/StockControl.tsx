@@ -74,7 +74,6 @@ interface Product {
   product_variants?: Array<{
     id: string;
     size: string;
-    color: string | null;
     stock_quantity: number;
     marketing_status?: string[] | null;
   }>;
@@ -222,7 +221,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( id, size, color, stock_quantity, marketing_status ),
+        product_variants ( id, size, stock_quantity, marketing_status ),
         suppliers ( name )
       `)
       .eq("owner_id", user?.id)
@@ -278,7 +277,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( id, size, color, stock_quantity, marketing_status )
+        product_variants ( id, size, stock_quantity, marketing_status )
       `)
       .in("id", productIds)
       .neq("owner_id", user.id)
@@ -420,14 +419,8 @@ export default function StockControl() {
   };
 
   const getProductColorsLabel = (product: Product) => {
-    const colors = new Set(
-      (product.product_variants || [])
-        .map((v) => (v.color || "").trim())
-        .filter(Boolean)
-    );
-
-    if (colors.size > 0) return Array.from(colors).join(", ");
-    return product.color || "-";
+    // Color is now at the product level (color_label)
+    return product.color_label || product.color || "-";
   };
 
   const getRequestStatus = (status: string) => {
@@ -446,9 +439,9 @@ export default function StockControl() {
 
     products.forEach((p) => {
       if (p.color) colors.add(p.color);
+      if (p.color_label) colors.add(p.color_label);
       if (p.size) sizes.add(p.size);
       (p.product_variants || []).forEach((v) => {
-        if (v.color) colors.add(v.color);
         if (v.size) sizes.add(v.size);
       });
     });

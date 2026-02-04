@@ -68,7 +68,6 @@ interface Product {
 interface ProductVariant {
   id: string;
   product_id: string;
-  color: string | null;
   size: string;
   stock_quantity: number;
   image_url: string | null;
