@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Image as ImageIcon, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,17 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { MultiCategoryManager } from "@/components/products/MultiCategoryManager";
-import { ColorManager } from "@/components/products/ColorManager";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
@@ -65,6 +59,9 @@ interface Product {
   image_url_3: string | null;
   supplier_id: string | null;
   video_url?: string | null;
+  model?: string | null;
+  color_label?: string | null;
+  custom_detail?: string | null;
 }
 
 interface Supplier {
@@ -76,23 +73,10 @@ interface Supplier {
 interface ProductVariant {
   id?: string;
   size: string;
-  color: string;
   stock_quantity: number;
-  image_url?: string | null;
-  image_url_2?: string | null;
-  image_url_3?: string | null;
-  video_url?: string | null;
   marketing_status?: MarketingStatus;
   marketing_price?: number | null;
   marketing_delivery_days?: number | null;
-}
-
-// Structure to hold images and video per color
-interface ColorMedia {
-  existingUrls: string[];
-  newFiles: File[];
-  newPreviewUrls: string[];
-  videoUrl: string | null;
 }
 
 interface ProductFormDialogProps {
@@ -116,16 +100,17 @@ export function ProductFormDialog({
 }: ProductFormDialogProps) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const imageInputRefs = useRef<{ [color: string]: HTMLInputElement | null }>({});
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
-  const [colorImages, setColorImages] = useState<{ [color: string]: ColorMedia }>({});
-  const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
-  const [colorRefreshKey, setColorRefreshKey] = useState(0);
-  // Track original variant count to prevent accidental mass deletion
   const [originalVariantCount, setOriginalVariantCount] = useState(0);
+  
+  // Product-level images
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
   
   const [form, setForm] = useState({
     name: "",
@@ -135,7 +120,10 @@ export function ProductFormDialog({
     cost_price: "",
     min_stock_level: "5",
     supplier_id: "",
-    video_url: "" as string | null
+    video_url: "" as string | null,
+    model: "",
+    color_label: "",
+    custom_detail: ""
   });
 
   useEffect(() => {
@@ -158,10 +146,19 @@ export function ProductFormDialog({
         cost_price: editingProduct.cost_price?.toString() || "",
         min_stock_level: editingProduct.min_stock_level.toString(),
         supplier_id: editingProduct.supplier_id || "",
-        video_url: editingProduct.video_url || null
+        video_url: editingProduct.video_url || null,
+        model: editingProduct.model || "",
+        color_label: editingProduct.color_label || "",
+        custom_detail: editingProduct.custom_detail || ""
       });
       
-      // Fetch existing variants with images
+      // Load existing images
+      const urls: string[] = [];
+      if (editingProduct.image_url) urls.push(editingProduct.image_url);
+      if (editingProduct.image_url_2) urls.push(editingProduct.image_url_2);
+      if (editingProduct.image_url_3) urls.push(editingProduct.image_url_3);
+      setExistingImageUrls(urls);
+      
       fetchProductVariants(editingProduct.id);
     } else if (duplicatingProduct) {
       const categories = [duplicatingProduct.category];
@@ -176,12 +173,14 @@ export function ProductFormDialog({
         cost_price: duplicatingProduct.cost_price?.toString() || "",
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
         supplier_id: duplicatingProduct.supplier_id || "",
-        video_url: null
+        video_url: null,
+        model: duplicatingProduct.model || "",
+        color_label: duplicatingProduct.color_label || "",
+        custom_detail: duplicatingProduct.custom_detail || ""
       });
       
-      // Start with empty variants for duplicate
-      setProductVariants([{ size: "", color: "", stock_quantity: 0 }]);
-      setColorImages({});
+      setProductVariants([{ size: "", stock_quantity: 0 }]);
+      setExistingImageUrls([]);
     } else {
       resetForm();
       if (initialProductName) {
@@ -193,66 +192,23 @@ export function ProductFormDialog({
   const fetchProductVariants = async (productId: string) => {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("*")
+      .select("id, size, stock_quantity, marketing_status, marketing_price, marketing_delivery_days")
       .eq("product_id", productId)
-      .order("color", { ascending: true })
       .order("size", { ascending: true });
     
     if (!error && data && data.length > 0) {
-      const variants = data.map(v => {
-        // Ensure marketing_status is always an array or null
-        let marketingStatus: MarketingStatus = null;
-        if (v.marketing_status) {
-          if (Array.isArray(v.marketing_status)) {
-            marketingStatus = v.marketing_status as MarketingStatus;
-          } else if (typeof v.marketing_status === 'string') {
-            // Handle legacy string value
-            marketingStatus = [v.marketing_status as any];
-          }
-        }
-        
-        return {
-          id: v.id,
-          size: v.size,
-          color: v.color || "",
-          stock_quantity: v.stock_quantity,
-          image_url: v.image_url,
-          image_url_2: v.image_url_2,
-          image_url_3: v.image_url_3,
-          video_url: v.video_url || null,
-          marketing_status: marketingStatus,
-          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
-          marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
-        };
-      });
+      const variants = data.map(v => ({
+        id: v.id,
+        size: v.size,
+        stock_quantity: v.stock_quantity,
+        marketing_status: (v.marketing_status as MarketingStatus) || null,
+        marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+        marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
+      }));
+      setProductVariants(variants);
       setOriginalVariantCount(variants.length);
-      
-      // Build color media from variants
-      const images: { [color: string]: ColorMedia } = {};
-      const expanded: { [color: string]: boolean } = {};
-      
-      variants.forEach(v => {
-        if (v.color && !images[v.color]) {
-          const existingUrls: string[] = [];
-          if (v.image_url) existingUrls.push(v.image_url);
-          if (v.image_url_2) existingUrls.push(v.image_url_2);
-          if (v.image_url_3) existingUrls.push(v.image_url_3);
-          
-          images[v.color] = {
-            existingUrls,
-            newFiles: [],
-            newPreviewUrls: [],
-            videoUrl: v.video_url || null
-          };
-          expanded[v.color] = existingUrls.length > 0 || !!v.video_url;
-        }
-      });
-      
-      setColorImages(images);
-      setExpandedColors(expanded);
     } else {
-      setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
-      setColorImages({});
+      setProductVariants([{ size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
       setOriginalVariantCount(0);
     }
   };
@@ -276,108 +232,78 @@ export function ProductFormDialog({
       cost_price: "",
       min_stock_level: "5",
       supplier_id: "",
-      video_url: null
+      video_url: null,
+      model: "",
+      color_label: "",
+      custom_detail: ""
     });
-    // Clean up preview URLs
-    Object.values(colorImages).forEach(ci => {
-      ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
-    });
-    setColorImages({});
-    setExpandedColors({});
-    setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+    newImagePreviews.forEach(url => URL.revokeObjectURL(url));
+    setExistingImageUrls([]);
+    setNewImageFiles([]);
+    setNewImagePreviews([]);
+    setProductVariants([{ size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
     setOriginalVariantCount(0);
   };
 
-
-  // Get unique colors from variants
-  const getUniqueColors = (): string[] => {
-    const colors = new Set<string>();
-    productVariants.forEach(v => {
-      if (v.color) colors.add(v.color);
-    });
-    return Array.from(colors);
-  };
-
-  // Handle image upload for a specific color
-  const handleColorImageUpload = (color: string, files: FileList | null) => {
-    if (!files || !color) return;
+  // Image handlers
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files) return;
     
-    const currentMedia = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
-    const totalCurrent = currentMedia.existingUrls.length + currentMedia.newFiles.length;
+    const totalCurrent = existingImageUrls.length + newImageFiles.length;
     const available = 3 - totalCurrent;
     
     if (available <= 0) {
-      toast.error("Máximo de 3 fotos por cor");
+      toast.error("Máximo de 3 fotos");
       return;
     }
     
-    const newFiles = Array.from(files).slice(0, available);
-    const newUrls = newFiles.map(file => URL.createObjectURL(file));
+    const filesToAdd = Array.from(files).slice(0, available);
+    const newUrls = filesToAdd.map(file => URL.createObjectURL(file));
     
-    setColorImages(prev => ({
-      ...prev,
-      [color]: {
-        existingUrls: currentMedia.existingUrls,
-        newFiles: [...currentMedia.newFiles, ...newFiles],
-        newPreviewUrls: [...currentMedia.newPreviewUrls, ...newUrls],
-        videoUrl: currentMedia.videoUrl
-      }
-    }));
+    setNewImageFiles(prev => [...prev, ...filesToAdd]);
+    setNewImagePreviews(prev => [...prev, ...newUrls]);
   };
 
-  // Handle video change for a specific color
-  const handleColorVideoChange = (color: string, videoUrl: string | null) => {
-    setColorImages(prev => ({
-      ...prev,
-      [color]: {
-        ...(prev[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null }),
-        videoUrl
-      }
-    }));
+  const removeImage = (index: number, isExisting: boolean) => {
+    if (isExisting) {
+      setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
+    } else {
+      URL.revokeObjectURL(newImagePreviews[index]);
+      setNewImageFiles(prev => prev.filter((_, i) => i !== index));
+      setNewImagePreviews(prev => prev.filter((_, i) => i !== index));
+    }
   };
 
-  // Remove image from a color
-  const removeColorImage = (color: string, index: number, isExisting: boolean) => {
-    setColorImages(prev => {
-      const current = prev[color];
-      if (!current) return prev;
-      
-      if (isExisting) {
-        return {
-          ...prev,
-          [color]: {
-            ...current,
-            existingUrls: current.existingUrls.filter((_, i) => i !== index)
-          }
-        };
-      } else {
-        URL.revokeObjectURL(current.newPreviewUrls[index]);
-        return {
-          ...prev,
-          [color]: {
-            ...current,
-            newFiles: current.newFiles.filter((_, i) => i !== index),
-            newPreviewUrls: current.newPreviewUrls.filter((_, i) => i !== index)
-          }
-        };
-      }
-    });
+  const handleImageReorder = (newExisting: string[], newPreviews: string[]) => {
+    setExistingImageUrls(newExisting);
+    // Reorder files to match previews - simplified version
+    setNewImagePreviews(newPreviews);
   };
 
-  // Upload images for a color and return URLs
-  const uploadColorImages = async (productId: string, color: string): Promise<string[]> => {
+  const handleImagesFromSupplier = (urls: string[]) => {
+    const totalCurrent = existingImageUrls.length + newImageFiles.length;
+    const available = 3 - totalCurrent;
+    
+    if (available <= 0) {
+      toast.error("Máximo de 3 fotos");
+      return;
+    }
+    
+    const urlsToAdd = urls.slice(0, available);
+    setExistingImageUrls(prev => [...prev, ...urlsToAdd]);
+    toast.success(`${urlsToAdd.length} imagem(ns) adicionada(s)`);
+  };
+
+  // Upload images and return URLs
+  const uploadImages = async (productId: string): Promise<string[]> => {
     if (!user) return [];
     
-    const current = colorImages[color];
-    if (!current) return [];
+    const urls: string[] = [...existingImageUrls];
     
-    const urls: string[] = [...current.existingUrls];
-    
-    for (let i = 0; i < current.newFiles.length; i++) {
-      const file = current.newFiles[i];
+    for (let i = 0; i < newImageFiles.length; i++) {
+      const file = newImageFiles[i];
       const fileExt = file.name.split('.').pop();
-      const colorSlug = color.toLowerCase().replace(/\s+/g, '-');
-      const fileName = `${user.id}/${productId}/${colorSlug}_${Date.now()}_${i + 1}.${fileExt}`;
+      const fileName = `${user.id}/${productId}/${Date.now()}_${i + 1}.${fileExt}`;
       
       const { error } = await supabase.storage
         .from('product-images')
@@ -396,32 +322,14 @@ export function ProductFormDialog({
 
   // Variant handlers
   const addProductVariant = () => {
-    setProductVariants(prev => [...prev, { size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+    setProductVariants(prev => [...prev, { size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
   };
 
   const removeProductVariant = (index: number) => {
-    const variant = productVariants[index];
     setProductVariants(prev => prev.filter((_, i) => i !== index));
-    
-    // Check if this was the last variant with this color
-    const remainingWithColor = productVariants.filter((v, i) => i !== index && v.color === variant.color);
-    if (remainingWithColor.length === 0 && variant.color) {
-      // Clean up images for this color
-      const ci = colorImages[variant.color];
-      if (ci) {
-        ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
-      }
-      setColorImages(prev => {
-        const { [variant.color]: _, ...rest } = prev;
-        return rest;
-      });
-    }
   };
 
   const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number | MarketingStatus | null) => {
-    const oldVariant = productVariants[index];
-    
-    // When marketing_status changes, reset marketing-specific fields if status becomes null
     let updates: Partial<ProductVariant> = { [field]: value };
     if (field === 'marketing_status' && value === null) {
       updates.marketing_price = null;
@@ -431,33 +339,6 @@ export function ProductFormDialog({
     setProductVariants(prev => prev.map((v, i) => 
       i === index ? { ...v, ...updates } : v
     ));
-    
-    // If color changed, initialize color images for new color
-    if (field === 'color' && typeof value === 'string' && value !== oldVariant.color) {
-      if (value && !colorImages[value]) {
-        setColorImages(prev => ({
-          ...prev,
-          [value]: { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null }
-        }));
-      }
-      
-      // Check if old color still has variants
-      const remainingWithOldColor = productVariants.filter((v, i) => i !== index && v.color === oldVariant.color);
-      if (remainingWithOldColor.length === 0 && oldVariant.color) {
-        const ci = colorImages[oldVariant.color];
-        if (ci) {
-          ci.newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
-        }
-        setColorImages(prev => {
-          const { [oldVariant.color]: _, ...rest } = prev;
-          return rest;
-        });
-      }
-    }
-  };
-
-  const toggleColorExpanded = (color: string) => {
-    setExpandedColors(prev => ({ ...prev, [color]: !prev[color] }));
   };
 
   const totalStock = productVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
@@ -473,52 +354,53 @@ export function ProductFormDialog({
       return;
     }
     
-    // Normalize variants (trim) and only keep rows that have at least size or color
+    // Normalize variants - only keep rows with size
     const normalizedVariants = productVariants
-      .map((v) => {
-        const size = (v.size || "").trim();
-        const color = (v.color || "").trim();
-        return {
-          ...v,
-          size,
-          color,
-        };
-      })
-      .filter((v) => Boolean(v.size) || Boolean(v.color));
+      .map((v) => ({
+        ...v,
+        size: (v.size || "").trim(),
+      }))
+      .filter((v) => Boolean(v.size));
 
     if (normalizedVariants.length === 0) {
-      toast.error("Adicione pelo menos uma variante com tamanho ou cor");
+      toast.error("Adicione pelo menos uma variante com tamanho");
       return;
     }
 
     setSaving(true);
 
-    const productData = {
-      name: form.name,
-      description: form.description || null,
-      category: form.categories[0] || "",
-      category_2: form.categories[1] || null,
-      category_3: form.categories[2] || null,
-      price: parseFloat(form.price) || 0,
-      cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
-      sku: null,
-      size: null,
-      color: null,
-      stock_quantity: totalStock,
-      min_stock_level: parseInt(form.min_stock_level) || 5,
-      supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
-      owner_id: user.id,
-      group_id: null,
-      video_url: form.video_url || null,
-      // Clear product-level images since they're now per-color
-      image_url: null,
-      image_url_2: null,
-      image_url_3: null,
-    };
-
     try {
       let productId: string;
       
+      // Upload images first (for new products we need a temp ID)
+      const tempId = editingProduct?.id || crypto.randomUUID();
+      const imageUrls = await uploadImages(tempId);
+      
+      const productData = {
+        name: form.name,
+        description: form.description || null,
+        category: form.categories[0] || "",
+        category_2: form.categories[1] || null,
+        category_3: form.categories[2] || null,
+        price: parseFloat(form.price) || 0,
+        cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
+        sku: null,
+        size: null,
+        color: null,
+        stock_quantity: totalStock,
+        min_stock_level: parseInt(form.min_stock_level) || 5,
+        supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
+        owner_id: user.id,
+        group_id: null,
+        video_url: form.video_url || null,
+        model: form.model || null,
+        color_label: form.color_label || null,
+        custom_detail: form.custom_detail || null,
+        image_url: imageUrls[0] || null,
+        image_url_2: imageUrls[1] || null,
+        image_url_3: imageUrls[2] || null,
+      };
+
       if (editingProduct) {
         productId = editingProduct.id;
         
@@ -528,10 +410,6 @@ export function ProductFormDialog({
           .eq("id", editingProduct.id);
 
         if (error) throw error;
-        
-        // For editing: We will use UPSERT logic below instead of delete+insert.
-        // This prevents foreign key violations when variants are referenced by consignment_items.
-        
       } else {
         const { data: newProduct, error } = await supabase
           .from("products")
@@ -543,41 +421,19 @@ export function ProductFormDialog({
         productId = newProduct.id;
       }
       
-      // Upload images for each color and prepare variants
-      const colorImageUrls: { [color: string]: string[] } = {};
-      const uniqueColors = getUniqueColors();
-      
-      for (const color of uniqueColors) {
-        const urls = await uploadColorImages(productId, color);
-        colorImageUrls[color] = urls;
-      }
-      
-      // Insert all variants with their color's images
-      // IMPORTANT: deduplicate using the *exact* values we will insert into DB.
-      // The unique index treats NULL color as '' (COALESCE), so we must key on (size, coalescedColor).
-      const variantMap = new Map<
-        string,
-        { size: string; color: string; stock_quantity: number; marketing_status: MarketingStatus; marketing_price: number | null; marketing_delivery_days: number | null }
-      >();
-
+      // Deduplicate variants by size
+      const variantMap = new Map<string, ProductVariant>();
       normalizedVariants.forEach((v) => {
-        const sizeToInsert = v.size || "Único";
-        const colorToInsert = v.color; // may be '' => will be stored as NULL
-        const colorKey = (colorToInsert || "");
-        const key = `${sizeToInsert}__${colorKey}`;
-
+        const key = v.size;
         const existing = variantMap.get(key);
         if (existing) {
-          existing.stock_quantity =
-            (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
-          // Keep the marketing fields from the last occurrence
+          existing.stock_quantity = (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
           existing.marketing_status = v.marketing_status || existing.marketing_status;
           existing.marketing_price = v.marketing_price ?? existing.marketing_price;
           existing.marketing_delivery_days = v.marketing_delivery_days ?? existing.marketing_delivery_days;
         } else {
           variantMap.set(key, {
-            size: sizeToInsert,
-            color: colorToInsert,
+            size: v.size,
             stock_quantity: Number(v.stock_quantity) || 0,
             marketing_status: v.marketing_status || null,
             marketing_price: v.marketing_price ?? null,
@@ -589,57 +445,40 @@ export function ProductFormDialog({
       const deduplicatedVariants = Array.from(variantMap.values());
 
       const variantsToUpsert = deduplicatedVariants.map((v) => {
-        const colorTrimmed = (v.color || "").trim();
-        const urls = colorTrimmed ? (colorImageUrls[colorTrimmed] || []) : [];
-        const colorMedia = colorTrimmed ? colorImages[colorTrimmed] : null;
-        
-        // Ensure marketing_status is always an array or null for the text[] column
         let marketingStatusArray: string[] | null = null;
         if (v.marketing_status) {
           if (Array.isArray(v.marketing_status)) {
             marketingStatusArray = v.marketing_status.length > 0 ? v.marketing_status : null;
-          } else if (typeof v.marketing_status === 'string') {
-            // Handle legacy string value
-            marketingStatusArray = [v.marketing_status];
           }
         }
         
         return {
           product_id: productId,
           size: v.size,
-          color: colorTrimmed || null,
           stock_quantity: v.stock_quantity,
           marketing_status: marketingStatusArray,
           marketing_price: v.marketing_price,
           marketing_delivery_days: v.marketing_delivery_days,
-          image_url: urls[0] || null,
-          image_url_2: urls[1] || null,
-          image_url_3: urls[2] || null,
-          video_url: colorMedia?.videoUrl || null
         };
       });
 
       if (editingProduct) {
-        // UPSERT strategy: for editing, we need to handle variants carefully
-        // 1. Fetch existing variants for the product
+        // Fetch existing variants
         const { data: existingVariants } = await supabase
           .from("product_variants")
-          .select("id, size, color")
+          .select("id, size")
           .eq("product_id", productId);
 
         const existingMap = new Map<string, string>();
         (existingVariants || []).forEach((ev) => {
-          const key = `${ev.size}__${ev.color || ""}`;
-          existingMap.set(key, ev.id);
+          existingMap.set(ev.size, ev.id);
         });
 
-        // 2. For each variant to save, check if it exists and update, otherwise insert
+        // Update or insert variants
         for (const variant of variantsToUpsert) {
-          const key = `${variant.size}__${variant.color || ""}`;
-          const existingId = existingMap.get(key);
+          const existingId = existingMap.get(variant.size);
 
           if (existingId) {
-            // Update existing variant - marketing_status is already normalized in variantsToUpsert
             const { error: updateError } = await supabase
               .from("product_variants")
               .update({
@@ -647,17 +486,12 @@ export function ProductFormDialog({
                 marketing_status: variant.marketing_status,
                 marketing_price: variant.marketing_price,
                 marketing_delivery_days: variant.marketing_delivery_days,
-                image_url: variant.image_url,
-                image_url_2: variant.image_url_2,
-                image_url_3: variant.image_url_3,
-                video_url: variant.video_url,
               })
               .eq("id", existingId);
 
             if (updateError) throw updateError;
-            existingMap.delete(key); // Mark as processed
+            existingMap.delete(variant.size);
           } else {
-            // Insert new variant
             const { error: insertError } = await supabase
               .from("product_variants")
               .insert(variant);
@@ -666,28 +500,19 @@ export function ProductFormDialog({
           }
         }
 
-        // 3. Delete variants that are no longer in the form (if not referenced)
-        // SAFETY: Only delete if we actually loaded variants successfully
-        // This prevents accidental mass deletion when fetch fails
+        // Delete orphan variants
         const shouldDeleteOrphans = variantsToUpsert.length > 0 || originalVariantCount === 0;
         
         if (shouldDeleteOrphans) {
           for (const [, variantId] of existingMap) {
-            const { error: deleteError } = await supabase
+            await supabase
               .from("product_variants")
               .delete()
               .eq("id", variantId);
-
-            // Silently ignore delete errors (variant may be in use by consignment)
-            if (deleteError) {
-              console.warn("Could not delete variant (may be in use):", variantId, deleteError);
-            }
           }
-        } else if (existingMap.size > 0) {
-          console.warn("Skipping variant deletion - form appears to have no variants loaded but product had variants originally");
         }
       } else {
-        // For new products, just insert all variants
+        // New product - insert all variants
         if (variantsToUpsert.length > 0) {
           const { error: variantError } = await supabase
             .from("product_variants")
@@ -697,173 +522,33 @@ export function ProductFormDialog({
         }
       }
 
-      // Update product with first color's first image as main image
-      const firstColor = uniqueColors[0];
-      const firstColorUrls = firstColor ? colorImageUrls[firstColor] : [];
-      if (firstColorUrls.length > 0) {
-        await supabase
-          .from("products")
-          .update({
-            image_url: firstColorUrls[0] || null,
-            image_url_2: firstColorUrls[1] || null,
-            image_url_3: firstColorUrls[2] || null,
-          })
-          .eq("id", productId);
-      }
-
-      toast.success(editingProduct ? "Produto atualizado!" : "Produto criado!");
+      toast.success(editingProduct ? "Produto atualizado!" : "Produto cadastrado!");
+      onSuccess();
       onOpenChange(false);
       resetForm();
-      onSuccess();
     } catch (error: any) {
       console.error("Error saving product:", error);
-      const msg =
-        typeof error?.message === "string"
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "Erro desconhecido";
-      const details =
-        typeof error?.details === "string" && error.details
-          ? ` (${error.details})`
-          : "";
-      toast.error(
-        `${editingProduct ? "Erro ao atualizar produto" : "Erro ao criar produto"}: ${msg}${details}`
-      );
+      toast.error("Erro ao salvar produto: " + (error.message || "Tente novamente"));
     } finally {
       setSaving(false);
     }
   };
 
-  const isMobileDevice = isMobile;
-  const selectContentProps = isMobileDevice ? ({ portal: false } as const) : ({} as const);
-
-  // Handle images imported from supplier link for a specific color
-  const handleColorImagesFromSupplier = (color: string, urls: string[]) => {
-    const currentMedia = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
-    const totalCurrent = currentMedia.existingUrls.length + currentMedia.newFiles.length;
-    const available = 3 - totalCurrent;
-    
-    if (available <= 0) {
-      toast.error("Máximo de 3 fotos por cor");
-      return;
-    }
-    
-    const urlsToAdd = urls.slice(0, available);
-    
-    setColorImages(prev => ({
-      ...prev,
-      [color]: {
-        existingUrls: [...currentMedia.existingUrls, ...urlsToAdd],
-        newFiles: currentMedia.newFiles,
-        newPreviewUrls: currentMedia.newPreviewUrls,
-        videoUrl: currentMedia.videoUrl
-      }
-    }));
-    
-    toast.success(`${urlsToAdd.length} imagem(ns) adicionada(s) para ${color}`);
-  };
-
-  // Handle reordering images for a color
-  const handleColorImageReorder = (color: string, newExistingUrls: string[], newNewUrls: string[]) => {
-    setColorImages(prev => {
-      const current = prev[color];
-      if (!current) return prev;
-      
-      // Map new URLs back to files (preserving file associations)
-      const newFiles: File[] = [];
-      const newPreviewUrls: string[] = [];
-      
-      newNewUrls.forEach(url => {
-        const idx = current.newPreviewUrls.indexOf(url);
-        if (idx !== -1 && current.newFiles[idx]) {
-          newFiles.push(current.newFiles[idx]);
-          newPreviewUrls.push(url);
-        }
-      });
-      
-      return {
-        ...prev,
-        [color]: {
-          existingUrls: newExistingUrls,
-          newFiles,
-          newPreviewUrls,
-          videoUrl: current.videoUrl
-        }
-      };
-    });
-  };
-
-  // Render media section for a color (images + video)
-  const renderColorMedia = (color: string) => {
-    const media = colorImages[color] || { existingUrls: [], newFiles: [], newPreviewUrls: [], videoUrl: null };
-    const totalColorImages = media.existingUrls.length + media.newPreviewUrls.length;
-    
-    return (
-      <div className="pl-4 py-2 border-l-2 border-primary/20 mt-2 space-y-3">
-        {/* Supplier Import for this specific color */}
-        <SupplierImageScraper
-          maxImages={3}
-          currentImageCount={totalColorImages}
-          onImagesSelected={(urls) => handleColorImagesFromSupplier(color, urls)}
-          onSupplierSelected={(supplierId) => {
-            setForm(prev => ({ ...prev, supplier_id: supplierId === "none" ? "" : supplierId }));
-            // Refresh suppliers list in case a new one was created
-            fetchSuppliers();
-          }}
-          currentSupplierId={form.supplier_id}
-        />
-        
-        {/* Hidden file input */}
-        <input
-          ref={el => { imageInputRefs.current[color] = el; }}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleColorImageUpload(color, e.target.files)}
-          className="hidden"
-        />
-        
-        {/* Reorderable image list */}
-        <ReorderableImageList
-          existingUrls={media.existingUrls}
-          newPreviewUrls={media.newPreviewUrls}
-          maxImages={3}
-          onReorder={(newExisting, newNew) => handleColorImageReorder(color, newExisting, newNew)}
-          onRemove={(index, isExisting) => removeColorImage(color, index, isExisting)}
-          onAddClick={() => imageInputRefs.current[color]?.click()}
-        />
-        
-        {/* Video upload for this color */}
-        <div className="pt-2 border-t border-dashed">
-          <ProductVideoUpload
-            value={media.videoUrl}
-            onChange={(url) => handleColorVideoChange(color, url)}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // Group variants by color for display
-  const variantsByColor = productVariants.reduce((acc, variant, index) => {
-    const color = variant.color || "__no_color__";
-    if (!acc[color]) acc[color] = [];
-    acc[color].push({ variant, index });
-    return acc;
-  }, {} as { [color: string]: { variant: ProductVariant; index: number }[] });
+  const totalImages = existingImageUrls.length + newImagePreviews.length;
 
   const formContent = (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Nome *</Label>
+        <Label>Nome do Produto *</Label>
         <Input
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="Nome do produto"
+          placeholder="Ex: Top Carol Vermelho"
           autoComplete="off"
         />
+        <p className="text-xs text-muted-foreground">Inclua a cor no nome (ex: "Vestido Luna Preto")</p>
       </div>
+      
       <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Descrição</Label>
         <Textarea
@@ -873,13 +558,40 @@ export function ProductFormDialog({
           className="min-h-[80px]"
         />
       </div>
-      
 
       <div className="col-span-1 sm:col-span-2 space-y-2">
         <Label>Categorias * (até 3)</Label>
         <MultiCategoryManager
           values={form.categories}
           onChange={(values) => setForm({ ...form, categories: values })}
+        />
+      </div>
+      
+      {/* Filter fields */}
+      <div className="space-y-2">
+        <Label>Modelo (filtro)</Label>
+        <Input
+          value={form.model}
+          onChange={(e) => setForm({ ...form, model: e.target.value })}
+          placeholder="Ex: Top Carol"
+        />
+      </div>
+      
+      <div className="space-y-2">
+        <Label>Cor (filtro)</Label>
+        <Input
+          value={form.color_label}
+          onChange={(e) => setForm({ ...form, color_label: e.target.value })}
+          placeholder="Ex: Vermelho"
+        />
+      </div>
+      
+      <div className="col-span-1 sm:col-span-2 space-y-2">
+        <Label>Detalhe Personalizado (filtro)</Label>
+        <Input
+          value={form.custom_detail}
+          onChange={(e) => setForm({ ...form, custom_detail: e.target.value })}
+          placeholder="Ex: Tecido Brilhante"
         />
       </div>
       
@@ -894,6 +606,7 @@ export function ProductFormDialog({
           placeholder="0.00"
         />
       </div>
+      
       <div className="space-y-2">
         <Label>Preço de Custo</Label>
         <Input
@@ -917,140 +630,116 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Variants Section grouped by Color */}
+      <div className="space-y-2">
+        <Label>Fornecedor</Label>
+        <Select value={form.supplier_id} onValueChange={(value) => setForm({ ...form, supplier_id: value })}>
+          <SelectTrigger>
+            <SelectValue placeholder="Selecionar fornecedor" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Nenhum</SelectItem>
+            {suppliers.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      
+      {/* Images Section */}
+      <div className="col-span-1 sm:col-span-2 space-y-3">
+        <Label>Fotos do Produto (até 3)</Label>
+        
+        <SupplierImageScraper
+          maxImages={3}
+          currentImageCount={totalImages}
+          onImagesSelected={handleImagesFromSupplier}
+        />
+        
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleImageUpload(e.target.files)}
+          className="hidden"
+        />
+        
+        <ReorderableImageList
+          existingUrls={existingImageUrls}
+          newPreviewUrls={newImagePreviews}
+          maxImages={3}
+          onReorder={handleImageReorder}
+          onRemove={removeImage}
+          onAddClick={() => imageInputRef.current?.click()}
+        />
+        
+        <p className="text-xs text-muted-foreground">{totalImages}/3 fotos</p>
+      </div>
+      
+      {/* Video Section */}
+      <div className="col-span-1 sm:col-span-2 space-y-2">
+        <Label>Vídeo do Produto</Label>
+        <ProductVideoUpload
+          value={form.video_url}
+          onChange={(url) => setForm({ ...form, video_url: url })}
+        />
+      </div>
+      
+      {/* Variants Section - SIZE ONLY */}
       <div className="col-span-1 sm:col-span-2 space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-medium">Variantes por Cor *</Label>
+          <Label className="text-base font-medium">Variantes de Tamanho *</Label>
           <span className="text-sm text-muted-foreground">
             Total: {totalStock} un.
           </span>
         </div>
         
-        <div className="space-y-4">
-          {Object.entries(variantsByColor).map(([color, items]) => (
-            <Collapsible 
-              key={color} 
-              open={expandedColors[color] ?? true}
-              onOpenChange={() => toggleColorExpanded(color)}
-            >
-              <div className="border rounded-lg p-3 bg-muted/30">
-                <CollapsibleTrigger asChild>
-                  <div className="flex items-center justify-between cursor-pointer">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">
-                        {color === "__no_color__" ? "Sem cor definida" : color}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        ({items.length} variante{items.length > 1 ? 's' : ''})
-                      </span>
-                    </div>
-                    {expandedColors[color] ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </div>
-                </CollapsibleTrigger>
-                
-                <CollapsibleContent>
-                  {/* Media (images + video) for this color */}
-                  {color !== "__no_color__" && renderColorMedia(color)}
-                  
-                  {/* Variants for this color */}
-                  <div className="space-y-2 mt-3">
-                    {items.map(({ variant, index }) => (
-                      <div key={index} className="space-y-2">
-                        <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-                          <Select
-                            value={variant.size}
-                            onValueChange={(value) => updateProductVariant(index, "size", value)}
-                          >
-                            <SelectTrigger className="w-20 sm:w-24">
-                              <SelectValue placeholder="Tam." />
-                            </SelectTrigger>
-                            <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-                              {availableSizes.map((size) => (
-                                <SelectItem key={size} value={size}>
-                                  {size}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          
-                          <ColorManager
-                            key={`color-${index}-${colorRefreshKey}`}
-                            value={variant.color}
-                            onChange={(value) => updateProductVariant(index, "color", value)}
-                            placeholder="Cor"
-                            onColorCreated={() => setColorRefreshKey(k => k + 1)}
-                          />
-                          
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="Qtd"
-                            className="w-16 sm:w-20"
-                            value={variant.stock_quantity || ""}
-                            onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
-                          />
-                          
-                          <MarketingStatusSelector
-                            value={variant.marketing_status || null}
-                            onChange={(status) => updateProductVariant(index, "marketing_status", status as any)}
-                            compact
-                          />
-                          {productVariants.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
-                              onClick={() => removeProductVariant(index)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                        
-                        {/* Marketing-specific fields - shown when a marketing status is selected */}
-                        {variant.marketing_status && (
-                          <div className="flex gap-2 items-center flex-wrap pl-4 border-l-2 border-primary/20 ml-1">
-                            {/* Price field for all marketing statuses */}
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">R$</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                inputMode="decimal"
-                                placeholder="Preço especial"
-                                className="w-24 h-8 text-sm"
-                                value={variant.marketing_price ?? ""}
-                                onChange={(e) => updateProductVariant(index, "marketing_price", e.target.value ? parseFloat(e.target.value) : null)}
-                              />
-                            </div>
-                            
-                            {/* Delivery days field - only for presale */}
-                            {variant.marketing_status?.includes("presale") && (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  type="number"
-                                  inputMode="numeric"
-                                  placeholder="Prazo"
-                                  className="w-16 h-8 text-sm"
-                                  value={variant.marketing_delivery_days ?? ""}
-                                  onChange={(e) => updateProductVariant(index, "marketing_delivery_days", e.target.value ? parseInt(e.target.value) : null)}
-                                />
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">dias</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleContent>
-              </div>
-            </Collapsible>
+        <div className="space-y-2">
+          {productVariants.map((variant, index) => (
+            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap p-2 border rounded-lg bg-muted/30">
+              <Select
+                value={variant.size}
+                onValueChange={(value) => updateProductVariant(index, "size", value)}
+              >
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="Tamanho" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSizes.map((size) => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Qtd"
+                className="w-20"
+                value={variant.stock_quantity || ""}
+                onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
+              />
+              
+              <MarketingStatusSelector
+                value={variant.marketing_status || null}
+                onChange={(status) => updateProductVariant(index, "marketing_status", status)}
+                compact
+              />
+              
+              {productVariants.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive"
+                  onClick={() => removeProductVariant(index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           ))}
         </div>
         
@@ -1062,71 +751,34 @@ export function ProductFormDialog({
           className="w-full"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Adicionar Variante
+          Adicionar Tamanho
         </Button>
-      </div>
-      
-      <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Fornecedor</Label>
-        <Select
-          value={form.supplier_id || "none"}
-          onValueChange={(value) => setForm({ ...form, supplier_id: value === "none" ? "" : value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione um fornecedor" />
-          </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4} {...selectContentProps}>
-            <SelectItem value="none">Nenhum</SelectItem>
-            {suppliers.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
     </div>
   );
 
-  const getDialogTitle = () => {
-    if (editingProduct) return "Editar Produto";
-    if (duplicatingProduct) return "Duplicar Produto";
-    return "Novo Produto";
-  };
-
-  const getDialogDescription = () => {
-    if (duplicatingProduct) return "Altere os dados para criar uma variação do produto";
-    return "Preencha os dados do produto";
-  };
-
-  const FooterButtons = () => (
-    <>
-      <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-        Cancelar
-      </Button>
-      <Button onClick={handleSave} disabled={saving}>
-        {saving ? "Salvando..." : editingProduct ? "Salvar" : duplicatingProduct ? "Criar Variação" : "Criar Produto"}
-      </Button>
-    </>
-  );
-
-  if (isMobileDevice) {
+  if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[90vh]">
-          <DrawerHeader className="text-left">
-            <DrawerTitle>{getDialogTitle()}</DrawerTitle>
+          <DrawerHeader>
+            <DrawerTitle>
+              {editingProduct ? "Editar Produto" : duplicatingProduct ? "Duplicar Produto" : "Novo Produto"}
+            </DrawerTitle>
             <DrawerDescription>
-              {getDialogDescription()}
+              {editingProduct ? "Atualize as informações do produto" : "Preencha as informações do produto"}
             </DrawerDescription>
           </DrawerHeader>
-          <ScrollArea className="flex-1 px-4 overflow-y-auto max-h-[60vh]">
-            <div className="pb-4">
-              {formContent}
-            </div>
+          <ScrollArea className="flex-1 px-4 pb-4 max-h-[60vh]">
+            {formContent}
           </ScrollArea>
-          <DrawerFooter className="flex-row gap-2 pt-2">
-            <FooterButtons />
+          <DrawerFooter className="border-t pt-4">
+            <Button onClick={handleSave} disabled={saving} className="w-full">
+              {saving ? "Salvando..." : editingProduct ? "Salvar Alterações" : "Cadastrar Produto"}
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
+              Cancelar
+            </Button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
@@ -1135,16 +787,25 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>{getDialogTitle()}</DialogTitle>
+          <DialogTitle>
+            {editingProduct ? "Editar Produto" : duplicatingProduct ? "Duplicar Produto" : "Novo Produto"}
+          </DialogTitle>
           <DialogDescription>
-            {getDialogDescription()}
+            {editingProduct ? "Atualize as informações do produto" : "Preencha as informações do produto"}
           </DialogDescription>
         </DialogHeader>
-        {formContent}
+        <ScrollArea className="max-h-[65vh] pr-4">
+          {formContent}
+        </ScrollArea>
         <DialogFooter>
-          <FooterButtons />
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Salvando..." : editingProduct ? "Salvar Alterações" : "Cadastrar Produto"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

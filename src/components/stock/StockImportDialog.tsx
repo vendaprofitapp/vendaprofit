@@ -1095,21 +1095,19 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           // Fetch existing variants for this product
           const { data: existingVariants } = await supabase
             .from("product_variants")
-            .select("id, color, size, stock_quantity")
+            .select("id, size, stock_quantity")
             .eq("product_id", productId);
           
           let variantUpdated = false;
           
           for (const variant of product.variants) {
             // Normalize for comparison
-            const variantColor = (variant.color || '').toLowerCase().trim();
             const variantSize = (variant.size || '').toLowerCase().trim();
             
-            // Find matching existing variant by color AND size
+            // Find matching existing variant by size
             const matchingVariant = existingVariants?.find(ev => {
-              const existingColor = (ev.color || '').toLowerCase().trim();
               const existingSize = (ev.size || '').toLowerCase().trim();
-              return existingColor === variantColor && existingSize === variantSize;
+              return existingSize === variantSize;
             });
             
             if (matchingVariant) {
@@ -1122,7 +1120,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               
               if (!variantError) {
                 variantUpdated = true;
-                console.log(`Variante atualizada: ${variant.color}/${variant.size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
+                console.log(`Variante atualizada: ${variant.size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
               }
             } else {
               // Create new variant for this color/size combination
@@ -1142,12 +1140,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 .from("product_variants")
                 .insert({
                   product_id: productId,
-                  color: variant.color,
                   size: variant.size || "ÚNICO",
                   stock_quantity: variant.quantity,
-                  image_url: colorUrls[0] || null,
-                  image_url_2: colorUrls[1] || null,
-                  image_url_3: colorUrls[2] || null,
                 });
               
               if (!insertError) {

@@ -194,14 +194,13 @@ export function EditSaleDialog({
         
         const { data: variants } = await supabase
           .from("product_variants")
-          .select("id, stock_quantity, color, size")
+          .select("id, stock_quantity, size")
           .eq("product_id", item.product_id);
 
         if (variants) {
-          // Find matching variant
+          // Find matching variant by size
           const matchingVariant = variants.find(v => {
-            const variantParts = [v.color, v.size].filter(Boolean);
-            return parts.every(p => variantParts.includes(p));
+            return parts.some(p => v.size === p);
           });
 
           if (matchingVariant) {
