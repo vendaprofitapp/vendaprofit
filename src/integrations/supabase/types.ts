@@ -1771,6 +1771,9 @@ export type Database = {
           opportunities_button_text: string | null
           owner_id: string
           primary_color: string | null
+          secret_area_active: boolean | null
+          secret_area_name: string | null
+          secret_area_password: string | null
           show_opportunities_button: boolean | null
           show_own_products: boolean
           show_store_description: boolean | null
@@ -1808,6 +1811,9 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id: string
           primary_color?: string | null
+          secret_area_active?: boolean | null
+          secret_area_name?: string | null
+          secret_area_password?: string | null
           show_opportunities_button?: boolean | null
           show_own_products?: boolean
           show_store_description?: boolean | null
@@ -1845,6 +1851,9 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id?: string
           primary_color?: string | null
+          secret_area_active?: boolean | null
+          secret_area_name?: string | null
+          secret_area_password?: string | null
           show_opportunities_button?: boolean | null
           show_own_products?: boolean
           show_store_description?: boolean | null
