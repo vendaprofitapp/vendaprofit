@@ -993,7 +993,7 @@ export function ProductFormDialog({
                             </div>
                             
                             {/* Delivery days field - only for presale */}
-                            {variant.marketing_status === "presale" && (
+                            {variant.marketing_status?.includes("presale") && (
                               <div className="flex items-center gap-1">
                                 <Input
                                   type="number"
