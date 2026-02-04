@@ -1296,7 +1296,6 @@ export type Database = {
       }
       product_variants: {
         Row: {
-          color: string | null
           created_at: string
           id: string
           image_url: string | null
@@ -1313,7 +1312,6 @@ export type Database = {
           video_url: string | null
         }
         Insert: {
-          color?: string | null
           created_at?: string
           id?: string
           image_url?: string | null
@@ -1330,7 +1328,6 @@ export type Database = {
           video_url?: string | null
         }
         Update: {
-          color?: string | null
           created_at?: string
           id?: string
           image_url?: string | null
@@ -1410,8 +1407,10 @@ export type Database = {
           category_2: string | null
           category_3: string | null
           color: string | null
+          color_label: string | null
           cost_price: number | null
           created_at: string
+          custom_detail: string | null
           description: string | null
           group_id: string | null
           id: string
@@ -1421,6 +1420,7 @@ export type Database = {
           is_active: boolean
           marketing_status: string[] | null
           min_stock_level: number
+          model: string | null
           name: string
           owner_id: string
           price: number
@@ -1436,8 +1436,10 @@ export type Database = {
           category_2?: string | null
           category_3?: string | null
           color?: string | null
+          color_label?: string | null
           cost_price?: number | null
           created_at?: string
+          custom_detail?: string | null
           description?: string | null
           group_id?: string | null
           id?: string
@@ -1447,6 +1449,7 @@ export type Database = {
           is_active?: boolean
           marketing_status?: string[] | null
           min_stock_level?: number
+          model?: string | null
           name: string
           owner_id: string
           price?: number
@@ -1462,8 +1465,10 @@ export type Database = {
           category_2?: string | null
           category_3?: string | null
           color?: string | null
+          color_label?: string | null
           cost_price?: number | null
           created_at?: string
+          custom_detail?: string | null
           description?: string | null
           group_id?: string | null
           id?: string
@@ -1473,6 +1478,7 @@ export type Database = {
           is_active?: boolean
           marketing_status?: string[] | null
           min_stock_level?: number
+          model?: string | null
           name?: string
           owner_id?: string
           price?: number

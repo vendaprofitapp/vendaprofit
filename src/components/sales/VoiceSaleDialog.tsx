@@ -18,7 +18,6 @@ import { toast } from 'sonner';
 
 interface ProductVariant {
   id: string;
-  color: string | null;
   size: string;
   stock_quantity: number;
   image_url: string | null;
@@ -55,7 +54,7 @@ interface VoiceSaleDialogProps {
   onProductSelected: (product: Product, variant: ProductVariant | null, quantity: number) => void;
 }
 
-type DialogStep = 'searching' | 'similar_matches' | 'color_selection' | 'size_selection' | 'quantity_confirmation' | 'auto_added';
+type DialogStep = 'searching' | 'similar_matches' | 'size_selection' | 'quantity_confirmation' | 'auto_added';
 
 // Size ordering helper
 const SIZE_ORDER = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 
@@ -81,7 +80,6 @@ export function VoiceSaleDialog({
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -97,7 +95,6 @@ export function VoiceSaleDialog({
       setSimilarProducts([]);
       setSelectedProduct(null);
       setProductVariants([]);
-      setSelectedColor(null);
       setSelectedVariant(null);
       setQuantity(1);
     }
@@ -116,7 +113,7 @@ export function VoiceSaleDialog({
   const fetchProductVariants = async (productId: string): Promise<ProductVariant[]> => {
     const { data, error } = await supabase
       .from('product_variants')
-      .select('id, color, size, stock_quantity, image_url')
+      .select('id, size, stock_quantity, image_url')
       .eq('product_id', productId)
       .gt('stock_quantity', 0);
     
@@ -125,10 +122,8 @@ export function VoiceSaleDialog({
       return [];
     }
     
-    // Sort by color then size
+    // Sort by size
     return (data || []).sort((a, b) => {
-      const colorCompare = (a.color || "").localeCompare(b.color || "");
-      if (colorCompare !== 0) return colorCompare;
       return getSizeIndex(a.size) - getSizeIndex(b.size);
     });
   };
@@ -179,18 +174,18 @@ export function VoiceSaleDialog({
         return;
       }
 
-      // Fetch variants to match color/size in search term
+      // Fetch variants to match size in search term
       const productIds = products.map(p => p.id);
       const { data: variantsData } = await supabase
         .from('product_variants')
-        .select('product_id, color, size, stock_quantity')
+        .select('product_id, size, stock_quantity')
         .in('product_id', productIds)
         .gt('stock_quantity', 0);
 
-      const variantsByProduct = new Map<string, Array<{ color: string | null; size: string; stock_quantity: number }>>();
+      const variantsByProduct = new Map<string, Array<{ size: string; stock_quantity: number }>>();
       (variantsData || []).forEach(v => {
         const existing = variantsByProduct.get(v.product_id) || [];
-        existing.push({ color: v.color, size: v.size, stock_quantity: v.stock_quantity });
+        existing.push({ size: v.size, stock_quantity: v.stock_quantity });
         variantsByProduct.set(v.product_id, existing);
       });
 
@@ -199,10 +194,9 @@ export function VoiceSaleDialog({
         const normalizedName = normalizeText(product.name);
         const productVariants = variantsByProduct.get(product.id) || [];
         let score = 0;
-        let matchedColor: string | null = null;
         let matchedSize: string | null = null;
         
-        // Identify words that match product name vs potential color/size
+        // Identify words that match product name vs potential size
         const nameWords = normalizedName.split(/\s+/);
         const searchWordsMatchingName: string[] = [];
         const remainingSearchWords: string[] = [];
@@ -228,13 +222,9 @@ export function VoiceSaleDialog({
           }
         }
         
-        // Check if remaining words match variant colors/sizes
+        // Check if remaining words match variant sizes
         for (const word of remainingSearchWords) {
           for (const variant of productVariants) {
-            if (variant.color && normalizeText(variant.color).includes(word)) {
-              matchedColor = variant.color;
-              score += 15; // Bonus for color match in variant
-            }
             if (normalizeText(variant.size).includes(word)) {
               matchedSize = variant.size;
               score += 10; // Bonus for size match in variant
@@ -242,17 +232,7 @@ export function VoiceSaleDialog({
           }
         }
 
-        // Also check product's direct color field
-        if (product.color) {
-          for (const word of remainingSearchWords) {
-            if (normalizeText(product.color).includes(word)) {
-              matchedColor = product.color;
-              score += 15;
-            }
-          }
-        }
-
-        return { product, score, matchedColor, matchedSize };
+        return { product, score, matchedSize };
       });
 
       const matches = scoredProducts
@@ -271,15 +251,12 @@ export function VoiceSaleDialog({
         return;
       }
 
-      // If single strong match or best match has color/size already matched
+      // If single strong match or best match has size already matched
       const bestMatch = matches[0];
       if (matches.length === 1 || 
           (bestMatch.score >= 70 && bestMatch.score - (matches[1]?.score || 0) > 15) ||
-          (bestMatch.matchedColor || bestMatch.matchedSize)) {
-        // Pass detected color/size to command for auto-selection
-        if (bestMatch.matchedColor && command) {
-          command.color = bestMatch.matchedColor;
-        }
+          bestMatch.matchedSize) {
+        // Pass detected size to command for auto-selection
         if (bestMatch.matchedSize && command) {
           command.size = bestMatch.matchedSize;
         }
@@ -322,72 +299,35 @@ export function VoiceSaleDialog({
         return;
       }
 
-      // Check unique colors
-      const uniqueColors = [...new Set(variants.map(v => v.color).filter(Boolean))] as string[];
-      
-      // Try to match detected color from voice command
-      const detectedColor = command?.color ? normalizeText(command.color) : null;
+      // Try to match detected size from voice command
       const detectedSize = command?.size ? normalizeText(command.size) : null;
       
       // Try to find exact variant match - AUTO ADD TO CART if found
-      if (detectedColor && detectedSize) {
+      if (detectedSize) {
         const exactMatch = variants.find(v => {
-          const colorMatch = v.color && normalizeText(v.color).includes(detectedColor);
           const sizeMatch = normalizeText(v.size).includes(detectedSize);
-          return colorMatch && sizeMatch;
+          return sizeMatch;
         });
         
         if (exactMatch) {
           // AUTO-ADD: Directly add to cart and close dialog
-          setSelectedColor(exactMatch.color);
           setSelectedVariant(exactMatch);
           setIsLoading(false);
           
           // Auto-add to cart immediately
           onProductSelected(product, exactMatch, command?.quantity || 1);
           onOpenChange(false);
-          toast.success(`✓ ${product.name} - ${exactMatch.color || ''} ${exactMatch.size} adicionado!`);
+          toast.success(`✓ ${product.name} - ${exactMatch.size} adicionado!`);
           return;
         }
       }
       
-      // Try to match just color
-      if (detectedColor) {
-        const colorMatch = variants.find(v => v.color && normalizeText(v.color).includes(detectedColor));
-        if (colorMatch) {
-          setSelectedColor(colorMatch.color);
-          const sizesForColor = variants.filter(v => v.color === colorMatch.color);
-          if (sizesForColor.length === 1) {
-            setSelectedVariant(sizesForColor[0]);
-            setStep('quantity_confirmation');
-          } else {
-            setStep('size_selection');
-          }
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Multiple colors - show color selection
-      if (uniqueColors.length > 1) {
-        setStep('color_selection');
-      } else if (uniqueColors.length === 1) {
-        // Single color - move to size
-        setSelectedColor(uniqueColors[0]);
-        if (variants.length === 1) {
-          setSelectedVariant(variants[0]);
-          setStep('quantity_confirmation');
-        } else {
-          setStep('size_selection');
-        }
+      // Multiple sizes - show size selection
+      if (variants.length === 1) {
+        setSelectedVariant(variants[0]);
+        setStep('quantity_confirmation');
       } else {
-        // No colors but has sizes
-        if (variants.length === 1) {
-          setSelectedVariant(variants[0]);
-          setStep('quantity_confirmation');
-        } else {
-          setStep('size_selection');
-        }
+        setStep('size_selection');
       }
     } catch (error) {
       console.error('Error processing product:', error);
@@ -401,18 +341,6 @@ export function VoiceSaleDialog({
     await processSelectedProduct(product);
   };
 
-  const handleColorSelect = (color: string) => {
-    setSelectedColor(color);
-    setSelectedVariant(null);
-    const sizesForColor = productVariants.filter(v => (v.color || "Sem cor") === color);
-    if (sizesForColor.length === 1) {
-      setSelectedVariant(sizesForColor[0]);
-      setStep('quantity_confirmation');
-    } else {
-      setStep('size_selection');
-    }
-  };
-
   const handleSizeSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
     setStep('quantity_confirmation');
@@ -423,33 +351,6 @@ export function VoiceSaleDialog({
     onProductSelected(selectedProduct, selectedVariant, quantity);
     onOpenChange(false);
   };
-
-  // Get unique colors with images
-  const uniqueColors = useMemo(() => {
-    const colorMap = new Map<string, { color: string; image: string | null; stock: number }>();
-    productVariants.forEach(v => {
-      const colorKey = v.color || "Sem cor";
-      const existing = colorMap.get(colorKey);
-      if (existing) {
-        existing.stock += v.stock_quantity;
-        if (!existing.image && v.image_url) {
-          existing.image = v.image_url;
-        }
-      } else {
-        colorMap.set(colorKey, {
-          color: v.color || "Sem cor",
-          image: v.image_url,
-          stock: v.stock_quantity,
-        });
-      }
-    });
-    return Array.from(colorMap.values());
-  }, [productVariants]);
-
-  // Get sizes for selected color
-  const sizesForColor = useMemo(() => {
-    return productVariants.filter(v => (v.color || "Sem cor") === (selectedColor || "Sem cor"));
-  }, [productVariants, selectedColor]);
 
   const getMaxStock = () => {
     if (selectedVariant) return selectedVariant.stock_quantity;
@@ -497,34 +398,28 @@ export function VoiceSaleDialog({
                 Selecione o produto:
               </p>
               <div className="space-y-2">
-                {similarProducts.map((product) => (
+                {similarProducts.map(product => (
                   <button
                     key={product.id}
                     type="button"
                     onClick={() => handleProductSelect(product)}
-                    className={cn(
-                      "w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all touch-manipulation",
-                      "border-border hover:border-primary/50 hover:bg-accent/50"
-                    )}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border hover:border-primary/50 transition-all text-left"
                   >
                     {product.image_url ? (
                       <img
                         src={product.image_url}
                         alt={product.name}
-                        className="h-14 w-14 rounded-lg object-cover flex-shrink-0"
+                        className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
                       />
                     ) : (
-                      <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
                         <Package className="h-6 w-6 text-muted-foreground" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{product.name}</p>
-                      <p className="text-primary font-semibold">
+                      <p className="text-sm text-primary font-semibold">
                         R$ {product.price.toFixed(2).replace(".", ",")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Estoque: {product.stock_quantity} un
                       </p>
                     </div>
                   </button>
@@ -533,20 +428,22 @@ export function VoiceSaleDialog({
             </div>
           )}
 
-          {/* Color Selection */}
-          {step === 'color_selection' && selectedProduct && (
+          {/* Size Selection */}
+          {step === 'size_selection' && selectedProduct && (
             <div className="space-y-4 py-2">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/50">
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 {selectedProduct.image_url ? (
                   <img
                     src={selectedProduct.image_url}
                     alt={selectedProduct.name}
-                    className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
+                    className="h-14 w-14 rounded-lg object-cover"
                   />
                 ) : (
-                  <Package className="h-5 w-5 text-primary" />
+                  <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
+                    <Package className="h-7 w-7 text-muted-foreground" />
+                  </div>
                 )}
-                <div className="flex-1">
+                <div>
                   <p className="font-medium">{selectedProduct.name}</p>
                   <p className="text-primary font-semibold">
                     R$ {selectedProduct.price.toFixed(2).replace(".", ",")}
@@ -554,101 +451,24 @@ export function VoiceSaleDialog({
                 </div>
               </div>
               
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Selecione a cor:</p>
-                <Badge variant="outline" className="text-xs">
-                  {uniqueColors.length} cores disponíveis
-                </Badge>
-              </div>
-              
-              {/* Scrollable color grid for many colors */}
-              <div className="max-h-[45vh] overflow-y-auto pr-1 -mr-1">
-                <div className="grid grid-cols-2 gap-3">
-                  {uniqueColors.map(({ color, image, stock }) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => handleColorSelect(color)}
-                      className={cn(
-                        "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 text-center transition-all touch-manipulation active:scale-95",
-                        selectedColor === color
-                          ? "border-primary bg-primary/10 shadow-md"
-                          : "border-border hover:border-primary/50 hover:bg-accent/30"
-                      )}
-                    >
-                      {image ? (
-                        <img
-                          src={image}
-                          alt={color}
-                          className="h-16 w-16 rounded-xl object-cover flex-shrink-0 shadow-sm"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center flex-shrink-0">
-                          <Package className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="w-full">
-                        <p className="font-semibold text-sm truncate">{color}</p>
-                        <p className="text-xs text-muted-foreground">{stock} un</p>
-                      </div>
-                      {selectedColor === color && (
-                        <div className="absolute top-2 right-2 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
-                          <Check className="h-4 w-4 text-primary-foreground" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Size Selection */}
-          {step === 'size_selection' && selectedProduct && (
-            <div className="space-y-4 py-2">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/50">
-                {selectedProduct.image_url ? (
-                  <img
-                    src={selectedProduct.image_url}
-                    alt={selectedProduct.name}
-                    className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <Package className="h-5 w-5 text-primary" />
-                )}
-                <div className="flex-1">
-                  <p className="font-medium">{selectedProduct.name}</p>
-                  {selectedColor && (
-                    <Badge variant="secondary" className="mt-1">{selectedColor}</Badge>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Selecione o tamanho:</p>
-                <Badge variant="outline" className="text-xs">
-                  {sizesForColor.length} tamanhos
-                </Badge>
-              </div>
-              
-              {/* Large touch-friendly size buttons */}
-              <div className="max-h-[40vh] overflow-y-auto pr-1 -mr-1">
-                <div className="grid grid-cols-3 gap-3">
-                  {sizesForColor.map((variant) => (
+              <div>
+                <p className="text-sm font-medium mb-3">Selecione o tamanho:</p>
+                <div className="flex flex-wrap gap-2">
+                  {productVariants.map(variant => (
                     <button
                       key={variant.id}
                       type="button"
                       onClick={() => handleSizeSelect(variant)}
                       className={cn(
-                        "flex flex-col items-center justify-center p-4 rounded-2xl border-2 font-medium transition-all touch-manipulation min-h-[5rem] active:scale-95",
+                        "px-4 py-3 rounded-xl border-2 font-medium transition-all touch-manipulation min-w-[4rem] text-center",
                         selectedVariant?.id === variant.id
-                          ? "border-primary bg-primary text-primary-foreground shadow-md"
-                          : "border-border hover:border-primary/50 hover:bg-accent/30"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border hover:border-primary/50"
                       )}
                     >
-                      <span className="block text-xl font-bold">{variant.size}</span>
+                      <span className="block text-base">{variant.size}</span>
                       <span className={cn(
-                        "text-xs mt-1",
+                        "text-xs",
                         selectedVariant?.id === variant.id ? "text-primary-foreground/80" : "text-muted-foreground"
                       )}>
                         {variant.stock_quantity} un
@@ -663,74 +483,66 @@ export function VoiceSaleDialog({
           {/* Quantity Confirmation */}
           {step === 'quantity_confirmation' && selectedProduct && (
             <div className="space-y-4 py-2">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/50">
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 {selectedProduct.image_url ? (
                   <img
                     src={selectedProduct.image_url}
                     alt={selectedProduct.name}
-                    className="h-14 w-14 rounded-lg object-cover flex-shrink-0"
+                    className="h-14 w-14 rounded-lg object-cover"
                   />
                 ) : (
-                  <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                    <Package className="h-6 w-6 text-muted-foreground" />
+                  <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
+                    <Package className="h-7 w-7 text-muted-foreground" />
                   </div>
                 )}
-                <div className="flex-1">
+                <div>
                   <p className="font-medium">{selectedProduct.name}</p>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedColor && <Badge variant="secondary">{selectedColor}</Badge>}
-                    {selectedVariant && <Badge variant="outline">{selectedVariant.size}</Badge>}
-                  </div>
-                  <p className="text-primary font-semibold mt-1">
-                    R$ {selectedProduct.price.toFixed(2).replace(".", ",")}
-                  </p>
+                  {selectedVariant && (
+                    <Badge variant="outline" className="mt-1">
+                      {selectedVariant.size}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
-              <p className="text-sm font-medium text-center">Quantidade:</p>
-              <div className="flex items-center justify-center gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-14 w-14 rounded-full touch-manipulation"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  disabled={quantity <= 1}
-                >
-                  <Minus className="h-6 w-6" />
-                </Button>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={getMaxStock()}
-                  value={quantity}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 1;
-                    setQuantity(Math.min(Math.max(1, val), getMaxStock()));
-                  }}
-                  className="w-20 h-14 text-center text-2xl font-bold"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-14 w-14 rounded-full touch-manipulation"
-                  onClick={() => setQuantity(Math.min(getMaxStock(), quantity + 1))}
-                  disabled={quantity >= getMaxStock()}
-                >
-                  <Plus className="h-6 w-6" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Estoque disponível: {getMaxStock()} un
-              </p>
-              
-              {/* Total preview */}
-              <div className="mt-4 p-3 rounded-xl bg-primary/10 text-center">
-                <p className="text-sm text-muted-foreground">Total do item</p>
-                <p className="text-2xl font-bold text-primary">
-                  R$ {(selectedProduct.price * quantity).toFixed(2).replace(".", ",")}
+              <div>
+                <p className="text-sm font-medium mb-3">Quantidade:</p>
+                <div className="flex items-center justify-center gap-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-14 w-14 rounded-full touch-manipulation"
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    disabled={quantity <= 1}
+                  >
+                    <Minus className="h-6 w-6" />
+                  </Button>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={getMaxStock()}
+                    value={quantity}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 1;
+                      setQuantity(Math.min(Math.max(1, val), getMaxStock()));
+                    }}
+                    className="w-20 h-14 text-center text-2xl font-bold"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-14 w-14 rounded-full touch-manipulation"
+                    onClick={() => setQuantity(Math.min(getMaxStock(), quantity + 1))}
+                    disabled={quantity >= getMaxStock()}
+                  >
+                    <Plus className="h-6 w-6" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Estoque: {getMaxStock()} unidades
                 </p>
               </div>
             </div>
@@ -741,26 +553,10 @@ export function VoiceSaleDialog({
           <Button
             variant="outline"
             onClick={() => {
-              if (step === 'quantity_confirmation' && (sizesForColor.length > 1 || productVariants.length > 1)) {
-                if (selectedVariant && sizesForColor.length > 1) {
-                  setSelectedVariant(null);
-                  setStep('size_selection');
-                } else if (selectedColor && uniqueColors.length > 1) {
-                  setSelectedColor(null);
-                  setSelectedVariant(null);
-                  setStep('color_selection');
-                } else if (selectedProduct) {
-                  setSelectedProduct(null);
-                  setProductVariants([]);
-                  setStep('similar_matches');
-                } else {
-                  onOpenChange(false);
-                }
-              } else if (step === 'size_selection' && uniqueColors.length > 1) {
-                setSelectedColor(null);
+              if (step === 'quantity_confirmation' && productVariants.length > 1) {
                 setSelectedVariant(null);
-                setStep('color_selection');
-              } else if (step === 'color_selection' || step === 'size_selection') {
+                setStep('size_selection');
+              } else if (step === 'size_selection' && similarProducts.length > 1) {
                 setSelectedProduct(null);
                 setProductVariants([]);
                 setStep('similar_matches');
@@ -769,21 +565,18 @@ export function VoiceSaleDialog({
               }
             }}
             className="flex-1"
-            disabled={isLoading}
           >
-            {step === 'similar_matches' ? 'Cancelar' : 'Voltar'}
+            {step === 'similar_matches' || (step === 'searching') ? 'Cancelar' : 'Voltar'}
           </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!canConfirm() || isLoading}
-            className="flex-1"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>Adicionar ({quantity})</>
-            )}
-          </Button>
+          {(step === 'quantity_confirmation' || (step === 'size_selection' && productVariants.length === 0)) && (
+            <Button
+              onClick={handleConfirm}
+              disabled={!canConfirm()}
+              className="flex-1"
+            >
+              Adicionar ({quantity})
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
