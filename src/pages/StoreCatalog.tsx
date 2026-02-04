@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2 } from "lucide-react";
+import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -181,6 +182,11 @@ export default function StoreCatalog() {
   const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatus | "all">("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [customerFilters, setCustomerFilters] = useState<CustomerFiltersState>({
+    categories: [],
+    sizes: [],
+    colors: [],
+  });
 
   // Cart functions
   const addToCart = (item: CatalogDisplayItem, size: string) => {
@@ -696,9 +702,61 @@ export default function StoreCatalog() {
     return uniqueCats;
   }, [catalogItems]);
 
+  // Get unique sizes from all products - sorted using SIZE_ORDER
+  const availableSizes = useMemo(() => {
+    const allSizes = catalogItems.flatMap(p => p.sizes);
+    const uniqueSizes = [...new Set(allSizes)];
+    return sortSizes(uniqueSizes);
+  }, [catalogItems]);
+
+  // Get unique colors from all products - sorted alphabetically
+  const availableColors = useMemo(() => {
+    const allColors = catalogItems
+      .map(p => p.color)
+      .filter((c): c is string => !!c);
+    const uniqueColors = [...new Set(allColors)]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return uniqueColors;
+  }, [catalogItems]);
+
   // Filter and transform products
   // When a marketing filter is active, we group sizes with the same status into one card per product/color
   const filteredItems = useMemo(() => {
+    // Helper to check customer filters
+    const matchesCustomerFilters = (item: CatalogDisplayItem, sizesToCheck?: string[]) => {
+      // Category filter
+      if (customerFilters.categories.length > 0) {
+        const productCategories = [item.category, item.category_2, item.category_3]
+          .filter(Boolean)
+          .map(c => c?.toLowerCase());
+        const matchesAnyCategory = customerFilters.categories.some(
+          cat => productCategories.includes(cat.toLowerCase())
+        );
+        if (!matchesAnyCategory) return false;
+      }
+
+      // Size filter - check if product has any of the selected sizes
+      if (customerFilters.sizes.length > 0) {
+        const itemSizes = sizesToCheck || item.sizes;
+        const normalizedItemSizes = itemSizes.map(s => s.toLowerCase().trim());
+        const matchesAnySize = customerFilters.sizes.some(
+          size => normalizedItemSizes.includes(size.toLowerCase().trim())
+        );
+        if (!matchesAnySize) return false;
+      }
+
+      // Color filter
+      if (customerFilters.colors.length > 0) {
+        const itemColor = item.color?.toLowerCase().trim() || '';
+        const matchesAnyColor = customerFilters.colors.some(
+          color => color.toLowerCase().trim() === itemColor
+        );
+        if (!matchesAnyColor) return false;
+      }
+
+      return true;
+    };
+
     // If a marketing filter is active, group by product+color with matching sizes
     if (selectedMarketingFilter !== "all") {
       const groupedCards = new Map<string, CatalogDisplayItem>();
@@ -728,6 +786,9 @@ export default function StoreCatalog() {
           (item.color && item.color.toLowerCase().includes(search.toLowerCase()));
         const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
         const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+        
+        // Also check customer filters
+        if (!matchesCustomerFilters(item, matchingSizes)) return;
         
         if (matchesSearch && matchesCategory) {
           // Use the original item.id (product_color) as the grouping key
@@ -769,10 +830,13 @@ export default function StoreCatalog() {
         const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
         if (!hasOpportunity) return false;
       }
+
+      // Customer filters
+      if (!matchesCustomerFilters(p)) return false;
       
       return matchesSearch && matchesCategory;
     });
-  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities]);
+  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities, customerFilters]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -1192,16 +1256,33 @@ export default function StoreCatalog() {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative max-w-md mx-auto mb-6">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar produtos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-11 h-12 rounded-full border-gray-200 bg-gray-50 focus:bg-white transition-colors"
+        {/* Search Bar and Filters */}
+        <div className="flex items-center gap-3 max-w-md mx-auto mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Buscar produtos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-11 h-12 rounded-full border-gray-200 bg-gray-50 focus:bg-white transition-colors"
+            />
+          </div>
+          <CustomerFilters
+            availableCategories={categories}
+            availableSizes={availableSizes}
+            availableColors={availableColors}
+            filters={customerFilters}
+            onFiltersChange={setCustomerFilters}
+            primaryColor={primaryColor}
           />
         </div>
+
+        {/* Active Filters Display */}
+        <ActiveFiltersDisplay
+          filters={customerFilters}
+          onFiltersChange={setCustomerFilters}
+          primaryColor={primaryColor}
+        />
 
         {/* Category Pills - horizontal scroll on mobile */}
         {(() => {
