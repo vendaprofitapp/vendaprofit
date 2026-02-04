@@ -197,20 +197,32 @@ export function ProductFormDialog({
       .order("size", { ascending: true });
     
     if (!error && data && data.length > 0) {
-      const variants = data.map(v => ({
-        id: v.id,
-        size: v.size,
-        color: v.color || "",
-        stock_quantity: v.stock_quantity,
-        image_url: v.image_url,
-        image_url_2: v.image_url_2,
-        image_url_3: v.image_url_3,
-        video_url: v.video_url || null,
-        marketing_status: (v.marketing_status as MarketingStatus) || null,
-        marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
-        marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
-      }));
-      setProductVariants(variants);
+      const variants = data.map(v => {
+        // Ensure marketing_status is always an array or null
+        let marketingStatus: MarketingStatus = null;
+        if (v.marketing_status) {
+          if (Array.isArray(v.marketing_status)) {
+            marketingStatus = v.marketing_status as MarketingStatus;
+          } else if (typeof v.marketing_status === 'string') {
+            // Handle legacy string value
+            marketingStatus = [v.marketing_status as any];
+          }
+        }
+        
+        return {
+          id: v.id,
+          size: v.size,
+          color: v.color || "",
+          stock_quantity: v.stock_quantity,
+          image_url: v.image_url,
+          image_url_2: v.image_url_2,
+          image_url_3: v.image_url_3,
+          video_url: v.video_url || null,
+          marketing_status: marketingStatus,
+          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+          marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
+        };
+      });
       
       // Build color media from variants
       const images: { [color: string]: ColorMedia } = {};
@@ -575,12 +587,24 @@ export function ProductFormDialog({
         const colorTrimmed = (v.color || "").trim();
         const urls = colorTrimmed ? (colorImageUrls[colorTrimmed] || []) : [];
         const colorMedia = colorTrimmed ? colorImages[colorTrimmed] : null;
+        
+        // Ensure marketing_status is always an array or null for the text[] column
+        let marketingStatusArray: string[] | null = null;
+        if (v.marketing_status) {
+          if (Array.isArray(v.marketing_status)) {
+            marketingStatusArray = v.marketing_status.length > 0 ? v.marketing_status : null;
+          } else if (typeof v.marketing_status === 'string') {
+            // Handle legacy string value
+            marketingStatusArray = [v.marketing_status];
+          }
+        }
+        
         return {
           product_id: productId,
           size: v.size,
           color: colorTrimmed || null,
           stock_quantity: v.stock_quantity,
-          marketing_status: v.marketing_status,
+          marketing_status: marketingStatusArray,
           marketing_price: v.marketing_price,
           marketing_delivery_days: v.marketing_delivery_days,
           image_url: urls[0] || null,
@@ -610,7 +634,7 @@ export function ProductFormDialog({
           const existingId = existingMap.get(key);
 
           if (existingId) {
-            // Update existing variant
+            // Update existing variant - marketing_status is already normalized in variantsToUpsert
             const { error: updateError } = await supabase
               .from("product_variants")
               .update({
