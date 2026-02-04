@@ -124,6 +124,8 @@ export function ProductFormDialog({
   const [colorImages, setColorImages] = useState<{ [color: string]: ColorMedia }>({});
   const [expandedColors, setExpandedColors] = useState<{ [color: string]: boolean }>({});
   const [colorRefreshKey, setColorRefreshKey] = useState(0);
+  // Track original variant count to prevent accidental mass deletion
+  const [originalVariantCount, setOriginalVariantCount] = useState(0);
   
   const [form, setForm] = useState({
     name: "",
@@ -223,6 +225,7 @@ export function ProductFormDialog({
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         };
       });
+      setOriginalVariantCount(variants.length);
       
       // Build color media from variants
       const images: { [color: string]: ColorMedia } = {};
@@ -250,6 +253,7 @@ export function ProductFormDialog({
     } else {
       setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
       setColorImages({});
+      setOriginalVariantCount(0);
     }
   };
 
@@ -281,6 +285,7 @@ export function ProductFormDialog({
     setColorImages({});
     setExpandedColors({});
     setProductVariants([{ size: "", color: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+    setOriginalVariantCount(0);
   };
 
 
@@ -662,16 +667,24 @@ export function ProductFormDialog({
         }
 
         // 3. Delete variants that are no longer in the form (if not referenced)
-        for (const [, variantId] of existingMap) {
-          const { error: deleteError } = await supabase
-            .from("product_variants")
-            .delete()
-            .eq("id", variantId);
+        // SAFETY: Only delete if we actually loaded variants successfully
+        // This prevents accidental mass deletion when fetch fails
+        const shouldDeleteOrphans = variantsToUpsert.length > 0 || originalVariantCount === 0;
+        
+        if (shouldDeleteOrphans) {
+          for (const [, variantId] of existingMap) {
+            const { error: deleteError } = await supabase
+              .from("product_variants")
+              .delete()
+              .eq("id", variantId);
 
-          // Silently ignore delete errors (variant may be in use by consignment)
-          if (deleteError) {
-            console.warn("Could not delete variant (may be in use):", variantId, deleteError);
+            // Silently ignore delete errors (variant may be in use by consignment)
+            if (deleteError) {
+              console.warn("Could not delete variant (may be in use):", variantId, deleteError);
+            }
           }
+        } else if (existingMap.size > 0) {
+          console.warn("Skipping variant deletion - form appears to have no variants loaded but product had variants originally");
         }
       } else {
         // For new products, just insert all variants
