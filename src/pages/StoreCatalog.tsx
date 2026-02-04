@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2 } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
@@ -47,7 +48,7 @@ const sortSizes = (sizes: string[]): string[] => {
   });
 };
 
-type MarketingStatus = "opportunity" | "presale" | "launch" | null;
+type MarketingStatus = "opportunity" | "presale" | "launch" | "secret" | null;
 
 interface ProductVariant {
   id: string;
@@ -171,6 +172,9 @@ interface StoreSettings {
   filter_buttons_config: FilterButtonsConfig | null;
   bio_video_preview: string | null;
   bio_video_full: string | null;
+  secret_area_active: boolean;
+  secret_area_name: string | null;
+  secret_area_password: string | null;
 }
 
 export default function StoreCatalog() {
@@ -187,6 +191,10 @@ export default function StoreCatalog() {
     sizes: [],
     colors: [],
   });
+  // Secret area state
+  const [secretAreaUnlocked, setSecretAreaUnlocked] = useState(false);
+  const [showSecretDialog, setShowSecretDialog] = useState(false);
+  const [secretPassword, setSecretPassword] = useState("");
 
   // Cart functions
   const addToCart = (item: CatalogDisplayItem, size: string) => {
@@ -362,12 +370,14 @@ export default function StoreCatalog() {
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
-      // Helper to determine the highest priority marketing status
+      // Helper to determine the highest priority marketing status (for public display)
+      // Note: 'secret' is handled separately and not prioritized here
       const getPriorityMarketingStatus = (statuses: MarketingStatus[]): MarketingStatus => {
-        // Priority: opportunity > presale > launch > null
+        // Priority: opportunity > presale > launch > secret > null
         if (statuses.includes("opportunity")) return "opportunity";
         if (statuses.includes("presale")) return "presale";
         if (statuses.includes("launch")) return "launch";
+        if (statuses.includes("secret")) return "secret";
         return null;
       };
 
@@ -757,9 +767,59 @@ export default function StoreCatalog() {
       return true;
     };
 
+    // Helper to filter out secret sizes from items (when secret area is NOT unlocked)
+    const filterSecretSizes = (item: CatalogDisplayItem): CatalogDisplayItem | null => {
+      if (secretAreaUnlocked) return item; // If unlocked, show all
+      
+      // Filter sizes that are NOT secret
+      const nonSecretSizes = item.sizes.filter(size => item.sizeMarketingStatus[size] !== 'secret');
+      
+      // If all sizes are secret, exclude the entire item
+      if (nonSecretSizes.length === 0) return null;
+      
+      // If item has some secret sizes, return item with only non-secret sizes
+      if (nonSecretSizes.length < item.sizes.length) {
+        const newSizeMarketingStatus: Record<string, MarketingStatus> = {};
+        const newSizeMarketingPrice: Record<string, number | null> = {};
+        const newSizeMarketingDeliveryDays: Record<string, number | null> = {};
+        const newSizeIsPartner: Record<string, boolean> = {};
+        
+        nonSecretSizes.forEach(size => {
+          newSizeMarketingStatus[size] = item.sizeMarketingStatus[size];
+          newSizeMarketingPrice[size] = item.sizeMarketingPrice[size];
+          newSizeMarketingDeliveryDays[size] = item.sizeMarketingDeliveryDays[size];
+          newSizeIsPartner[size] = item.sizeIsPartner[size];
+        });
+        
+        // Recalculate marketing status for the card (excluding secret)
+        const nonSecretStatuses = nonSecretSizes.map(s => newSizeMarketingStatus[s]);
+        let newMarketingStatus: MarketingStatus = null;
+        if (nonSecretStatuses.includes("opportunity")) newMarketingStatus = "opportunity";
+        else if (nonSecretStatuses.includes("presale")) newMarketingStatus = "presale";
+        else if (nonSecretStatuses.includes("launch")) newMarketingStatus = "launch";
+        
+        return {
+          ...item,
+          sizes: nonSecretSizes,
+          sizeMarketingStatus: newSizeMarketingStatus,
+          sizeMarketingPrice: newSizeMarketingPrice,
+          sizeMarketingDeliveryDays: newSizeMarketingDeliveryDays,
+          sizeIsPartner: newSizeIsPartner,
+          marketingStatus: newMarketingStatus,
+        };
+      }
+      
+      return item;
+    };
+
     // If a marketing filter is active, group by product+color with matching sizes
     if (selectedMarketingFilter !== "all") {
       const groupedCards = new Map<string, CatalogDisplayItem>();
+      
+      // For 'secret' filter, only show if unlocked
+      if (selectedMarketingFilter === "secret" && !secretAreaUnlocked) {
+        return [];
+      }
       
       catalogItems.forEach(item => {
         // Collect all sizes with matching marketing status for this product/color
@@ -816,27 +876,30 @@ export default function StoreCatalog() {
       return Array.from(groupedCards.values());
     }
     
-    // Normal filtering (show grouped products)
-    return catalogItems.filter(p => {
-      const matchesSearch = search === "" || 
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
-        (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
-      const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
-      const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
-      
-      // Legacy opportunity filter (category-based)
-      if (showOpportunities) {
-        const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
-        if (!hasOpportunity) return false;
-      }
+    // Normal filtering (show grouped products) - filter out secret items unless unlocked
+    return catalogItems
+      .map(filterSecretSizes)
+      .filter((p): p is CatalogDisplayItem => p !== null)
+      .filter(p => {
+        const matchesSearch = search === "" || 
+          p.name.toLowerCase().includes(search.toLowerCase()) ||
+          (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
+          (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
+        const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
+        const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+        
+        // Legacy opportunity filter (category-based)
+        if (showOpportunities) {
+          const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
+          if (!hasOpportunity) return false;
+        }
 
-      // Customer filters
-      if (!matchesCustomerFilters(p)) return false;
-      
-      return matchesSearch && matchesCategory;
-    });
-  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities, customerFilters]);
+        // Customer filters
+        if (!matchesCustomerFilters(p)) return false;
+        
+        return matchesSearch && matchesCategory;
+      });
+  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities, customerFilters, secretAreaUnlocked]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -1253,6 +1316,36 @@ export default function StoreCatalog() {
                   );
                 });
             })()}
+            
+            {/* Secret Area Button - only show if active */}
+            {store.secret_area_active && store.secret_area_password && (
+              <button
+                className={cn(
+                  "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                  secretAreaUnlocked
+                    ? "bg-rose-500 text-white shadow-lg"
+                    : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
+                )}
+                onClick={() => {
+                  if (secretAreaUnlocked) {
+                    // Toggle filter to show only secret items
+                    setSelectedMarketingFilter(selectedMarketingFilter === "secret" ? "all" : "secret");
+                    setShowOpportunities(false);
+                  } else {
+                    // Open password dialog
+                    setShowSecretDialog(true);
+                  }
+                }}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                {store.secret_area_name || "Área VIP"}
+                {secretAreaUnlocked && (
+                  <span className="ml-1 text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">
+                    ✓
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1383,6 +1476,70 @@ export default function StoreCatalog() {
           </p>
         </div>
       </footer>
+      
+      {/* Secret Area Password Dialog */}
+      <Dialog open={showSecretDialog} onOpenChange={setShowSecretDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-rose-500" />
+              {store?.secret_area_name || "Área VIP"}
+            </DialogTitle>
+            <DialogDescription>
+              Digite a senha para acessar os produtos exclusivos desta área.
+            </DialogDescription>
+          </DialogHeader>
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (secretPassword === store?.secret_area_password) {
+                setSecretAreaUnlocked(true);
+                setShowSecretDialog(false);
+                setSecretPassword("");
+                setSelectedMarketingFilter("secret");
+                toast.success(`Bem-vindo à ${store?.secret_area_name || "Área VIP"}!`);
+              } else {
+                toast.error("Senha incorreta. Tente novamente.");
+              }
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="secret-password">Senha</Label>
+              <div className="relative">
+                <Input
+                  id="secret-password"
+                  type="password"
+                  placeholder="Digite a senha..."
+                  value={secretPassword}
+                  onChange={(e) => setSecretPassword(e.target.value)}
+                  className="pr-10"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowSecretDialog(false);
+                  setSecretPassword("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit"
+                className="bg-rose-500 hover:bg-rose-600"
+                disabled={!secretPassword.trim()}
+              >
+                Acessar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1514,12 +1671,14 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                 "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1",
                 item.marketingStatus === "opportunity" && "bg-orange-500 text-white",
                 item.marketingStatus === "presale" && "bg-purple-500 text-white",
-                item.marketingStatus === "launch" && "bg-green-500 text-white"
+                item.marketingStatus === "launch" && "bg-green-500 text-white",
+                item.marketingStatus === "secret" && "bg-rose-500 text-white"
               )}
             >
               {item.marketingStatus === "opportunity" && <><Flame className="h-3 w-3" /> Oportunidade</>}
               {item.marketingStatus === "presale" && <><Clock className="h-3 w-3" /> Pré-venda</>}
               {item.marketingStatus === "launch" && <><Rocket className="h-3 w-3" /> Lançamento</>}
+              {item.marketingStatus === "secret" && <><Lock className="h-3 w-3" /> Exclusivo</>}
             </Badge>
           )}
 

@@ -1,4 +1,4 @@
-import { Flame, Clock, Rocket, Circle } from "lucide-react";
+import { Flame, Clock, Rocket, Circle, Lock } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export type MarketingStatus = "opportunity" | "presale" | "launch" | null;
+export type MarketingStatus = "opportunity" | "presale" | "launch" | "secret" | null;
 
 interface MarketingStatusSelectorProps {
   value: MarketingStatus;
@@ -43,6 +43,13 @@ const statusOptions: { value: MarketingStatus; icon: typeof Flame; label: string
     label: "Lançamento", 
     color: "text-green-500",
     bgColor: "hover:bg-green-500/10"
+  },
+  { 
+    value: "secret", 
+    icon: Lock, 
+    label: "Área Secreta", 
+    color: "text-rose-500",
+    bgColor: "hover:bg-rose-500/10"
   },
 ];
 
@@ -138,7 +145,8 @@ export function MarketingStatusBadge({ status, size = "sm" }: { status: Marketin
             "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium",
             status === "opportunity" && "bg-orange-500/10 text-orange-600",
             status === "presale" && "bg-purple-500/10 text-purple-600",
-            status === "launch" && "bg-green-500/10 text-green-600"
+            status === "launch" && "bg-green-500/10 text-green-600",
+            status === "secret" && "bg-rose-500/10 text-rose-600"
           )}>
             <Icon className={cn(size === "sm" ? "h-3 w-3" : "h-4 w-4")} />
             {size === "md" && option.label}
