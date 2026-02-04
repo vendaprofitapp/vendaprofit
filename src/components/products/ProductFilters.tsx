@@ -17,8 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Category } from "./CategoryManager";
+import { Flame, Clock, Rocket, Lock } from "lucide-react";
 
 export type StockStatusKey = "available" | "low" | "out";
+export type MarketingStatusFilter = "opportunity" | "presale" | "launch" | "secret" | "all";
 
 interface Supplier {
   id: string;
@@ -35,6 +37,7 @@ export interface ProductFiltersState {
   maxPrice: string;
   minStock: string;
   maxStock: string;
+  marketingStatus: MarketingStatusFilter;
 }
 
 interface ProductFiltersProps {
@@ -76,6 +79,7 @@ export function ProductFilters({
       maxPrice: "",
       minStock: "",
       maxStock: "",
+      marketingStatus: "all",
     });
   };
 
@@ -88,7 +92,8 @@ export function ProductFilters({
     filters.minPrice !== "" ||
     filters.maxPrice !== "" ||
     filters.minStock !== "" ||
-    filters.maxStock !== "";
+    filters.maxStock !== "" ||
+    filters.marketingStatus !== "all";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -134,6 +139,46 @@ export function ProductFilters({
                 <SelectItem value="available">Disponível</SelectItem>
                 <SelectItem value="low">Baixo estoque</SelectItem>
                 <SelectItem value="out">Esgotado</SelectItem>
+              </SelectContent>
+          </Select>
+          </div>
+
+          {/* Status de Marketing */}
+          <div className="grid gap-2">
+            <Label>Status de Marketing</Label>
+            <Select
+              value={filters.marketingStatus}
+              onValueChange={(v) => updateFilter("marketingStatus", v as MarketingStatusFilter)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="opportunity">
+                  <span className="flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    Oportunidade
+                  </span>
+                </SelectItem>
+                <SelectItem value="presale">
+                  <span className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-purple-500" />
+                    Pré-venda
+                  </span>
+                </SelectItem>
+                <SelectItem value="launch">
+                  <span className="flex items-center gap-2">
+                    <Rocket className="h-4 w-4 text-green-500" />
+                    Lançamento
+                  </span>
+                </SelectItem>
+                <SelectItem value="secret">
+                  <span className="flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-rose-500" />
+                    Área Secreta
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

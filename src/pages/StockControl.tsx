@@ -69,12 +69,14 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
+  marketing_status: string | null;
   suppliers?: { name: string } | null;
   product_variants?: Array<{
     id: string;
     size: string;
     color: string | null;
     stock_quantity: number;
+    marketing_status?: string | null;
   }>;
 }
 
@@ -116,6 +118,7 @@ export default function StockControl() {
     maxPrice: "",
     minStock: "",
     maxStock: "",
+    marketingStatus: "all",
   });
   
   // Product form state
@@ -219,7 +222,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( id, size, color, stock_quantity ),
+        product_variants ( id, size, color, stock_quantity, marketing_status ),
         suppliers ( name )
       `)
       .eq("owner_id", user?.id)
@@ -275,7 +278,7 @@ export default function StockControl() {
       .from("products")
       .select(`
         *,
-        product_variants ( id, size, color, stock_quantity )
+        product_variants ( id, size, color, stock_quantity, marketing_status )
       `)
       .in("id", productIds)
       .neq("owner_id", user.id)
@@ -537,6 +540,14 @@ export default function StockControl() {
       const matchesMinStock = minStock === null || stockNum >= minStock;
       const matchesMaxStock = maxStock === null || stockNum <= maxStock;
 
+      // Marketing status - check product and variants
+      const productMarketingStatuses = [
+        p.marketing_status,
+        ...(p.product_variants || []).map(v => v.marketing_status)
+      ].filter(Boolean);
+      const matchesMarketingStatus = filters.marketingStatus === "all" || 
+        productMarketingStatuses.includes(filters.marketingStatus);
+
       return (
         matchesTerm &&
         matchesCategory &&
@@ -547,7 +558,8 @@ export default function StockControl() {
         matchesMinPrice &&
         matchesMaxPrice &&
         matchesMinStock &&
-        matchesMaxStock
+        matchesMaxStock &&
+        matchesMarketingStatus
       );
     });
   }, [products, searchTerm, filters, suppliers]);
@@ -563,6 +575,7 @@ export default function StockControl() {
     if (filters.maxPrice) count++;
     if (filters.minStock) count++;
     if (filters.maxStock) count++;
+    if (filters.marketingStatus !== "all") count++;
     return count;
   }, [filters]);
 
