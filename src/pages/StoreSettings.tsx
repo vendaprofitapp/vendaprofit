@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers, Video } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Sparkles, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers, Video, Lock, Eye, EyeOff } from "lucide-react";
 import { VideoUploader } from "@/components/admin/VideoUploader";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +71,9 @@ interface StoreSettings {
   filter_buttons_config: FilterButtonsConfig | null;
   bio_video_preview: string | null;
   bio_video_full: string | null;
+  secret_area_active: boolean | null;
+  secret_area_name: string | null;
+  secret_area_password: string | null;
 }
 
 interface Group {
@@ -116,6 +119,9 @@ export default function StoreSettings() {
     show_store_description: true,
     custom_domain: "",
     filter_buttons_config: defaultFilterButtonsConfig,
+    secret_area_active: false,
+    secret_area_name: "Área VIP",
+    secret_area_password: "",
   });
   const [draggedButton, setDraggedButton] = useState<string | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -125,6 +131,7 @@ export default function StoreSettings() {
   const [customFontUrl, setCustomFontUrl] = useState<string | null>(null);
   const [bioVideoPreview, setBioVideoPreview] = useState<string | null>(null);
   const [bioVideoFull, setBioVideoFull] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [uploadingBannerMobile, setUploadingBannerMobile] = useState(false);
@@ -243,6 +250,9 @@ export default function StoreSettings() {
         show_store_description: storeSettings.show_store_description ?? true,
         custom_domain: storeSettings.custom_domain || "",
         filter_buttons_config: storeSettings.filter_buttons_config || defaultFilterButtonsConfig,
+        secret_area_active: storeSettings.secret_area_active ?? false,
+        secret_area_name: storeSettings.secret_area_name || "Área VIP",
+        secret_area_password: storeSettings.secret_area_password || "",
       });
       setLogoUrl(storeSettings.logo_url);
       setBannerUrl(storeSettings.banner_url);
@@ -546,6 +556,9 @@ export default function StoreSettings() {
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
             bio_video_preview: bioVideoPreview,
             bio_video_full: bioVideoFull,
+            secret_area_active: formData.secret_area_active,
+            secret_area_name: formData.secret_area_name || null,
+            secret_area_password: formData.secret_area_password || null,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -582,6 +595,9 @@ export default function StoreSettings() {
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
             bio_video_preview: bioVideoPreview,
             bio_video_full: bioVideoFull,
+            secret_area_active: formData.secret_area_active,
+            secret_area_name: formData.secret_area_name || null,
+            secret_area_password: formData.secret_area_password || null,
             ...fontData,
           })
           .select("id")
@@ -1390,6 +1406,112 @@ export default function StoreSettings() {
                   })}
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Secret Area / VIP Configuration */}
+        <Card className="border-2 border-rose-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-rose-500" />
+              Área Secreta / VIP
+            </CardTitle>
+            <CardDescription>
+              Crie uma área exclusiva para produtos especiais. Produtos marcados como "Secreto" só ficam visíveis para quem tem a senha.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Enable Secret Area */}
+            <div className="flex items-center justify-between p-4 bg-rose-50 dark:bg-rose-950/20 rounded-lg">
+              <div className="space-y-0.5">
+                <Label className="font-medium flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-rose-500" />
+                  Ativar Área Secreta na Loja
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Quando ativada, um botão aparecerá na loja para acessar produtos exclusivos
+                </p>
+              </div>
+              <Switch
+                checked={formData.secret_area_active}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, secret_area_active: checked }))}
+              />
+            </div>
+
+            {/* Secret Area Settings (only show when active) */}
+            {formData.secret_area_active && (
+              <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Button Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="secret_area_name" className="font-medium">
+                      Nome do Botão
+                    </Label>
+                    <Input
+                      id="secret_area_name"
+                      value={formData.secret_area_name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, secret_area_name: e.target.value }))}
+                      placeholder="Área VIP"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Ex: "Clube VIP", "Exclusivo", "Área Secreta"
+                    </p>
+                  </div>
+
+                  {/* Password */}
+                  <div className="space-y-2">
+                    <Label htmlFor="secret_area_password" className="font-medium">
+                      Senha de Acesso
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="secret_area_password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.secret_area_password}
+                        onChange={(e) => setFormData(prev => ({ ...prev, secret_area_password: e.target.value }))}
+                        placeholder="Digite a senha..."
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ex: VIP2024, EXCLUSIVO, sua senha personalizada
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="p-4 bg-muted/30 rounded-lg border">
+                  <Label className="font-medium mb-3 block">Prévia do Botão</Label>
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      className="px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      {formData.secret_area_name || "Área VIP"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Instructions */}
+                <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">💡 Como funciona:</p>
+                  <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                    <li>• Marque produtos como "Secreto" 🔒 no seletor de marketing (ao editar produto/variação)</li>
+                    <li>• Produtos secretos ficam invisíveis na listagem principal da loja</li>
+                    <li>• O cliente clica no botão, digita a senha e vê os produtos exclusivos</li>
+                    <li>• Use para clientes VIP, promoções secretas ou lançamentos exclusivos</li>
+                  </ul>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
