@@ -41,7 +41,6 @@ interface Product {
   product_variants?: Array<{
     id: string;
     size: string;
-    color: string | null;
     stock_quantity: number;
   }>;
 }
@@ -95,7 +94,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
         .from("products")
         .select(`
           id, name, price, image_url, size, color, stock_quantity,
-          product_variants (id, size, color, stock_quantity)
+          product_variants (id, size, stock_quantity)
         `)
         .eq("owner_id", user.id)
         .eq("is_active", true)
@@ -188,7 +187,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
       product,
       variant_id: variantId,
       size: variant?.size || product.size,
-      color: variant?.color || product.color,
+      color: product.color, // Color now comes from product
       price: product.price,
       availableStock,
     }]);
@@ -447,7 +446,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
                                     }`}
                                     onClick={() => addProduct(product, variant.id)}
                                   >
-                                    {variant.size} {variant.color && `- ${variant.color}`}
+                                    {variant.size}
                                   </Button>
                                 );
                               })}
@@ -455,8 +454,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
                           ) : (
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="w-full mt-2"
+                              className="w-full mt-2 h-7"
                               onClick={() => addProduct(product)}
                             >
                               <Plus className="h-3 w-3 mr-1" />
@@ -473,91 +471,89 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
               {/* Selected items */}
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-muted px-3 py-2 text-sm font-medium flex justify-between">
-                  <span>Na Malinha ({selectedItems.length})</span>
-                  <span className="font-bold">
-                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total)}
-                  </span>
+                  <span>Itens Selecionados</span>
+                  <Badge>{selectedItems.length}</Badge>
                 </div>
                 <ScrollArea className="h-[300px]">
                   <div className="p-2 space-y-2">
-                    {selectedItems.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground text-sm">
-                        Nenhum produto adicionado
-                      </div>
-                    ) : (
-                      selectedItems.map((item, index) => (
-                        <div key={index} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
-                          <div className="w-10 h-10 bg-muted rounded overflow-hidden flex-shrink-0">
-                            {item.product.image_url ? (
-                              <img src={item.product.image_url} alt={item.product.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Package className="h-5 w-5 text-muted-foreground" />
-                              </div>
-                            )}
+                    {selectedItems.map((item, index) => (
+                      <div 
+                        key={`${item.product.id}-${item.variant_id || 'base'}`}
+                        className="flex items-center gap-2 p-2 bg-muted/50 rounded"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.product.name}</p>
+                          <div className="flex gap-1 mt-1">
+                            {item.size && <Badge variant="outline" className="text-xs">{item.size}</Badge>}
+                            {item.color && <Badge variant="outline" className="text-xs">{item.color}</Badge>}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{item.product.name}</p>
-                            <div className="flex items-center gap-1">
-                              {item.size && <Badge variant="outline" className="text-xs">{item.size}</Badge>}
-                              {item.color && <Badge variant="outline" className="text-xs">{item.color}</Badge>}
-                            </div>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => removeProduct(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                         </div>
-                      ))
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeProduct(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    
+                    {selectedItems.length === 0 && (
+                      <p className="text-center text-muted-foreground text-sm py-8">
+                        Nenhum produto selecionado
+                      </p>
                     )}
                   </div>
                 </ScrollArea>
               </div>
             </div>
 
-            <div className="flex justify-between gap-2 pt-4">
-              <Button variant="outline" onClick={() => setStep("details")}>
-                Voltar
-              </Button>
-              <Button 
-                onClick={handleSubmit} 
-                disabled={selectedItems.length === 0 || isSubmitting}
-                className="gap-2"
-              >
-                <Send className="h-4 w-4" />
-                {isSubmitting ? "Criando..." : "Criar e Enviar para Aprovação"}
-              </Button>
+            <div className="flex items-center justify-between pt-4 border-t mt-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Total:</p>
+                <p className="text-xl font-bold">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setStep("details")}>
+                  Voltar
+                </Button>
+                <Button 
+                  onClick={handleSubmit} 
+                  disabled={isSubmitting || selectedItems.length === 0}
+                >
+                  {isSubmitting ? "Criando..." : "Criar Malinha"}
+                </Button>
+              </div>
             </div>
           </div>
         )}
 
         {step === "review" && createdConsignment && (
-          <div className="space-y-6 py-4">
-            <div className="text-center">
+          <div className="space-y-6">
+            <div className="text-center py-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
               <p className="text-muted-foreground">
-                Malinha criada com {selectedItems.length} itens e enviada para aprovação!
+                A malinha foi criada e enviada para aprovação do cliente.
               </p>
             </div>
 
-            <div className="bg-muted p-4 rounded-lg">
-              <Label className="text-sm text-muted-foreground">Link para o cliente:</Label>
-              <div className="flex items-center gap-2 mt-2">
-                <Input value={getPublicUrl()} readOnly className="text-sm" />
+            <div className="space-y-2">
+              <Label>Link da Malinha</Label>
+              <div className="flex gap-2">
+                <Input value={getPublicUrl()} readOnly />
                 <Button variant="outline" size="icon" onClick={copyLink}>
                   {linkCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Button onClick={sendWhatsApp} className="gap-2">
+            <div className="flex gap-2">
+              <Button className="flex-1 gap-2" onClick={sendWhatsApp}>
                 <MessageCircle className="h-4 w-4" />
                 Enviar via WhatsApp
               </Button>

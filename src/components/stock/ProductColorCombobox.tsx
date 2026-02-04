@@ -29,9 +29,8 @@ interface ProductColorComboboxProps {
   userColors?: Color[]; // Pre-loaded user colors
 }
 
-interface ExistingVariantColor {
+interface ExistingColor {
   color: string;
-  stock: number;
 }
 
 export function ProductColorCombobox({
@@ -43,11 +42,11 @@ export function ProductColorCombobox({
 }: ProductColorComboboxProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [productColors, setProductColors] = useState<ExistingVariantColor[]>([]);
+  const [productColors, setProductColors] = useState<ExistingColor[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
-  // Fetch existing colors from product variants when we have a match
+  // Fetch existing colors from product when we have a match
   useEffect(() => {
     if (existingProductId && user) {
       fetchProductColors();
@@ -61,36 +60,22 @@ export function ProductColorCombobox({
     setLoading(true);
 
     try {
-      // Get colors from product variants
-      const { data: variants } = await supabase
-        .from("product_variants")
-        .select("color, stock_quantity")
-        .eq("product_id", existingProductId);
-
-      // Get the main product color too
+      // Get the main product color (now color_label)
       const { data: product } = await supabase
         .from("products")
-        .select("color")
+        .select("color_label")
         .eq("id", existingProductId)
         .single();
 
-      const colorMap = new Map<string, number>();
+      const colorMap = new Map<string, boolean>();
 
       // Add product main color
-      if (product?.color) {
-        colorMap.set(product.color, 0);
+      if (product?.color_label) {
+        colorMap.set(product.color_label, true);
       }
 
-      // Add variant colors
-      variants?.forEach((v) => {
-        if (v.color) {
-          const existing = colorMap.get(v.color) || 0;
-          colorMap.set(v.color, existing + (v.stock_quantity || 0));
-        }
-      });
-
-      const colors: ExistingVariantColor[] = Array.from(colorMap.entries()).map(
-        ([color, stock]) => ({ color, stock })
+      const colors: ExistingColor[] = Array.from(colorMap.keys()).map(
+        (color) => ({ color })
       );
 
       setProductColors(colors);
@@ -103,7 +88,7 @@ export function ProductColorCombobox({
 
   // Combine product colors with user colors for suggestions
   const allSuggestions = useMemo(() => {
-    const suggestions: { name: string; source: "product" | "user"; stock?: number }[] = [];
+    const suggestions: { name: string; source: "product" | "user" }[] = [];
     const addedNames = new Set<string>();
 
     // First add product colors (priority)
@@ -111,7 +96,7 @@ export function ProductColorCombobox({
       const normalized = pc.color.toLowerCase().trim();
       if (!addedNames.has(normalized)) {
         addedNames.add(normalized);
-        suggestions.push({ name: pc.color, source: "product", stock: pc.stock });
+        suggestions.push({ name: pc.color, source: "product" });
       }
     });
 
@@ -213,11 +198,6 @@ export function ProductColorCombobox({
                             )}
                           />
                           <span className="flex-1">{suggestion.name}</span>
-                          {suggestion.stock !== undefined && (
-                            <span className="text-xs text-muted-foreground">
-                              ({suggestion.stock} un)
-                            </span>
-                          )}
                         </CommandItem>
                       ))}
                   </CommandGroup>

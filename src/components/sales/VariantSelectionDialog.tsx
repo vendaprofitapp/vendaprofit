@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 interface ProductVariant {
   id: string;
   product_id: string;
-  color: string | null;
   size: string;
   stock_quantity: number;
   image_url: string | null;
@@ -77,20 +76,18 @@ export function VariantSelectionDialog({
 }: VariantSelectionDialogProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [variants, setVariants] = useState<ExtendedVariant[]>([]);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ExtendedVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [step, setStep] = useState<'color' | 'size' | 'quantity'>('color');
+  const [step, setStep] = useState<'size' | 'quantity'>('size');
 
   // Reset state when dialog opens or product changes
   useEffect(() => {
     if (open && product) {
       setIsLoading(true);
       setVariants([]);
-      setSelectedColor(null);
       setSelectedVariant(null);
       setQuantity(1);
-      setStep('color');
+      setStep('size');
       fetchAllVariants(product);
     }
   }, [open, product?.id]);
@@ -100,10 +97,9 @@ export function VariantSelectionDialog({
       // Fetch own product variants
       const { data: ownVariants, error: ownError } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url")
+        .select("id, product_id, size, stock_quantity, image_url")
         .eq("product_id", prod.id)
         .gt("stock_quantity", 0)
-        .order("color")
         .order("size");
 
       if (ownError) throw ownError;
@@ -123,7 +119,6 @@ export function VariantSelectionDialog({
         const normalizedName = prod.name.toLowerCase().trim().replace(/\s+/g, ' ');
         
         // Find partner products with same name that are shared with user
-        // Use % wildcards for more flexible matching
         const { data: partnerProducts, error: partnerError } = await supabase
           .from("product_partnerships")
           .select(`
@@ -163,10 +158,9 @@ export function VariantSelectionDialog({
             // Fetch variants for partner products
             const { data: pVariants, error: pVarError } = await supabase
               .from("product_variants")
-              .select("id, product_id, color, size, stock_quantity, image_url")
+              .select("id, product_id, size, stock_quantity, image_url")
               .in("product_id", Array.from(partnerProductIds))
               .gt("stock_quantity", 0)
-              .order("color")
               .order("size");
 
             if (!pVarError && pVariants) {
@@ -189,94 +183,26 @@ export function VariantSelectionDialog({
       const allVariants = [...ownExtended, ...partnerExtended];
       
       const sortedData = allVariants.sort((a, b) => {
-        const colorCompare = (a.color || "").localeCompare(b.color || "");
-        if (colorCompare !== 0) return colorCompare;
-        // Own variants first within same color
+        // Own variants first
         if (a.isPartner !== b.isPartner) return a.isPartner ? 1 : -1;
         return getSizeIndex(a.size) - getSizeIndex(b.size);
       });
 
       setVariants(sortedData);
 
-      // If no variants or only one without color, skip to simple quantity
+      // If no variants or only one, skip to quantity
       if (sortedData.length === 0) {
         setStep('quantity');
+      } else if (sortedData.length === 1) {
+        setSelectedVariant(sortedData[0]);
+        setStep('quantity');
       } else {
-        const uniqueColors = [...new Set(sortedData.map(v => v.color))];
-        if (uniqueColors.length === 1) {
-          setSelectedColor(uniqueColors[0]);
-          const sizesForColor = sortedData.filter(v => v.color === uniqueColors[0]);
-          if (sizesForColor.length === 1) {
-            setSelectedVariant(sizesForColor[0]);
-            setStep('quantity');
-          } else {
-            setStep('size');
-          }
-        } else {
-          setStep('color');
-        }
+        setStep('size');
       }
     } catch (error) {
       console.error("Error fetching variants:", error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Get unique colors with their image and partner info
-  const uniqueColors = useMemo(() => {
-    const colorMap = new Map<string, { 
-      color: string; 
-      image: string | null; 
-      stock: number;
-      hasOwn: boolean;
-      hasPartner: boolean;
-      partnerName?: string;
-    }>();
-    
-    variants.forEach(v => {
-      const colorKey = v.color || "Sem cor";
-      const existing = colorMap.get(colorKey);
-      if (existing) {
-        existing.stock += v.stock_quantity;
-        if (!existing.image && v.image_url) {
-          existing.image = v.image_url;
-        }
-        if (v.isPartner) {
-          existing.hasPartner = true;
-          if (!existing.partnerName) existing.partnerName = v.ownerName;
-        } else {
-          existing.hasOwn = true;
-        }
-      } else {
-        colorMap.set(colorKey, {
-          color: v.color || "Sem cor",
-          image: v.image_url,
-          stock: v.stock_quantity,
-          hasOwn: !v.isPartner,
-          hasPartner: v.isPartner,
-          partnerName: v.isPartner ? v.ownerName : undefined,
-        });
-      }
-    });
-    return Array.from(colorMap.values());
-  }, [variants]);
-
-  // Get sizes for selected color
-  const sizesForColor = useMemo(() => {
-    return variants.filter(v => (v.color || "Sem cor") === (selectedColor || "Sem cor"));
-  }, [variants, selectedColor]);
-
-  const handleColorSelect = (color: string) => {
-    setSelectedColor(color);
-    setSelectedVariant(null);
-    setQuantity(1);
-    const sizes = variants.filter(v => (v.color || "Sem cor") === color);
-    if (sizes.length === 1) {
-      setSelectedVariant(sizes[0]);
-      setStep('quantity');
-    } else {
-      setStep('size');
     }
   };
 
@@ -368,69 +294,14 @@ export function VariantSelectionDialog({
         ) : (
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="space-y-4 py-2">
-              {/* Color Selection */}
-              {(step === 'color' || selectedColor) && uniqueColors.length > 1 && (
-                <div>
-                  <p className="text-sm font-medium mb-3">
-                    {step === 'color' ? 'Selecione a cor:' : 'Cor selecionada:'}
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {uniqueColors.map(({ color, image, stock, hasOwn, hasPartner, partnerName }) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => handleColorSelect(color)}
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all touch-manipulation relative",
-                          selectedColor === color
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        {image ? (
-                          <img
-                            src={image}
-                            alt={color}
-                            className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                            <Package className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{color}</p>
-                          <p className="text-xs text-muted-foreground">{stock} un</p>
-                          {hasPartner && !hasOwn && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-1 gap-1">
-                              <Users className="h-2.5 w-2.5" />
-                              {partnerName || "Parceira"}
-                            </Badge>
-                          )}
-                          {hasPartner && hasOwn && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1 gap-1">
-                              <Users className="h-2.5 w-2.5" />
-                              + Parceira
-                            </Badge>
-                          )}
-                        </div>
-                        {selectedColor === color && (
-                          <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Size Selection */}
-              {(step === 'size' || selectedVariant) && selectedColor && (
+              {(step === 'size' || selectedVariant) && (
                 <div>
                   <p className="text-sm font-medium mb-3">
                     {step === 'size' ? 'Selecione o tamanho:' : 'Tamanho selecionado:'}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {sizesForColor.map((variant) => (
+                    {variants.map((variant) => (
                       <button
                         key={variant.id}
                         type="button"
@@ -520,20 +391,16 @@ export function VariantSelectionDialog({
           <Button
             variant="outline"
             onClick={() => {
-              if (step === 'quantity' && sizesForColor.length > 1) {
+              if (step === 'quantity' && variants.length > 1) {
                 setSelectedVariant(null);
                 setStep('size');
-              } else if (step === 'size' && uniqueColors.length > 1) {
-                setSelectedColor(null);
-                setSelectedVariant(null);
-                setStep('color');
               } else {
                 onOpenChange(false);
               }
             }}
             className="flex-1"
           >
-            {step === 'color' || variants.length === 0 ? 'Cancelar' : 'Voltar'}
+            {step === 'size' || variants.length === 0 ? 'Cancelar' : 'Voltar'}
           </Button>
           <Button
             onClick={handleConfirm}

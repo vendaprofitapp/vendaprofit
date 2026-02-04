@@ -47,7 +47,6 @@ export function useProductSwap() {
           product_variants (
             id,
             size,
-            color,
             stock_quantity,
             image_url
           )
@@ -70,7 +69,6 @@ export function useProductSwap() {
           product_variants (
             id,
             size,
-            color,
             stock_quantity,
             image_url
           )
@@ -93,8 +91,8 @@ export function useProductSwap() {
         // Check if product has variants
         if (p.product_variants && p.product_variants.length > 0) {
           for (const variant of p.product_variants) {
-            // Skip if same size and color as original
-            if (variant.size === product.size && variant.color === product.color) {
+            // Skip if same size as original
+            if (variant.size === product.size) {
               continue;
             }
 
@@ -105,7 +103,7 @@ export function useProductSwap() {
                 id: p.id,
                 name: p.name,
                 size: variant.size,
-                color: variant.color,
+                color: p.color, // Color now comes from product
                 price: p.price,
                 availableStock,
                 image_url: variant.image_url || p.image_url,
@@ -115,7 +113,7 @@ export function useProductSwap() {
           }
         } else {
           // Product without variants
-          if (p.size === product.size && p.color === product.color) {
+          if (p.size === product.size) {
             continue;
           }
 
@@ -158,13 +156,8 @@ export function useProductSwap() {
   };
 
   /**
-   * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
+   * Busca opções de tamanho diferente para o mesmo produto
    * Primeiro busca no estoque do vendedor, depois em parceiros/grupos
-   */
-  /**
-   * Busca opções de tamanho diferente para o mesmo produto (mesma cor)
-   * Versão otimizada para funcionar sem autenticação (página pública)
-   * Usa stock_quantity diretamente das variantes ao invés de getAvailableStock
    */
   const findSizeAlternatives = async (
     productId: string,
@@ -183,10 +176,10 @@ export function useProductSwap() {
           price,
           image_url,
           owner_id,
+          color,
           product_variants (
             id,
             size,
-            color,
             stock_quantity,
             image_url
           )
@@ -206,22 +199,16 @@ export function useProductSwap() {
       }
 
       const alternatives: SwapSuggestion[] = [];
-      const normalizedCurrentColor = (currentColor || "").trim().toLowerCase();
       const normalizedCurrentSize = (currentSize || "").trim().toLowerCase();
       const ownerId = sellerId || originalProduct.owner_id;
 
-      // 1. First, check variants of the same product (same color)
+      // 1. First, check variants of the same product
       if (originalProduct.product_variants && originalProduct.product_variants.length > 0) {
         for (const variant of originalProduct.product_variants) {
           const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
-          const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
 
           // Skip if same size
           if (normalizedVariantSize === normalizedCurrentSize) continue;
-
-          // Only include variants with the same color (or both null/empty)
-          const sameColor = normalizedCurrentColor === normalizedVariantColor;
-          if (!sameColor) continue;
 
           // Use stock_quantity directly (works without auth)
           if (variant.stock_quantity > 0) {
@@ -229,7 +216,7 @@ export function useProductSwap() {
               id: originalProduct.id,
               name: originalProduct.name,
               size: variant.size,
-              color: variant.color,
+              color: originalProduct.color, // Color from product
               price: originalProduct.price,
               availableStock: variant.stock_quantity,
               image_url: variant.image_url || originalProduct.image_url,
@@ -239,31 +226,7 @@ export function useProductSwap() {
         }
       }
 
-      // 2. If no alternatives with same color, check variants with any color (own product)
-      if (alternatives.length === 0 && originalProduct.product_variants && originalProduct.product_variants.length > 0) {
-        for (const variant of originalProduct.product_variants) {
-          const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
-
-          // Skip if same size
-          if (normalizedVariantSize === normalizedCurrentSize) continue;
-
-          // Use stock_quantity directly
-          if (variant.stock_quantity > 0) {
-            alternatives.push({
-              id: originalProduct.id,
-              name: originalProduct.name,
-              size: variant.size,
-              color: variant.color,
-              price: originalProduct.price,
-              availableStock: variant.stock_quantity,
-              image_url: variant.image_url || originalProduct.image_url,
-              variant_id: variant.id,
-            });
-          }
-        }
-      }
-
-      // 3. If still no alternatives, search in partner products with the same name
+      // 2. If no alternatives, search in partner products with the same name
       if (alternatives.length === 0) {
         const { data: partnerProducts, error: partnerError } = await supabase
           .from('products')
@@ -273,11 +236,11 @@ export function useProductSwap() {
             price,
             image_url,
             owner_id,
+            color,
             profiles:owner_id (full_name),
             product_variants (
               id,
               size,
-              color,
               stock_quantity,
               image_url
             )
@@ -289,28 +252,22 @@ export function useProductSwap() {
         if (partnerError) {
           console.error('Erro ao buscar produtos de parceiros:', partnerError);
         } else if (partnerProducts && partnerProducts.length > 0) {
-          // First pass: look for same color
           for (const p of partnerProducts) {
             const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
             
             if (p.product_variants && p.product_variants.length > 0) {
               for (const variant of p.product_variants) {
                 const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
-                const normalizedVariantColor = (variant.color || "").trim().toLowerCase();
 
                 // Skip if same size as current
                 if (normalizedVariantSize === normalizedCurrentSize) continue;
-
-                // Only include variants with the same color
-                const sameColor = normalizedCurrentColor === normalizedVariantColor;
-                if (!sameColor) continue;
 
                 if (variant.stock_quantity > 0) {
                   alternatives.push({
                     id: p.id,
                     name: p.name,
                     size: variant.size,
-                    color: variant.color,
+                    color: p.color,
                     price: p.price,
                     availableStock: variant.stock_quantity,
                     image_url: variant.image_url || p.image_url,
@@ -318,37 +275,6 @@ export function useProductSwap() {
                     isFromPartner: true,
                     partnerName,
                   });
-                }
-              }
-            }
-          }
-
-          // Second pass: if still nothing, look for any color from partners
-          if (alternatives.length === 0) {
-            for (const p of partnerProducts) {
-              const partnerName = (p.profiles as any)?.full_name || 'Parceiro';
-              
-              if (p.product_variants && p.product_variants.length > 0) {
-                for (const variant of p.product_variants) {
-                  const normalizedVariantSize = (variant.size || "").trim().toLowerCase();
-
-                  // Skip if same size as current
-                  if (normalizedVariantSize === normalizedCurrentSize) continue;
-
-                  if (variant.stock_quantity > 0) {
-                    alternatives.push({
-                      id: p.id,
-                      name: p.name,
-                      size: variant.size,
-                      color: variant.color,
-                      price: p.price,
-                      availableStock: variant.stock_quantity,
-                      image_url: variant.image_url || p.image_url,
-                      variant_id: variant.id,
-                      isFromPartner: true,
-                      partnerName,
-                    });
-                  }
                 }
               }
             }
@@ -369,6 +295,8 @@ export function useProductSwap() {
 
   /**
    * Busca opções de cor diferente para o mesmo produto e tamanho
+   * Note: With the new structure, color is at product level, so this finds
+   * different products with similar names but different colors
    */
   const findColorAlternatives = async (
     productId: string,
@@ -377,6 +305,7 @@ export function useProductSwap() {
   ): Promise<SwapSuggestion[]> => {
     setLoading(true);
     try {
+      // Get original product
       const { data: product } = await supabase
         .from('products')
         .select(`
@@ -384,39 +313,83 @@ export function useProductSwap() {
           name,
           price,
           image_url,
-          product_variants (
-            id,
-            size,
-            color,
-            stock_quantity,
-            image_url
-          )
+          color,
+          model,
+          owner_id
         `)
         .eq('id', productId)
         .single();
 
-      if (!product || !product.product_variants) {
+      if (!product) {
         setSuggestions([]);
         return [];
       }
 
+      // Find products with same model but different color
       const alternatives: SwapSuggestion[] = [];
+      
+      // Search for products with same model (if model exists)
+      let query = supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          price,
+          image_url,
+          color,
+          stock_quantity,
+          product_variants (
+            id,
+            size,
+            stock_quantity,
+            image_url
+          )
+        `)
+        .neq('id', productId)
+        .eq('owner_id', product.owner_id)
+        .eq('is_active', true);
 
-      for (const variant of product.product_variants) {
-        // Same size, different color
-        if (variant.size === currentSize && variant.color !== currentColor) {
-          const availableStock = await getAvailableStock(productId, variant.id);
-          
-          if (availableStock > 0) {
+      if (product.model) {
+        query = query.eq('model', product.model);
+      } else {
+        // Fallback to name-based search
+        query = query.ilike('name', `%${product.name.split(' ')[0]}%`);
+      }
+
+      const { data: similarProducts } = await query;
+
+      if (similarProducts) {
+        for (const p of similarProducts) {
+          // Skip if same color
+          if (p.color === currentColor) continue;
+
+          // Find variant with same size if specified
+          if (currentSize && p.product_variants && p.product_variants.length > 0) {
+            const matchingVariant = p.product_variants.find(
+              v => v.size?.toLowerCase() === currentSize.toLowerCase()
+            );
+            
+            if (matchingVariant && matchingVariant.stock_quantity > 0) {
+              alternatives.push({
+                id: p.id,
+                name: p.name,
+                size: matchingVariant.size,
+                color: p.color,
+                price: p.price,
+                availableStock: matchingVariant.stock_quantity,
+                image_url: matchingVariant.image_url || p.image_url,
+                variant_id: matchingVariant.id,
+              });
+            }
+          } else if (p.stock_quantity > 0) {
             alternatives.push({
-              id: product.id,
-              name: product.name,
-              size: variant.size,
-              color: variant.color,
-              price: product.price,
-              availableStock,
-              image_url: variant.image_url || product.image_url,
-              variant_id: variant.id,
+              id: p.id,
+              name: p.name,
+              size: p.product_variants?.[0]?.size || null,
+              color: p.color,
+              price: p.price,
+              availableStock: p.stock_quantity,
+              image_url: p.image_url,
             });
           }
         }
