@@ -1029,7 +1029,7 @@ export function SupplierBulkImportDialog({
                           <img
                             src={sample.images?.[0] || '/placeholder.svg'}
                             alt={`Exemplo ${idx + 1}`}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover pointer-events-none"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = '/placeholder.svg';
                             }}
