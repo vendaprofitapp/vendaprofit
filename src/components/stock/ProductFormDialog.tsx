@@ -641,9 +641,9 @@ export function ProductFormDialog({
           mainCategory={form.mainCategory}
           subcategory={form.subcategory}
           isNewRelease={form.isNewRelease}
-          onMainCategoryChange={(value) => setForm({ ...form, mainCategory: value })}
-          onSubcategoryChange={(value) => setForm({ ...form, subcategory: value })}
-          onIsNewReleaseChange={(value) => setForm({ ...form, isNewRelease: value })}
+          onMainCategoryChange={(value) => setForm(prev => ({ ...prev, mainCategory: value }))}
+          onSubcategoryChange={(value) => setForm(prev => ({ ...prev, subcategory: value }))}
+          onIsNewReleaseChange={(value) => setForm(prev => ({ ...prev, isNewRelease: value }))}
         />
       </div>
       
