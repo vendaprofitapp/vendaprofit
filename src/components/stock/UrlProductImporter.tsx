@@ -1,0 +1,306 @@
+ import { useState } from "react";
+ import { Link2, Loader2, ArrowRight, Check, X, Sparkles } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { ScrollArea } from "@/components/ui/scroll-area";
+ import {
+   Select,
+   SelectContent,
+   SelectItem,
+   SelectTrigger,
+   SelectValue,
+ } from "@/components/ui/select";
+ import { supabase } from "@/integrations/supabase/client";
+ import { toast } from "sonner";
+ import { Badge } from "@/components/ui/badge";
+ 
+ interface ScrapedData {
+   name?: string;
+   description?: string;
+   price?: number;
+   images?: string[];
+   brand?: string;
+   sku?: string;
+   category?: string;
+   color?: string;
+   sizes?: string[];
+   [key: string]: any;
+ }
+ 
+ interface FieldMapping {
+   scrapedField: string;
+   systemField: string;
+ }
+ 
+ interface UrlProductImporterProps {
+   onDataImported: (data: {
+     name?: string;
+     description?: string;
+     price?: number;
+     costPrice?: number;
+     model?: string;
+     colorLabel?: string;
+     customDetail?: string;
+     images?: string[];
+     category?: string;
+   }) => void;
+ }
+ 
+ const SYSTEM_FIELDS = [
+   { key: "name", label: "Nome do Produto" },
+   { key: "description", label: "Descrição" },
+   { key: "price", label: "Preço de Venda" },
+   { key: "costPrice", label: "Preço de Custo" },
+   { key: "model", label: "Modelo (filtro)" },
+   { key: "colorLabel", label: "Cor (filtro)" },
+   { key: "customDetail", label: "Detalhe (filtro)" },
+   { key: "category", label: "Categoria" },
+   { key: "images", label: "Imagens" },
+ ];
+ 
+ const SCRAPED_FIELD_LABELS: Record<string, string> = {
+   name: "Nome",
+   description: "Descrição",
+   price: "Preço",
+   images: "Imagens",
+   brand: "Marca",
+   sku: "SKU/Código",
+   category: "Categoria",
+   color: "Cor",
+   sizes: "Tamanhos",
+   material: "Material",
+ };
+ 
+ export function UrlProductImporter({ onDataImported }: UrlProductImporterProps) {
+   const [url, setUrl] = useState("");
+   const [isLoading, setIsLoading] = useState(false);
+   const [scrapedData, setScrapedData] = useState<ScrapedData | null>(null);
+   const [mappings, setMappings] = useState<FieldMapping[]>([]);
+   const [showMapping, setShowMapping] = useState(false);
+ 
+   const handleScrape = async () => {
+     if (!url.trim()) {
+       toast.error("Cole a URL do produto");
+       return;
+     }
+ 
+     setIsLoading(true);
+     setScrapedData(null);
+     setMappings([]);
+     setShowMapping(false);
+ 
+     try {
+       const { data, error } = await supabase.functions.invoke('scrape-product-data', {
+         body: { url: url.trim() },
+       });
+ 
+       if (error) throw new Error(error.message);
+       if (!data.success) throw new Error(data.error || 'Erro ao buscar dados');
+ 
+       const scraped = data.product as ScrapedData;
+       setScrapedData(scraped);
+       
+       // Auto-create suggested mappings
+       const autoMappings: FieldMapping[] = [];
+       if (scraped.name) autoMappings.push({ scrapedField: "name", systemField: "name" });
+       if (scraped.description) autoMappings.push({ scrapedField: "description", systemField: "description" });
+       if (scraped.price) autoMappings.push({ scrapedField: "price", systemField: "price" });
+       if (scraped.images?.length) autoMappings.push({ scrapedField: "images", systemField: "images" });
+       if (scraped.brand) autoMappings.push({ scrapedField: "brand", systemField: "model" });
+       if (scraped.color) autoMappings.push({ scrapedField: "color", systemField: "colorLabel" });
+       if (scraped.category) autoMappings.push({ scrapedField: "category", systemField: "category" });
+       if (scraped.material) autoMappings.push({ scrapedField: "material", systemField: "customDetail" });
+       
+       setMappings(autoMappings);
+       setShowMapping(true);
+       toast.success("Dados encontrados! Configure o mapeamento.");
+     } catch (error) {
+       console.error('Error scraping:', error);
+       toast.error(error instanceof Error ? error.message : "Erro ao buscar dados do produto");
+     } finally {
+       setIsLoading(false);
+     }
+   };
+ 
+   const updateMapping = (scrapedField: string, systemField: string) => {
+     setMappings(prev => {
+       const existing = prev.find(m => m.scrapedField === scrapedField);
+       if (existing) {
+         if (systemField === "none") {
+           return prev.filter(m => m.scrapedField !== scrapedField);
+         }
+         return prev.map(m => m.scrapedField === scrapedField ? { ...m, systemField } : m);
+       }
+       if (systemField !== "none") {
+         return [...prev, { scrapedField, systemField }];
+       }
+       return prev;
+     });
+   };
+ 
+   const getScrapedFields = () => {
+     if (!scrapedData) return [];
+     return Object.entries(scrapedData)
+       .filter(([_, value]) => value !== null && value !== undefined && value !== "")
+       .map(([key]) => key);
+   };
+ 
+   const getMappedSystemField = (scrapedField: string) => {
+     return mappings.find(m => m.scrapedField === scrapedField)?.systemField || "none";
+   };
+ 
+   const formatValue = (value: any): string => {
+     if (Array.isArray(value)) {
+       if (value.length === 0) return "(vazio)";
+       if (typeof value[0] === 'string' && value[0].startsWith('http')) {
+         return `${value.length} imagem(ns)`;
+       }
+       return value.join(", ");
+     }
+     if (typeof value === 'number') {
+       return `R$ ${value.toFixed(2)}`;
+     }
+     if (typeof value === 'string' && value.length > 100) {
+       return value.substring(0, 100) + "...";
+     }
+     return String(value);
+   };
+ 
+   const handleApplyMapping = () => {
+     if (!scrapedData || mappings.length === 0) {
+       toast.warning("Configure pelo menos um mapeamento");
+       return;
+     }
+ 
+     const importedData: Record<string, any> = {};
+     
+     for (const mapping of mappings) {
+       const value = scrapedData[mapping.scrapedField];
+       if (value !== undefined && value !== null) {
+         importedData[mapping.systemField] = value;
+       }
+     }
+ 
+     onDataImported(importedData);
+     toast.success("Dados importados com sucesso!");
+     
+     // Reset
+     setShowMapping(false);
+     setScrapedData(null);
+     setUrl("");
+   };
+ 
+   const handleCancel = () => {
+     setShowMapping(false);
+     setScrapedData(null);
+     setMappings([]);
+   };
+ 
+   return (
+     <div className="space-y-4 border rounded-lg p-4 bg-gradient-to-r from-primary/5 to-primary/10">
+       <div className="flex items-center gap-2">
+         <Sparkles className="h-4 w-4 text-primary" />
+         <Label className="text-sm font-medium">Importar do Site do Fornecedor</Label>
+         <Badge variant="secondary" className="text-[10px]">Novo</Badge>
+       </div>
+ 
+       {!showMapping ? (
+         <div className="space-y-2">
+           <div className="flex gap-2">
+             <Input
+               type="url"
+               value={url}
+               onChange={(e) => setUrl(e.target.value)}
+               placeholder="https://loja.com.br/produto-xyz"
+               className="flex-1 text-sm"
+             />
+             <Button 
+               type="button" 
+               size="sm"
+               onClick={handleScrape}
+               disabled={isLoading || !url.trim()}
+             >
+               {isLoading ? (
+                 <Loader2 className="h-4 w-4 animate-spin" />
+               ) : (
+                 <>
+                   <Link2 className="h-4 w-4 mr-1" />
+                   Buscar
+                 </>
+               )}
+             </Button>
+           </div>
+           <p className="text-[10px] text-muted-foreground">
+             Cole o link do produto para importar nome, preço, fotos e mais
+           </p>
+         </div>
+       ) : (
+         <div className="space-y-4">
+           <div className="flex items-center justify-between">
+             <span className="text-sm font-medium">Mapeamento de Campos</span>
+             <Button 
+               type="button" 
+               variant="ghost" 
+               size="sm"
+               onClick={handleCancel}
+             >
+               <X className="h-4 w-4" />
+             </Button>
+           </div>
+ 
+           <ScrollArea className="h-[280px] pr-2">
+             <div className="space-y-3">
+               {getScrapedFields().map((field) => (
+                 <div key={field} className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+                   <div className="flex-1 min-w-0">
+                     <p className="text-xs font-medium truncate">
+                       {SCRAPED_FIELD_LABELS[field] || field}
+                     </p>
+                     <p className="text-[10px] text-muted-foreground truncate">
+                       {formatValue(scrapedData?.[field])}
+                     </p>
+                   </div>
+                   
+                   <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                   
+                   <Select
+                     value={getMappedSystemField(field)}
+                     onValueChange={(value) => updateMapping(field, value)}
+                   >
+                     <SelectTrigger className="w-[140px] h-8 text-xs">
+                       <SelectValue placeholder="Ignorar" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="none">Ignorar</SelectItem>
+                       {SYSTEM_FIELDS.map((sf) => (
+                         <SelectItem key={sf.key} value={sf.key}>
+                           {sf.label}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
+               ))}
+             </div>
+           </ScrollArea>
+ 
+           <div className="flex items-center justify-between pt-2 border-t">
+             <span className="text-xs text-muted-foreground">
+               {mappings.length} campo(s) mapeado(s)
+             </span>
+             <Button 
+               type="button"
+               size="sm"
+               onClick={handleApplyMapping}
+               disabled={mappings.length === 0}
+             >
+               <Check className="h-4 w-4 mr-1" />
+               Aplicar
+             </Button>
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ }

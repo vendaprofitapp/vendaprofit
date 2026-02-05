@@ -37,6 +37,7 @@ import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
 import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
+import { UrlProductImporter } from "@/components/stock/UrlProductImporter";
 
 interface Product {
   id: string;
@@ -545,8 +546,46 @@ export function ProductFormDialog({
 
   const totalImages = existingImageUrls.length + newImagePreviews.length;
 
+  const handleImportedData = (data: {
+    name?: string;
+    description?: string;
+    price?: number;
+    costPrice?: number;
+    model?: string;
+    colorLabel?: string;
+    customDetail?: string;
+    images?: string[];
+    category?: string;
+  }) => {
+    setForm(prev => ({
+      ...prev,
+      name: data.name || prev.name,
+      description: data.description || prev.description,
+      price: data.price ? String(data.price) : prev.price,
+      cost_price: data.costPrice ? String(data.costPrice) : prev.cost_price,
+      model: data.model || prev.model,
+      color_label: data.colorLabel || prev.color_label,
+      custom_detail: data.customDetail || prev.custom_detail,
+      categories: data.category ? [data.category, ...prev.categories.filter(c => c !== data.category)].slice(0, 3) : prev.categories,
+    }));
+    
+    // Add images if provided
+    if (data.images && data.images.length > 0) {
+      const available = 3 - totalImages;
+      const imagesToAdd = data.images.slice(0, available);
+      if (imagesToAdd.length > 0) {
+        setExistingImageUrls(prev => [...prev, ...imagesToAdd].slice(0, 3));
+      }
+    }
+  };
+
   const formContent = (
     <div className="space-y-4">
+      {/* Importação via URL do Fornecedor */}
+      {!editingProduct && (
+        <UrlProductImporter onDataImported={handleImportedData} />
+      )}
+
       {/* Nome do Produto */}
       <div className="space-y-2">
         <Label>Nome do Produto *</Label>
