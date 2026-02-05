@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.map-supplier-site]
 verify_jwt = false
+
+[functions.scrape-product-data]
+verify_jwt = false
