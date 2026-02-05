@@ -1797,23 +1797,11 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </Badge>
           )}
 
-          {/* Video Badge - Show if product has video */}
-          {item.video_url && (
-            <div className={cn(
-              "absolute z-20 flex items-center gap-1 px-2 py-1 rounded-full bg-black/70 text-white text-[10px] font-medium shadow-sm",
-              item.marketingStatus && item.marketingStatus.length > 0 ? "right-2 top-10" : "right-2 top-2"
-            )}>
-              <Video className="h-3 w-3" />
-              <span>Vídeo</span>
-            </div>
-          )}
-
           {/* Wishlist Button */}
           <button 
             className={cn(
               "absolute right-2 z-20 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors shadow-sm opacity-0 group-hover:opacity-100",
-              item.video_url && item.marketingStatus && item.marketingStatus.length > 0 ? "top-[72px]" :
-              item.video_url || (item.marketingStatus && item.marketingStatus.length > 0) ? "top-10" : "top-2"
+              item.marketingStatus && item.marketingStatus.length > 0 ? "top-10" : "top-2"
             )}
             onClick={(e) => {
               e.stopPropagation();
