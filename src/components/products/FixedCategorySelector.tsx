@@ -1,7 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface MainCategory {
@@ -38,8 +45,6 @@ export function FixedCategorySelector({
   const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const mainSelectRef = useRef<HTMLSelectElement>(null);
-  const subSelectRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -78,8 +83,7 @@ export function FixedCategorySelector({
     ? subcategories.filter(s => s.main_category_id === selectedMainCategory.id)
     : [];
 
-  const handleMainCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
+  const handleMainCategoryChange = (value: string) => {
     onMainCategoryChange(value);
     const newMainCat = mainCategories.find(c => c.name === value);
     if (!newMainCat?.has_subcategories) {
@@ -92,8 +96,8 @@ export function FixedCategorySelector({
     }
   };
 
-  const handleSubcategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    onSubcategoryChange(e.target.value);
+  const handleSubcategoryChange = (value: string) => {
+    onSubcategoryChange(value);
   };
 
   return (
@@ -118,39 +122,43 @@ export function FixedCategorySelector({
       {/* Main Category Select */}
       <div className="space-y-2">
         <Label>Categoria Principal *</Label>
-        <select
-          ref={mainSelectRef}
+        <Select
           value={mainCategory}
-          onChange={handleMainCategoryChange}
+          onValueChange={handleMainCategoryChange}
           disabled={loading}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="">{loading ? "Carregando..." : "Selecione a categoria"}</option>
-          {mainCategories.map((cat) => (
-            <option key={cat.id} value={cat.name}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder={loading ? "Carregando..." : "Selecione a categoria"} />
+          </SelectTrigger>
+          <SelectContent portal={false} className="max-h-[200px]">
+            {mainCategories.map((cat) => (
+              <SelectItem key={cat.id} value={cat.name}>
+                {cat.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Subcategory Select */}
       {selectedMainCategory?.has_subcategories && availableSubcategories.length > 0 && (
         <div className="space-y-2">
           <Label>Subcategoria</Label>
-          <select
-            ref={subSelectRef}
+          <Select
             value={subcategory}
-            onChange={handleSubcategoryChange}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onValueChange={handleSubcategoryChange}
           >
-            <option value="">Selecione a subcategoria</option>
-            {availableSubcategories.map((sub) => (
-              <option key={sub.id} value={sub.name}>
-                {sub.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Selecione a subcategoria" />
+            </SelectTrigger>
+            <SelectContent portal={false} className="max-h-[200px]">
+              {availableSubcategories.map((sub) => (
+                <SelectItem key={sub.id} value={sub.name}>
+                  {sub.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
