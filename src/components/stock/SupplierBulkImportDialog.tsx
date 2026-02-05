@@ -18,6 +18,7 @@ import {
   Palette,
   Ruler,
   DollarSign,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -175,12 +176,12 @@ export function SupplierBulkImportDialog({
   const [extractColorFromName, setExtractColorFromName] = useState(true);
   const [extractSizeFromName, setExtractSizeFromName] = useState(true);
   const [customColorKeywords, setCustomColorKeywords] = useState<string>("");
-  const [markupPercentage, setMarkupPercentage] = useState(1.67);
-  // Number of words that form the product base name (e.g., "TOP LIVIA" = 2 words)
-  const [baseNameWordCount, setBaseNameWordCount] = useState<number>(2);
-  // Available sizes for the product - will create all combinations
-  const [availableSizes, setAvailableSizes] = useState<string[]>(["P", "M", "G", "GG"]);
-  const [newSizeInput, setNewSizeInput] = useState<string>("");
+  // Field mapping for color (like single product import)
+  const [colorMappingField, setColorMappingField] = useState<string>("auto");
+  // Field mapping for price (like single product import)
+  const [priceMappingField, setPriceMappingField] = useState<string>("price");
+  // Available sizes for the product - fixed to PP, P, M, G, GG
+  const [availableSizes] = useState<string[]>(["PP", "P", "M", "G", "GG"]);
   // Maximum photos per product (1-3)
   const [maxPhotosPerProduct, setMaxPhotosPerProduct] = useState<number>(3);
   // Default prices for all products (can be changed individually in review)
@@ -258,52 +259,12 @@ export function SupplierBulkImportDialog({
     return [...COMPOUND_COLORS, ...SIMPLE_COLORS, ...customColors];
   };
 
-  const extractBaseName = (fullName: string): { baseName: string; color: string | null; size: string | null } => {
-    const words = fullName.trim().split(/\s+/);
+  const extractBaseName = (fullName: string, scrapedColor?: string | null): { baseName: string; color: string | null; size: string | null } => {
     let detectedColor: string | null = null;
     let detectedSize: string | null = null;
-
-    // If baseNameWordCount is set, use that approach
-    if (baseNameWordCount > 0 && words.length > baseNameWordCount) {
-      // Take first N words as base name
-      const baseName = words.slice(0, baseNameWordCount).join(" ");
-      const remaining = words.slice(baseNameWordCount).join(" ");
-      
-      // Extract size from remaining
-      if (extractSizeFromName) {
-        const sizeMatch = remaining.match(SIZE_PATTERN);
-        if (sizeMatch) {
-          detectedSize = sizeMatch[1].toUpperCase();
-          if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
-            detectedSize = "U";
-          }
-        }
-      }
-
-      // Everything else after base name (excluding size) is the color
-      if (extractColorFromName) {
-        let colorPart = remaining;
-        if (detectedSize) {
-          colorPart = colorPart.replace(SIZE_PATTERN, "").trim();
-        }
-        // Clean up dashes and extra spaces
-        colorPart = colorPart.replace(/\s+/g, " ").replace(/\s*-\s*/g, " ").trim();
-        if (colorPart) {
-          // Capitalize each word
-          detectedColor = colorPart
-            .split(" ")
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-            .join(" ");
-        }
-      }
-
-      return { baseName, color: detectedColor, size: detectedSize };
-    }
-
-    // Fallback: Original logic using color detection
     let name = fullName.trim();
 
-    // Extract size first (if enabled)
+    // Extract size first
     if (extractSizeFromName) {
       const sizeMatch = name.match(SIZE_PATTERN);
       if (sizeMatch) {
@@ -315,16 +276,15 @@ export function SupplierBulkImportDialog({
       }
     }
 
-    // Extract color (if enabled) - try compound colors first
-    if (extractColorFromName) {
+    // Get color based on mapping setting
+    if (colorMappingField === "auto" && extractColorFromName) {
+      // Auto-extract from name
       const lowerName = name.toLowerCase();
       const allColors = getAllColorKeywords();
       for (const color of allColors) {
-        // Escape regex special chars and handle multi-word colors
         const escapedColor = color.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const colorRegex = new RegExp(`\\b${escapedColor}\\b`, "i");
         if (colorRegex.test(lowerName)) {
-          // Capitalize properly
           detectedColor = color
             .split(" ")
             .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -333,6 +293,12 @@ export function SupplierBulkImportDialog({
           break;
         }
       }
+    } else if (colorMappingField === "color" && scrapedColor) {
+      // Use scraped color field
+      detectedColor = scrapedColor
+        .split(" ")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
     }
 
     // Clean up extra spaces and dashes
@@ -362,7 +328,8 @@ export function SupplierBulkImportDialog({
         if (error || !data.success) continue;
 
         const rawName = data.productData?.name || "";
-        const { baseName, color, size } = extractBaseName(rawName);
+        const scrapedColor = data.productData?.colors?.[0] || null;
+        const { baseName, color, size } = extractBaseName(rawName, scrapedColor);
 
         samples.push({
           url,
@@ -394,7 +361,8 @@ export function SupplierBulkImportDialog({
   const reparsePreviewSamples = () => {
     setPreviewSamples(prev => 
       prev.map(sample => {
-        const { baseName, color, size } = extractBaseName(sample.rawName || "");
+        const scrapedColor = sample.colors?.[0] || null;
+        const { baseName, color, size } = extractBaseName(sample.rawName || "", scrapedColor);
         return {
           ...sample,
           parsedBaseName: baseName,
@@ -439,7 +407,8 @@ export function SupplierBulkImportDialog({
     const categoryFromFilter = getCategoryFromFilter();
 
     for (const product of successProducts) {
-      const { baseName, color, size } = extractBaseName(product.name || "");
+      const scrapedColor = product.colors?.[0] || null;
+      const { baseName, color, size } = extractBaseName(product.name || "", scrapedColor);
       // Use lowercase + remove accents for grouping (case-insensitive and accent-insensitive)
       const key = removeAccents(baseName.toLowerCase().trim());
       // Normalize the display name to title case
@@ -452,6 +421,9 @@ export function SupplierBulkImportDialog({
         .split(" ")
         .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(" ");
+
+      // Determine price based on mapping
+      const productPrice = priceMappingField === "price" ? (product.price || 0) : 0;
 
       if (!productMap.has(key)) {
         // Keep ALL images - user will select in review step
@@ -469,8 +441,8 @@ export function SupplierBulkImportDialog({
           id: crypto.randomUUID(),
           baseName: normalizedBaseName,
           category: categoryFromFilter,
-          costPrice: useDefaultPrices && defaultCostPrice > 0 ? defaultCostPrice : (product.price || 0),
-          salePrice: useDefaultPrices && defaultSalePrice > 0 ? defaultSalePrice : Math.round((product.price || 0) * markupPercentage * 100) / 100,
+          costPrice: useDefaultPrices && defaultCostPrice > 0 ? defaultCostPrice : productPrice,
+          salePrice: useDefaultPrices && defaultSalePrice > 0 ? defaultSalePrice : Math.round(productPrice * MARKUP_PERCENTAGE * 100) / 100,
           description: product.description || "",
           images: allImages,
           selectedImageIndices: allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx), // Select first N by config
@@ -912,10 +884,8 @@ export function SupplierBulkImportDialog({
     setExtractColorFromName(true);
     setExtractSizeFromName(true);
     setCustomColorKeywords("");
-    setMarkupPercentage(1.67);
-    setBaseNameWordCount(2);
-    setAvailableSizes(["P", "M", "G", "GG"]);
-    setNewSizeInput("");
+    setColorMappingField("auto");
+    setPriceMappingField("price");
     setMaxPhotosPerProduct(3);
     setDefaultCostPrice(0);
     setDefaultSalePrice(0);
@@ -1095,7 +1065,7 @@ export function SupplierBulkImportDialog({
                   <div className="space-y-2">
                     <Label className="text-xs font-medium">Como interpretar os dados</Label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {/* Name Structure */}
+                      {/* Name - Full product name */}
                       <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium">Nome do Produto</p>
@@ -1103,101 +1073,66 @@ export function SupplierBulkImportDialog({
                             {previewSamples[0]?.rawName || "—"}
                           </p>
                         </div>
-                        <span className="text-xs text-muted-foreground">→</span>
-                        <div className="flex items-center gap-1">
-                          <Select
-                            value={baseNameWordCount.toString()}
-                            onValueChange={(val) => {
-                              setBaseNameWordCount(parseInt(val));
-                              setTimeout(reparsePreviewSamples, 0);
-                            }}
-                          >
-                            <SelectTrigger className="w-16 h-7 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {[1, 2, 3, 4, 5].map((n) => (
-                                <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <span className="text-[10px] text-muted-foreground">palavras</span>
-                        </div>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs font-medium text-primary truncate">
+                          {previewSamples[0]?.parsedBaseName || "Nome"}
+                        </span>
                       </div>
 
-                      {/* Color Extraction */}
+                      {/* Color - Field mapping dropdown */}
                       <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">Cor detectada</p>
+                          <p className="text-xs font-medium">Cor</p>
                           <p className="text-muted-foreground truncate text-[10px]">
-                            {previewSamples[0]?.parsedColor || "Não detectada"}
+                            {colorMappingField === "auto" 
+                              ? (previewSamples[0]?.parsedColor || "Não detectada")
+                              : (previewSamples[0]?.colors?.[0] || "Não encontrada")
+                            }
                           </p>
                         </div>
-                        <Checkbox
-                          id="extractColorPreview"
-                          checked={extractColorFromName}
-                          onCheckedChange={(checked) => {
-                            setExtractColorFromName(!!checked);
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <Select
+                          value={colorMappingField}
+                          onValueChange={(val) => {
+                            setColorMappingField(val);
                             setTimeout(reparsePreviewSamples, 0);
                           }}
-                        />
-                        <Label htmlFor="extractColorPreview" className="text-xs">
-                          Extrair
-                        </Label>
+                        >
+                          <SelectTrigger className="w-[120px] h-7 text-xs">
+                            <SelectValue placeholder="Selecionar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Extrair do Nome</SelectItem>
+                            <SelectItem value="color">Campo Cor</SelectItem>
+                            <SelectItem value="none">Ignorar</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
 
-                      {/* Price */}
-                      {previewSamples[0]?.price && (
-                        <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium">Preço encontrado</p>
-                            <p className="text-muted-foreground text-[10px]">
-                              R$ {previewSamples[0].price.toFixed(2)}
-                            </p>
-                          </div>
-                          <span className="text-xs text-muted-foreground">×</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="1"
-                            value={markupPercentage}
-                            onChange={(e) => setMarkupPercentage(parseFloat(e.target.value) || 1)}
-                            className="h-7 text-xs w-16"
-                          />
-                          <span className="text-xs font-medium text-primary">
-                            = R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Sizes */}
+                      {/* Price - Field mapping dropdown */}
                       <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">Tamanhos</p>
+                          <p className="text-xs font-medium">Preço</p>
                           <p className="text-muted-foreground text-[10px]">
-                            {previewSamples[0]?.sizes?.join(", ") || "Definir manualmente"}
+                            {previewSamples[0]?.price 
+                              ? `R$ ${previewSamples[0].price.toFixed(2)}`
+                              : "Não encontrado"
+                            }
                           </p>
                         </div>
-                        <div className="flex gap-0.5">
-                          {["P", "M", "G", "GG"].map((size) => (
-                            <Button
-                              key={size}
-                              type="button"
-                              size="sm"
-                              variant={availableSizes.includes(size) ? "default" : "outline"}
-                              className="h-6 w-6 p-0 text-[10px]"
-                              onClick={() => {
-                                if (availableSizes.includes(size)) {
-                                  setAvailableSizes(availableSizes.filter(s => s !== size));
-                                } else {
-                                  setAvailableSizes([...availableSizes, size]);
-                                }
-                              }}
-                            >
-                              {size}
-                            </Button>
-                          ))}
-                        </div>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <Select
+                          value={priceMappingField}
+                          onValueChange={(val) => setPriceMappingField(val)}
+                        >
+                          <SelectTrigger className="w-[120px] h-7 text-xs">
+                            <SelectValue placeholder="Selecionar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="price">Preço de Custo</SelectItem>
+                            <SelectItem value="none">Ignorar</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
@@ -1221,14 +1156,12 @@ export function SupplierBulkImportDialog({
                               {previewSamples[0].parsedColor}
                             </Badge>
                           )}
-                          {availableSizes.length > 0 && (
-                            <span className="text-muted-foreground">
-                              {availableSizes.length} tamanho(s)
-                            </span>
-                          )}
-                          {previewSamples[0]?.price && (
+                          <span className="text-muted-foreground">
+                            {availableSizes.length} tamanho(s)
+                          </span>
+                          {previewSamples[0]?.price && priceMappingField === "price" && (
                             <span className="text-primary font-medium">
-                              R$ {(previewSamples[0].price * markupPercentage).toFixed(2)}
+                              R$ {previewSamples[0].price.toFixed(2)}
                             </span>
                           )}
                         </div>
