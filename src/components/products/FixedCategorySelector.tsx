@@ -2,13 +2,9 @@ import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface MainCategory {
@@ -45,6 +41,8 @@ export function FixedCategorySelector({
   const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showMainDropdown, setShowMainDropdown] = useState(false);
+  const [showSubDropdown, setShowSubDropdown] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -83,9 +81,11 @@ export function FixedCategorySelector({
     ? subcategories.filter(s => s.main_category_id === selectedMainCategory.id)
     : [];
 
-  const handleMainCategoryChange = (value: string) => {
-    onMainCategoryChange(value);
-    const newMainCat = mainCategories.find(c => c.name === value);
+  const handleMainCategorySelect = (categoryName: string) => {
+    onMainCategoryChange(categoryName);
+    setShowMainDropdown(false);
+    
+    const newMainCat = mainCategories.find(c => c.name === categoryName);
     if (!newMainCat?.has_subcategories) {
       onSubcategoryChange("");
     } else {
@@ -96,9 +96,24 @@ export function FixedCategorySelector({
     }
   };
 
-  const handleSubcategoryChange = (value: string) => {
-    onSubcategoryChange(value);
+  const handleSubcategorySelect = (subcategoryName: string) => {
+    onSubcategoryChange(subcategoryName);
+    setShowSubDropdown(false);
   };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.category-dropdown-container')) {
+        setShowMainDropdown(false);
+        setShowSubDropdown(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -119,46 +134,98 @@ export function FixedCategorySelector({
         </Label>
       </div>
 
-      {/* Main Category Select */}
+      {/* Main Category Selector */}
       <div className="space-y-2">
         <Label>Categoria Principal *</Label>
-        <Select
-          value={mainCategory}
-          onValueChange={handleMainCategoryChange}
-          disabled={loading}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder={loading ? "Carregando..." : "Selecione a categoria"} />
-          </SelectTrigger>
-          <SelectContent portal={false} className="max-h-[200px]">
-            {mainCategories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.name}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="category-dropdown-container relative">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowMainDropdown(!showMainDropdown);
+              setShowSubDropdown(false);
+            }}
+            disabled={loading}
+            className="w-full justify-between h-10 font-normal"
+          >
+            <span className={cn(!mainCategory && "text-muted-foreground")}>
+              {loading ? "Carregando..." : mainCategory || "Selecione a categoria"}
+            </span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", showMainDropdown && "rotate-180")} />
+          </Button>
+          
+          {showMainDropdown && (
+            <div className="absolute z-[9999] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-[200px] overflow-y-auto">
+              {mainCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleMainCategorySelect(cat.name);
+                  }}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center justify-between",
+                    mainCategory === cat.name && "bg-accent"
+                  )}
+                >
+                  {cat.name}
+                  {mainCategory === cat.name && <Check className="h-4 w-4" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Subcategory Select */}
+      {/* Subcategory Selector */}
       {selectedMainCategory?.has_subcategories && availableSubcategories.length > 0 && (
         <div className="space-y-2">
           <Label>Subcategoria</Label>
-          <Select
-            value={subcategory}
-            onValueChange={handleSubcategoryChange}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Selecione a subcategoria" />
-            </SelectTrigger>
-            <SelectContent portal={false} className="max-h-[200px]">
-              {availableSubcategories.map((sub) => (
-                <SelectItem key={sub.id} value={sub.name}>
-                  {sub.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="category-dropdown-container relative">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowSubDropdown(!showSubDropdown);
+                setShowMainDropdown(false);
+              }}
+              className="w-full justify-between h-10 font-normal"
+            >
+              <span className={cn(!subcategory && "text-muted-foreground")}>
+                {subcategory || "Selecione a subcategoria"}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 transition-transform", showSubDropdown && "rotate-180")} />
+            </Button>
+            
+            {showSubDropdown && (
+              <div className="absolute z-[9999] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-[200px] overflow-y-auto">
+                {availableSubcategories.map((sub) => (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSubcategorySelect(sub.name);
+                    }}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center justify-between",
+                      subcategory === sub.name && "bg-accent"
+                    )}
+                  >
+                    {sub.name}
+                    {subcategory === sub.name && <Check className="h-4 w-4" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
