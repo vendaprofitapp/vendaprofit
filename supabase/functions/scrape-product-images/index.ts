@@ -210,33 +210,76 @@ Deno.serve(async (req) => {
     console.log('Scraping product page:', formattedUrl);
 
     let response;
-    try {
-      response = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: formattedUrl,
-          formats: ['html', 'rawHtml'],
-          onlyMainContent: false, // Get full page to capture all images including carousels
-          waitFor: 2000, // Wait longer for lazy-loaded images
-        }),
-      });
-    } catch (fetchError: unknown) {
-      const error = fetchError as Error;
-      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
-        console.error('Request timed out after retries for:', formattedUrl);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Tempo limite excedido. Tente novamente.' }),
-          { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    let lastError: string | null = null;
+    
+    // Try with different configurations
+    const configs = [
+      { waitFor: 3000, timeout: 60000 }, // First attempt: standard
+      { waitFor: 5000, timeout: 90000 }, // Second attempt: longer wait
+    ];
+    
+    for (let configIndex = 0; configIndex < configs.length; configIndex++) {
+      const config = configs[configIndex];
+      console.log(`Attempt ${configIndex + 1}/${configs.length} with waitFor=${config.waitFor}ms, timeout=${config.timeout}ms`);
+      
+      try {
+        response = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: formattedUrl,
+            formats: ['html', 'rawHtml'],
+            onlyMainContent: false,
+            waitFor: config.waitFor,
+            timeout: config.timeout,
+          }),
+        });
+        
+        // Check if response is OK or a retryable error
+        if (response.ok) {
+          break; // Success, exit the loop
+        }
+        
+        // Check for retryable errors (408, 500, 502, 503, 504)
+        if ([408, 500, 502, 503, 504].includes(response.status) && configIndex < configs.length - 1) {
+          const errorText = await response.text();
+          lastError = errorText;
+          console.log(`Retryable error ${response.status}, trying next config...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        
+        // Non-retryable error or last attempt
+        break;
+      } catch (fetchError: unknown) {
+        const error = fetchError as Error;
+        if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+          console.log(`Attempt ${configIndex + 1} timed out`);
+          lastError = 'timeout';
+          if (configIndex < configs.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+        } else {
+          console.error('Fetch error:', error.message);
+          lastError = error.message;
+          break;
+        }
       }
-      console.error('Fetch error after retries:', error.message);
+    }
+    
+    // Handle case where all attempts failed
+    if (!response) {
+      console.error('All scraping attempts failed for:', formattedUrl);
+      const errorMsg = lastError === 'timeout' 
+        ? 'Site demorou muito para responder. Verifique se a URL está correta.'
+        : 'Erro de conexão. Tente novamente em alguns segundos.';
       return new Response(
-        JSON.stringify({ success: false, error: 'Erro de conexão. Tente novamente em alguns segundos.' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: errorMsg }),
+        { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -245,7 +288,34 @@ Deno.serve(async (req) => {
       const responseText = await response.text();
       console.error('Firecrawl API error:', response.status, responseText);
       
+      // Parse error details if available
+      let errorDetail = '';
+      try {
+        const errorJson = JSON.parse(responseText);
+        if (errorJson.code === 'SCRAPE_TIMEOUT') {
+          errorDetail = 'Site demorou muito para carregar. Verifique se a URL está correta e acessível.';
+        } else if (errorJson.code === 'SCRAPE_SITE_ERROR') {
+          errorDetail = 'Não foi possível acessar o site. Verifique se a URL está correta.';
+        }
+      } catch {
+        // Ignore JSON parse error
+      }
+      
       // Handle common error statuses
+      if (response.status === 408) {
+        return new Response(
+          JSON.stringify({ success: false, error: errorDetail || 'Site demorou muito para responder. Tente novamente.' }),
+          { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (response.status === 500) {
+        return new Response(
+          JSON.stringify({ success: false, error: errorDetail || 'Erro ao processar a página. Verifique se a URL está correta.' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return new Response(
           JSON.stringify({ success: false, error: 'Serviço temporariamente indisponível. Tente novamente em alguns segundos.' }),
@@ -261,7 +331,7 @@ Deno.serve(async (req) => {
       }
       
       return new Response(
-        JSON.stringify({ success: false, error: `Erro ao acessar a página (${response.status})` }),
+        JSON.stringify({ success: false, error: errorDetail || `Erro ao acessar a página (${response.status})` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
