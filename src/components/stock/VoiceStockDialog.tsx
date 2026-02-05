@@ -36,7 +36,7 @@ interface Product {
   name: string;
   stock_quantity: number;
   size: string | null;
-  color: string | null;
+  color_label: string | null;
   image_url: string | null;
   category: string;
 }
@@ -68,7 +68,6 @@ type DialogStep = 'searching' | 'exact_match' | 'similar_matches' | 'color_selec
 interface VariantQuantity {
   variantId: string;
   productId: string;
-  color: string | null;
   size: string;
   currentStock: number;
   quantity: number;
@@ -141,13 +140,7 @@ export function VoiceStockDialog({
   const sortVariantsBySize = (variants: VariantQuantity[]): VariantQuantity[] => {
     const sizeOrder = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG'];
     return [...variants].sort((a, b) => {
-      // First sort by color
-      const colorA = a.color || '';
-      const colorB = b.color || '';
-      if (colorA !== colorB) {
-        return colorA.localeCompare(colorB);
-      }
-      // Then by size
+      // Sort by size
       const idxA = sizeOrder.indexOf(a.size?.toUpperCase() || '');
       const idxB = sizeOrder.indexOf(b.size?.toUpperCase() || '');
       if (idxA >= 0 && idxB >= 0) return idxA - idxB;
@@ -173,11 +166,10 @@ export function VoiceStockDialog({
     // If no variants in product_variants table, use the product itself
     if (variants.length === 0) {
       // Product without variants - go directly to confirmation
-      setSelectedColor(product.color);
+      setSelectedColor(product.color_label);
       setVariantQuantities([{
         variantId: product.id, // Use product ID as variant ID
         productId: product.id,
-        color: product.color,
         size: product.size || 'Único',
         currentStock: product.stock_quantity,
         quantity: quantity,
@@ -194,29 +186,23 @@ export function VoiceStockDialog({
     // Try to find exact matching variant
     let matchingVariant: ProductVariant | null = null;
     
-    if (normalizedDetectedColor && normalizedDetectedSize) {
-      // Both color and size detected - try to find exact match
+    if (normalizedDetectedSize) {
+      // Size detected - try to find exact match
       matchingVariant = variants.find(v => {
-        const variantColor = v.color ? normalizeText(v.color) : null;
         const variantSize = normalizeText(v.size);
-        const colorMatches = variantColor && (
-          variantColor.includes(normalizedDetectedColor) || 
-          normalizedDetectedColor.includes(variantColor)
-        );
         const sizeMatches = variantSize === normalizedDetectedSize || 
           variantSize.includes(normalizedDetectedSize) ||
           normalizedDetectedSize.includes(variantSize);
-        return colorMatches && sizeMatches;
+        return sizeMatches;
       }) || null;
     }
 
     if (matchingVariant) {
       // Exact variant found - pre-fill and show confirmation
-      setSelectedColor(matchingVariant.color);
+      setSelectedColor(null);
       setVariantQuantities([{
         variantId: matchingVariant.id,
         productId: product.id,
-        color: matchingVariant.color,
         size: matchingVariant.size,
         currentStock: matchingVariant.stock_quantity,
         quantity: quantity,
@@ -226,93 +212,10 @@ export function VoiceStockDialog({
       return;
     }
 
-    // No exact match - check if we need color selection first
-    const uniqueColors = [...new Set(variants.map(v => v.color).filter(Boolean))] as string[];
-    
-    // If multiple colors and no color detected, show color selection grid
-    if (uniqueColors.length > 1 && !normalizedDetectedColor) {
-      // Prepare all variants but don't pre-select any
-      const variantQtys = variants.map(v => ({
-        variantId: v.id,
-        productId: product.id,
-        color: v.color,
-        size: v.size,
-        currentStock: v.stock_quantity,
-        quantity: 0,
-        image_url: v.image_url,
-      }));
-      setVariantQuantities(sortVariantsBySize(variantQtys));
-      setStep('color_selection');
-      return;
-    }
-
-    // If only color was detected, filter variants by that color
-    if (normalizedDetectedColor) {
-      const colorFilteredVariants = variants.filter(v => {
-        const variantColor = v.color ? normalizeText(v.color) : null;
-        return variantColor && (
-          variantColor.includes(normalizedDetectedColor) || 
-          normalizedDetectedColor.includes(variantColor)
-        );
-      });
-      
-      if (colorFilteredVariants.length > 0) {
-        // Found variants with the detected color - show size selection
-        setSelectedColor(colorFilteredVariants[0].color);
-        const variantQtys = colorFilteredVariants.map(v => ({
-          variantId: v.id,
-          productId: product.id,
-          color: v.color,
-          size: v.size,
-          currentStock: v.stock_quantity,
-          quantity: normalizedDetectedSize && normalizeText(v.size).includes(normalizedDetectedSize) ? quantity : 0,
-          image_url: v.image_url,
-        }));
-        setVariantQuantities(sortVariantsBySize(variantQtys));
-        setStep('variant_selection');
-        return;
-      } else {
-        // Color not found in variants - show color selection
-        const variantQtys = variants.map(v => ({
-          variantId: v.id,
-          productId: product.id,
-          color: v.color,
-          size: v.size,
-          currentStock: v.stock_quantity,
-          quantity: 0,
-          image_url: v.image_url,
-        }));
-        setVariantQuantities(sortVariantsBySize(variantQtys));
-        setStep('color_selection');
-        return;
-      }
-    }
-
-    // If only size was detected but no color, show color selection first if multiple colors
-    if (normalizedDetectedSize && uniqueColors.length > 1) {
-      const variantQtys = variants.map(v => ({
-        variantId: v.id,
-        productId: product.id,
-        color: v.color,
-        size: v.size,
-        currentStock: v.stock_quantity,
-        quantity: normalizeText(v.size).includes(normalizedDetectedSize) ? quantity : 0,
-        image_url: v.image_url,
-      }));
-      setVariantQuantities(sortVariantsBySize(variantQtys));
-      setStep('color_selection');
-      return;
-    }
-
-    // Single color or no colors - go straight to variant selection
-    if (uniqueColors.length === 1) {
-      setSelectedColor(uniqueColors[0]);
-    }
-    
+    // Go straight to variant selection
     const variantQtys = variants.map(v => ({
       variantId: v.id,
       productId: product.id,
-      color: v.color,
       size: v.size,
       currentStock: v.stock_quantity,
       quantity: normalizedDetectedSize && normalizeText(v.size).includes(normalizedDetectedSize) ? quantity : 0,
@@ -335,7 +238,7 @@ export function VoiceStockDialog({
       // Search for products with ilike
       const { data: similarData, error: similarError } = await supabase
         .from('products')
-        .select('id, name, stock_quantity, size, color, image_url, category')
+        .select('id, name, stock_quantity, size, color_label, image_url, category')
         .eq('owner_id', userId)
         .ilike('name', `%${primarySearch}%`)
         .limit(10);
@@ -345,7 +248,7 @@ export function VoiceStockDialog({
       // Also fetch all products for fallback
       const { data: allProducts, error: allError } = await supabase
         .from('products')
-        .select('id, name, stock_quantity, size, color, image_url, category')
+        .select('id, name, stock_quantity, size, color_label, image_url, category')
         .eq('owner_id', userId);
 
       if (allError) throw allError;
@@ -445,16 +348,13 @@ export function VoiceStockDialog({
 
   // Get available colors from current variants
   const availableColors = useMemo(() => {
-    if (productVariants.length === 0) return [];
-    return [...new Set(productVariants.map(v => v.color).filter(Boolean))] as string[];
+    // Colors are now at the product level, not variant level
+    return [];
   }, [productVariants]);
 
   // Filter variants by selected color
   const filteredVariantQuantities = useMemo(() => {
-    if (!selectedColor) return variantQuantities;
-    return variantQuantities.filter(vq => 
-      normalizeText(vq.color || '') === normalizeText(selectedColor)
-    );
+    return variantQuantities;
   }, [variantQuantities, selectedColor]);
 
   // Handle selecting a product from similar matches
@@ -489,7 +389,7 @@ export function VoiceStockDialog({
     // Reset quantities for the new color
     setVariantQuantities(prev => prev.map(vq => ({
       ...vq,
-      quantity: normalizeText(vq.color || '') === normalizeText(color) ? vq.quantity : 0
+      quantity: vq.quantity
     })));
   };
 
@@ -501,11 +401,10 @@ export function VoiceStockDialog({
     const detectedSize = command?.size ? normalizeText(command.size) : null;
     
     setVariantQuantities(prev => prev.map(vq => {
-      const isMatchingColor = normalizeText(vq.color || '') === normalizeText(color);
       const isMatchingSize = detectedSize && normalizeText(vq.size).includes(detectedSize);
       return {
         ...vq,
-        quantity: isMatchingColor && isMatchingSize ? (command?.quantity || 1) : (isMatchingColor ? 0 : 0)
+        quantity: isMatchingSize ? (command?.quantity || 1) : 0
       };
     }));
     
@@ -540,7 +439,6 @@ export function VoiceStockDialog({
         toUpdate: toUpdate.map(vq => ({
           variantId: vq.variantId,
           productId: vq.productId,
-          color: vq.color,
           size: vq.size,
           currentStock: vq.currentStock,
           quantity: vq.quantity,
@@ -666,7 +564,7 @@ export function VoiceStockDialog({
       // Only show success after database confirmation (updates + sync)
       setStep('success');
 
-      const sizesUpdated = toUpdate.map(vq => `${vq.color || ''} ${vq.size}`.trim() || 'Único').join(', ');
+      const sizesUpdated = toUpdate.map(vq => vq.size || 'Único').join(', ');
       toast.success(
         selectedOperation === 'entry'
           ? `Entrada registrada! Total: ${totalQuantity} un. (${sizesUpdated})`
@@ -738,11 +636,6 @@ export function VoiceStockDialog({
     <div key={vq.variantId} className="flex items-center gap-2 py-2 border-b last:border-b-0">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          {vq.color && (
-            <Badge variant="outline" className="text-xs">
-              {vq.color}
-            </Badge>
-          )}
           <span className="font-medium text-sm">{vq.size}</span>
         </div>
         <div className="text-xs text-muted-foreground">
@@ -830,8 +723,7 @@ export function VoiceStockDialog({
                 <p className="font-medium truncate">{matchedProduct.name}</p>
                 {variantQuantities[0] && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {variantQuantities[0].color && <span>{variantQuantities[0].color}</span>}
-                    {variantQuantities[0].size && <span>• {variantQuantities[0].size}</span>}
+                    {variantQuantities[0].size && <span>{variantQuantities[0].size}</span>}
                   </div>
                 )}
               </div>
@@ -901,11 +793,8 @@ export function VoiceStockDialog({
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 p-1">
                   {availableColors.map((color) => {
                     // Get stock count for this color
-                    const colorVariants = variantQuantities.filter(vq => 
-                      normalizeText(vq.color || '') === normalizeText(color)
-                    );
-                    const totalStock = colorVariants.reduce((sum, vq) => sum + vq.currentStock, 0);
-                    const sizesAvailable = colorVariants.map(vq => vq.size).join(', ');
+                    const totalStock = variantQuantities.reduce((sum, vq) => sum + vq.currentStock, 0);
+                    const sizesAvailable = variantQuantities.map(vq => vq.size).join(', ');
                     
                     return (
                       <button
@@ -1103,7 +992,7 @@ export function VoiceStockDialog({
                       <p className="font-medium truncate">{product.name}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         {product.size && <span>{product.size}</span>}
-                        {product.color && <span>• {product.color}</span>}
+                          {product.color_label && <span>• {product.color_label}</span>}
                         <Badge variant="secondary" className="ml-auto">
                           {product.stock_quantity} un.
                         </Badge>

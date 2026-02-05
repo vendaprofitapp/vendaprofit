@@ -37,7 +37,7 @@ interface ConsignmentItem {
     category: string;
     image_url: string | null;
     size: string | null;
-    color: string | null;
+    color_label: string | null;
   };
   product_variants?: {
     size: string;
@@ -64,11 +64,9 @@ interface SwapRequest {
   originalItemId: string;
   originalProductName: string;
   originalSize: string | null;
-  originalColor: string | null;
   newProductId: string;
   newVariantId?: string;
   newSize: string | null;
-  newColor: string | null;
   newProductName: string;
   newPrice: number;
 }
@@ -101,8 +99,8 @@ export default function PublicBag() {
             original_price,
             product_id,
             variant_id,
-            products (id, name, category, image_url, size, color),
-            product_variants (size, color, image_url)
+            products (id, name, category, image_url, size, color_label),
+            product_variants (size, image_url)
           )
         `)
         .eq("access_token", token)
@@ -273,7 +271,7 @@ export default function PublicBag() {
       message += `*VOU FICAR:* ❤️\n`;
       keptItems.forEach(item => {
         const size = item.product_variants?.size || item.products?.size;
-        const color = item.product_variants?.color || item.products?.color;
+        const color = item.products?.color_label;
         message += `• ${item.products?.name}`;
         if (color) message += ` | ${color}`;
         if (size) message += ` | Tam ${size}`;
@@ -289,7 +287,7 @@ export default function PublicBag() {
         if (swapRequest) {
           // Original item details
           const originalSize = item.product_variants?.size || item.products?.size || "único";
-          const originalColor = item.product_variants?.color || item.products?.color;
+          const originalColor = item.products?.color_label;
           
           message += `• De: ${item.products?.name}`;
           if (originalColor) message += ` | ${originalColor}`;
@@ -297,7 +295,6 @@ export default function PublicBag() {
           
           // New item details with price
           message += `  ➡️ Para: ${swapRequest.newProductName}`;
-          if (swapRequest.newColor) message += ` | ${swapRequest.newColor}`;
           message += ` | Tam ${swapRequest.newSize || "único"}`;
           message += ` (${formatPrice(swapRequest.newPrice)})\n`;
         }
@@ -309,7 +306,7 @@ export default function PublicBag() {
       message += `*VOU DEVOLVER:* ↩️\n`;
       returnedItems.forEach(item => {
         const size = item.product_variants?.size || item.products?.size;
-        const color = item.product_variants?.color || item.products?.color;
+        const color = item.products?.color_label;
         message += `• ${item.products?.name}`;
         if (color) message += ` | ${color}`;
         if (size) message += ` | Tam ${size}`;
@@ -470,7 +467,7 @@ export default function PublicBag() {
         <div className="space-y-3 mb-6">
           {items.map(item => {
             const size = item.product_variants?.size || item.products?.size;
-            const color = item.product_variants?.color || item.products?.color;
+            const color = item.products?.color_label;
             const imageUrl = item.product_variants?.image_url || item.products?.image_url;
             const localChoice = localItems[item.id];
             const currentStatus = localChoice || item.status;
@@ -734,11 +731,9 @@ export default function PublicBag() {
                   originalItemId: swapItem.id,
                   originalProductName: swapItem.products.name,
                   originalSize: swapItem.product_variants?.size || swapItem.products.size,
-                  originalColor: swapItem.product_variants?.color || swapItem.products.color,
                   newProductId: selection.productId,
                   newVariantId: selection.variantId,
                   newSize: selection.size,
-                  newColor: selection.color,
                   newProductName: selection.productName,
                   newPrice: selection.price,
                 },
