@@ -33,7 +33,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
  import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
-import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
 import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
@@ -606,7 +605,11 @@ export function ProductFormDialog({
     <div className="space-y-4">
       {/* Importação via URL do Fornecedor */}
       {!editingProduct && (
-        <UrlProductImporter onDataImported={handleImportedData} />
+        <UrlProductImporter 
+          onDataImported={handleImportedData} 
+          maxImages={3}
+          currentImageCount={totalImages}
+        />
       )}
 
       {/* Nome do Produto */}
@@ -723,12 +726,6 @@ export function ProductFormDialog({
         {/* Fotos */}
         <div className="space-y-2">
           <Label>Fotos (até 3)</Label>
-          
-          <SupplierImageScraper
-            maxImages={3}
-            currentImageCount={totalImages}
-            onImagesSelected={handleImagesFromSupplier}
-          />
           
           <input
             ref={imageInputRef}

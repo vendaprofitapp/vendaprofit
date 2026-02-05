@@ -1,5 +1,5 @@
  import { useState } from "react";
- import { Link2, Loader2, ArrowRight, Check, X, Sparkles } from "lucide-react";
+import { Link2, Loader2, ArrowRight, Check, X, Sparkles, Image as ImageIcon } from "lucide-react";
  import { Button } from "@/components/ui/button";
  import { Input } from "@/components/ui/input";
  import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@
  import { supabase } from "@/integrations/supabase/client";
  import { toast } from "sonner";
  import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
  
  interface ScrapedData {
    name?: string;
@@ -45,6 +46,8 @@
      images?: string[];
      category?: string;
    }) => void;
+  maxImages?: number;
+  currentImageCount?: number;
  }
  
  const SYSTEM_FIELDS = [
@@ -72,12 +75,15 @@
    material: "Material",
  };
  
- export function UrlProductImporter({ onDataImported }: UrlProductImporterProps) {
+export function UrlProductImporter({ onDataImported, maxImages = 3, currentImageCount = 0 }: UrlProductImporterProps) {
    const [url, setUrl] = useState("");
    const [isLoading, setIsLoading] = useState(false);
    const [scrapedData, setScrapedData] = useState<ScrapedData | null>(null);
    const [mappings, setMappings] = useState<FieldMapping[]>([]);
    const [showMapping, setShowMapping] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+
+  const availableSlots = maxImages - currentImageCount;
  
    const handleScrape = async () => {
      if (!url.trim()) {
@@ -106,13 +112,22 @@
        if (scraped.name) autoMappings.push({ scrapedField: "name", systemField: "name" });
        if (scraped.description) autoMappings.push({ scrapedField: "description", systemField: "description" });
        if (scraped.price) autoMappings.push({ scrapedField: "price", systemField: "price" });
-       if (scraped.images?.length) autoMappings.push({ scrapedField: "images", systemField: "images" });
        if (scraped.brand) autoMappings.push({ scrapedField: "brand", systemField: "model" });
        if (scraped.color) autoMappings.push({ scrapedField: "color", systemField: "colorLabel" });
        if (scraped.category) autoMappings.push({ scrapedField: "category", systemField: "category" });
        if (scraped.material) autoMappings.push({ scrapedField: "material", systemField: "customDetail" });
        
        setMappings(autoMappings);
+      
+      // Auto-select first images up to available slots
+      if (scraped.images?.length) {
+        const autoSelected = new Set<string>();
+        for (let i = 0; i < Math.min(scraped.images.length, availableSlots); i++) {
+          autoSelected.add(scraped.images[i]);
+        }
+        setSelectedImages(autoSelected);
+      }
+      
        setShowMapping(true);
        toast.success("Dados encontrados! Configure o mapeamento.");
      } catch (error) {
@@ -123,6 +138,22 @@
      }
    };
  
+  const toggleImageSelection = (imageUrl: string) => {
+    const newSelected = new Set(selectedImages);
+    
+    if (newSelected.has(imageUrl)) {
+      newSelected.delete(imageUrl);
+    } else {
+      if (newSelected.size >= availableSlots) {
+        toast.warning(`Você só pode selecionar mais ${availableSlots} imagem(ns)`);
+        return;
+      }
+      newSelected.add(imageUrl);
+    }
+    
+    setSelectedImages(newSelected);
+  };
+
    const updateMapping = (scrapedField: string, systemField: string) => {
      setMappings(prev => {
        const existing = prev.find(m => m.scrapedField === scrapedField);
@@ -142,7 +173,7 @@
    const getScrapedFields = () => {
      if (!scrapedData) return [];
      return Object.entries(scrapedData)
-       .filter(([_, value]) => value !== null && value !== undefined && value !== "")
+      .filter(([key, value]) => key !== 'images' && value !== null && value !== undefined && value !== "")
        .map(([key]) => key);
    };
  
@@ -181,6 +212,11 @@
          importedData[mapping.systemField] = value;
        }
      }
+    
+    // Add selected images
+    if (selectedImages.size > 0) {
+      importedData.images = Array.from(selectedImages);
+    }
  
      onDataImported(importedData);
      toast.success("Dados importados com sucesso!");
@@ -195,6 +231,7 @@
      setShowMapping(false);
      setScrapedData(null);
      setMappings([]);
+    setSelectedImages(new Set());
    };
  
    return (
@@ -249,7 +286,68 @@
              </Button>
            </div>
  
+          {/* Image Selection */}
+          {scrapedData?.images && scrapedData.images.length > 0 && (
+            <div className="space-y-2 p-3 bg-background rounded-lg border">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium flex items-center gap-1">
+                  <ImageIcon className="h-3 w-3" />
+                  Selecione as fotos ({selectedImages.size}/{availableSlots})
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => {
+                    const autoSelected = new Set<string>();
+                    for (let i = 0; i < Math.min(scrapedData.images!.length, availableSlots); i++) {
+                      autoSelected.add(scrapedData.images![i]);
+                    }
+                    setSelectedImages(autoSelected);
+                  }}
+                >
+                  Selecionar primeiras
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                {scrapedData.images.slice(0, 12).map((imageUrl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => toggleImageSelection(imageUrl)}
+                    className={cn(
+                      "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                      selectedImages.has(imageUrl) 
+                        ? "border-primary ring-2 ring-primary/20" 
+                        : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <img
+                      src={imageUrl}
+                      alt={`Imagem ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/placeholder.svg';
+                      }}
+                    />
+                    {selectedImages.has(imageUrl) && (
+                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                        <div className="bg-primary text-primary-foreground rounded-full p-1">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Field Mapping */}
            <ScrollArea className="h-[280px] pr-2">
+            <Label className="text-xs font-medium mb-2 block">Mapeamento de Campos</Label>
              <div className="space-y-3">
                {getScrapedFields().map((field) => (
                  <div key={field} className="flex items-center gap-2 p-2 rounded-lg bg-background border">
