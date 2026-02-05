@@ -482,7 +482,7 @@ export default function StockControl() {
       const normalizedProductSize = normalize(p.size);
       
       // Get all variant colors and sizes
-      const variantColors = (p.product_variants || []).map(v => normalize(v.color));
+      const variantColors: string[] = []; // Color is now at product level only
       const variantSizes = (p.product_variants || []).map(v => normalize(v.size));
       
       // Search across name, SKU, colors, and sizes
@@ -511,7 +511,7 @@ export default function StockControl() {
          productSupplierName.toLowerCase() === selectedSupplierName.toLowerCase());
       
       // Color - check product color and variants (case-insensitive)
-      const productColors = [p.color, ...(p.product_variants || []).map(v => v.color)].filter(Boolean);
+      const productColors = [p.color, p.color_label].filter(Boolean);
       const normalizedFilterColor = normalize(filters.color);
       const matchesColor = filters.color === "all" || 
         productColors.some(c => normalize(c) === normalizedFilterColor);

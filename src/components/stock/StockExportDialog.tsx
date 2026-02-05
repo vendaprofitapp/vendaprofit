@@ -18,7 +18,6 @@ import { format } from "date-fns";
 interface ProductVariant {
   id: string;
   size: string;
-  color: string | null;
   stock_quantity: number;
 }
 
@@ -153,7 +152,7 @@ export function StockExportDialog({ products, suppliers, activeFiltersCount }: S
                 row["Nome"] = product.name;
                 break;
               case "cor":
-                row["Cor"] = variant?.color || product.color || "-";
+                row["Cor"] = product.color || "-";
                 break;
               case "tamanho":
                 row["Tamanho"] = variant?.size || product.size || "-";

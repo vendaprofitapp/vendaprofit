@@ -6,7 +6,7 @@ interface SwapSuggestion {
   id: string;
   name: string;
   size: string | null;
-  color: string | null;
+  color_label: string | null;
   price: number;
   availableStock: number;
   image_url: string | null;
@@ -20,7 +20,7 @@ interface Product {
   name: string;
   category: string;
   size: string | null;
-  color: string | null;
+  color_label: string | null;
 }
 
 export function useProductSwap() {
@@ -40,7 +40,7 @@ export function useProductSwap() {
           id,
           name,
           size,
-          color,
+          color_label,
           price,
           stock_quantity,
           image_url,
@@ -62,7 +62,7 @@ export function useProductSwap() {
           id,
           name,
           size,
-          color,
+          color_label,
           price,
           stock_quantity,
           image_url,
@@ -103,7 +103,7 @@ export function useProductSwap() {
                 id: p.id,
                 name: p.name,
                 size: variant.size,
-                color: p.color, // Color now comes from product
+                color_label: p.color_label, // Color now comes from product
                 price: p.price,
                 availableStock,
                 image_url: variant.image_url || p.image_url,
@@ -124,7 +124,7 @@ export function useProductSwap() {
               id: p.id,
               name: p.name,
               size: p.size,
-              color: p.color,
+              color_label: p.color_label,
               price: p.price,
               availableStock,
               image_url: p.image_url,
@@ -176,7 +176,7 @@ export function useProductSwap() {
           price,
           image_url,
           owner_id,
-          color,
+          color_label,
           product_variants (
             id,
             size,
@@ -216,7 +216,7 @@ export function useProductSwap() {
               id: originalProduct.id,
               name: originalProduct.name,
               size: variant.size,
-              color: originalProduct.color, // Color from product
+              color_label: originalProduct.color_label, // Color from product
               price: originalProduct.price,
               availableStock: variant.stock_quantity,
               image_url: variant.image_url || originalProduct.image_url,
@@ -236,7 +236,7 @@ export function useProductSwap() {
             price,
             image_url,
             owner_id,
-            color,
+            color_label,
             profiles:owner_id (full_name),
             product_variants (
               id,
@@ -267,7 +267,7 @@ export function useProductSwap() {
                     id: p.id,
                     name: p.name,
                     size: variant.size,
-                    color: p.color,
+                    color_label: p.color_label,
                     price: p.price,
                     availableStock: variant.stock_quantity,
                     image_url: variant.image_url || p.image_url,
@@ -313,7 +313,7 @@ export function useProductSwap() {
           name,
           price,
           image_url,
-          color,
+          color_label,
           model,
           owner_id
         `)
@@ -336,7 +336,7 @@ export function useProductSwap() {
           name,
           price,
           image_url,
-          color,
+          color_label,
           stock_quantity,
           product_variants (
             id,
@@ -361,7 +361,7 @@ export function useProductSwap() {
       if (similarProducts) {
         for (const p of similarProducts) {
           // Skip if same color
-          if (p.color === currentColor) continue;
+          if (p.color_label === currentColor) continue;
 
           // Find variant with same size if specified
           if (currentSize && p.product_variants && p.product_variants.length > 0) {
@@ -374,7 +374,7 @@ export function useProductSwap() {
                 id: p.id,
                 name: p.name,
                 size: matchingVariant.size,
-                color: p.color,
+                color_label: p.color_label,
                 price: p.price,
                 availableStock: matchingVariant.stock_quantity,
                 image_url: matchingVariant.image_url || p.image_url,
@@ -386,7 +386,7 @@ export function useProductSwap() {
               id: p.id,
               name: p.name,
               size: p.product_variants?.[0]?.size || null,
-              color: p.color,
+              color_label: p.color_label,
               price: p.price,
               availableStock: p.stock_quantity,
               image_url: p.image_url,
