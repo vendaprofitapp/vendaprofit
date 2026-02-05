@@ -197,4 +197,29 @@
     @apply bg-clip-text text-transparent;
     background: var(--gradient-primary);
   }
+
+  /* Horizontal scroll with visible scrollbar */
+  .scroll-x-visible {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .scroll-x-visible::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .scroll-x-visible::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+  
+  .scroll-x-visible::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+  }
+  
+  .scroll-x-visible::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
 }
