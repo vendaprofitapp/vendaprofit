@@ -1901,17 +1901,8 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
 
         {/* Product Info */}
         <div className="px-1 flex flex-col gap-2">
-          {/* Name, Color and Size (for individual variant cards) */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</h3>
-            <div className="flex items-center gap-1 text-xs text-gray-500">
-              {item.model && <span>{item.model}</span>}
-              {item.model && item.color_label && <span>•</span>}
-              {item.color_label && <span>{item.color_label}</span>}
-              {(item.model || item.color_label) && item.size && <span>•</span>}
-              {item.size && <span>Tam: {item.size}</span>}
-            </div>
-          </div>
+          {/* Product Name */}
+          <h3 className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</h3>
 
           {/* Price - Show marketing price if available */}
           {(() => {
