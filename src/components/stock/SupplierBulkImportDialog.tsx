@@ -289,6 +289,10 @@ export function SupplierBulkImportDialog({
         .split(" ")
         .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(" ");
+      // Also strip the scraped color from the name to avoid duplication
+      const escapedColor = scrapedColor.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const colorRegex = new RegExp(`\\b${escapedColor}\\b`, "i");
+      name = name.replace(colorRegex, "").trim();
     }
 
     name = name.replace(/\s+/g, " ").replace(/\s*-\s*$/, "").replace(/^\s*-\s*/, "").trim();
@@ -594,10 +598,24 @@ export function SupplierBulkImportDialog({
 
         // Use baseName directly - user may have already edited it to include color
         // colorLabel is only for the filter field, not for concatenation
+        // Safety: remove trailing colorLabel from name if it was accidentally duplicated
+        let finalName = product.baseName.trim();
+        if (product.colorLabel && finalName.toLowerCase().endsWith(` ${product.colorLabel.toLowerCase()}`)) {
+          const nameWithoutTrailingColor = finalName.slice(0, finalName.length - product.colorLabel.length).trim();
+          // Only strip if there's still a meaningful name left
+          if (nameWithoutTrailingColor.length > 2) {
+            // Check if the color appears MORE than once (indicating duplication)
+            const colorRegex = new RegExp(product.colorLabel.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+            const matches = finalName.match(colorRegex);
+            if (matches && matches.length > 1) {
+              finalName = nameWithoutTrailingColor;
+            }
+          }
+        }
         const { error: productError } = await supabase
           .from("products")
           .insert({
-            name: product.baseName.trim(),
+            name: finalName,
             main_category: product.mainCategory || null,
             subcategory: product.subcategory || null,
             category: product.mainCategory || getCategoryFromFilter(), // Backward compatibility
