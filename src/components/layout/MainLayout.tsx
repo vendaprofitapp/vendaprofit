@@ -3,9 +3,10 @@ import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { Menu, LogOut } from "lucide-react";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -27,6 +28,7 @@ const pageTitles: Record<string, string> = {
 export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const location = useLocation();
+  const { signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const pageTitle = pageTitles[location.pathname] || "Venda PROFIT";
@@ -46,7 +48,9 @@ export function MainLayout({ children }: MainLayoutProps) {
             </SheetContent>
           </Sheet>
           <h1 className="font-bold text-lg">{pageTitle}</h1>
-          <div className="w-10" /> {/* Spacer for centering */}
+          <Button variant="ghost" size="icon" onClick={signOut}>
+            <LogOut className="h-5 w-5" />
+          </Button>
         </header>
         <main className="p-4 pb-20">
           {children}
