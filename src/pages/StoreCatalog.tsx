@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -88,9 +88,14 @@ interface Product {
   size: string | null;
   color: string | null;
   image_url: string | null;
+  image_url_2?: string | null;
+  image_url_3?: string | null;
   video_url: string | null;
   stock_quantity: number;
   owner_id: string;
+  model?: string | null;
+  color_label?: string | null;
+  custom_detail?: string | null;
 }
 
 // A display item represents one card in the catalog (either a product or a color variant)
@@ -107,6 +112,9 @@ interface CatalogDisplayItem {
   category_2?: string | null;
   category_3?: string | null;
   color: string | null;
+  model: string | null;
+  color_label: string | null;
+  custom_detail: string | null;
   size?: string; // Specific size when showing individual variants
   sizes: string[];
   sizeMarketingStatus: Record<string, MarketingStatus>; // marketing status per size
@@ -203,7 +211,9 @@ export default function StoreCatalog() {
   const [customerFilters, setCustomerFilters] = useState<CustomerFiltersState>({
     categories: [],
     sizes: [],
+    models: [],
     colors: [],
+    details: [],
   });
   // Secret area state
   const [secretAreaUnlocked, setSecretAreaUnlocked] = useState(false);
@@ -373,7 +383,7 @@ export default function StoreCatalog() {
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
-          .select("id, name, description, price, category, category_2, category_3, size, color, image_url, video_url, stock_quantity, owner_id")
+          .select("id, name, description, price, category, category_2, category_3, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
@@ -393,7 +403,7 @@ export default function StoreCatalog() {
           .select(`
             product_id,
             products!inner (
-              id, name, description, price, category, category_2, category_3, size, color, image_url, video_url, stock_quantity, owner_id, is_active
+              id, name, description, price, category, category_2, category_3, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail
             )
           `)
           .in("group_id", allPartnershipGroupIds);
@@ -465,6 +475,9 @@ export default function StoreCatalog() {
         category_2?: string | null;
         category_3?: string | null;
         color: string | null;
+        model: string | null;
+        color_label: string | null;
+        custom_detail: string | null;
         image_url: string | null;
         image_url_2: string | null;
         image_url_3: string | null;
@@ -484,15 +497,21 @@ export default function StoreCatalog() {
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
         
+        // Use color_label if available, fallback to color for legacy support
+        const productColorLabel = (product as any).color_label || product.color;
+        const productModel = (product as any).model || null;
+        const productCustomDetail = (product as any).custom_detail || null;
+        
         if (productVariants.length > 0) {
-          // Color is now at product level
-          const cardKey = makeCardKey(product.name, product.color);
+          // Card key now based on full product name (which includes color in new structure)
+          const cardKey = makeCardKey(product.name, productColorLabel);
           
-          // Get images and video
-          const variantWithImages = productVariants.find(v => v.image_url);
-          const variantImage = variantWithImages?.image_url || product.image_url;
-          const variantImage2 = variantWithImages?.image_url_2 || null;
-          const variantImage3 = variantWithImages?.image_url_3 || null;
+          // Get images from product level (new structure)
+          const productImage = product.image_url;
+          const productImage2 = (product as any).image_url_2 || null;
+          const productImage3 = (product as any).image_url_3 || null;
+          
+          // Video is at product level
           const variantWithVideo = productVariants.find(v => v.video_url);
           const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
           
@@ -515,17 +534,20 @@ export default function StoreCatalog() {
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
-              color: product.color,
-              image_url: variantImage,
-              image_url_2: variantImage2,
-              image_url_3: variantImage3,
+            color: productColorLabel,
+            model: productModel,
+            color_label: productColorLabel,
+            custom_detail: productCustomDetail,
+            image_url: productImage,
+            image_url_2: productImage2,
+            image_url_3: productImage3,
               video_url: variantVideoUrl,
               owner_id: product.owner_id,
               sizes: sizeInfos,
             });
         } else {
           // Product without variants
-          const cardKey = makeCardKey(product.name, product.color);
+          const cardKey = makeCardKey(product.name, productColorLabel);
           
           const sizeInfos: SizeInfo[] = product.size ? [{
             size: product.size,
@@ -544,10 +566,13 @@ export default function StoreCatalog() {
             category: product.category,
             category_2: (product as any).category_2,
             category_3: (product as any).category_3,
-            color: product.color,
+            color: productColorLabel,
+            model: productModel,
+            color_label: productColorLabel,
+            custom_detail: productCustomDetail,
             image_url: product.image_url,
-            image_url_2: null,
-            image_url_3: null,
+            image_url_2: (product as any).image_url_2 || null,
+            image_url_3: (product as any).image_url_3 || null,
             video_url: product.video_url,
             owner_id: product.owner_id,
             sizes: sizeInfos,
@@ -557,6 +582,10 @@ export default function StoreCatalog() {
 
       // Process partner products - add sizes that don't exist in own stock
       for (const product of partnerProducts) {
+        const productColorLabel = (product as any).color_label || product.color;
+        const productModel = (product as any).model || null;
+        const productCustomDetail = (product as any).custom_detail || null;
+        
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
           marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
@@ -565,8 +594,7 @@ export default function StoreCatalog() {
         }));
         
         if (productVariants.length > 0) {
-          // Color is now at product level
-          const cardKey = makeCardKey(product.name, product.color);
+          const cardKey = makeCardKey(product.name, productColorLabel);
           
           const existing = cardDataMap.get(cardKey);
           
@@ -588,10 +616,9 @@ export default function StoreCatalog() {
             });
           } else {
             // No existing card - create new one with partner product
-            const variantWithImages = productVariants.find(v => v.image_url);
-            const variantImage = variantWithImages?.image_url || product.image_url;
-            const variantImage2 = variantWithImages?.image_url_2 || null;
-            const variantImage3 = variantWithImages?.image_url_3 || null;
+            const productImage = product.image_url;
+            const productImage2 = (product as any).image_url_2 || null;
+            const productImage3 = (product as any).image_url_3 || null;
             const variantWithVideo = productVariants.find(v => v.video_url);
             const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
             
@@ -614,10 +641,13 @@ export default function StoreCatalog() {
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
-              color: product.color,
-              image_url: variantImage,
-              image_url_2: variantImage2,
-              image_url_3: variantImage3,
+              color: productColorLabel,
+              model: productModel,
+              color_label: productColorLabel,
+              custom_detail: productCustomDetail,
+              image_url: productImage,
+              image_url_2: productImage2,
+              image_url_3: productImage3,
               video_url: variantVideoUrl,
               owner_id: product.owner_id,
               sizes: sizeInfos,
@@ -669,6 +699,9 @@ export default function StoreCatalog() {
           category_2: cardData.category_2,
           category_3: cardData.category_3,
           color: cardData.color,
+          model: cardData.model,
+          color_label: cardData.color_label,
+          custom_detail: cardData.custom_detail,
           sizes: [...new Set(sizes)],
           sizeMarketingStatus,
           sizeMarketingPrice,
@@ -717,6 +750,26 @@ export default function StoreCatalog() {
     return uniqueColors;
   }, [catalogItems]);
 
+  // Get unique models from all products - sorted alphabetically
+  const availableModels = useMemo(() => {
+    const allModels = catalogItems
+      .map(p => p.model)
+      .filter((m): m is string => !!m && m.trim() !== '');
+    const uniqueModels = [...new Set(allModels)]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return uniqueModels;
+  }, [catalogItems]);
+
+  // Get unique details from all products - sorted alphabetically
+  const availableDetails = useMemo(() => {
+    const allDetails = catalogItems
+      .map(p => p.custom_detail)
+      .filter((d): d is string => !!d && d.trim() !== '');
+    const uniqueDetails = [...new Set(allDetails)]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return uniqueDetails;
+  }, [catalogItems]);
+
   // Filter and transform products
   // When a marketing filter is active, we group sizes with the same status into one card per product/color
   const filteredItems = useMemo(() => {
@@ -745,11 +798,29 @@ export default function StoreCatalog() {
 
       // Color filter
       if (customerFilters.colors.length > 0) {
-        const itemColor = item.color?.toLowerCase().trim() || '';
+        const itemColor = (item.color_label || item.color || '').toLowerCase().trim();
         const matchesAnyColor = customerFilters.colors.some(
           color => color.toLowerCase().trim() === itemColor
         );
         if (!matchesAnyColor) return false;
+      }
+
+      // Model filter
+      if (customerFilters.models.length > 0) {
+        const itemModel = (item.model || '').toLowerCase().trim();
+        const matchesAnyModel = customerFilters.models.some(
+          model => model.toLowerCase().trim() === itemModel
+        );
+        if (!matchesAnyModel) return false;
+      }
+
+      // Details filter
+      if (customerFilters.details.length > 0) {
+        const itemDetail = (item.custom_detail || '').toLowerCase().trim();
+        const matchesAnyDetail = customerFilters.details.some(
+          detail => detail.toLowerCase().trim() === itemDetail
+        );
+        if (!matchesAnyDetail) return false;
       }
 
       return true;
@@ -831,7 +902,9 @@ export default function StoreCatalog() {
         const matchesSearch = search === "" || 
           item.name.toLowerCase().includes(search.toLowerCase()) ||
           (item.description && item.description.toLowerCase().includes(search.toLowerCase())) ||
-          (item.color && item.color.toLowerCase().includes(search.toLowerCase()));
+          (item.color && item.color.toLowerCase().includes(search.toLowerCase())) ||
+          (item.model && item.model.toLowerCase().includes(search.toLowerCase())) ||
+          (item.color_label && item.color_label.toLowerCase().includes(search.toLowerCase()));
         const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
         const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
         
@@ -872,7 +945,9 @@ export default function StoreCatalog() {
         const matchesSearch = search === "" || 
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           (p.description && p.description.toLowerCase().includes(search.toLowerCase())) ||
-          (p.color && p.color.toLowerCase().includes(search.toLowerCase()));
+          (p.color && p.color.toLowerCase().includes(search.toLowerCase())) ||
+          (p.model && p.model.toLowerCase().includes(search.toLowerCase())) ||
+          (p.color_label && p.color_label.toLowerCase().includes(search.toLowerCase()));
         const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
         const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
         
@@ -1351,7 +1426,9 @@ export default function StoreCatalog() {
           <CustomerFilters
             availableCategories={categories}
             availableSizes={availableSizes}
+            availableModels={availableModels}
             availableColors={availableColors}
+            availableDetails={availableDetails}
             filters={customerFilters}
             onFiltersChange={setCustomerFilters}
             primaryColor={primaryColor}
@@ -1706,7 +1783,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           {item.marketingStatus && item.marketingStatus.length > 0 && (
             <Badge 
               className={cn(
-                "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1",
+                "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1 shadow-sm",
                 hasStatus(item.marketingStatus, "opportunity") && "bg-orange-500 text-white",
                 hasStatus(item.marketingStatus, "presale") && !hasStatus(item.marketingStatus, "opportunity") && "bg-purple-500 text-white",
                 hasStatus(item.marketingStatus, "launch") && !hasStatus(item.marketingStatus, "opportunity") && !hasStatus(item.marketingStatus, "presale") && "bg-green-500 text-white",
@@ -1720,9 +1797,24 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </Badge>
           )}
 
+          {/* Video Badge - Show if product has video */}
+          {item.video_url && (
+            <div className={cn(
+              "absolute z-20 flex items-center gap-1 px-2 py-1 rounded-full bg-black/70 text-white text-[10px] font-medium shadow-sm",
+              item.marketingStatus && item.marketingStatus.length > 0 ? "right-2 top-10" : "right-2 top-2"
+            )}>
+              <Video className="h-3 w-3" />
+              <span>Vídeo</span>
+            </div>
+          )}
+
           {/* Wishlist Button */}
           <button 
-            className="absolute right-2 top-10 z-20 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors shadow-sm opacity-0 group-hover:opacity-100"
+            className={cn(
+              "absolute right-2 z-20 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors shadow-sm opacity-0 group-hover:opacity-100",
+              item.video_url && item.marketingStatus && item.marketingStatus.length > 0 ? "top-[72px]" :
+              item.video_url || (item.marketingStatus && item.marketingStatus.length > 0) ? "top-10" : "top-2"
+            )}
             onClick={(e) => {
               e.stopPropagation();
               toast.success("Adicionado aos favoritos!");
@@ -1823,10 +1915,12 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
         <div className="px-1 flex flex-col gap-2">
           {/* Name, Color and Size (for individual variant cards) */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 line-clamp-1">{item.name}</h3>
+            <h3 className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</h3>
             <div className="flex items-center gap-1 text-xs text-gray-500">
-              {item.color && <span>{item.color}</span>}
-              {item.color && item.size && <span>•</span>}
+              {item.model && <span>{item.model}</span>}
+              {item.model && item.color_label && <span>•</span>}
+              {item.color_label && <span>{item.color_label}</span>}
+              {(item.model || item.color_label) && item.size && <span>•</span>}
               {item.size && <span>Tam: {item.size}</span>}
             </div>
           </div>

@@ -8,13 +8,17 @@ import { cn } from "@/lib/utils";
 export interface CustomerFiltersState {
   categories: string[];
   sizes: string[];
-  colors: string[];
+  models: string[];
+  colors: string[];  // Now uses color_label from product
+  details: string[]; // custom_detail from product
 }
 
 interface CustomerFiltersProps {
   availableCategories: string[];
   availableSizes: string[];
+  availableModels: string[];
   availableColors: string[];
+  availableDetails: string[];
   filters: CustomerFiltersState;
   onFiltersChange: (filters: CustomerFiltersState) => void;
   primaryColor: string;
@@ -23,7 +27,9 @@ interface CustomerFiltersProps {
 export function CustomerFilters({
   availableCategories,
   availableSizes,
+  availableModels,
   availableColors,
+  availableDetails,
   filters,
   onFiltersChange,
   primaryColor,
@@ -32,13 +38,17 @@ export function CustomerFilters({
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     categories: true,
     sizes: true,
+    models: true,
     colors: true,
+    details: false,
   });
 
   const activeFiltersCount = 
     filters.categories.length + 
     filters.sizes.length + 
-    filters.colors.length;
+    filters.models.length +
+    filters.colors.length +
+    filters.details.length;
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -63,7 +73,9 @@ export function CustomerFilters({
     onFiltersChange({
       categories: [],
       sizes: [],
+      models: [],
       colors: [],
+      details: [],
     });
   };
 
@@ -188,11 +200,27 @@ export function CustomerFilters({
           />
 
           <FilterSection
+            title="Modelo"
+            sectionKey="models"
+            items={availableModels}
+            selected={filters.models}
+            onToggle={(value) => toggleFilter("models", value)}
+          />
+
+          <FilterSection
             title="Cores"
             sectionKey="colors"
             items={availableColors}
             selected={filters.colors}
             onToggle={(value) => toggleFilter("colors", value)}
+          />
+
+          <FilterSection
+            title="Detalhes"
+            sectionKey="details"
+            items={availableDetails}
+            selected={filters.details}
+            onToggle={(value) => toggleFilter("details", value)}
           />
         </div>
 
@@ -224,7 +252,9 @@ export function ActiveFiltersDisplay({
   const activeFiltersCount = 
     filters.categories.length + 
     filters.sizes.length + 
-    filters.colors.length;
+    filters.models.length +
+    filters.colors.length +
+    filters.details.length;
 
   if (activeFiltersCount === 0) return null;
 
@@ -241,7 +271,9 @@ export function ActiveFiltersDisplay({
     onFiltersChange({
       categories: [],
       sizes: [],
+      models: [],
       colors: [],
+      details: [],
     });
   };
 
@@ -269,6 +301,17 @@ export function ActiveFiltersDisplay({
           <X className="h-3 w-3" />
         </Badge>
       ))}
+      {filters.models.map(model => (
+        <Badge
+          key={`model-${model}`}
+          variant="secondary"
+          className="px-2 py-1 gap-1 cursor-pointer hover:bg-gray-200 text-xs"
+          onClick={() => toggleFilter("models", model)}
+        >
+          {model}
+          <X className="h-3 w-3" />
+        </Badge>
+      ))}
       {filters.colors.map(color => (
         <Badge
           key={`color-${color}`}
@@ -277,6 +320,17 @@ export function ActiveFiltersDisplay({
           onClick={() => toggleFilter("colors", color)}
         >
           {color}
+          <X className="h-3 w-3" />
+        </Badge>
+      ))}
+      {filters.details.map(detail => (
+        <Badge
+          key={`detail-${detail}`}
+          variant="secondary"
+          className="px-2 py-1 gap-1 cursor-pointer hover:bg-gray-200 text-xs"
+          onClick={() => toggleFilter("details", detail)}
+        >
+          {detail}
           <X className="h-3 w-3" />
         </Badge>
       ))}
