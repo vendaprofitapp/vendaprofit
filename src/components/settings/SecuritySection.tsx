@@ -60,8 +60,33 @@ export function SecuritySection({ userId, userEmail }: SecuritySectionProps) {
       return;
     }
 
+    if (!currentPassword) {
+      toast({
+        title: "Senha atual obrigatória",
+        description: "Digite sua senha atual para confirmar a alteração",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsChangingPassword(true);
     try {
+      // Re-authenticate with current password first
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        toast({
+          title: "Senha atual incorreta",
+          description: "A senha atual informada está incorreta",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Now update to new password
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -143,6 +168,28 @@ export function SecuritySection({ userId, userEmail }: SecuritySectionProps) {
 
           <div className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="current-password">Senha Atual</Label>
+              <div className="relative">
+                <Input
+                  id="current-password"
+                  type={showCurrentPassword ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Digite sua senha atual"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                >
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="new-password">Nova Senha</Label>
               <div className="relative">
                 <Input
@@ -220,7 +267,7 @@ export function SecuritySection({ userId, userEmail }: SecuritySectionProps) {
             </Button>
             <Button
               onClick={handleChangePassword}
-              disabled={isChangingPassword || !isPasswordValid || !passwordsMatch}
+              disabled={isChangingPassword || !isPasswordValid || !passwordsMatch || !currentPassword}
             >
               {isChangingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Alterar Senha
