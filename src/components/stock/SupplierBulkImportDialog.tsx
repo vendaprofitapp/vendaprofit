@@ -172,6 +172,7 @@ export function SupplierBulkImportDialog({
 
   // Preview configuration
   const [previewSamples, setPreviewSamples] = useState<PreviewSample[]>([]);
+  const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [extractColorFromName, setExtractColorFromName] = useState(true);
   const [extractSizeFromName, setExtractSizeFromName] = useState(true);
@@ -313,10 +314,11 @@ export function SupplierBulkImportDialog({
 
     setIsLoadingPreview(true);
     setPreviewSamples([]);
+    setSelectedSampleIndex(0);
     setStep("preview");
 
-    // Get up to 3 sample products
-    const sampleUrls = productUrls.slice(0, 3);
+    // Get up to 5 sample products for user to choose from
+    const sampleUrls = productUrls.slice(0, 5);
     const samples: PreviewSample[] = [];
 
     for (const url of sampleUrls) {
@@ -997,7 +999,7 @@ export function SupplierBulkImportDialog({
                   <p className="text-sm text-muted-foreground">Carregando exemplo...</p>
                 </div>
               ) : previewSamples.length > 0 ? (
-                <>
+              <>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Mapeamento de Campos</span>
                     <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
@@ -1005,8 +1007,47 @@ export function SupplierBulkImportDialog({
                     </Button>
                   </div>
 
+                  {/* Sample Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Escolha um produto de exemplo para configurar o mapeamento:</Label>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {previewSamples.map((sample, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedSampleIndex(idx)}
+                          className={cn(
+                            "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                            selectedSampleIndex === idx 
+                              ? "border-primary ring-2 ring-primary/30" 
+                              : "border-border hover:border-muted-foreground/50"
+                          )}
+                        >
+                          <img
+                            src={sample.images?.[0] || '/placeholder.svg'}
+                            alt={`Exemplo ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/placeholder.svg';
+                            }}
+                          />
+                          {selectedSampleIndex === idx && (
+                            <div className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center">
+                              <Check className="h-3 w-3" />
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 inset-x-0 bg-background/80 backdrop-blur-sm px-1 py-0.5">
+                            <p className="text-[9px] truncate font-medium">
+                              {sample.rawName || `Produto ${idx + 1}`}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Image Selection */}
-                  {previewSamples[0]?.images && previewSamples[0].images.length > 0 && (
+                  {previewSamples[selectedSampleIndex]?.images && previewSamples[selectedSampleIndex].images.length > 0 && (
                     <div className="p-3 bg-muted/50 rounded-lg border">
                       <div className="flex items-center justify-between mb-2">
                         <Label className="text-xs font-medium flex items-center gap-1">
@@ -1029,7 +1070,7 @@ export function SupplierBulkImportDialog({
                       </div>
                       
                       <div className="grid grid-cols-6 sm:grid-cols-10 gap-2 max-h-[100px] overflow-y-auto">
-                        {previewSamples[0].images.slice(0, 12).map((imageUrl, idx) => (
+                        {previewSamples[selectedSampleIndex].images.slice(0, 12).map((imageUrl, idx) => (
                           <div
                             key={idx}
                             className={cn(
@@ -1070,12 +1111,12 @@ export function SupplierBulkImportDialog({
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium">Nome do Produto</p>
                           <p className="text-muted-foreground truncate text-[10px]">
-                            {previewSamples[0]?.rawName || "—"}
+                            {previewSamples[selectedSampleIndex]?.rawName || "—"}
                           </p>
                         </div>
                         <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="text-xs font-medium text-primary truncate">
-                          {previewSamples[0]?.parsedBaseName || "Nome"}
+                          {previewSamples[selectedSampleIndex]?.parsedBaseName || "Nome"}
                         </span>
                       </div>
 
@@ -1085,8 +1126,8 @@ export function SupplierBulkImportDialog({
                           <p className="text-xs font-medium">Cor</p>
                           <p className="text-muted-foreground truncate text-[10px]">
                             {colorMappingField === "auto" 
-                              ? (previewSamples[0]?.parsedColor || "Não detectada")
-                              : (previewSamples[0]?.colors?.[0] || "Não encontrada")
+                              ? (previewSamples[selectedSampleIndex]?.parsedColor || "Não detectada")
+                              : (previewSamples[selectedSampleIndex]?.colors?.[0] || "Não encontrada")
                             }
                           </p>
                         </div>
@@ -1114,8 +1155,8 @@ export function SupplierBulkImportDialog({
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium">Preço</p>
                           <p className="text-muted-foreground text-[10px]">
-                            {previewSamples[0]?.price 
-                              ? `R$ ${previewSamples[0].price.toFixed(2)}`
+                            {previewSamples[selectedSampleIndex]?.price 
+                              ? `R$ ${previewSamples[selectedSampleIndex].price.toFixed(2)}`
                               : "Não encontrado"
                             }
                           </p>
@@ -1141,27 +1182,27 @@ export function SupplierBulkImportDialog({
                   <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
                     <p className="text-xs font-medium mb-2">Resultado da interpretação:</p>
                     <div className="flex items-center gap-3">
-                      {previewSamples[0]?.images?.[0] && (
+                      {previewSamples[selectedSampleIndex]?.images?.[0] && (
                         <img
-                          src={previewSamples[0].images[0]}
+                          src={previewSamples[selectedSampleIndex].images[0]}
                           alt=""
                           className="h-12 w-12 rounded object-cover"
                         />
                       )}
                       <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium">{previewSamples[0]?.parsedBaseName || "—"}</p>
+                        <p className="text-sm font-medium">{previewSamples[selectedSampleIndex]?.parsedBaseName || "—"}</p>
                         <div className="flex items-center gap-2 text-xs">
-                          {previewSamples[0]?.parsedColor && (
+                          {previewSamples[selectedSampleIndex]?.parsedColor && (
                             <Badge variant="default" className="text-[10px] h-5">
-                              {previewSamples[0].parsedColor}
+                              {previewSamples[selectedSampleIndex].parsedColor}
                             </Badge>
                           )}
                           <span className="text-muted-foreground">
                             {availableSizes.length} tamanho(s)
                           </span>
-                          {previewSamples[0]?.price && priceMappingField === "price" && (
+                          {previewSamples[selectedSampleIndex]?.price && priceMappingField === "price" && (
                             <span className="text-primary font-medium">
-                              R$ {previewSamples[0].price.toFixed(2)}
+                              R$ {previewSamples[selectedSampleIndex].price.toFixed(2)}
                             </span>
                           )}
                         </div>
