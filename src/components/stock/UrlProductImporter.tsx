@@ -288,9 +288,9 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="space-y-3 p-3 bg-background rounded-lg border">
+            <div className="space-y-2 p-3 bg-background rounded-lg border">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium flex items-center gap-1.5">
+                <Label className="text-xs font-medium flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
                   Selecione as fotos ({selectedImages.size}/{availableSlots})
                 </Label>
@@ -311,15 +311,18 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <div className="scroll-x-visible pb-2">
-                <div className="flex gap-3" style={{ width: 'max-content' }}>
+              <div className="relative">
+                <div 
+                  className="flex gap-2 overflow-x-auto pb-2"
+                  style={{ scrollbarWidth: 'thin' }}
+                >
                 {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative w-[100px] h-[130px] rounded-lg overflow-hidden border-2 transition-all flex-shrink-0",
+                      "relative w-20 h-24 rounded-md overflow-hidden border-2 transition-all flex-shrink-0",
                       selectedImages.has(imageUrl) 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-border hover:border-primary/50"
@@ -335,8 +338,8 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     />
                     {selectedImages.has(imageUrl) && (
                       <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <div className="bg-primary text-primary-foreground rounded-full p-1.5">
-                          <Check className="h-4 w-4" />
+                        <div className="bg-primary text-primary-foreground rounded-full p-1">
+                          <Check className="h-3 w-3" />
                         </div>
                       </div>
                     )}
@@ -344,15 +347,15 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 ))}
                 </div>
               </div>
-              </div>
+            </div>
           )}
 
           {/* Field Mapping */}
-           <ScrollArea className="h-[200px] pr-2">
-            <Label className="text-xs font-medium mb-2 block">Mapeamento de Campos</Label>
-             <div className="space-y-3">
+           <div className="space-y-2">
+            <Label className="text-xs font-medium">Mapeamento de Campos</Label>
+             <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                {getScrapedFields().map((field) => (
-                 <div key={field} className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+                 <div key={field} className="flex items-center gap-2 p-2 rounded-md bg-background border">
                    <div className="flex-1 min-w-0">
                      <p className="text-xs font-medium truncate">
                        {SCRAPED_FIELD_LABELS[field] || field}
@@ -368,7 +371,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                      value={getMappedSystemField(field)}
                      onValueChange={(value) => updateMapping(field, value)}
                    >
-                     <SelectTrigger className="w-[140px] h-8 text-xs">
+                     <SelectTrigger className="w-[130px] h-7 text-xs">
                        <SelectValue placeholder="Ignorar" />
                      </SelectTrigger>
                      <SelectContent>
@@ -383,7 +386,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                  </div>
                ))}
              </div>
-           </ScrollArea>
+           </div>
  
            <div className="flex items-center justify-between pt-2 border-t">
              <span className="text-xs text-muted-foreground">
