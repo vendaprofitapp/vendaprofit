@@ -592,15 +592,12 @@ export function SupplierBulkImportDialog({
           .map(idx => product.images[idx])
           .filter(Boolean);
 
-        // Build full product name with color if present
-        const fullName = product.colorLabel 
-          ? `${product.baseName} ${product.colorLabel}` 
-          : product.baseName;
-
+        // Use baseName directly - user may have already edited it to include color
+        // colorLabel is only for the filter field, not for concatenation
         const { error: productError } = await supabase
           .from("products")
           .insert({
-            name: fullName,
+            name: product.baseName.trim(),
             main_category: product.mainCategory || null,
             subcategory: product.subcategory || null,
             category: product.mainCategory || getCategoryFromFilter(), // Backward compatibility
