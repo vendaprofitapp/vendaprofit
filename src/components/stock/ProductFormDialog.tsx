@@ -89,6 +89,17 @@ interface ProductFormDialogProps {
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
+const defaultSizes = ["PP", "P", "M", "G", "GG", "XG"];
+
+const createDefaultVariants = (): ProductVariant[] => 
+  defaultSizes.map(size => ({ 
+    size, 
+    stock_quantity: 0, 
+    marketing_status: null, 
+    marketing_price: null, 
+    marketing_delivery_days: null 
+  }));
+
 export function ProductFormDialog({ 
   open, 
   onOpenChange, 
@@ -178,7 +189,7 @@ export function ProductFormDialog({
         custom_detail: duplicatingProduct.custom_detail || ""
       });
       
-      setProductVariants([{ size: "", stock_quantity: 0 }]);
+      setProductVariants(createDefaultVariants());
       setExistingImageUrls([]);
     } else {
       resetForm();
@@ -207,7 +218,7 @@ export function ProductFormDialog({
       setProductVariants(variants);
       setOriginalVariantCount(variants.length);
     } else {
-      setProductVariants([{ size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+      setProductVariants(createDefaultVariants());
       setOriginalVariantCount(0);
     }
   };
@@ -240,7 +251,7 @@ export function ProductFormDialog({
     setExistingImageUrls([]);
     setNewImageFiles([]);
     setNewImagePreviews([]);
-    setProductVariants([{ size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+    setProductVariants(createDefaultVariants());
     setOriginalVariantCount(0);
   };
 
