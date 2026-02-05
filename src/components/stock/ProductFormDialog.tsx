@@ -773,6 +773,8 @@ export function ProductFormDialog({
                 <MarketingStatusSelector
                   value={variant.marketing_status || null}
                   onChange={(status) => updateProductVariant(index, "marketing_status", status)}
+                  marketingPrice={variant.marketing_price}
+                  onMarketingPriceChange={(price) => updateProductVariant(index, "marketing_price", price)}
                   compact
                 />
               </div>
