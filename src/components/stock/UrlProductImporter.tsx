@@ -288,7 +288,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="space-y-2 p-3 bg-background rounded-lg border">
+            <div className="p-3 bg-background rounded-lg border">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
@@ -311,18 +311,14 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <div className="relative">
-                <div 
-                  className="flex gap-2 overflow-x-auto pb-2"
-                  style={{ scrollbarWidth: 'thin' }}
-                >
-                {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
+              <div className="mt-2 grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto">
+                {scrapedData.images.slice(0, 20).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative w-20 h-24 rounded-md overflow-hidden border-2 transition-all flex-shrink-0",
+                      "relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all",
                       selectedImages.has(imageUrl) 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-border hover:border-primary/50"
@@ -345,7 +341,6 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     )}
                   </button>
                 ))}
-                </div>
               </div>
             </div>
           )}
@@ -353,7 +348,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
           {/* Field Mapping */}
            <div className="space-y-2">
             <Label className="text-xs font-medium">Mapeamento de Campos</Label>
-             <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+             <div className="space-y-2">
                {getScrapedFields().map((field) => (
                  <div key={field} className="flex items-center gap-2 p-2 rounded-md bg-background border">
                    <div className="flex-1 min-w-0">
@@ -388,20 +383,21 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
              </div>
            </div>
  
-           <div className="flex items-center justify-between pt-2 border-t">
-             <span className="text-xs text-muted-foreground">
-               {mappings.length} campo(s) mapeado(s)
-             </span>
-             <Button 
-               type="button"
-               size="sm"
-               onClick={handleApplyMapping}
-               disabled={mappings.length === 0}
-             >
-               <Check className="h-4 w-4 mr-1" />
-               Aplicar
-             </Button>
-           </div>
+           <div className="flex items-center justify-between pt-3 border-t bg-gradient-to-r from-primary/5 to-primary/10 -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
+              <span className="text-xs text-muted-foreground">
+                {mappings.length} campo(s) mapeado(s)
+              </span>
+              <Button 
+                type="button"
+                size="sm"
+                onClick={handleApplyMapping}
+                disabled={mappings.length === 0}
+                className="gap-1"
+              >
+                <Check className="h-4 w-4" />
+                Aplicar Dados
+              </Button>
+            </div>
          </div>
        )}
      </div>
