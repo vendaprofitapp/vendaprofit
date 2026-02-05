@@ -234,71 +234,73 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
     setSelectedImages(new Set());
    };
  
-   return (
-     <div className="space-y-4 border rounded-lg p-4 bg-gradient-to-r from-primary/5 to-primary/10">
-       <div className="flex items-center gap-2">
-         <Sparkles className="h-4 w-4 text-primary" />
-         <Label className="text-sm font-medium">Importar do Site do Fornecedor</Label>
-         <Badge variant="secondary" className="text-[10px]">Novo</Badge>
-       </div>
+  return (
+    <div className="space-y-2 border rounded-lg p-3 bg-gradient-to-r from-primary/5 to-primary/10">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-3 w-3 text-primary" />
+        <Label className="text-xs font-medium">Importar do Site</Label>
+        <Badge variant="secondary" className="text-[9px] h-4">Novo</Badge>
+      </div>
  
-       {!showMapping ? (
-         <div className="space-y-2">
-           <div className="flex gap-2">
-             <Input
-               type="url"
-               value={url}
-               onChange={(e) => setUrl(e.target.value)}
-               placeholder="https://loja.com.br/produto-xyz"
-               className="flex-1 text-sm"
-             />
-             <Button 
-               type="button" 
-               size="sm"
-               onClick={handleScrape}
-               disabled={isLoading || !url.trim()}
-             >
-               {isLoading ? (
-                 <Loader2 className="h-4 w-4 animate-spin" />
-               ) : (
-                 <>
-                   <Link2 className="h-4 w-4 mr-1" />
-                   Buscar
-                 </>
-               )}
-             </Button>
-           </div>
-           <p className="text-[10px] text-muted-foreground">
-             Cole o link do produto para importar nome, preço, fotos e mais
-           </p>
-         </div>
-       ) : (
-         <div className="space-y-4">
-           <div className="flex items-center justify-between">
-             <span className="text-sm font-medium">Mapeamento de Campos</span>
-             <Button 
-               type="button" 
-               variant="ghost" 
-               size="sm"
-               onClick={handleCancel}
-             >
-               <X className="h-4 w-4" />
-             </Button>
-           </div>
+      {!showMapping ? (
+        <div className="space-y-1">
+          <div className="flex gap-2">
+            <Input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://loja.com.br/produto"
+              className="flex-1 text-xs h-8"
+            />
+            <Button 
+              type="button" 
+              size="sm"
+              className="h-8"
+              onClick={handleScrape}
+              disabled={isLoading || !url.trim()}
+            >
+              {isLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <>
+                  <Link2 className="h-3 w-3 mr-1" />
+                  Buscar
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-[9px] text-muted-foreground">
+            Cole o link para importar dados do produto
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Dados Encontrados</span>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm"
+              className="h-5 w-5 p-0"
+              onClick={handleCancel}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="p-3 bg-background rounded-lg border">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium flex items-center gap-1">
+            <div className="p-2 bg-background rounded-lg border">
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-[10px] font-medium flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
-                  Selecione as fotos ({selectedImages.size}/{availableSlots})
+                  Fotos ({selectedImages.size}/{availableSlots})
                 </Label>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-xs shrink-0"
+                  className="h-5 text-[10px] px-2"
                   onClick={() => {
                     const autoSelected = new Set<string>();
                     for (let i = 0; i < Math.min(scrapedData.images!.length, availableSlots); i++) {
@@ -307,20 +309,20 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     setSelectedImages(autoSelected);
                   }}
                 >
-                  Selecionar primeiras
+                  Auto
                 </Button>
               </div>
               
-              <div className="mt-2 grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto">
+              <div className="grid grid-cols-6 gap-1 max-h-[100px] overflow-y-auto">
                 {scrapedData.images.slice(0, 20).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all",
+                      "relative aspect-square rounded overflow-hidden border-2 transition-all",
                       selectedImages.has(imageUrl) 
-                        ? "border-primary ring-2 ring-primary/20" 
+                        ? "border-primary ring-1 ring-primary/20" 
                         : "border-border hover:border-primary/50"
                     )}
                   >
@@ -334,8 +336,8 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     />
                     {selectedImages.has(imageUrl) && (
                       <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <div className="bg-primary text-primary-foreground rounded-full p-1">
-                          <Check className="h-3 w-3" />
+                        <div className="bg-primary text-primary-foreground rounded-full p-0.5">
+                          <Check className="h-2 w-2" />
                         </div>
                       </div>
                     )}
@@ -346,27 +348,27 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
           )}
 
           {/* Field Mapping */}
-           <div className="space-y-2">
-            <Label className="text-xs font-medium">Mapeamento de Campos</Label>
-             <div className="space-y-2">
+           <div className="space-y-1">
+            <Label className="text-[10px] font-medium">Mapeamento</Label>
+             <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
                {getScrapedFields().map((field) => (
-                 <div key={field} className="flex items-center gap-2 p-2 rounded-md bg-background border">
+                 <div key={field} className="flex items-center gap-1 p-1.5 rounded bg-background border text-[10px]">
                    <div className="flex-1 min-w-0">
-                     <p className="text-xs font-medium truncate">
+                     <p className="font-medium truncate">
                        {SCRAPED_FIELD_LABELS[field] || field}
                      </p>
-                     <p className="text-[10px] text-muted-foreground truncate">
+                     <p className="text-muted-foreground truncate text-[9px]">
                        {formatValue(scrapedData?.[field])}
                      </p>
                    </div>
                    
-                   <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                   <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
                    
                    <Select
                      value={getMappedSystemField(field)}
                      onValueChange={(value) => updateMapping(field, value)}
                    >
-                     <SelectTrigger className="w-[130px] h-7 text-xs">
+                     <SelectTrigger className="w-[100px] h-6 text-[10px]">
                        <SelectValue placeholder="Ignorar" />
                      </SelectTrigger>
                      <SelectContent>
@@ -382,20 +384,20 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                ))}
              </div>
            </div>
- 
-           <div className="flex items-center justify-between pt-3 border-t bg-gradient-to-r from-primary/5 to-primary/10 -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
-              <span className="text-xs text-muted-foreground">
-                {mappings.length} campo(s) mapeado(s)
+
+           <div className="flex items-center justify-between pt-2 border-t mt-2">
+              <span className="text-[10px] text-muted-foreground">
+                {mappings.length} campo(s)
               </span>
               <Button 
                 type="button"
                 size="sm"
                 onClick={handleApplyMapping}
                 disabled={mappings.length === 0}
-                className="gap-1"
+                className="h-7 text-xs"
               >
-                <Check className="h-4 w-4" />
-                Aplicar Dados
+                <Check className="h-3 w-3 mr-1" />
+                Aplicar
               </Button>
             </div>
          </div>
