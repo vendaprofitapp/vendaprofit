@@ -158,7 +158,14 @@ export function FixedCategorySelector({
                     <CommandItem
                       key={cat.id}
                       value={cat.name}
-                      onSelect={() => handleMainCategoryChange(cat.name)}
+                      onSelect={(currentValue) => {
+                        const selected = mainCategories.find(
+                          c => c.name.toLowerCase() === currentValue.toLowerCase()
+                        );
+                        if (selected) {
+                          handleMainCategoryChange(selected.name);
+                        }
+                      }}
                     >
                       <Check
                         className={cn(
@@ -202,7 +209,14 @@ export function FixedCategorySelector({
                       <CommandItem
                         key={sub.id}
                         value={sub.name}
-                        onSelect={() => handleSubcategoryChange(sub.name)}
+                        onSelect={(currentValue) => {
+                          const selected = availableSubcategories.find(
+                            s => s.name.toLowerCase() === currentValue.toLowerCase()
+                          );
+                          if (selected) {
+                            handleSubcategoryChange(selected.name);
+                          }
+                        }}
                       >
                         <Check
                           className={cn(
