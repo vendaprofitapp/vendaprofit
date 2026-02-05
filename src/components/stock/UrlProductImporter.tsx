@@ -311,15 +311,15 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <div className="overflow-x-auto pb-2 -mx-3 px-3">
-                <div className="flex gap-3 w-max">
+              <div className="scroll-x-visible pb-2">
+                <div className="flex gap-3" style={{ width: 'max-content' }}>
                 {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative flex-none w-[110px] h-[140px] rounded-lg overflow-hidden border-2 transition-all",
+                      "relative w-[100px] h-[130px] rounded-lg overflow-hidden border-2 transition-all flex-shrink-0",
                       selectedImages.has(imageUrl) 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-border hover:border-primary/50"
