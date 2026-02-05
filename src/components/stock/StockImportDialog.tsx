@@ -41,9 +41,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SupplierSelect } from "./SupplierSelect";
 import { SupplierImageScraper } from "./SupplierImageScraper";
-import { CategoryManager } from "@/components/products/CategoryManager";
 import { ColorManager, Color, findMatchingColor } from "@/components/products/ColorManager";
 import { ProductColorCombobox } from "./ProductColorCombobox";
+import { useFixedCategories } from "@/components/products/FixedCategorySelector";
 
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
@@ -407,10 +407,21 @@ function EditProductWithVariantsDialog({
             
             <div className="grid gap-2">
               <Label>Categoria *</Label>
-              <CategoryManager
+              <Select
                 value={product.category}
-                onChange={(value) => onUpdateProduct({ category: value })}
-              />
+                onValueChange={(value) => onUpdateProduct({ category: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.name}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -579,14 +590,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const [supplierId, setSupplierId] = useState("");
   const [step, setStep] = useState<"upload" | "review" | "edit">("upload");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [userColors, setUserColors] = useState<Color[]>([]);
+  const { mainCategories: fixedMainCategories } = useFixedCategories();
+  const categories = fixedMainCategories.map(c => ({ id: c.id, name: c.name }));
 
   // Fetch existing products, categories and colors for duplicate detection
   useEffect(() => {
     if (user && open) {
       fetchExistingProducts();
-      fetchCategories();
       fetchUserColors();
     }
   }, [user, open]);
@@ -625,18 +636,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     // Also set for backward compatibility
     setExistingProducts(data?.map(p => ({ id: p.id, name: p.name, stock_quantity: p.stock_quantity })) || []);
     setExistingProductsFull(data || []);
-  };
-
-  const fetchCategories = async () => {
-    if (!user) return;
-    
-    const { data } = await supabase
-      .from("categories")
-      .select("id, name")
-      .eq("owner_id", user.id)
-      .order("name");
-    
-    setCategories(data || []);
   };
 
   // Normalize name: lowercase, trim, collapse multiple spaces, and remove accents

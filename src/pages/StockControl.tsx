@@ -38,12 +38,8 @@ import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
 import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
+import { useFixedCategories } from "@/components/products/FixedCategorySelector";
 import { StockExportDialog } from "@/components/stock/StockExportDialog";
-
-interface Category {
-  id: string;
-  name: string;
-}
 
 interface Supplier {
   id: string;
@@ -77,6 +73,9 @@ interface Product {
   model: string | null;
   custom_detail: string | null;
   marketing_status: string[] | null;
+  main_category: string | null;
+  subcategory: string | null;
+  is_new_release: boolean;
   suppliers?: { name: string } | null;
   product_variants?: Array<{
     id: string;
@@ -110,12 +109,16 @@ export default function StockControl() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  
+  // Use fixed categories hook
+  const { mainCategories, subcategories } = useFixedCategories();
   
   // Filter state
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<ProductFiltersState>({
-    category: "all",
+    mainCategory: "all",
+    subcategory: "all",
+    isNewRelease: "all",
     status: "all",
     supplier: "all",
     color: "all",
@@ -196,8 +199,7 @@ export default function StockControl() {
       fetchProducts(),
       fetchPartnerProducts(),
       fetchRequests(),
-      fetchSuppliers(),
-      fetchCategories()
+      fetchSuppliers()
     ]);
     
     setLoading(false);
@@ -211,16 +213,6 @@ export default function StockControl() {
       .eq("owner_id", user.id)
       .order("name");
     setSuppliers(data ?? []);
-  };
-
-  const fetchCategories = async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from("main_categories")
-      .select("id, name")
-      .eq("is_active", true)
-      .order("display_order");
-    setCategories((data ?? []).map(c => ({ id: c.id, name: c.name })));
   };
 
   const fetchProducts = async () => {
@@ -500,8 +492,10 @@ export default function StockControl() {
         variantSizes.some(s => s.includes(term));
       
       // Category - check all 3 category fields
-      const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean) as string[];
-      const matchesCategory = filters.category === "all" || productCategories.includes(filters.category);
+      const matchesMainCategory = filters.mainCategory === "all" || p.main_category === filters.mainCategory;
+      const matchesSubcategory = filters.subcategory === "all" || p.subcategory === filters.subcategory;
+      const matchesNewRelease = filters.isNewRelease === "all" || 
+        (filters.isNewRelease === "yes" ? p.is_new_release === true : p.is_new_release !== true);
       
       // Status filter
       const matchesStatus = filters.status === "all" || statusKey === filters.status;
@@ -550,7 +544,9 @@ export default function StockControl() {
 
       return (
         matchesTerm &&
-        matchesCategory &&
+        matchesMainCategory &&
+        matchesSubcategory &&
+        matchesNewRelease &&
         matchesStatus &&
         matchesSupplier &&
         matchesColor &&
@@ -566,7 +562,9 @@ export default function StockControl() {
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
-    if (filters.category !== "all") count++;
+    if (filters.mainCategory !== "all") count++;
+    if (filters.subcategory !== "all") count++;
+    if (filters.isNewRelease !== "all") count++;
     if (filters.status !== "all") count++;
     if (filters.supplier !== "all") count++;
     if (filters.color !== "all") count++;
@@ -660,7 +658,8 @@ export default function StockControl() {
         onOpenChange={setFiltersOpen}
         filters={filters}
         onFiltersChange={setFilters}
-        categories={categories}
+        mainCategories={mainCategories}
+        subcategories={subcategories}
         suppliers={suppliers}
         colors={uniqueColors}
         sizes={uniqueSizes}

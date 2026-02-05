@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Category } from "./CategoryManager";
 import { Flame, Clock, Rocket, Lock } from "lucide-react";
 
 export type StockStatusKey = "available" | "low" | "out";
@@ -27,8 +26,21 @@ interface Supplier {
   name: string;
 }
 
+interface MainCategory {
+  id: string;
+  name: string;
+}
+
+interface Subcategory {
+  id: string;
+  name: string;
+  main_category_id: string;
+}
+
 export interface ProductFiltersState {
-  category: string;
+  mainCategory: string;
+  subcategory: string;
+  isNewRelease: string;
   status: StockStatusKey | "all";
   supplier: string;
   color: string;
@@ -45,7 +57,8 @@ interface ProductFiltersProps {
   onOpenChange: (open: boolean) => void;
   filters: ProductFiltersState;
   onFiltersChange: (filters: ProductFiltersState) => void;
-  categories: Category[];
+  mainCategories: MainCategory[];
+  subcategories: Subcategory[];
   suppliers: Supplier[];
   colors: string[];
   sizes: string[];
@@ -56,7 +69,8 @@ export function ProductFilters({
   onOpenChange,
   filters,
   onFiltersChange,
-  categories,
+  mainCategories,
+  subcategories,
   suppliers,
   colors,
   sizes,
@@ -70,7 +84,9 @@ export function ProductFilters({
 
   const clearFilters = () => {
     onFiltersChange({
-      category: "all",
+      mainCategory: "all",
+      subcategory: "all",
+      isNewRelease: "all",
       status: "all",
       supplier: "all",
       color: "all",
@@ -83,8 +99,16 @@ export function ProductFilters({
     });
   };
 
+  // Get subcategories for selected main category
+  const selectedMainCat = mainCategories.find(c => c.name === filters.mainCategory);
+  const availableSubcategories = selectedMainCat
+    ? subcategories.filter(s => s.main_category_id === selectedMainCat.id)
+    : [];
+
   const hasActiveFilters =
-    filters.category !== "all" ||
+    filters.mainCategory !== "all" ||
+    filters.subcategory !== "all" ||
+    filters.isNewRelease !== "all" ||
     filters.status !== "all" ||
     filters.supplier !== "all" ||
     filters.color !== "all" ||
@@ -106,16 +130,34 @@ export function ProductFilters({
         </DialogHeader>
 
         <div className="grid gap-4 py-2 max-h-[60vh] overflow-y-auto">
-          {/* Categoria */}
+          {/* Lançamentos */}
           <div className="grid gap-2">
-            <Label>Categoria</Label>
-            <Select value={filters.category} onValueChange={(v) => updateFilter("category", v)}>
+            <Label>Lançamentos</Label>
+            <Select value={filters.isNewRelease} onValueChange={(v) => updateFilter("isNewRelease", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="yes">🚀 Apenas Lançamentos</SelectItem>
+                <SelectItem value="no">Sem Lançamentos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Categoria Principal */}
+          <div className="grid gap-2">
+            <Label>Categoria Principal</Label>
+            <Select value={filters.mainCategory} onValueChange={(v) => {
+              updateFilter("mainCategory", v);
+              updateFilter("subcategory", "all");
+            }}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {categories.map((c) => (
+                {mainCategories.map((c) => (
                   <SelectItem key={c.id} value={c.name}>
                     {c.name}
                   </SelectItem>
@@ -123,6 +165,26 @@ export function ProductFilters({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Subcategoria */}
+          {availableSubcategories.length > 0 && (
+            <div className="grid gap-2">
+              <Label>Subcategoria</Label>
+              <Select value={filters.subcategory} onValueChange={(v) => updateFilter("subcategory", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {availableSubcategories.map((s) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Status */}
           <div className="grid gap-2">
