@@ -37,18 +37,20 @@ export function MainLayout({ children }: MainLayoutProps) {
     return (
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 backdrop-blur px-4">
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64">
-              <Sidebar onNavigate={() => setSidebarOpen(false)} />
-            </SheetContent>
-          </Sheet>
+          <div>
+            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="p-0 w-64">
+                <Sidebar onNavigate={() => setSidebarOpen(false)} />
+              </SheetContent>
+            </Sheet>
+          </div>
           <h1 className="font-bold text-lg">{pageTitle}</h1>
-          <Button variant="ghost" size="icon" onClick={signOut}>
+          <Button variant="ghost" size="icon" onClick={() => signOut()}>
             <LogOut className="h-5 w-5" />
           </Button>
         </header>
