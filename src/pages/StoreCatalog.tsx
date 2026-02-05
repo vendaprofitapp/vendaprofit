@@ -415,7 +415,7 @@ export default function StoreCatalog() {
       // Fetch variants for all products (including marketing fields and video)
       const { data: variants } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_price, marketing_delivery_days")
+        .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_price, marketing_delivery_days")
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
@@ -485,40 +485,29 @@ export default function StoreCatalog() {
         }));
         
         if (productVariants.length > 0) {
-          const colorGroups = new Map<string, ProductVariant[]>();
+          // Color is now at product level
+          const cardKey = makeCardKey(product.name, product.color);
           
-          productVariants.forEach(v => {
-            const color = v.color || '__no_color__';
-            if (!colorGroups.has(color)) {
-              colorGroups.set(color, []);
-            }
-            colorGroups.get(color)!.push(v);
-          });
+          // Get images and video
+          const variantWithImages = productVariants.find(v => v.image_url);
+          const variantImage = variantWithImages?.image_url || product.image_url;
+          const variantImage2 = variantWithImages?.image_url_2 || null;
+          const variantImage3 = variantWithImages?.image_url_3 || null;
+          const variantWithVideo = productVariants.find(v => v.video_url);
+          const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
+          
+          const sizeInfos: SizeInfo[] = productVariants
+            .filter(v => v.size)
+            .map(v => ({
+              size: v.size,
+              isPartner: false,
+              marketingStatus: v.marketing_status,
+              marketingPrice: v.marketing_price,
+              marketingDeliveryDays: v.marketing_delivery_days,
+              stock: v.stock_quantity,
+            }));
 
-          for (const [color, colorVariants] of colorGroups) {
-            const displayColor = color === '__no_color__' ? null : color;
-            const cardKey = makeCardKey(product.name, displayColor);
-            
-            // Get images and video
-            const variantWithImages = colorVariants.find(v => v.image_url);
-            const variantImage = variantWithImages?.image_url || product.image_url;
-            const variantImage2 = variantWithImages?.image_url_2 || null;
-            const variantImage3 = variantWithImages?.image_url_3 || null;
-            const variantWithVideo = colorVariants.find(v => v.video_url);
-            const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
-            
-            const sizeInfos: SizeInfo[] = colorVariants
-              .filter(v => v.size)
-              .map(v => ({
-                size: v.size,
-                isPartner: false,
-                marketingStatus: v.marketing_status,
-                marketingPrice: v.marketing_price,
-                marketingDeliveryDays: v.marketing_delivery_days,
-                stock: v.stock_quantity,
-              }));
-
-            cardDataMap.set(cardKey, {
+          cardDataMap.set(cardKey, {
               productId: product.id,
               name: product.name,
               description: product.description,
@@ -526,7 +515,7 @@ export default function StoreCatalog() {
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
-              color: displayColor,
+              color: product.color,
               image_url: variantImage,
               image_url_2: variantImage2,
               image_url_3: variantImage3,
@@ -534,7 +523,6 @@ export default function StoreCatalog() {
               owner_id: product.owner_id,
               sizes: sizeInfos,
             });
-          }
         } else {
           // Product without variants
           const cardKey = makeCardKey(product.name, product.color);
@@ -577,27 +565,64 @@ export default function StoreCatalog() {
         }));
         
         if (productVariants.length > 0) {
-          const colorGroups = new Map<string, ProductVariant[]>();
+          // Color is now at product level
+          const cardKey = makeCardKey(product.name, product.color);
           
-          productVariants.forEach(v => {
-            const color = v.color || '__no_color__';
-            if (!colorGroups.has(color)) {
-              colorGroups.set(color, []);
-            }
-            colorGroups.get(color)!.push(v);
-          });
-
-          for (const [color, colorVariants] of colorGroups) {
-            const displayColor = color === '__no_color__' ? null : color;
-            const cardKey = makeCardKey(product.name, displayColor);
+          const existing = cardDataMap.get(cardKey);
+          
+          if (existing) {
+            // Card exists (from own products) - add partner sizes that don't exist
+            const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
             
-            const existing = cardDataMap.get(cardKey);
+            productVariants.forEach(v => {
+              if (!existingSizeSet.has(v.size.toLowerCase().trim())) {
+                existing.sizes.push({
+                  size: v.size,
+                  isPartner: true,
+                  marketingStatus: v.marketing_status,
+                  marketingPrice: v.marketing_price,
+                  marketingDeliveryDays: v.marketing_delivery_days,
+                  stock: v.stock_quantity,
+                });
+              }
+            });
+          } else {
+            // No existing card - create new one with partner product
+            const variantWithImages = productVariants.find(v => v.image_url);
+            const variantImage = variantWithImages?.image_url || product.image_url;
+            const variantImage2 = variantWithImages?.image_url_2 || null;
+            const variantImage3 = variantWithImages?.image_url_3 || null;
+            const variantWithVideo = productVariants.find(v => v.video_url);
+            const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
             
-            if (existing) {
-              // Card exists (from own products) - add partner sizes that don't exist
-              const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
-              
-              colorVariants.forEach(v => {
+            const sizeInfos: SizeInfo[] = productVariants
+              .filter(v => v.size)
+              .map(v => ({
+                size: v.size,
+                isPartner: true,
+                marketingStatus: v.marketing_status,
+                marketingPrice: v.marketing_price,
+                marketingDeliveryDays: v.marketing_delivery_days,
+                stock: v.stock_quantity,
+              }));
+            
+            cardDataMap.set(cardKey, {
+              productId: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              category: product.category,
+              category_2: (product as any).category_2,
+              category_3: (product as any).category_3,
+              color: product.color,
+              image_url: variantImage,
+              image_url_2: variantImage2,
+              image_url_3: variantImage3,
+              video_url: variantVideoUrl,
+              owner_id: product.owner_id,
+              sizes: sizeInfos,
+            });
+          }
                 if (v.size && !existingSizeSet.has(v.size.toLowerCase().trim())) {
                   existing.sizes.push({
                     size: v.size,

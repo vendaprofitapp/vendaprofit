@@ -60,6 +60,7 @@ interface Product {
   // OBS: tamanho/cor principais ficam nas variantes
   size: string | null;
   color: string | null;
+  color_label: string | null;
   stock_quantity: number;
   min_stock_level: number;
   group_id: string | null;

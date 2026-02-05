@@ -441,7 +441,7 @@ export default function Sales() {
           notes: notes || null,
           status: "pending",
           variant_id: variant?.id || null,
-          variant_color: variant?.color || null,
+          variant_color: null,
           variant_size: variant?.size || null,
         })
         .select()
@@ -471,10 +471,9 @@ export default function Sales() {
     try {
       const { data, error } = await supabase
         .from("product_variants")
-        .select("id, product_id, color, size, stock_quantity, image_url")
+        .select("id, product_id, size, stock_quantity, image_url")
         .eq("product_id", productId)
         .gt("stock_quantity", 0)
-        .order("color")
         .order("size");
 
       if (error) throw error;
@@ -596,7 +595,6 @@ export default function Sales() {
         let productName = item.product.name;
         if (item.variant) {
           const parts = [];
-          if (item.variant.color) parts.push(item.variant.color);
           if (item.variant.size) parts.push(item.variant.size);
           if (parts.length > 0) productName += ` (${parts.join(' - ')})`;
         }
@@ -1783,7 +1781,6 @@ export default function Sales() {
                       let displayName = item.product.name;
                       if (item.variant) {
                         const parts = [];
-                        if (item.variant.color) parts.push(item.variant.color);
                         if (item.variant.size) parts.push(item.variant.size);
                         if (parts.length > 0) displayName += ` (${parts.join(' - ')})`;
                       }
@@ -2174,7 +2171,7 @@ export default function Sales() {
                         }`}
                       >
                         <p className="font-medium text-sm">
-                          {[variant.color, variant.size].filter(Boolean).join(' - ')}
+                          {variant.size}
                         </p>
                         <p className="text-xs text-muted-foreground">{variant.stock_quantity} un</p>
                       </button>
