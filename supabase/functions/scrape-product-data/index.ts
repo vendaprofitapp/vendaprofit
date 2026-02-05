@@ -63,17 +63,33 @@
          onlyMainContent: true,
          waitFor: 2000,
        }),
-     });
- 
-     const data = await response.json();
- 
-     if (!response.ok) {
-       console.error('Firecrawl API error:', data);
-       return new Response(
-         JSON.stringify({ success: false, error: data.error || `Erro ${response.status}` }),
-         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-       );
-     }
+      });
+
+      // Check response status first before parsing JSON
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Firecrawl API error:', response.status, errorText);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: response.status === 502 
+              ? 'Serviço de scraping indisponível. Tente novamente em alguns segundos.' 
+              : `Erro ao buscar dados (${response.status})` 
+          }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse Firecrawl response:', parseError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Resposta inválida do serviço de scraping' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
  
      // Extract product data from response
       const productData = data.data?.extract || data.extract || {};
@@ -91,10 +107,20 @@
          onlyMainContent: false,
          waitFor: 2000,
        }),
-     });
- 
-     const imagesData = await imagesResponse.json();
-     const html = imagesData.data?.html || imagesData.html || '';
+      });
+
+      // Check images response before parsing
+      if (!imagesResponse.ok) {
+        console.log('Images scrape failed, continuing without images');
+      }
+      
+      let imagesData;
+      try {
+        imagesData = imagesResponse.ok ? await imagesResponse.json() : {};
+      } catch {
+        imagesData = {};
+      }
+      const html = imagesData.data?.html || imagesData.html || '';
      
      // Extract images from HTML
      const images: string[] = [];
