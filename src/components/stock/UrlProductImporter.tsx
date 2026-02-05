@@ -288,7 +288,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="space-y-2 p-3 bg-background rounded-lg border">
+            <div className="space-y-2 p-3 bg-background rounded-lg border overflow-hidden">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
@@ -298,7 +298,7 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-xs"
+                  className="h-6 text-xs shrink-0"
                   onClick={() => {
                     const autoSelected = new Set<string>();
                     for (let i = 0; i < Math.min(scrapedData.images!.length, availableSlots); i++) {
@@ -311,8 +311,9 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                {scrapedData.images.slice(0, 12).map((imageUrl, idx) => (
+              <ScrollArea className="h-[140px]">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pr-2">
+                {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
@@ -341,12 +342,13 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     )}
                   </button>
                 ))}
+                </div>
+              </ScrollArea>
               </div>
-            </div>
           )}
 
           {/* Field Mapping */}
-           <ScrollArea className="h-[280px] pr-2">
+           <ScrollArea className="h-[200px] pr-2">
             <Label className="text-xs font-medium mb-2 block">Mapeamento de Campos</Label>
              <div className="space-y-3">
                {getScrapedFields().map((field) => (
