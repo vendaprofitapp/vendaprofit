@@ -38,8 +38,12 @@ import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { VoiceCommandFeedback } from "@/components/voice/VoiceCommandFeedback";
 import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCommand";
 import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
-import { Category } from "@/components/products/CategoryManager";
 import { StockExportDialog } from "@/components/stock/StockExportDialog";
+
+interface Category {
+  id: string;
+  name: string;
+}
 
 interface Supplier {
   id: string;
@@ -211,12 +215,12 @@ export default function StockControl() {
 
   const fetchCategories = async () => {
     if (!user) return;
-    // Fetch all categories globally so all users see the same list
     const { data } = await supabase
-      .from("categories")
-      .select("id, name, owner_id")
-      .order("name");
-    setCategories(data ?? []);
+      .from("main_categories")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("display_order");
+    setCategories((data ?? []).map(c => ({ id: c.id, name: c.name })));
   };
 
   const fetchProducts = async () => {

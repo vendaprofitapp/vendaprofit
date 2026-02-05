@@ -32,30 +32,6 @@ export type Database = {
         }
         Relationships: []
       }
-      categories: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          owner_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          owner_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          owner_id?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       colors: {
         Row: {
           created_at: string
@@ -1093,6 +1069,36 @@ export type Database = {
         }
         Relationships: []
       }
+      main_categories: {
+        Row: {
+          created_at: string
+          display_order: number
+          has_subcategories: boolean
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          has_subcategories?: boolean
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          has_subcategories?: boolean
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partnership_auto_share: {
         Row: {
           created_at: string
@@ -1418,6 +1424,8 @@ export type Database = {
           image_url_2: string | null
           image_url_3: string | null
           is_active: boolean
+          is_new_release: boolean
+          main_category: string | null
           marketing_status: string[] | null
           min_stock_level: number
           model: string | null
@@ -1427,6 +1435,7 @@ export type Database = {
           size: string | null
           sku: string | null
           stock_quantity: number
+          subcategory: string | null
           supplier_id: string | null
           updated_at: string
           video_url: string | null
@@ -1447,6 +1456,8 @@ export type Database = {
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
+          is_new_release?: boolean
+          main_category?: string | null
           marketing_status?: string[] | null
           min_stock_level?: number
           model?: string | null
@@ -1456,6 +1467,7 @@ export type Database = {
           size?: string | null
           sku?: string | null
           stock_quantity?: number
+          subcategory?: string | null
           supplier_id?: string | null
           updated_at?: string
           video_url?: string | null
@@ -1476,6 +1488,8 @@ export type Database = {
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
+          is_new_release?: boolean
+          main_category?: string | null
           marketing_status?: string[] | null
           min_stock_level?: number
           model?: string | null
@@ -1485,6 +1499,7 @@ export type Database = {
           size?: string | null
           sku?: string | null
           stock_quantity?: number
+          subcategory?: string | null
           supplier_id?: string | null
           updated_at?: string
           video_url?: string | null
@@ -1871,6 +1886,44 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Relationships: []
+      }
+      subcategories: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          main_category_id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          main_category_id: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          main_category_id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcategories_main_category_id_fkey"
+            columns: ["main_category_id"]
+            isOneToOne: false
+            referencedRelation: "main_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       suppliers: {
         Row: {
