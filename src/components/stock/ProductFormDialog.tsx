@@ -37,6 +37,7 @@ import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
 import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
 import { UrlProductImporter } from "@/components/stock/UrlProductImporter";
+import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 
 interface Product {
   id: string;
@@ -723,7 +724,7 @@ export function ProductFormDialog({
       <div className="space-y-4 pt-2 border-t">
         <h3 className="text-sm font-medium text-muted-foreground">Mídia do Produto</h3>
         
-        {/* Fotos */}
+      {/* Fotos */}
         <div className="space-y-2">
           <Label>Fotos (até 3)</Label>
           
@@ -746,6 +747,15 @@ export function ProductFormDialog({
           />
           
           <p className="text-xs text-muted-foreground">{totalImages}/3 fotos</p>
+          
+          {/* Import photos from supplier URL - available for both new and editing */}
+          {totalImages < 3 && (
+            <SupplierImageScraper
+              maxImages={3}
+              currentImageCount={totalImages}
+              onImagesSelected={handleImagesFromSupplier}
+            />
+          )}
         </div>
         
         {/* Vídeo */}
