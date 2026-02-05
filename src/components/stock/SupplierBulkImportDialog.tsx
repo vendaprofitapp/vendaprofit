@@ -7,16 +7,11 @@ import {
   Package,
   AlertCircle,
   RefreshCw,
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
   Eye,
   Settings2,
   Image,
-  Tag,
-  Palette,
-  Ruler,
+  ChevronDown,
+  ChevronUp,
   DollarSign,
   ArrowRight,
 } from "lucide-react";
@@ -62,10 +57,8 @@ interface PreviewSample {
   images: string[];
   colors: string[];
   sizes: string[];
-  // Parsed result
   parsedBaseName: string;
   parsedColor: string | null;
-  parsedSize: string | null;
 }
 
 interface ScrapedProduct {
@@ -82,31 +75,32 @@ interface ScrapedProduct {
   error?: string;
 }
 
-interface ProductVariant {
-  color: string;
-  size: string;
-  quantity: number;
-  imageUrl?: string; // Image specific for this color variant
+interface MainCategory {
+  id: string;
+  name: string;
+  has_subcategories: boolean;
 }
 
-// Images grouped by color for selection
-interface ColorImages {
-  color: string;
-  images: string[];
-  selectedIndices: number[]; // Which images are selected for this color (up to 3)
+interface Subcategory {
+  id: string;
+  name: string;
+  main_category_id: string;
 }
 
 interface GroupedProduct {
   id: string;
   baseName: string;
-  category: string;
+  mainCategory: string;
+  subcategory: string;
+  model: string;
+  colorLabel: string;
+  customDetail: string;
   costPrice: number;
   salePrice: number;
+  minStockLevel: number;
   description: string;
-  images: string[]; // All available images (for fallback)
-  selectedImageIndices: number[]; // Which images are selected for main product
-  colorImages: ColorImages[]; // Images grouped by color
-  variants: ProductVariant[];
+  images: string[];
+  selectedImageIndices: number[];
   selected: boolean;
   expanded: boolean;
 }
@@ -125,7 +119,7 @@ interface SupplierBulkImportDialogProps {
 
 const MARKUP_PERCENTAGE = 1.67;
 
-// Common color names to detect - includes compound colors (e.g., "verde militar")
+// Common color names to detect
 const COMPOUND_COLORS = [
   "off white", "off-white", "verde militar", "verde menta", "verde oliva", "verde musgo",
   "azul marinho", "azul royal", "azul bebê", "azul céu", "azul petróleo",
@@ -146,9 +140,6 @@ const SIMPLE_COLORS = [
   "bordô", "ferrugem", "ocre", "camel", "taupe", "malva", "militar"
 ];
 
-// Size patterns
-const SIZE_PATTERN = /\b(pp|p|m|g|gg|xg|xxg|xxxg|eg|exg|u|un|uni|único|unico|36|38|40|42|44|46|48|50)\b/i;
-
 export function SupplierBulkImportDialog({
   open,
   onOpenChange,
@@ -168,31 +159,31 @@ export function SupplierBulkImportDialog({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [editingProduct, setEditingProduct] = useState<GroupedProduct | null>(null);
+
+  // Categories
+  const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
   // Preview configuration
   const [previewSamples, setPreviewSamples] = useState<PreviewSample[]>([]);
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [extractColorFromName, setExtractColorFromName] = useState(true);
-  const [extractSizeFromName, setExtractSizeFromName] = useState(true);
   const [customColorKeywords, setCustomColorKeywords] = useState<string>("");
-  // Field mapping for color (like single product import)
   const [colorMappingField, setColorMappingField] = useState<string>("auto");
-  // Field mapping for price (like single product import)
   const [priceMappingField, setPriceMappingField] = useState<string>("price");
-  // Available sizes for the product - fixed to PP, P, M, G, GG
-  const [availableSizes] = useState<string[]>(["PP", "P", "M", "G", "GG"]);
-  // Maximum photos per product (1-3)
   const [maxPhotosPerProduct, setMaxPhotosPerProduct] = useState<number>(3);
-  // Default prices for all products (can be changed individually in review)
   const [defaultCostPrice, setDefaultCostPrice] = useState<number>(0);
   const [defaultSalePrice, setDefaultSalePrice] = useState<number>(0);
   const [useDefaultPrices, setUseDefaultPrices] = useState<boolean>(false);
+  const [defaultMainCategory, setDefaultMainCategory] = useState<string>("");
+  const [defaultSubcategory, setDefaultSubcategory] = useState<string>("");
+  const [defaultMinStock, setDefaultMinStock] = useState<number>(2);
 
   useEffect(() => {
     if (open && user) {
       fetchSuppliers();
+      fetchCategories();
     }
   }, [open, user]);
 
@@ -204,6 +195,22 @@ export function SupplierBulkImportDialog({
       .eq("owner_id", user.id)
       .order("name");
     setSuppliers(data ?? []);
+  };
+
+  const fetchCategories = async () => {
+    const { data: mainCats } = await supabase
+      .from("main_categories")
+      .select("id, name, has_subcategories")
+      .eq("is_active", true)
+      .order("display_order");
+    setMainCategories(mainCats ?? []);
+
+    const { data: subCats } = await supabase
+      .from("subcategories")
+      .select("id, name, main_category_id")
+      .eq("is_active", true)
+      .order("display_order");
+    setSubcategories(subCats ?? []);
   };
 
   const handleSupplierChange = (supplierId: string) => {
@@ -250,36 +257,19 @@ export function SupplierBulkImportDialog({
     }
   };
 
-  // Get all color keywords including custom ones - compound colors first for better matching
   const getAllColorKeywords = (): string[] => {
     const customColors = customColorKeywords
       .split(",")
       .map(c => c.trim().toLowerCase())
       .filter(Boolean);
-    // Put compound colors first, then simple colors, then custom
     return [...COMPOUND_COLORS, ...SIMPLE_COLORS, ...customColors];
   };
 
-  const extractBaseName = (fullName: string, scrapedColor?: string | null): { baseName: string; color: string | null; size: string | null } => {
+  const extractBaseName = (fullName: string, scrapedColor?: string | null): { baseName: string; color: string | null } => {
     let detectedColor: string | null = null;
-    let detectedSize: string | null = null;
     let name = fullName.trim();
 
-    // Extract size first
-    if (extractSizeFromName) {
-      const sizeMatch = name.match(SIZE_PATTERN);
-      if (sizeMatch) {
-        detectedSize = sizeMatch[1].toUpperCase();
-        if (detectedSize === "UN" || detectedSize === "UNI" || detectedSize === "UNICO" || detectedSize === "ÚNICO") {
-          detectedSize = "U";
-        }
-        name = name.replace(SIZE_PATTERN, "").trim();
-      }
-    }
-
-    // Get color based on mapping setting
     if (colorMappingField === "auto" && extractColorFromName) {
-      // Auto-extract from name
       const lowerName = name.toLowerCase();
       const allColors = getAllColorKeywords();
       for (const color of allColors) {
@@ -295,20 +285,17 @@ export function SupplierBulkImportDialog({
         }
       }
     } else if (colorMappingField === "color" && scrapedColor) {
-      // Use scraped color field
       detectedColor = scrapedColor
         .split(" ")
         .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(" ");
     }
 
-    // Clean up extra spaces and dashes
     name = name.replace(/\s+/g, " ").replace(/\s*-\s*$/, "").replace(/^\s*-\s*/, "").trim();
 
-    return { baseName: name, color: detectedColor, size: detectedSize };
+    return { baseName: name, color: detectedColor };
   };
 
-  // Load preview samples from first few products
   const handleLoadPreview = async () => {
     if (productUrls.length === 0) return;
 
@@ -317,7 +304,6 @@ export function SupplierBulkImportDialog({
     setSelectedSampleIndex(0);
     setStep("preview");
 
-    // Get up to 5 sample products for user to choose from
     const sampleUrls = productUrls.slice(0, 5);
     const samples: PreviewSample[] = [];
 
@@ -331,7 +317,7 @@ export function SupplierBulkImportDialog({
 
         const rawName = data.productData?.name || "";
         const scrapedColor = data.productData?.colors?.[0] || null;
-        const { baseName, color, size } = extractBaseName(rawName, scrapedColor);
+        const { baseName, color } = extractBaseName(rawName, scrapedColor);
 
         samples.push({
           url,
@@ -343,7 +329,6 @@ export function SupplierBulkImportDialog({
           sizes: data.productData?.sizes || [],
           parsedBaseName: baseName,
           parsedColor: color,
-          parsedSize: size,
         });
       } catch (error) {
         console.error("Error loading preview:", error);
@@ -359,43 +344,31 @@ export function SupplierBulkImportDialog({
     }
   };
 
-  // Reparse preview samples when extraction settings change
   const reparsePreviewSamples = () => {
     setPreviewSamples(prev => 
       prev.map(sample => {
         const scrapedColor = sample.colors?.[0] || null;
-        const { baseName, color, size } = extractBaseName(sample.rawName || "", scrapedColor);
+        const { baseName, color } = extractBaseName(sample.rawName || "", scrapedColor);
         return {
           ...sample,
           parsedBaseName: baseName,
           parsedColor: color,
-          parsedSize: size,
         };
       })
     );
   };
 
-  // Filter images to show first 3 by default
-  const filterImagesBySelectedIndices = (images: string[]): string[] => {
-    return images.slice(0, 3);
-  };
-
-  // Get category from search filter
   const getCategoryFromFilter = (): string => {
     const filter = searchFilter.trim().toLowerCase();
     if (!filter) return "Geral";
-    // Capitalize first letter
     return filter.charAt(0).toUpperCase() + filter.slice(1);
   };
 
-  // Helper to remove accents from string for comparison
   const removeAccents = (str: string): string => {
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   };
 
-  // Helper to normalize base name for consistent comparison
   const normalizeBaseName = (name: string): string => {
-    // Convert to title case for consistent display
     return name
       .toLowerCase()
       .split(' ')
@@ -405,123 +378,37 @@ export function SupplierBulkImportDialog({
 
   const groupScrapedProducts = (scrapedProducts: ScrapedProduct[]): GroupedProduct[] => {
     const successProducts = scrapedProducts.filter(p => p.status === "success" && p.name);
-    const productMap = new Map<string, GroupedProduct>();
-    const categoryFromFilter = getCategoryFromFilter();
+    const results: GroupedProduct[] = [];
 
     for (const product of successProducts) {
       const scrapedColor = product.colors?.[0] || null;
-      const { baseName, color, size } = extractBaseName(product.name || "", scrapedColor);
-      // Use lowercase + remove accents for grouping (case-insensitive and accent-insensitive)
-      const key = removeAccents(baseName.toLowerCase().trim());
-      // Normalize the display name to title case
+      const { baseName, color } = extractBaseName(product.name || "", scrapedColor);
       const normalizedBaseName = normalizeBaseName(baseName);
-
-      // Determine the color for this product's images
-      const productColor = color || (product.colors.length > 0 ? product.colors[0] : "Sem cor");
-      // Normalize color for display
-      const normalizedColor = productColor
-        .split(" ")
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(" ");
-
-      // Determine price based on mapping
       const productPrice = priceMappingField === "price" ? (product.price || 0) : 0;
 
-      if (!productMap.has(key)) {
-        // Keep ALL images - user will select in review step
-        const allImages = [...product.images];
-        
-        // Initialize colorImages with the first color - select first N images based on maxPhotosPerProduct
-        const initialSelectedIndices = product.images.slice(0, maxPhotosPerProduct).map((_, idx) => idx);
-        const initialColorImages: ColorImages[] = product.images.length > 0 ? [{
-          color: normalizedColor,
-          images: [...product.images],
-          selectedIndices: initialSelectedIndices,
-        }] : [];
-        
-        productMap.set(key, {
-          id: crypto.randomUUID(),
-          baseName: normalizedBaseName,
-          category: categoryFromFilter,
-          costPrice: useDefaultPrices && defaultCostPrice > 0 ? defaultCostPrice : productPrice,
-          salePrice: useDefaultPrices && defaultSalePrice > 0 ? defaultSalePrice : Math.round(productPrice * MARKUP_PERCENTAGE * 100) / 100,
-          description: product.description || "",
-          images: allImages,
-          selectedImageIndices: allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx), // Select first N by config
-          colorImages: initialColorImages,
-          variants: [],
-          selected: true,
-          expanded: false,
-        });
-      } else {
-        const grouped = productMap.get(key)!;
-        
-        // Add images to existing grouped product
-        for (const img of product.images) {
-          if (!grouped.images.includes(img)) {
-            grouped.images.push(img);
-          }
-        }
+      const allImages = [...product.images];
+      const initialSelectedIndices = allImages.slice(0, maxPhotosPerProduct).map((_, idx) => idx);
 
-        // Add or update colorImages for this color
-        const existingColorEntry = grouped.colorImages.find(
-          ci => removeAccents(ci.color.toLowerCase()) === removeAccents(normalizedColor.toLowerCase())
-        );
-        
-        if (existingColorEntry) {
-          // Add new images to this color
-          for (const img of product.images) {
-            if (!existingColorEntry.images.includes(img)) {
-              existingColorEntry.images.push(img);
-            }
-          }
-        } else if (product.images.length > 0) {
-          // Create new color entry with first N images selected
-          const selectedIndices = product.images.slice(0, maxPhotosPerProduct).map((_, idx) => idx);
-          grouped.colorImages.push({
-            color: normalizedColor,
-            images: [...product.images],
-            selectedIndices,
-          });
-        }
-      }
-
-      const grouped = productMap.get(key)!;
-
-      // Add variant - use availableSizes to create all combinations
-      // If extractColorFromName is disabled, don't use any colors from scraped data
-      const colors = extractColorFromName 
-        ? (color ? [color] : (product.colors.length > 0 ? product.colors : ["Sem cor"]))
-        : ["Sem cor"];
-      // Normalize colors for display
-      const normalizedColors = colors.map(c => 
-        c.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
-      );
-      // Use availableSizes from preview configuration instead of extracted sizes
-      const sizesToUse = availableSizes.length > 0 ? availableSizes : (size ? [size] : (product.sizes.length > 0 ? product.sizes : ["U"]));
-
-      for (const c of normalizedColors) {
-        for (const s of sizesToUse) {
-          const exists = grouped.variants.some(v => 
-            removeAccents(v.color.toLowerCase()) === removeAccents(c.toLowerCase()) && 
-            v.size.toLowerCase() === s.toLowerCase()
-          );
-          if (!exists) {
-            // Find the images for this color (first selected image as primary)
-            const colorEntry = grouped.colorImages.find(
-              ci => removeAccents(ci.color.toLowerCase()) === removeAccents(c.toLowerCase())
-            );
-            const imageUrl = colorEntry && colorEntry.selectedIndices.length > 0 
-              ? colorEntry.images[colorEntry.selectedIndices[0]] 
-              : undefined;
-            
-            grouped.variants.push({ color: c, size: s, quantity: 0, imageUrl });
-          }
-        }
-      }
+      results.push({
+        id: crypto.randomUUID(),
+        baseName: normalizedBaseName,
+        mainCategory: defaultMainCategory,
+        subcategory: defaultSubcategory,
+        model: "",
+        colorLabel: color || "",
+        customDetail: "",
+        costPrice: useDefaultPrices && defaultCostPrice > 0 ? defaultCostPrice : productPrice,
+        salePrice: useDefaultPrices && defaultSalePrice > 0 ? defaultSalePrice : Math.round(productPrice * MARKUP_PERCENTAGE * 100) / 100,
+        minStockLevel: defaultMinStock,
+        description: product.description || "",
+        images: allImages,
+        selectedImageIndices: initialSelectedIndices,
+        selected: true,
+        expanded: false,
+      });
     }
 
-    return Array.from(productMap.values());
+    return results;
   };
 
   const handleScrapeProducts = async () => {
@@ -613,14 +500,12 @@ export function SupplierBulkImportDialog({
 
     setIsScraping(false);
     
-    // Group products
     const grouped = groupScrapedProducts(products);
     setGroupedProducts(grouped);
     setStep("group");
-    toast.success("Produtos agrupados! Revise antes de importar.");
+    toast.success("Produtos carregados! Revise antes de importar.");
   };
 
-  // Watch products changes to update grouped when scraping finishes
   useEffect(() => {
     if (step === "group" && products.length > 0) {
       const grouped = groupScrapedProducts(products);
@@ -662,98 +547,20 @@ export function SupplierBulkImportDialog({
     );
   };
 
-  const addVariant = (productId: string) => {
-    setGroupedProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId
-          ? { ...p, variants: [...p.variants, { color: "Nova cor", size: "M", quantity: 0 }] }
-          : p
-      )
-    );
-  };
-
-  const updateVariant = (productId: string, variantIndex: number, updates: Partial<ProductVariant>) => {
-    setGroupedProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId
-          ? {
-              ...p,
-              variants: p.variants.map((v, i) =>
-                i === variantIndex ? { ...v, ...updates } : v
-              ),
-            }
-          : p
-      )
-    );
-  };
-
-  const removeVariant = (productId: string, variantIndex: number) => {
-    setGroupedProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId
-          ? { ...p, variants: p.variants.filter((_, i) => i !== variantIndex) }
-          : p
-      )
-    );
-  };
-
   const toggleProductImage = (productId: string, imageIndex: number) => {
     setGroupedProducts((prev) =>
       prev.map((p) => {
         if (p.id !== productId) return p;
         const currentSelected = p.selectedImageIndices;
         if (currentSelected.includes(imageIndex)) {
-          // Remove image
           return { ...p, selectedImageIndices: currentSelected.filter(i => i !== imageIndex) };
         } else {
-          // Add image (respects maxPhotosPerProduct)
           if (currentSelected.length >= maxPhotosPerProduct) {
             toast.warning(`Máximo de ${maxPhotosPerProduct} ${maxPhotosPerProduct === 1 ? 'imagem' : 'imagens'} por produto`);
             return p;
           }
           return { ...p, selectedImageIndices: [...currentSelected, imageIndex].sort((a, b) => a - b) };
         }
-      })
-    );
-  };
-
-  // Toggle selected image for a specific color (supports multiple selection)
-  const toggleColorImage = (productId: string, colorIndex: number, imageIndex: number) => {
-    setGroupedProducts((prev) =>
-      prev.map((p) => {
-        if (p.id !== productId) return p;
-        
-        const colorEntry = p.colorImages[colorIndex];
-        if (!colorEntry) return p;
-        
-        let newSelectedIndices: number[];
-        if (colorEntry.selectedIndices.includes(imageIndex)) {
-          // Remove if already selected
-          newSelectedIndices = colorEntry.selectedIndices.filter(i => i !== imageIndex);
-        } else {
-          // Add if not at max
-          if (colorEntry.selectedIndices.length >= maxPhotosPerProduct) {
-            toast.warning(`Máximo de ${maxPhotosPerProduct} ${maxPhotosPerProduct === 1 ? 'foto' : 'fotos'} por cor`);
-            return p;
-          }
-          newSelectedIndices = [...colorEntry.selectedIndices, imageIndex].sort((a, b) => a - b);
-        }
-        
-        const updatedColorImages = p.colorImages.map((ci, idx) =>
-          idx === colorIndex ? { ...ci, selectedIndices: newSelectedIndices } : ci
-        );
-        
-        // Update the primary imageUrl for all variants with this color (first selected image)
-        const newImageUrl = newSelectedIndices.length > 0 
-          ? colorEntry.images[newSelectedIndices[0]] 
-          : undefined;
-        const updatedVariants = p.variants.map(v => 
-          removeAccents(v.color.toLowerCase()) === removeAccents(colorEntry.color.toLowerCase())
-            ? { ...v, imageUrl: newImageUrl }
-            : v
-        );
-        
-        return { ...p, colorImages: updatedColorImages, variants: updatedVariants };
       })
     );
   };
@@ -781,76 +588,38 @@ export function SupplierBulkImportDialog({
 
     for (const product of selectedProducts) {
       try {
-        // Get selected images for this product - first try product-level selection
-        let selectedImages = product.selectedImageIndices
+        const selectedImages = product.selectedImageIndices
           .map(idx => product.images[idx])
           .filter(Boolean);
 
-        // If no product-level images, get from the first color with selected images
-        if (selectedImages.length === 0 && product.colorImages.length > 0) {
-          for (const colorEntry of product.colorImages) {
-            if (colorEntry.selectedIndices.length > 0) {
-              selectedImages = colorEntry.selectedIndices
-                .map(idx => colorEntry.images[idx])
-                .filter(Boolean);
-              break;
-            }
-          }
-        }
+        // Build full product name with color if present
+        const fullName = product.colorLabel 
+          ? `${product.baseName} ${product.colorLabel}` 
+          : product.baseName;
 
-        // Final fallback: use first available images from any source
-        if (selectedImages.length === 0 && product.images.length > 0) {
-          selectedImages = product.images.slice(0, maxPhotosPerProduct);
-        }
-
-        // Create main product
-        const { data: newProduct, error: productError } = await supabase
+        const { error: productError } = await supabase
           .from("products")
           .insert({
-            name: product.baseName,
-            category: product.category,
+            name: fullName,
+            main_category: product.mainCategory || null,
+            subcategory: product.subcategory || null,
+            category: product.mainCategory || getCategoryFromFilter(), // Backward compatibility
+            model: product.model || null,
+            color_label: product.colorLabel || null,
+            custom_detail: product.customDetail || null,
             price: product.salePrice,
             cost_price: product.costPrice,
             description: product.description,
             stock_quantity: 0,
-            min_stock_level: 2,
+            min_stock_level: product.minStockLevel,
             owner_id: user.id,
             supplier_id: selectedSupplierId,
             image_url: selectedImages[0] || null,
             image_url_2: selectedImages[1] || null,
             image_url_3: selectedImages[2] || null,
-          })
-          .select("id")
-          .single();
-
-        if (productError) throw productError;
-
-        // Create variants with correct images per color (up to 3 photos)
-        if (newProduct && product.variants.length > 0) {
-          const variants = product.variants.map((v) => {
-            // Find the correct images for this variant's color
-            const colorEntry = product.colorImages.find(
-              ci => removeAccents(ci.color.toLowerCase()) === removeAccents(v.color.toLowerCase())
-            );
-            
-            // Get selected images for this color (up to 3)
-            const variantImages = colorEntry && colorEntry.selectedIndices.length > 0
-              ? colorEntry.selectedIndices.map(idx => colorEntry.images[idx]).filter(Boolean)
-              : [v.imageUrl || selectedImages[0] || null];
-            
-            return {
-              product_id: newProduct.id,
-              color: v.color,
-              size: v.size,
-              stock_quantity: v.quantity,
-              image_url: variantImages[0] || null,
-              image_url_2: variantImages[1] || null,
-              image_url_3: variantImages[2] || null,
-            };
           });
 
-          await supabase.from("product_variants").insert(variants);
-        }
+        if (productError) throw productError;
 
         imported++;
       } catch (error) {
@@ -881,10 +650,8 @@ export function SupplierBulkImportDialog({
     setGroupedProducts([]);
     setScrapingProgress(0);
     setImportProgress(0);
-    setEditingProduct(null);
     setPreviewSamples([]);
     setExtractColorFromName(true);
-    setExtractSizeFromName(true);
     setCustomColorKeywords("");
     setColorMappingField("auto");
     setPriceMappingField("price");
@@ -892,13 +659,21 @@ export function SupplierBulkImportDialog({
     setDefaultCostPrice(0);
     setDefaultSalePrice(0);
     setUseDefaultPrices(false);
+    setDefaultMainCategory("");
+    setDefaultSubcategory("");
+    setDefaultMinStock(2);
     setSelectedSupplierId("");
     setSelectedSupplier(null);
     onOpenChange(false);
   };
 
   const selectedCount = groupedProducts.filter((p) => p.selected).length;
-  const totalVariants = groupedProducts.reduce((acc, p) => acc + p.variants.length, 0);
+
+  const getSubcategoriesForMain = (mainCategoryName: string) => {
+    const mainCat = mainCategories.find(c => c.name === mainCategoryName);
+    if (!mainCat) return [];
+    return subcategories.filter(s => s.main_category_id === mainCat.id);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -916,7 +691,7 @@ export function SupplierBulkImportDialog({
             {step === "discover" && `${productUrls.length} produtos encontrados`}
             {step === "preview" && "Configure como os dados serão interpretados"}
             {step === "scrape" && "Buscando informações dos produtos..."}
-            {step === "group" && `${groupedProducts.length} produtos agrupados com ${totalVariants} variantes`}
+            {step === "group" && `${groupedProducts.length} produtos agrupados`}
             {step === "importing" && "Importando produtos..."}
           </DialogDescription>
         </DialogHeader>
@@ -953,13 +728,7 @@ export function SupplierBulkImportDialog({
                   placeholder="top, vestido, calça..."
                 />
                 <p className="text-xs text-muted-foreground">
-                  Filtra URLs que contêm esta palavra e define a categoria dos produtos
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Fotos</Label>
-                <p className="text-xs text-muted-foreground">
-                  As fotos serão selecionadas individualmente na etapa de revisão final.
+                  Filtra URLs que contêm esta palavra
                 </p>
               </div>
             </div>
@@ -993,7 +762,7 @@ export function SupplierBulkImportDialog({
             </div>
           )}
 
-          {/* Step 2.5: Preview Configuration - Field Mapping Style */}
+          {/* Step 2.5: Preview Configuration */}
           {step === "preview" && (
             <div className="flex-1 overflow-auto">
               {isLoadingPreview ? (
@@ -1002,28 +771,21 @@ export function SupplierBulkImportDialog({
                   <p className="text-sm text-muted-foreground">Carregando exemplos...</p>
                 </div>
               ) : previewSamples.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 p-4">
-                  {/* Left side - Sample Selector */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium">Exemplos ({previewSamples.length})</Label>
-                      <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
-                        Voltar
-                      </Button>
-                    </div>
-                    
-                    {/* Sample thumbnails */}
-                    <div className="grid grid-cols-3 gap-2">
+                <div className="flex gap-6 p-4 h-full">
+                  {/* Left: Sample selection (thumbnails) */}
+                  <div className="w-24 shrink-0 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Exemplos:</p>
+                    <div className="flex flex-col gap-2">
                       {previewSamples.map((sample, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onClick={() => setSelectedSampleIndex(idx)}
                           className={cn(
-                            "relative aspect-square rounded-md overflow-hidden border-2 transition-all",
-                            selectedSampleIndex === idx 
-                              ? "border-primary ring-2 ring-primary/30" 
-                              : "border-border hover:border-muted-foreground/50"
+                            "relative h-20 w-20 rounded-lg overflow-hidden border-2 transition-all",
+                            selectedSampleIndex === idx
+                              ? "border-primary ring-2 ring-primary/20"
+                              : "border-border hover:border-primary/50"
                           )}
                         >
                           <img
@@ -1035,194 +797,155 @@ export function SupplierBulkImportDialog({
                             }}
                           />
                           {selectedSampleIndex === idx && (
-                            <div className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center">
-                              <Check className="h-2.5 w-2.5" />
+                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                              <Check className="h-5 w-5 text-primary-foreground" />
                             </div>
                           )}
                         </button>
                       ))}
                     </div>
-                    
-                    {/* Selected sample preview card */}
-                    <div className="p-2 bg-muted/50 rounded-md border text-xs space-y-1">
-                      <p className="font-medium truncate">
-                        {previewSamples[selectedSampleIndex]?.rawName || "Produto"}
-                      </p>
-                      {previewSamples[selectedSampleIndex]?.price && (
-                        <p className="text-muted-foreground">
-                          Preço: R$ {previewSamples[selectedSampleIndex].price?.toFixed(2)}
-                        </p>
-                      )}
-                      <p className="text-muted-foreground">
-                        {previewSamples[selectedSampleIndex]?.images?.length || 0} fotos disponíveis
-                      </p>
-                    </div>
                   </div>
 
-                  {/* Right side - Mapping Configuration */}
-                  <div className="space-y-4">
-                    <div className="text-sm font-medium">Mapeamento de Campos</div>
-                    
-                    {/* Photos configuration */}
-                    <div className="p-3 bg-muted/50 rounded-lg border space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs font-medium flex items-center gap-1.5">
-                          <Image className="h-4 w-4" />
-                          Fotos por Produto
-                        </Label>
-                        <Select
-                          value={maxPhotosPerProduct.toString()}
-                          onValueChange={(val) => setMaxPhotosPerProduct(parseInt(val))}
-                        >
-                          <SelectTrigger className="w-24 h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1 foto</SelectItem>
-                            <SelectItem value="2">2 fotos</SelectItem>
-                            <SelectItem value="3">3 fotos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {previewSamples[selectedSampleIndex]?.images && previewSamples[selectedSampleIndex].images.length > 0 && (
-                        <div className="flex gap-1.5 overflow-x-auto py-1">
-                          {previewSamples[selectedSampleIndex].images.slice(0, 8).map((imageUrl, idx) => (
-                            <div
-                              key={idx}
-                              className={cn(
-                                "relative w-12 h-12 shrink-0 rounded overflow-hidden border-2",
-                                idx < maxPhotosPerProduct 
-                                  ? "border-primary" 
-                                  : "border-border opacity-40"
-                              )}
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={`Img ${idx + 1}`}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = '/placeholder.svg';
-                                }}
-                              />
-                              {idx < maxPhotosPerProduct && (
-                                <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-bl">
-                                  {idx + 1}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  {/* Right: Mapping configuration */}
+                  <div className="flex-1 space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 mb-4">
+                      <Settings2 className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Configurações de Mapeamento Padrão</h3>
                     </div>
 
-                    {/* Field Mapping */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* Name field */}
-                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <Tag className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Nome</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground line-clamp-2">
-                          {previewSamples[selectedSampleIndex]?.rawName || "—"}
-                        </div>
-                        <div className="flex items-center gap-1 text-xs">
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-medium text-primary truncate">
-                            {previewSamples[selectedSampleIndex]?.parsedBaseName || "Nome"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Color field */}
-                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <Palette className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Cor</span>
-                        </div>
-                        <Select
-                          value={colorMappingField}
-                          onValueChange={(val) => {
-                            setColorMappingField(val);
-                            setTimeout(reparsePreviewSamples, 0);
-                          }}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="auto">Extrair do Nome</SelectItem>
-                            <SelectItem value="color">Campo do Raspador</SelectItem>
-                            <SelectItem value="none">Ignorar</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex items-center gap-1 text-xs">
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-medium text-primary">
-                            {colorMappingField === "none" 
-                              ? "Sem cor"
-                              : colorMappingField === "auto" 
-                                ? (previewSamples[selectedSampleIndex]?.parsedColor || "Não detectada")
-                                : (previewSamples[selectedSampleIndex]?.colors?.[0] || "Não encontrada")
-                            }
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Price field */}
-                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <DollarSign className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Preço</span>
-                        </div>
-                        <Select
-                          value={priceMappingField}
-                          onValueChange={(val) => setPriceMappingField(val)}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="price">Preço de Custo</SelectItem>
-                            <SelectItem value="none">Ignorar</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex items-center gap-1 text-xs">
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-medium text-primary">
-                            {priceMappingField === "none" 
-                              ? "Sem preço"
-                              : previewSamples[selectedSampleIndex]?.price 
-                                ? `R$ ${previewSamples[selectedSampleIndex].price?.toFixed(2)}`
-                                : "Não encontrado"
-                            }
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Sizes info */}
+                    {/* Photos config */}
                     <div className="p-3 rounded-lg bg-muted/50 border">
                       <div className="flex items-center gap-1.5 mb-2">
-                        <Ruler className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs font-medium">Tamanhos (fixos)</span>
+                        <Image className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Fotos por Produto</span>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {availableSizes.map((size) => (
-                          <Badge key={size} variant="secondary" className="text-[10px]">
-                            {size}
-                          </Badge>
+                      <div className="flex gap-2">
+                        {[1, 2, 3].map((num) => (
+                          <Button
+                            key={num}
+                            type="button"
+                            variant={maxPhotosPerProduct === num ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setMaxPhotosPerProduct(num)}
+                          >
+                            {num}
+                          </Button>
                         ))}
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-1.5">
-                        Todos os produtos serão criados com esses tamanhos
+                    </div>
+
+                    {/* Category defaults */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Categoria Principal</Label>
+                        <select
+                          value={defaultMainCategory}
+                          onChange={(e) => {
+                            setDefaultMainCategory(e.target.value);
+                            setDefaultSubcategory("");
+                          }}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                        >
+                          <option value="">Selecione...</option>
+                          {mainCategories.map((cat) => (
+                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Subcategoria</Label>
+                        <select
+                          value={defaultSubcategory}
+                          onChange={(e) => setDefaultSubcategory(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                          disabled={!defaultMainCategory}
+                        >
+                          <option value="">Selecione...</option>
+                          {getSubcategoriesForMain(defaultMainCategory).map((sub) => (
+                            <option key={sub.id} value={sub.name}>{sub.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Color mapping */}
+                    <div className="p-3 rounded-lg bg-muted/50 border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Extração de Cor do Nome</span>
+                        <Checkbox
+                          checked={extractColorFromName}
+                          onCheckedChange={(checked) => {
+                            setExtractColorFromName(!!checked);
+                            reparsePreviewSamples();
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Detecta cor no nome e preenche o campo "Cor" automaticamente
                       </p>
                     </div>
 
-                    {/* Preview Result Card */}
+                    {/* Price config */}
+                    <div className="p-3 rounded-lg bg-muted/50 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Preços</span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Checkbox
+                          checked={useDefaultPrices}
+                          onCheckedChange={(checked) => setUseDefaultPrices(!!checked)}
+                        />
+                        <span className="text-xs">Usar preços fixos</span>
+                      </div>
+                      {useDefaultPrices && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Custo (R$)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={defaultCostPrice}
+                              onChange={(e) => setDefaultCostPrice(parseFloat(e.target.value) || 0)}
+                              className="h-8"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Venda (R$)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={defaultSalePrice}
+                              onChange={(e) => setDefaultSalePrice(parseFloat(e.target.value) || 0)}
+                              className="h-8"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {!useDefaultPrices && (
+                        <p className="text-xs text-muted-foreground">
+                          Preço será extraído do site e multiplicado por {MARKUP_PERCENTAGE}x para venda
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Min stock */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Estoque Mínimo Padrão</Label>
+                        <Input
+                          type="number"
+                          value={defaultMinStock}
+                          onChange={(e) => setDefaultMinStock(parseInt(e.target.value) || 2)}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preview Result */}
                     <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
-                      <p className="text-xs font-medium mb-2">Resultado da interpretação:</p>
+                      <p className="text-xs font-medium mb-2">Exemplo de interpretação:</p>
                       <div className="flex items-start gap-3">
                         {previewSamples[selectedSampleIndex]?.images?.[0] && (
                           <img
@@ -1236,18 +959,12 @@ export function SupplierBulkImportDialog({
                             {previewSamples[selectedSampleIndex]?.parsedBaseName || "—"}
                           </p>
                           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                            {previewSamples[selectedSampleIndex]?.parsedColor && colorMappingField !== "none" && (
+                            {previewSamples[selectedSampleIndex]?.parsedColor && extractColorFromName && (
                               <Badge variant="default" className="text-[10px] h-5">
-                                {previewSamples[selectedSampleIndex].parsedColor}
+                                Cor: {previewSamples[selectedSampleIndex].parsedColor}
                               </Badge>
                             )}
-                            <span className="text-muted-foreground">
-                              {availableSizes.length} tamanhos
-                            </span>
-                            <span className="text-muted-foreground">
-                              {maxPhotosPerProduct} foto(s)
-                            </span>
-                            {previewSamples[selectedSampleIndex]?.price && priceMappingField === "price" && (
+                            {previewSamples[selectedSampleIndex]?.price && !useDefaultPrices && (
                               <span className="text-primary font-medium">
                                 R$ {previewSamples[selectedSampleIndex].price?.toFixed(2)}
                               </span>
@@ -1307,7 +1024,7 @@ export function SupplierBulkImportDialog({
             </div>
           )}
 
-          {/* Step 4: Grouped Products Review */}
+          {/* Step 4: Review Products */}
           {step === "group" && (
             <div className="space-y-4 py-4">
               <div className="flex items-center justify-between">
@@ -1336,7 +1053,7 @@ export function SupplierBulkImportDialog({
               <div className="bg-muted/50 rounded-lg p-3 text-sm">
                 <p className="font-medium text-primary">💡 Revise e edite antes de importar</p>
                 <p className="text-muted-foreground">
-                  Clique em um produto para expandir e editar o nome, variantes (cor/tamanho).
+                  Clique em um produto para expandir e editar todos os campos.
                 </p>
               </div>
 
@@ -1361,62 +1078,46 @@ export function SupplierBulkImportDialog({
                             onClick={(e) => e.stopPropagation()}
                           />
 
-                          {/* Show thumbnails for each color */}
-                          <div className="flex gap-1">
-                            {product.colorImages.length > 0 ? (
-                              product.colorImages.slice(0, 3).map((colorEntry, idx) => (
-                                <img
-                                  key={idx}
-                                  src={colorEntry.images[colorEntry.selectedIndices[0]] || colorEntry.images[0]}
-                                  alt={`${product.baseName} - ${colorEntry.color}`}
-                                  className={cn(
-                                    "rounded object-cover",
-                                    product.colorImages.length === 1 ? "h-14 w-14" : "h-10 w-10"
-                                  )}
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).src = '/placeholder.svg';
-                                  }}
-                                />
-                              ))
-                            ) : product.images[0] ? (
-                              <img
-                                src={product.images[0]}
-                                alt={product.baseName}
-                                className="h-14 w-14 rounded object-cover"
-                              />
-                            ) : (
-                              <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
-                                <Package className="h-6 w-6 text-muted-foreground" />
-                              </div>
-                            )}
-                            {product.colorImages.length > 3 && (
-                              <div className="h-10 w-10 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                                +{product.colorImages.length - 3}
-                              </div>
-                            )}
-                          </div>
+                          {product.images[0] ? (
+                            <img
+                              src={product.images[product.selectedImageIndices[0]] || product.images[0]}
+                              alt={product.baseName}
+                              className="h-14 w-14 rounded object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/placeholder.svg';
+                              }}
+                            />
+                          ) : (
+                            <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
+                              <Package className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          )}
 
                           <div className="flex-1 min-w-0">
                             <div className="font-medium">{product.baseName}</div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <span>Custo: R$ {product.costPrice.toFixed(2)}</span>
-                              <span>→</span>
+                              <ArrowRight className="h-3 w-3" />
                               <span className="text-foreground font-medium">
                                 R$ {product.salePrice.toFixed(2)}
                               </span>
                             </div>
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {product.colorImages.length > 1 && (
+                              {product.colorLabel && (
                                 <Badge variant="default" className="text-xs">
-                                  {product.colorImages.length} cores
+                                  {product.colorLabel}
                                 </Badge>
                               )}
-                              <Badge variant="secondary" className="text-xs">
-                                {product.variants.length} variantes
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {product.category}
-                              </Badge>
+                              {product.mainCategory && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {product.mainCategory}
+                                </Badge>
+                              )}
+                              {product.subcategory && (
+                                <Badge variant="outline" className="text-xs">
+                                  {product.subcategory}
+                                </Badge>
+                              )}
                             </div>
                           </div>
 
@@ -1433,140 +1134,129 @@ export function SupplierBulkImportDialog({
 
                         <CollapsibleContent>
                           <div className="px-3 pb-3 space-y-3 border-t pt-3">
-                            {/* Images by Color Section */}
-                            {product.colorImages.length > 0 && (
-                              <div>
-                                <Label className="text-xs flex items-center gap-2 mb-2">
-                                  <Palette className="h-3 w-3" />
-                                  Fotos por Cor (selecione até {maxPhotosPerProduct} {maxPhotosPerProduct === 1 ? 'foto' : 'fotos'} para cada cor)
-                                </Label>
-                                <div className="space-y-3">
-                                  {product.colorImages.map((colorEntry, colorIdx) => (
-                                    <div key={colorIdx} className="bg-muted/50 rounded-lg p-2">
-                                      <p className="text-xs font-medium mb-2 flex items-center gap-2">
-                                        <span className="px-2 py-0.5 bg-primary/10 rounded text-primary">
-                                          {colorEntry.color}
-                                        </span>
-                                        <span className="text-muted-foreground">
-                                          ({colorEntry.selectedIndices.length}/{maxPhotosPerProduct} selecionadas)
-                                        </span>
-                                      </p>
-                                      <div className="flex flex-wrap gap-2">
-                                        {colorEntry.images.slice(0, 9).map((img, imgIdx) => (
-                                          <button
-                                            key={imgIdx}
-                                            type="button"
-                                            onClick={() => toggleColorImage(product.id, colorIdx, imgIdx)}
-                                            className={cn(
-                                              "relative h-12 w-12 rounded-lg overflow-hidden border-2 transition-all",
-                                              colorEntry.selectedIndices.includes(imgIdx)
-                                                ? "border-primary ring-2 ring-primary/20"
-                                                : "border-border hover:border-primary/50"
-                                            )}
-                                          >
-                                            <img
-                                              src={img}
-                                              alt={`${colorEntry.color} - Foto ${imgIdx + 1}`}
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                (e.target as HTMLImageElement).src = '/placeholder.svg';
-                                              }}
-                                            />
-                                            {colorEntry.selectedIndices.includes(imgIdx) && (
-                                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                                <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium">
-                                                  {colorEntry.selectedIndices.indexOf(imgIdx) + 1}
-                                                </div>
-                                              </div>
-                                            )}
-                                          </button>
-                                        ))}
-                                        {colorEntry.images.length > 9 && (
-                                          <span className="text-xs text-muted-foreground self-center">
-                                            +{colorEntry.images.length - 9}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Fallback: General Image Selection (if no color-specific images) */}
-                            {product.colorImages.length === 0 && (
-                              <div>
-                                <Label className="text-xs flex items-center gap-2 mb-2">
-                                  <Image className="h-3 w-3" />
-                                  Fotos (selecione até 3)
-                                </Label>
-                                <div className="flex flex-wrap gap-2">
-                                  {product.images.slice(0, 10).map((img, imgIdx) => (
-                                    <button
-                                      key={imgIdx}
-                                      type="button"
-                                      onClick={() => toggleProductImage(product.id, imgIdx)}
-                                      className={cn(
-                                        "relative h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
-                                        product.selectedImageIndices.includes(imgIdx)
-                                          ? "border-primary ring-2 ring-primary/20"
-                                          : "border-border hover:border-primary/50"
-                                      )}
-                                    >
-                                      <img
-                                        src={img}
-                                        alt={`Foto ${imgIdx + 1}`}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).src = '/placeholder.svg';
-                                        }}
-                                      />
-                                      {product.selectedImageIndices.includes(imgIdx) && (
-                                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                          <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
-                                            {product.selectedImageIndices.indexOf(imgIdx) + 1}
-                                          </div>
+                            {/* Photos Selection */}
+                            <div>
+                              <Label className="text-xs flex items-center gap-2 mb-2">
+                                <Image className="h-3 w-3" />
+                                Fotos (selecione até {maxPhotosPerProduct})
+                              </Label>
+                              <div className="flex flex-wrap gap-2">
+                                {product.images.slice(0, 12).map((img, imgIdx) => (
+                                  <button
+                                    key={imgIdx}
+                                    type="button"
+                                    onClick={() => toggleProductImage(product.id, imgIdx)}
+                                    className={cn(
+                                      "relative h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
+                                      product.selectedImageIndices.includes(imgIdx)
+                                        ? "border-primary ring-2 ring-primary/20"
+                                        : "border-border hover:border-primary/50"
+                                    )}
+                                  >
+                                    <img
+                                      src={img}
+                                      alt={`Foto ${imgIdx + 1}`}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                      }}
+                                    />
+                                    {product.selectedImageIndices.includes(imgIdx) && (
+                                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                        <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                                          {product.selectedImageIndices.indexOf(imgIdx) + 1}
                                         </div>
-                                      )}
-                                    </button>
-                                  ))}
-                                  {product.images.length === 0 && (
-                                    <p className="text-xs text-muted-foreground">Nenhuma imagem disponível</p>
-                                  )}
-                                  {product.images.length > 10 && (
-                                    <span className="text-xs text-muted-foreground self-center">
-                                      +{product.images.length - 10} fotos
-                                    </span>
-                                  )}
-                                </div>
-                                {product.selectedImageIndices.length === 0 && product.images.length > 0 && (
-                                  <p className="text-xs text-amber-600 mt-1">⚠️ Selecione ao menos 1 foto</p>
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                                {product.images.length > 12 && (
+                                  <span className="text-xs text-muted-foreground self-center">
+                                    +{product.images.length - 12}
+                                  </span>
                                 )}
                               </div>
-                            )}
+                            </div>
 
                             <Separator />
 
+                            {/* Name */}
+                            <div>
+                              <Label className="text-xs">Nome do Produto</Label>
+                              <Input
+                                value={product.baseName}
+                                onChange={(e) => updateProduct(product.id, { baseName: e.target.value })}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+
+                            {/* Categories */}
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <Label className="text-xs">Nome do Produto</Label>
+                                <Label className="text-xs">Categoria Principal</Label>
+                                <select
+                                  value={product.mainCategory}
+                                  onChange={(e) => updateProduct(product.id, { 
+                                    mainCategory: e.target.value,
+                                    subcategory: ""
+                                  })}
+                                  className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                                >
+                                  <option value="">Selecione...</option>
+                                  {mainCategories.map((cat) => (
+                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Subcategoria</Label>
+                                <select
+                                  value={product.subcategory}
+                                  onChange={(e) => updateProduct(product.id, { subcategory: e.target.value })}
+                                  className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                                  disabled={!product.mainCategory}
+                                >
+                                  <option value="">Selecione...</option>
+                                  {getSubcategoriesForMain(product.mainCategory).map((sub) => (
+                                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Filter Fields */}
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <Label className="text-xs">Modelo (opcional)</Label>
                                 <Input
-                                  value={product.baseName}
-                                  onChange={(e) => updateProduct(product.id, { baseName: e.target.value })}
+                                  value={product.model}
+                                  onChange={(e) => updateProduct(product.id, { model: e.target.value })}
+                                  placeholder="Ex: Carol"
                                   className="h-8 text-sm"
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">Categoria</Label>
+                                <Label className="text-xs">Cor (opcional)</Label>
                                 <Input
-                                  value={product.category}
-                                  onChange={(e) => updateProduct(product.id, { category: e.target.value })}
+                                  value={product.colorLabel}
+                                  onChange={(e) => updateProduct(product.id, { colorLabel: e.target.value })}
+                                  placeholder="Ex: Rosa"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Detalhe (opcional)</Label>
+                                <Input
+                                  value={product.customDetail}
+                                  onChange={(e) => updateProduct(product.id, { customDetail: e.target.value })}
+                                  placeholder="Ex: Com Renda"
                                   className="h-8 text-sm"
                                 />
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            {/* Prices */}
+                            <div className="grid grid-cols-3 gap-3">
                               <div>
                                 <Label className="text-xs">Preço de Custo (R$)</Label>
                                 <Input
@@ -1593,53 +1283,14 @@ export function SupplierBulkImportDialog({
                                   className="h-8 text-sm"
                                 />
                               </div>
-                            </div>
-
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <Label className="text-xs">Variantes (Cor / Tamanho)</Label>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs"
-                                  onClick={() => addVariant(product.id)}
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  Adicionar
-                                </Button>
-                              </div>
-                              <div className="space-y-1.5">
-                                {product.variants.map((variant, vIdx) => (
-                                  <div key={vIdx} className="flex items-center gap-2">
-                                    <Input
-                                      value={variant.color}
-                                      onChange={(e) => updateVariant(product.id, vIdx, { color: e.target.value })}
-                                      placeholder="Cor"
-                                      className="h-7 text-xs flex-1"
-                                    />
-                                    <Input
-                                      value={variant.size}
-                                      onChange={(e) => updateVariant(product.id, vIdx, { size: e.target.value })}
-                                      placeholder="Tam"
-                                      className="h-7 text-xs w-16"
-                                    />
-                                    <Input
-                                      type="number"
-                                      value={variant.quantity}
-                                      onChange={(e) => updateVariant(product.id, vIdx, { quantity: parseInt(e.target.value) || 0 })}
-                                      placeholder="Qtd"
-                                      className="h-7 text-xs w-14"
-                                    />
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0"
-                                      onClick={() => removeVariant(product.id, vIdx)}
-                                    >
-                                      <Trash2 className="h-3 w-3 text-destructive" />
-                                    </Button>
-                                  </div>
-                                ))}
+                              <div>
+                                <Label className="text-xs">Estoque Mínimo</Label>
+                                <Input
+                                  type="number"
+                                  value={product.minStockLevel}
+                                  onChange={(e) => updateProduct(product.id, { minStockLevel: parseInt(e.target.value) || 0 })}
+                                  className="h-8 text-sm"
+                                />
                               </div>
                             </div>
                           </div>
