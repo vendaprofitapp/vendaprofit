@@ -92,6 +92,19 @@ const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36"
 
 const defaultSizes = ["PP", "P", "M", "G", "GG", "XG"];
 
+const sizeOrder = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
+
+const sortVariantsBySize = (variants: ProductVariant[]): ProductVariant[] => {
+  return [...variants].sort((a, b) => {
+    const indexA = sizeOrder.indexOf(a.size);
+    const indexB = sizeOrder.indexOf(b.size);
+    // If size not found in order, put it at the end
+    const orderA = indexA === -1 ? 999 : indexA;
+    const orderB = indexB === -1 ? 999 : indexB;
+    return orderA - orderB;
+  });
+};
+
 const createDefaultVariants = (): ProductVariant[] => 
   defaultSizes.map(size => ({ 
     size, 
@@ -216,7 +229,7 @@ export function ProductFormDialog({
         marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
         marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
       }));
-      setProductVariants(variants);
+      setProductVariants(sortVariantsBySize(variants));
       setOriginalVariantCount(variants.length);
     } else {
       setProductVariants(createDefaultVariants());
@@ -347,9 +360,13 @@ export function ProductFormDialog({
       updates.marketing_delivery_days = null;
     }
     
-    setProductVariants(prev => prev.map((v, i) => 
-      i === index ? { ...v, ...updates } : v
-    ));
+    setProductVariants(prev => {
+      const updated = prev.map((v, i) => 
+        i === index ? { ...v, ...updates } : v
+      );
+      // Re-sort if size changed
+      return field === 'size' ? sortVariantsBySize(updated) : updated;
+    });
   };
 
   const totalStock = productVariants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
@@ -743,7 +760,7 @@ export function ProductFormDialog({
         
         <div className="space-y-2">
           {productVariants.map((variant, index) => (
-            <div key={index} className="flex gap-2 items-center p-2 border rounded-lg bg-muted/30">
+            <div key={`${variant.size}-${index}`} className="flex gap-2 items-center p-2 border rounded-lg bg-muted/30">
               <Select
                 value={variant.size}
                 onValueChange={(value) => updateProductVariant(index, "size", value)}
