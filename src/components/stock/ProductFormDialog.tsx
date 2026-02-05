@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Image as ImageIcon, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +48,6 @@ interface Product {
   price: number;
   cost_price: number | null;
   size: string | null;
-  color: string | null;
   stock_quantity: number;
   min_stock_level: number;
   group_id: string | null;
@@ -58,10 +57,10 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
-  video_url?: string | null;
-  model?: string | null;
-  color_label?: string | null;
-  custom_detail?: string | null;
+  video_url: string | null;
+  model: string | null;
+  color_label: string | null;
+  custom_detail: string | null;
 }
 
 interface Supplier {
@@ -386,7 +385,6 @@ export function ProductFormDialog({
         cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
         sku: null,
         size: null,
-        color: null,
         stock_quantity: totalStock,
         min_stock_level: parseInt(form.min_stock_level) || 5,
         supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
@@ -537,8 +535,9 @@ export function ProductFormDialog({
   const totalImages = existingImageUrls.length + newImagePreviews.length;
 
   const formContent = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="col-span-1 sm:col-span-2 space-y-2">
+    <div className="space-y-4">
+      {/* Nome do Produto */}
+      <div className="space-y-2">
         <Label>Nome do Produto *</Label>
         <Input
           value={form.name}
@@ -549,7 +548,8 @@ export function ProductFormDialog({
         <p className="text-xs text-muted-foreground">Inclua a cor no nome (ex: "Vestido Luna Preto")</p>
       </div>
       
-      <div className="col-span-1 sm:col-span-2 space-y-2">
+      {/* Descrição */}
+      <div className="space-y-2">
         <Label>Descrição</Label>
         <Textarea
           value={form.description}
@@ -559,7 +559,8 @@ export function ProductFormDialog({
         />
       </div>
 
-      <div className="col-span-1 sm:col-span-2 space-y-2">
+      {/* Categorias */}
+      <div className="space-y-2">
         <Label>Categorias * (até 3)</Label>
         <MultiCategoryManager
           values={form.categories}
@@ -567,141 +568,137 @@ export function ProductFormDialog({
         />
       </div>
       
-      {/* Filter fields */}
+      {/* Campos de Filtro - 3 lado a lado no desktop */}
       <div className="space-y-2">
-        <Label>Modelo (filtro)</Label>
-        <Input
-          value={form.model}
-          onChange={(e) => setForm({ ...form, model: e.target.value })}
-          placeholder="Ex: Top Carol"
-        />
+        <Label className="text-sm text-muted-foreground">Campos de Filtro (opcionais)</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Input
+            value={form.model}
+            onChange={(e) => setForm({ ...form, model: e.target.value })}
+            placeholder="Modelo (ex: Top Carol)"
+          />
+          <Input
+            value={form.color_label}
+            onChange={(e) => setForm({ ...form, color_label: e.target.value })}
+            placeholder="Cor (ex: Vermelho)"
+          />
+          <Input
+            value={form.custom_detail}
+            onChange={(e) => setForm({ ...form, custom_detail: e.target.value })}
+            placeholder="Detalhe (ex: Brilhante)"
+          />
+        </div>
       </div>
       
-      <div className="space-y-2">
-        <Label>Cor (filtro)</Label>
-        <Input
-          value={form.color_label}
-          onChange={(e) => setForm({ ...form, color_label: e.target.value })}
-          placeholder="Ex: Vermelho"
-        />
+      {/* Preços e Configurações */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Preço Venda *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            placeholder="0.00"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Preço Custo</Label>
+          <Input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            value={form.cost_price}
+            onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
+            placeholder="0.00"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Estoque Mín.</Label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={form.min_stock_level}
+            onChange={(e) => setForm({ ...form, min_stock_level: e.target.value })}
+            placeholder="5"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Fornecedor</Label>
+          <Select value={form.supplier_id} onValueChange={(value) => setForm({ ...form, supplier_id: value })}>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="Nenhum" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nenhum</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       
-      <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Detalhe Personalizado (filtro)</Label>
-        <Input
-          value={form.custom_detail}
-          onChange={(e) => setForm({ ...form, custom_detail: e.target.value })}
-          placeholder="Ex: Tecido Brilhante"
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label>Preço de Venda *</Label>
-        <Input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
-          value={form.price}
-          onChange={(e) => setForm({ ...form, price: e.target.value })}
-          placeholder="0.00"
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label>Preço de Custo</Label>
-        <Input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
-          value={form.cost_price}
-          onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
-          placeholder="0.00"
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label>Estoque Mínimo</Label>
-        <Input
-          type="number"
-          inputMode="numeric"
-          value={form.min_stock_level}
-          onChange={(e) => setForm({ ...form, min_stock_level: e.target.value })}
-          placeholder="5"
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label>Fornecedor</Label>
-        <Select value={form.supplier_id} onValueChange={(value) => setForm({ ...form, supplier_id: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecionar fornecedor" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">Nenhum</SelectItem>
-            {suppliers.map((s) => (
-              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      
-      {/* Images Section */}
-      <div className="col-span-1 sm:col-span-2 space-y-3">
-        <Label>Fotos do Produto (até 3)</Label>
+      {/* Seção de Mídia */}
+      <div className="space-y-4 pt-2 border-t">
+        <h3 className="text-sm font-medium text-muted-foreground">Mídia do Produto</h3>
         
-        <SupplierImageScraper
-          maxImages={3}
-          currentImageCount={totalImages}
-          onImagesSelected={handleImagesFromSupplier}
-        />
+        {/* Fotos */}
+        <div className="space-y-2">
+          <Label>Fotos (até 3)</Label>
+          
+          <SupplierImageScraper
+            maxImages={3}
+            currentImageCount={totalImages}
+            onImagesSelected={handleImagesFromSupplier}
+          />
+          
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => handleImageUpload(e.target.files)}
+            className="hidden"
+          />
+          
+          <ReorderableImageList
+            existingUrls={existingImageUrls}
+            newPreviewUrls={newImagePreviews}
+            maxImages={3}
+            onReorder={handleImageReorder}
+            onRemove={removeImage}
+            onAddClick={() => imageInputRef.current?.click()}
+          />
+          
+          <p className="text-xs text-muted-foreground">{totalImages}/3 fotos</p>
+        </div>
         
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleImageUpload(e.target.files)}
-          className="hidden"
-        />
-        
-        <ReorderableImageList
-          existingUrls={existingImageUrls}
-          newPreviewUrls={newImagePreviews}
-          maxImages={3}
-          onReorder={handleImageReorder}
-          onRemove={removeImage}
-          onAddClick={() => imageInputRef.current?.click()}
-        />
-        
-        <p className="text-xs text-muted-foreground">{totalImages}/3 fotos</p>
-      </div>
-      
-      {/* Video Section */}
-      <div className="col-span-1 sm:col-span-2 space-y-2">
-        <Label>Vídeo do Produto</Label>
+        {/* Vídeo */}
         <ProductVideoUpload
           value={form.video_url}
           onChange={(url) => setForm({ ...form, video_url: url })}
         />
       </div>
       
-      {/* Variants Section - SIZE ONLY */}
-      <div className="col-span-1 sm:col-span-2 space-y-3">
+      {/* Seção de Variantes (Tamanhos) */}
+      <div className="space-y-3 pt-2 border-t">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-medium">Variantes de Tamanho *</Label>
-          <span className="text-sm text-muted-foreground">
+          <h3 className="text-sm font-medium">Variantes de Tamanho *</h3>
+          <span className="text-sm font-medium text-primary">
             Total: {totalStock} un.
           </span>
         </div>
         
         <div className="space-y-2">
           {productVariants.map((variant, index) => (
-            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap p-2 border rounded-lg bg-muted/30">
+            <div key={index} className="flex gap-2 items-center p-2 border rounded-lg bg-muted/30">
               <Select
                 value={variant.size}
                 onValueChange={(value) => updateProductVariant(index, "size", value)}
               >
-                <SelectTrigger className="w-24">
+                <SelectTrigger className="w-20 sm:w-24 shrink-0">
                   <SelectValue placeholder="Tamanho" />
                 </SelectTrigger>
                 <SelectContent>
@@ -717,23 +714,25 @@ export function ProductFormDialog({
                 type="number"
                 inputMode="numeric"
                 placeholder="Qtd"
-                className="w-20"
+                className="w-16 sm:w-20 shrink-0"
                 value={variant.stock_quantity || ""}
                 onChange={(e) => updateProductVariant(index, "stock_quantity", parseInt(e.target.value) || 0)}
               />
               
-              <MarketingStatusSelector
-                value={variant.marketing_status || null}
-                onChange={(status) => updateProductVariant(index, "marketing_status", status)}
-                compact
-              />
+              <div className="flex-1 flex justify-center">
+                <MarketingStatusSelector
+                  value={variant.marketing_status || null}
+                  onChange={(status) => updateProductVariant(index, "marketing_status", status)}
+                  compact
+                />
+              </div>
               
               {productVariants.length > 1 && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-destructive"
+                  className="h-8 w-8 shrink-0 text-destructive"
                   onClick={() => removeProductVariant(index)}
                 >
                   <Trash2 className="h-4 w-4" />

@@ -31,7 +31,7 @@ interface Product {
   price: number;
   cost_price: number | null;
   size: string | null;
-  color: string | null;
+  color_label: string | null;
   stock_quantity: number;
   min_stock_level: number;
   is_active: boolean;
@@ -152,7 +152,7 @@ export function StockExportDialog({ products, suppliers, activeFiltersCount }: S
                 row["Nome"] = product.name;
                 break;
               case "cor":
-                row["Cor"] = product.color || "-";
+                row["Cor"] = product.color_label || "-";
                 break;
               case "tamanho":
                 row["Tamanho"] = variant?.size || product.size || "-";
