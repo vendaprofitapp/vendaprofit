@@ -902,7 +902,10 @@ export function SupplierBulkImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className={cn(
+        "max-h-[95vh] overflow-hidden flex flex-col",
+        step === "preview" ? "max-w-6xl w-[95vw]" : "max-w-4xl"
+      )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
@@ -992,32 +995,32 @@ export function SupplierBulkImportDialog({
 
           {/* Step 2.5: Preview Configuration - Field Mapping Style */}
           {step === "preview" && (
-            <div className="space-y-4 py-4">
+            <div className="flex-1 overflow-auto">
               {isLoadingPreview ? (
-                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">Carregando exemplo...</p>
+                  <p className="text-sm text-muted-foreground">Carregando exemplos...</p>
                 </div>
               ) : previewSamples.length > 0 ? (
-              <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Mapeamento de Campos</span>
-                    <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
-                      Voltar
-                    </Button>
-                  </div>
-
-                  {/* Sample Selector */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Escolha um produto de exemplo para configurar o mapeamento:</Label>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 p-4">
+                  {/* Left side - Sample Selector */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium">Exemplos ({previewSamples.length})</Label>
+                      <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
+                        Voltar
+                      </Button>
+                    </div>
+                    
+                    {/* Sample thumbnails */}
+                    <div className="grid grid-cols-3 gap-2">
                       {previewSamples.map((sample, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onClick={() => setSelectedSampleIndex(idx)}
                           className={cn(
-                            "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                            "relative aspect-square rounded-md overflow-hidden border-2 transition-all",
                             selectedSampleIndex === idx 
                               ? "border-primary ring-2 ring-primary/30" 
                               : "border-border hover:border-muted-foreground/50"
@@ -1032,27 +1035,40 @@ export function SupplierBulkImportDialog({
                             }}
                           />
                           {selectedSampleIndex === idx && (
-                            <div className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center">
-                              <Check className="h-3 w-3" />
+                            <div className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center">
+                              <Check className="h-2.5 w-2.5" />
                             </div>
                           )}
-                          <div className="absolute bottom-0 inset-x-0 bg-background/80 backdrop-blur-sm px-1 py-0.5">
-                            <p className="text-[9px] truncate font-medium">
-                              {sample.rawName || `Produto ${idx + 1}`}
-                            </p>
-                          </div>
                         </button>
                       ))}
                     </div>
+                    
+                    {/* Selected sample preview card */}
+                    <div className="p-2 bg-muted/50 rounded-md border text-xs space-y-1">
+                      <p className="font-medium truncate">
+                        {previewSamples[selectedSampleIndex]?.rawName || "Produto"}
+                      </p>
+                      {previewSamples[selectedSampleIndex]?.price && (
+                        <p className="text-muted-foreground">
+                          Preço: R$ {previewSamples[selectedSampleIndex].price?.toFixed(2)}
+                        </p>
+                      )}
+                      <p className="text-muted-foreground">
+                        {previewSamples[selectedSampleIndex]?.images?.length || 0} fotos disponíveis
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Image Selection */}
-                  {previewSamples[selectedSampleIndex]?.images && previewSamples[selectedSampleIndex].images.length > 0 && (
-                    <div className="p-3 bg-muted/50 rounded-lg border">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-xs font-medium flex items-center gap-1">
+                  {/* Right side - Mapping Configuration */}
+                  <div className="space-y-4">
+                    <div className="text-sm font-medium">Mapeamento de Campos</div>
+                    
+                    {/* Photos configuration */}
+                    <div className="p-3 bg-muted/50 rounded-lg border space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
                           <Image className="h-4 w-4" />
-                          Fotos por Produto (até {maxPhotosPerProduct})
+                          Fotos por Produto
                         </Label>
                         <Select
                           value={maxPhotosPerProduct.toString()}
@@ -1069,69 +1085,62 @@ export function SupplierBulkImportDialog({
                         </Select>
                       </div>
                       
-                      <div className="grid grid-cols-6 sm:grid-cols-10 gap-2 max-h-[100px] overflow-y-auto">
-                        {previewSamples[selectedSampleIndex].images.slice(0, 12).map((imageUrl, idx) => (
-                          <div
-                            key={idx}
-                            className={cn(
-                              "relative aspect-square rounded-lg overflow-hidden border-2",
-                              idx < maxPhotosPerProduct 
-                                ? "border-primary ring-1 ring-primary/30" 
-                                : "border-border opacity-50"
-                            )}
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={`Imagem ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/placeholder.svg';
-                              }}
-                            />
-                            {idx < maxPhotosPerProduct && (
-                              <div className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px]">
-                                {idx + 1}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-2">
-                        As primeiras {maxPhotosPerProduct} fotos serão importadas automaticamente
-                      </p>
+                      {previewSamples[selectedSampleIndex]?.images && previewSamples[selectedSampleIndex].images.length > 0 && (
+                        <div className="flex gap-1.5 overflow-x-auto py-1">
+                          {previewSamples[selectedSampleIndex].images.slice(0, 8).map((imageUrl, idx) => (
+                            <div
+                              key={idx}
+                              className={cn(
+                                "relative w-12 h-12 shrink-0 rounded overflow-hidden border-2",
+                                idx < maxPhotosPerProduct 
+                                  ? "border-primary" 
+                                  : "border-border opacity-40"
+                              )}
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={`Img ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = '/placeholder.svg';
+                                }}
+                              />
+                              {idx < maxPhotosPerProduct && (
+                                <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-bl">
+                                  {idx + 1}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
 
-                  {/* Field Mapping */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Como interpretar os dados</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {/* Name - Full product name */}
-                      <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">Nome do Produto</p>
-                          <p className="text-muted-foreground truncate text-[10px]">
-                            {previewSamples[selectedSampleIndex]?.rawName || "—"}
-                          </p>
+                    {/* Field Mapping */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Name field */}
+                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Tag className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs font-medium">Nome</span>
                         </div>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="text-xs font-medium text-primary truncate">
-                          {previewSamples[selectedSampleIndex]?.parsedBaseName || "Nome"}
-                        </span>
+                        <div className="text-xs text-muted-foreground line-clamp-2">
+                          {previewSamples[selectedSampleIndex]?.rawName || "—"}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs">
+                          <ArrowRight className="h-3 w-3" />
+                          <span className="font-medium text-primary truncate">
+                            {previewSamples[selectedSampleIndex]?.parsedBaseName || "Nome"}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Color - Field mapping dropdown */}
-                      <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">Cor</p>
-                          <p className="text-muted-foreground truncate text-[10px]">
-                            {colorMappingField === "auto" 
-                              ? (previewSamples[selectedSampleIndex]?.parsedColor || "Não detectada")
-                              : (previewSamples[selectedSampleIndex]?.colors?.[0] || "Não encontrada")
-                            }
-                          </p>
+                      {/* Color field */}
+                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Palette className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs font-medium">Cor</span>
                         </div>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
                         <Select
                           value={colorMappingField}
                           onValueChange={(val) => {
@@ -1139,81 +1148,120 @@ export function SupplierBulkImportDialog({
                             setTimeout(reparsePreviewSamples, 0);
                           }}
                         >
-                          <SelectTrigger className="w-[120px] h-7 text-xs">
-                            <SelectValue placeholder="Selecionar" />
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="auto">Extrair do Nome</SelectItem>
-                            <SelectItem value="color">Campo Cor</SelectItem>
+                            <SelectItem value="color">Campo do Raspador</SelectItem>
                             <SelectItem value="none">Ignorar</SelectItem>
                           </SelectContent>
                         </Select>
+                        <div className="flex items-center gap-1 text-xs">
+                          <ArrowRight className="h-3 w-3" />
+                          <span className="font-medium text-primary">
+                            {colorMappingField === "none" 
+                              ? "Sem cor"
+                              : colorMappingField === "auto" 
+                                ? (previewSamples[selectedSampleIndex]?.parsedColor || "Não detectada")
+                                : (previewSamples[selectedSampleIndex]?.colors?.[0] || "Não encontrada")
+                            }
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Price - Field mapping dropdown */}
-                      <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">Preço</p>
-                          <p className="text-muted-foreground text-[10px]">
-                            {previewSamples[selectedSampleIndex]?.price 
-                              ? `R$ ${previewSamples[selectedSampleIndex].price.toFixed(2)}`
-                              : "Não encontrado"
-                            }
-                          </p>
+                      {/* Price field */}
+                      <div className="p-3 rounded-lg bg-muted/50 border space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <DollarSign className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs font-medium">Preço</span>
                         </div>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
                         <Select
                           value={priceMappingField}
                           onValueChange={(val) => setPriceMappingField(val)}
                         >
-                          <SelectTrigger className="w-[120px] h-7 text-xs">
-                            <SelectValue placeholder="Selecionar" />
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="price">Preço de Custo</SelectItem>
                             <SelectItem value="none">Ignorar</SelectItem>
                           </SelectContent>
                         </Select>
+                        <div className="flex items-center gap-1 text-xs">
+                          <ArrowRight className="h-3 w-3" />
+                          <span className="font-medium text-primary">
+                            {priceMappingField === "none" 
+                              ? "Sem preço"
+                              : previewSamples[selectedSampleIndex]?.price 
+                                ? `R$ ${previewSamples[selectedSampleIndex].price?.toFixed(2)}`
+                                : "Não encontrado"
+                            }
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Preview Result */}
-                  <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
-                    <p className="text-xs font-medium mb-2">Resultado da interpretação:</p>
-                    <div className="flex items-center gap-3">
-                      {previewSamples[selectedSampleIndex]?.images?.[0] && (
-                        <img
-                          src={previewSamples[selectedSampleIndex].images[0]}
-                          alt=""
-                          className="h-12 w-12 rounded object-cover"
-                        />
-                      )}
-                      <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium">{previewSamples[selectedSampleIndex]?.parsedBaseName || "—"}</p>
-                        <div className="flex items-center gap-2 text-xs">
-                          {previewSamples[selectedSampleIndex]?.parsedColor && (
-                            <Badge variant="default" className="text-[10px] h-5">
-                              {previewSamples[selectedSampleIndex].parsedColor}
-                            </Badge>
-                          )}
-                          <span className="text-muted-foreground">
-                            {availableSizes.length} tamanho(s)
-                          </span>
-                          {previewSamples[selectedSampleIndex]?.price && priceMappingField === "price" && (
-                            <span className="text-primary font-medium">
-                              R$ {previewSamples[selectedSampleIndex].price.toFixed(2)}
+                    {/* Sizes info */}
+                    <div className="p-3 rounded-lg bg-muted/50 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Ruler className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-medium">Tamanhos (fixos)</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {availableSizes.map((size) => (
+                          <Badge key={size} variant="secondary" className="text-[10px]">
+                            {size}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1.5">
+                        Todos os produtos serão criados com esses tamanhos
+                      </p>
+                    </div>
+
+                    {/* Preview Result Card */}
+                    <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <p className="text-xs font-medium mb-2">Resultado da interpretação:</p>
+                      <div className="flex items-start gap-3">
+                        {previewSamples[selectedSampleIndex]?.images?.[0] && (
+                          <img
+                            src={previewSamples[selectedSampleIndex].images[0]}
+                            alt=""
+                            className="h-16 w-16 rounded object-cover shrink-0"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-sm font-medium truncate">
+                            {previewSamples[selectedSampleIndex]?.parsedBaseName || "—"}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            {previewSamples[selectedSampleIndex]?.parsedColor && colorMappingField !== "none" && (
+                              <Badge variant="default" className="text-[10px] h-5">
+                                {previewSamples[selectedSampleIndex].parsedColor}
+                              </Badge>
+                            )}
+                            <span className="text-muted-foreground">
+                              {availableSizes.length} tamanhos
                             </span>
-                          )}
+                            <span className="text-muted-foreground">
+                              {maxPhotosPerProduct} foto(s)
+                            </span>
+                            {previewSamples[selectedSampleIndex]?.price && priceMappingField === "price" && (
+                              <span className="text-primary font-medium">
+                                R$ {previewSamples[selectedSampleIndex].price?.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <AlertCircle className="h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Não foi possível carregar exemplo</p>
+                  <p className="text-sm text-muted-foreground">Nenhum produto encontrado</p>
                   <Button variant="outline" size="sm" onClick={() => setStep("discover")}>
                     Voltar
                   </Button>
