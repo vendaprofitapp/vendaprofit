@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Tag, Search, Users, Merge } from "lucide-react";
+import { Plus, Edit, Tag, ChevronDown, ChevronRight } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -14,42 +13,49 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-interface Category {
+interface MainCategory {
   id: string;
   name: string;
-  owner_id: string;
-  owner_email?: string;
-  product_count?: number;
+  display_order: number;
+  has_subcategories: boolean;
+  is_active: boolean;
+}
+
+interface Subcategory {
+  id: string;
+  main_category_id: string;
+  name: string;
+  display_order: number;
+  is_active: boolean;
 }
 
 export default function Categories() {
   const { user } = useAuth();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editCategory, setEditCategory] = useState<Category | null>(null);
-  const [categoryName, setCategoryName] = useState("");
+  const [subDialogOpen, setSubDialogOpen] = useState(false);
+  const [editMainCategory, setEditMainCategory] = useState<MainCategory | null>(null);
+  const [editSubcategory, setEditSubcategory] = useState<Subcategory | null>(null);
+  const [selectedMainCategoryId, setSelectedMainCategoryId] = useState<string | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formHasSubs, setFormHasSubs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
-  const [mergeSource, setMergeSource] = useState("");
-  const [mergeDestination, setMergeDestination] = useState("");
-  const [merging, setMerging] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Check if current user is admin
   useEffect(() => {
     async function checkAdmin() {
       if (!user) return;
@@ -62,228 +68,108 @@ export default function Categories() {
     checkAdmin();
   }, [user]);
 
-  const fetchCategories = async () => {
+  const fetchData = async () => {
     setLoading(true);
-    
-    // Fetch all categories with owner info
-    const { data: categoriesData, error: catError } = await supabase
-      .from("categories")
-      .select("id, name, owner_id")
-      .order("name");
+    const [mainRes, subRes] = await Promise.all([
+      supabase.from("main_categories").select("*").order("display_order"),
+      supabase.from("subcategories").select("*").order("display_order"),
+    ]);
 
-    if (catError) {
-      console.error("Error fetching categories:", catError);
-      toast.error("Erro ao carregar categorias");
-      setLoading(false);
-      return;
-    }
-
-    // Fetch owner emails
-    const ownerIds = [...new Set(categoriesData?.map(c => c.owner_id) || [])];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, email")
-      .in("id", ownerIds);
-
-    const profileMap = new Map(profiles?.map(p => [p.id, p.email]) || []);
-
-    // Count products per category
-    const { data: products } = await supabase
-      .from("products")
-      .select("category, category_2, category_3");
-
-    const categoryCountMap = new Map<string, number>();
-    products?.forEach(p => {
-      [p.category, p.category_2, p.category_3].forEach(cat => {
-        if (cat) {
-          categoryCountMap.set(cat, (categoryCountMap.get(cat) || 0) + 1);
-        }
-      });
-    });
-
-    const enrichedCategories: Category[] = (categoriesData || []).map(c => ({
-      ...c,
-      owner_email: profileMap.get(c.owner_id) || "Desconhecido",
-      product_count: categoryCountMap.get(c.name) || 0,
-    }));
-
-    setCategories(enrichedCategories);
+    if (!mainRes.error) setMainCategories(mainRes.data || []);
+    if (!subRes.error) setSubcategories(subRes.data || []);
     setLoading(false);
   };
 
   useEffect(() => {
-    if (user) fetchCategories();
-  }, [user?.id]);
+    fetchData();
+  }, []);
 
-  const handleSaveCategory = async () => {
-    if (!user || !categoryName.trim()) {
-      toast.error("Digite o nome da categoria");
+  const handleSaveMainCategory = async () => {
+    if (!formName.trim()) {
+      toast.error("Digite o nome");
       return;
     }
-
+    if (!isAdmin) {
+      toast.error("Apenas administradores podem editar categorias");
+      return;
+    }
     setSaving(true);
-
     try {
-      if (editCategory) {
-        const oldName = editCategory.name;
-        const newName = categoryName.trim();
-
-        // Update existing category
+      if (editMainCategory) {
         const { error } = await supabase
-          .from("categories")
-          .update({ name: newName })
-          .eq("id", editCategory.id);
-
-        if (error) {
-          toast.error("Erro ao atualizar categoria");
-          setSaving(false);
-          return;
-        }
-
-        // Update products with the old category name using SECURITY DEFINER function
-        if (oldName !== newName) {
-          await (supabase.rpc as any)("rename_category_in_products", {
-            old_name: oldName,
-            new_name: newName,
-          });
-        }
-
-        toast.success("Categoria atualizada!");
+          .from("main_categories")
+          .update({ name: formName.trim(), has_subcategories: formHasSubs })
+          .eq("id", editMainCategory.id);
+        if (error) throw error;
+        toast.success("Categoria atualizada");
       } else {
-        // Create new category
+        const maxOrder = Math.max(0, ...mainCategories.map(c => c.display_order));
         const { error } = await supabase
-          .from("categories")
-          .insert({ name: categoryName.trim(), owner_id: user.id });
-
-        if (error) {
-          if (error.code === "23505") {
-            toast.error("Esta categoria já existe");
-          } else {
-            toast.error("Erro ao criar categoria");
-          }
-          setSaving(false);
-          return;
-        }
-        toast.success("Categoria criada!");
+          .from("main_categories")
+          .insert({ name: formName.trim(), has_subcategories: formHasSubs, display_order: maxOrder + 1 });
+        if (error) throw error;
+        toast.success("Categoria criada");
       }
-
-      setCategoryName("");
-      setEditCategory(null);
+      setFormName("");
+      setFormHasSubs(false);
+      setEditMainCategory(null);
       setDialogOpen(false);
-      fetchCategories();
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao salvar categoria");
+      fetchData();
+    } catch (e: any) {
+      toast.error("Erro: " + e.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteCategory = async (category: Category) => {
-    if ((category.product_count || 0) > 0) {
-      if (!window.confirm(
-        `A categoria "${category.name}" está sendo usada em ${category.product_count} produto(s). Deseja excluir mesmo assim? A categoria será removida dos produtos.`
-      )) {
-        return;
-      }
-    } else {
-      if (!window.confirm(`Excluir categoria "${category.name}"?`)) return;
-    }
-
-    // Check if user owns this category or is admin
-    if (category.owner_id !== user?.id && !isAdmin) {
-      toast.error("Você só pode excluir categorias que você criou");
+  const handleSaveSubcategory = async () => {
+    if (!formName.trim() || !selectedMainCategoryId) {
+      toast.error("Preencha todos os campos");
       return;
     }
-
-    const categoryName = category.name;
-
-    // Clear category references from all products before deleting using SECURITY DEFINER function
-    await (supabase.rpc as any)("clear_category_from_products", {
-      category_name: categoryName,
-    });
-
-    const { error } = await supabase
-      .from("categories")
-      .delete()
-      .eq("id", category.id);
-
-    if (error) {
-      console.error("Delete error:", error);
-      if (error.code === "42501" || error.message?.includes("policy")) {
-        toast.error("Você não tem permissão para excluir esta categoria");
-      } else {
-        toast.error("Erro ao excluir categoria");
-      }
+    if (!isAdmin) {
+      toast.error("Apenas administradores podem editar subcategorias");
       return;
     }
-
-    toast.success("Categoria excluída e removida dos produtos!");
-    fetchCategories();
-  };
-
-  const openEditDialog = (category: Category) => {
-    setEditCategory(category);
-    setCategoryName(category.name);
-    setDialogOpen(true);
-  };
-
-  const openNewDialog = () => {
-    setEditCategory(null);
-    setCategoryName("");
-    setDialogOpen(true);
-  };
-
-  const handleMergeCategories = async () => {
-    if (!mergeSource || !mergeDestination) {
-      toast.error("Selecione as categorias de origem e destino");
-      return;
-    }
-
-    if (mergeSource === mergeDestination) {
-      toast.error("As categorias de origem e destino devem ser diferentes");
-      return;
-    }
-
-    const sourceCategory = categories.find(c => c.name === mergeSource);
-    if (!window.confirm(
-      `Mesclar "${mergeSource}" em "${mergeDestination}"?\n\n${sourceCategory?.product_count || 0} produto(s) serão movidos para "${mergeDestination}" e a categoria "${mergeSource}" será excluída.`
-    )) {
-      return;
-    }
-
-    setMerging(true);
+    setSaving(true);
     try {
-      // Transfer all products from source to destination
-      await (supabase.rpc as any)("merge_categories", {
-        source_name: mergeSource,
-        destination_name: mergeDestination,
-      });
-
-      // Delete the source category
-      if (sourceCategory) {
-        await supabase
-          .from("categories")
-          .delete()
-          .eq("id", sourceCategory.id);
+      if (editSubcategory) {
+        const { error } = await supabase
+          .from("subcategories")
+          .update({ name: formName.trim() })
+          .eq("id", editSubcategory.id);
+        if (error) throw error;
+        toast.success("Subcategoria atualizada");
+      } else {
+        const existingSubs = subcategories.filter(s => s.main_category_id === selectedMainCategoryId);
+        const maxOrder = existingSubs.length > 0 ? Math.max(...existingSubs.map(s => s.display_order)) : 0;
+        const { error } = await supabase
+          .from("subcategories")
+          .insert({ name: formName.trim(), main_category_id: selectedMainCategoryId, display_order: maxOrder + 1 });
+        if (error) throw error;
+        toast.success("Subcategoria criada");
       }
-
-      toast.success(`Categoria "${mergeSource}" mesclada com "${mergeDestination}"!`);
-      setMergeDialogOpen(false);
-      setMergeSource("");
-      setMergeDestination("");
-      fetchCategories();
-    } catch (err) {
-      console.error("Merge error:", err);
-      toast.error("Erro ao mesclar categorias");
+      setFormName("");
+      setEditSubcategory(null);
+      setSubDialogOpen(false);
+      fetchData();
+    } catch (e: any) {
+      toast.error("Erro: " + e.message);
     } finally {
-      setMerging(false);
+      setSaving(false);
     }
   };
 
-  const filteredCategories = categories.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const toggleExpand = (id: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const getSubcategoriesFor = (mainId: string) => subcategories.filter(s => s.main_category_id === mainId);
 
   return (
     <MainLayout>
@@ -292,245 +178,190 @@ export default function Categories() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Categorias</h1>
             <p className="text-muted-foreground">
-              Gerencie as categorias de produtos do sistema
+              Categorias fixas do sistema (somente admin pode editar)
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setMergeDialogOpen(true)} 
-              className="gap-2"
-              disabled={categories.length < 2}
-            >
-              <Merge className="h-4 w-4" />
-              Mesclar
-            </Button>
-            <Button onClick={openNewDialog} className="gap-2">
+          {isAdmin && (
+            <Button onClick={() => { setEditMainCategory(null); setFormName(""); setFormHasSubs(false); setDialogOpen(true); }} className="gap-2">
               <Plus className="h-4 w-4" />
               Nova Categoria
             </Button>
-          </div>
+          )}
         </div>
 
-        {/* Stats Card */}
-        <Card className="max-w-xs">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total de Categorias
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{categories.length}</div>
-          </CardContent>
-        </Card>
+        {!isAdmin && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="pt-4">
+              <p className="text-amber-800 text-sm">
+                ⚠️ Apenas administradores podem adicionar ou editar categorias.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar categorias..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        {/* Categories Table */}
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Criada por</TableHead>
-                  <TableHead className="text-center">Produtos</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" />
-                    </TableCell>
-                  </TableRow>
-                ) : filteredCategories.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? "Nenhuma categoria encontrada" : "Nenhuma categoria cadastrada"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredCategories.map((category) => (
-                    <TableRow key={category.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <Tag className="h-4 w-4 text-primary" />
-                          {category.name}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Users className="h-3.5 w-3.5" />
-                          {category.owner_email}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary">
-                          {category.product_count || 0}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => openEditDialog(category)}
-                            title="Editar"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleDeleteCategory(category)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            {loading ? (
+              <div className="py-8 text-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" />
+              </div>
+            ) : (
+              <div className="divide-y">
+                {mainCategories.map((cat) => {
+                  const subs = getSubcategoriesFor(cat.id);
+                  const isExpanded = expandedCategories.has(cat.id);
+                  
+                  return (
+                    <Collapsible key={cat.id} open={isExpanded} onOpenChange={() => toggleExpand(cat.id)}>
+                      <div className="flex items-center justify-between p-4 hover:bg-muted/50">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center gap-3 cursor-pointer flex-1">
+                            {cat.has_subcategories ? (
+                              isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+                            ) : (
+                              <div className="w-4" />
+                            )}
+                            <Tag className="h-4 w-4 text-primary" />
+                            <span className="font-medium">{cat.name}</span>
+                            {cat.has_subcategories && (
+                              <Badge variant="secondary" className="text-xs">{subs.length} sub</Badge>
+                            )}
+                            {!cat.is_active && <Badge variant="outline">Inativa</Badge>}
+                          </div>
+                        </CollapsibleTrigger>
+                        {isAdmin && (
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => { setEditMainCategory(cat); setFormName(cat.name); setFormHasSubs(cat.has_subcategories); setDialogOpen(true); }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      {cat.has_subcategories && (
+                        <CollapsibleContent>
+                          <div className="pl-12 pb-4 space-y-2">
+                            {subs.map((sub) => (
+                              <div key={sub.id} className="flex items-center justify-between py-1 px-3 rounded bg-muted/30">
+                                <span className="text-sm">{sub.name}</span>
+                                {isAdmin && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => { setEditSubcategory(sub); setFormName(sub.name); setSelectedMainCategoryId(cat.id); setSubDialogOpen(true); }}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            {isAdmin && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-2"
+                                onClick={() => { setEditSubcategory(null); setFormName(""); setSelectedMainCategoryId(cat.id); setSubDialogOpen(true); }}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Adicionar Subcategoria
+                              </Button>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      )}
+                    </Collapsible>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Edit/Create Dialog */}
         <Dialog open={dialogOpen} onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {
-            setEditCategory(null);
-            setCategoryName("");
+            setEditMainCategory(null);
+            setFormName("");
+            setFormHasSubs(false);
           }
         }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {editCategory ? "Editar Categoria" : "Nova Categoria"}
+                {editMainCategory ? "Editar Categoria" : "Nova Categoria Principal"}
               </DialogTitle>
               <DialogDescription>
-                {editCategory
-                  ? "Altere o nome da categoria. Os produtos serão atualizados automaticamente."
-                  : "Digite o nome da nova categoria"
-                }
+                Categorias principais são fixas para todos os usuários
               </DialogDescription>
             </DialogHeader>
-
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Nome da categoria</label>
+                <Label>Nome da categoria</Label>
                 <Input
-                  placeholder="Ex: Camisetas"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !saving && handleSaveCategory()}
+                  placeholder="Ex: Feminino"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
                   autoFocus
                 />
               </div>
-              
-              {editCategory && (editCategory.product_count || 0) > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  ⚠️ Esta categoria está sendo usada em {editCategory.product_count} produto(s).
-                  Ao renomear, todos os produtos serão atualizados.
-                </p>
-              )}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="has_subs"
+                  checked={formHasSubs}
+                  onCheckedChange={(checked) => setFormHasSubs(checked === true)}
+                />
+                <Label htmlFor="has_subs">Possui subcategorias</Label>
+              </div>
             </div>
-
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleSaveCategory} disabled={saving || !categoryName.trim()}>
-                {saving ? "Salvando..." : editCategory ? "Salvar" : "Criar"}
+              <Button onClick={handleSaveMainCategory} disabled={saving || !formName.trim()}>
+                {saving ? "Salvando..." : editMainCategory ? "Salvar" : "Criar"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Merge Categories Dialog */}
-        <Dialog open={mergeDialogOpen} onOpenChange={(open) => {
-          setMergeDialogOpen(open);
+        <Dialog open={subDialogOpen} onOpenChange={(open) => {
+          setSubDialogOpen(open);
           if (!open) {
-            setMergeSource("");
-            setMergeDestination("");
+            setEditSubcategory(null);
+            setFormName("");
           }
         }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Mesclar Categorias</DialogTitle>
+              <DialogTitle>
+                {editSubcategory ? "Editar Subcategoria" : "Nova Subcategoria"}
+              </DialogTitle>
               <DialogDescription>
-                Transfira todos os produtos de uma categoria para outra. A categoria de origem será excluída.
+                Subcategorias ajudam a organizar produtos dentro de uma categoria principal
               </DialogDescription>
             </DialogHeader>
-
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Categoria de origem (será excluída)</label>
-                <Select value={mergeSource} onValueChange={setMergeSource}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a categoria de origem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories
-                      .filter(c => c.name !== mergeDestination)
-                      .map((c) => (
-                        <SelectItem key={c.id} value={c.name}>
-                          {c.name} ({c.product_count || 0} produtos)
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                <Label>Nome da subcategoria</Label>
+                <Input
+                  placeholder="Ex: Shorts"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  autoFocus
+                />
               </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Categoria de destino (receberá os produtos)</label>
-                <Select value={mergeDestination} onValueChange={setMergeDestination}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a categoria de destino" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories
-                      .filter(c => c.name !== mergeSource)
-                      .map((c) => (
-                        <SelectItem key={c.id} value={c.name}>
-                          {c.name} ({c.product_count || 0} produtos)
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {mergeSource && mergeDestination && (
-                <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
-                  ⚠️ Esta ação é irreversível. Todos os produtos de "{mergeSource}" serão movidos para "{mergeDestination}" e a categoria de origem será excluída.
-                </p>
-              )}
             </div>
-
             <DialogFooter>
-              <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setSubDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button 
-                onClick={handleMergeCategories} 
-                disabled={merging || !mergeSource || !mergeDestination}
-                variant="destructive"
-              >
-                {merging ? "Mesclando..." : "Mesclar Categorias"}
+              <Button onClick={handleSaveSubcategory} disabled={saving || !formName.trim()}>
+                {saving ? "Salvando..." : editSubcategory ? "Salvar" : "Criar"}
               </Button>
             </DialogFooter>
           </DialogContent>

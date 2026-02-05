@@ -32,7 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
-import { MultiCategoryManager } from "@/components/products/MultiCategoryManager";
+ import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
 import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
@@ -62,6 +62,9 @@ interface Product {
   model: string | null;
   color_label: string | null;
   custom_detail: string | null;
+  main_category: string | null;
+  subcategory: string | null;
+  is_new_release: boolean;
 }
 
 interface Supplier {
@@ -139,7 +142,9 @@ export function ProductFormDialog({
   const [form, setForm] = useState({
     name: "",
     description: "",
-    categories: [] as string[],
+    mainCategory: "",
+    subcategory: "",
+    isNewRelease: false,
     price: "",
     cost_price: "",
     min_stock_level: "5",
@@ -158,14 +163,12 @@ export function ProductFormDialog({
 
   useEffect(() => {
     if (editingProduct) {
-      const categories = [editingProduct.category];
-      if (editingProduct.category_2) categories.push(editingProduct.category_2);
-      if (editingProduct.category_3) categories.push(editingProduct.category_3);
-      
       setForm({
         name: editingProduct.name,
         description: editingProduct.description || "",
-        categories,
+        mainCategory: editingProduct.main_category || "",
+        subcategory: editingProduct.subcategory || "",
+        isNewRelease: editingProduct.is_new_release || false,
         price: editingProduct.price.toString(),
         cost_price: editingProduct.cost_price?.toString() || "",
         min_stock_level: editingProduct.min_stock_level.toString(),
@@ -185,14 +188,12 @@ export function ProductFormDialog({
       
       fetchProductVariants(editingProduct.id);
     } else if (duplicatingProduct) {
-      const categories = [duplicatingProduct.category];
-      if (duplicatingProduct.category_2) categories.push(duplicatingProduct.category_2);
-      if (duplicatingProduct.category_3) categories.push(duplicatingProduct.category_3);
-      
       setForm({
         name: duplicatingProduct.name,
         description: duplicatingProduct.description || "",
-        categories,
+        mainCategory: duplicatingProduct.main_category || "",
+        subcategory: duplicatingProduct.subcategory || "",
+        isNewRelease: false,
         price: duplicatingProduct.price.toString(),
         cost_price: duplicatingProduct.cost_price?.toString() || "",
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
@@ -251,7 +252,9 @@ export function ProductFormDialog({
     setForm({
       name: "",
       description: "",
-      categories: [],
+      mainCategory: "",
+      subcategory: "",
+      isNewRelease: false,
       price: "",
       cost_price: "",
       min_stock_level: "5",
@@ -377,8 +380,8 @@ export function ProductFormDialog({
       toast.error("Nome do produto é obrigatório");
       return;
     }
-    if (form.categories.length === 0) {
-      toast.error("Pelo menos uma categoria é obrigatória");
+    if (!form.mainCategory) {
+      toast.error("Categoria principal é obrigatória");
       return;
     }
     
@@ -407,9 +410,12 @@ export function ProductFormDialog({
       const productData = {
         name: form.name,
         description: form.description || null,
-        category: form.categories[0] || "",
-        category_2: form.categories[1] || null,
-        category_3: form.categories[2] || null,
+        category: form.mainCategory,
+        category_2: form.subcategory || null,
+        category_3: null,
+        main_category: form.mainCategory,
+        subcategory: form.subcategory || null,
+        is_new_release: form.isNewRelease,
         price: parseFloat(form.price) || 0,
         cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
         sku: null,
@@ -583,7 +589,7 @@ export function ProductFormDialog({
       model: data.model || prev.model,
       color_label: data.colorLabel || prev.color_label,
       custom_detail: data.customDetail || prev.custom_detail,
-      categories: data.category ? [data.category, ...prev.categories.filter(c => c !== data.category)].slice(0, 3) : prev.categories,
+      mainCategory: data.category || prev.mainCategory,
     }));
     
     // Add images if provided
@@ -628,10 +634,13 @@ export function ProductFormDialog({
 
       {/* Categorias */}
       <div className="space-y-2">
-        <Label>Categorias * (até 3)</Label>
-        <MultiCategoryManager
-          values={form.categories}
-          onChange={(values) => setForm({ ...form, categories: values })}
+        <FixedCategorySelector
+          mainCategory={form.mainCategory}
+          subcategory={form.subcategory}
+          isNewRelease={form.isNewRelease}
+          onMainCategoryChange={(value) => setForm({ ...form, mainCategory: value })}
+          onSubcategoryChange={(value) => setForm({ ...form, subcategory: value })}
+          onIsNewReleaseChange={(value) => setForm({ ...form, isNewRelease: value })}
         />
       </div>
       
