@@ -11,7 +11,7 @@ interface SwapSelection {
   productName: string;
   variantId?: string;
   size: string | null;
-  color: string | null;
+  color_label: string | null;
   price: number;
 }
 
@@ -25,7 +25,7 @@ interface ProductSwapDialogProps {
       name: string;
       category: string;
       size: string | null;
-      color: string | null;
+      color_label: string | null;
     };
   };
   sellerId?: string;
@@ -50,7 +50,7 @@ export function ProductSwapDialog({
     if (open && item.products) {
       // First try to find size alternatives for the same product (same color)
       // Pass sellerId to properly check partner products
-      findSizeAlternatives(item.product_id, item.products.size, item.products.color, sellerId).then(alternatives => {
+      findSizeAlternatives(item.product_id, item.products.size, item.products.color_label, sellerId).then(alternatives => {
         if (alternatives.length === 0) {
           // If no size alternatives with same color, look for similar products
           findSwapOptions({
@@ -58,7 +58,7 @@ export function ProductSwapDialog({
             name: item.products.name,
             category: item.products.category,
             size: item.products.size,
-            color: item.products.color,
+            color_label: item.products.color_label,
           });
         }
       });
@@ -72,7 +72,7 @@ export function ProductSwapDialog({
       productName: suggestion.name,
       variantId: suggestion.variant_id,
       size: suggestion.size,
-      color: suggestion.color,
+      color_label: suggestion.color_label,
       price: suggestion.price,
     });
   };
@@ -143,8 +143,8 @@ export function ProductSwapDialog({
                       {suggestion.size && (
                         <Badge variant="outline" className="text-xs">{suggestion.size}</Badge>
                       )}
-                      {suggestion.color && (
-                        <Badge variant="outline" className="text-xs">{suggestion.color}</Badge>
+                      {suggestion.color_label && (
+                        <Badge variant="outline" className="text-xs">{suggestion.color_label}</Badge>
                       )}
                       {suggestion.isFromPartner && (
                         <Badge variant="secondary" className="text-xs gap-1">
