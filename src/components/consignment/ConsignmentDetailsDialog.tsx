@@ -37,7 +37,7 @@ interface ConsignmentItem {
     name: string;
     image_url: string | null;
     size: string | null;
-    color: string | null;
+    color_label: string | null;
   };
   product_variants?: {
     size: string;
@@ -80,7 +80,7 @@ export function ConsignmentDetailsDialog({
             status,
             original_price,
             variant_id,
-            products (id, name, image_url, size, color),
+    products (id, name, image_url, size, color_label),
             product_variants (size)
           )
         `)
@@ -211,8 +211,7 @@ export function ConsignmentDetailsDialog({
                 const status = itemStatusConfig[item.status] || itemStatusConfig.pending;
                 const StatusIcon = status.icon;
                 const size = item.product_variants?.size || item.products?.size;
-                // Color now comes from product (color_label)
-                const color = item.products?.color;
+            const color = item.products?.color_label;
 
                 return (
                   <div 
