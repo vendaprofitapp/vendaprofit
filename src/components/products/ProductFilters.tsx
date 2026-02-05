@@ -75,6 +75,13 @@ export function ProductFilters({
   colors,
   sizes,
 }: ProductFiltersProps) {
+  // Defensive defaults for arrays
+  const safeMainCategories = mainCategories || [];
+  const safeSubcategories = subcategories || [];
+  const safeSuppliers = suppliers || [];
+  const safeColors = colors || [];
+  const safeSizes = sizes || [];
+
   const updateFilter = <K extends keyof ProductFiltersState>(
     key: K,
     value: ProductFiltersState[K]
@@ -100,9 +107,9 @@ export function ProductFilters({
   };
 
   // Get subcategories for selected main category
-  const selectedMainCat = mainCategories.find(c => c.name === filters.mainCategory);
+  const selectedMainCat = safeMainCategories.find(c => c.name === filters.mainCategory);
   const availableSubcategories = selectedMainCat
-    ? subcategories.filter(s => s.main_category_id === selectedMainCat.id)
+    ? safeSubcategories.filter(s => s.main_category_id === selectedMainCat.id)
     : [];
 
   const hasActiveFilters =
@@ -157,7 +164,7 @@ export function ProductFilters({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {mainCategories.map((c) => (
+                {safeMainCategories.map((c) => (
                   <SelectItem key={c.id} value={c.name}>
                     {c.name}
                   </SelectItem>
@@ -254,7 +261,7 @@ export function ProductFilters({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {suppliers.map((s) => (
+                {safeSuppliers.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
                   </SelectItem>
@@ -272,7 +279,7 @@ export function ProductFilters({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {colors.map((c) => (
+                {safeColors.map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
                   </SelectItem>
@@ -290,7 +297,7 @@ export function ProductFilters({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {sizes.map((s) => (
+                {safeSizes.map((s) => (
                   <SelectItem key={s} value={s}>
                     {s}
                   </SelectItem>
