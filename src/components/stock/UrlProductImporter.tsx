@@ -288,9 +288,9 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="space-y-2 p-3 bg-background rounded-lg border overflow-hidden">
+            <div className="space-y-3 p-3 bg-background rounded-lg border">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium flex items-center gap-1">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
                   <ImageIcon className="h-3 w-3" />
                   Selecione as fotos ({selectedImages.size}/{availableSlots})
                 </Label>
@@ -311,15 +311,14 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <ScrollArea className="h-[140px]">
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pr-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                      "relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all min-h-[120px]",
                       selectedImages.has(imageUrl) 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-border hover:border-primary/50"
@@ -335,15 +334,14 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     />
                     {selectedImages.has(imageUrl) && (
                       <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <div className="bg-primary text-primary-foreground rounded-full p-1">
-                          <Check className="h-3 w-3" />
+                        <div className="bg-primary text-primary-foreground rounded-full p-1.5">
+                          <Check className="h-4 w-4" />
                         </div>
                       </div>
                     )}
                   </button>
                 ))}
-                </div>
-              </ScrollArea>
+              </div>
               </div>
           )}
 
