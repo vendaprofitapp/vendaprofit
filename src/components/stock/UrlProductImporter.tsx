@@ -290,17 +290,17 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
  
           {/* Image Selection */}
           {scrapedData?.images && scrapedData.images.length > 0 && (
-            <div className="p-2 bg-background rounded-lg border">
-              <div className="flex items-center justify-between mb-1">
-                <Label className="text-[10px] font-medium flex items-center gap-1">
-                  <ImageIcon className="h-3 w-3" />
-                  Fotos ({selectedImages.size}/{availableSlots})
+            <div className="p-3 bg-background rounded-lg border">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-medium flex items-center gap-1">
+                  <ImageIcon className="h-4 w-4" />
+                  Selecione as Fotos ({selectedImages.size}/{availableSlots})
                 </Label>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="h-5 text-[10px] px-2"
+                  className="h-7 text-xs"
                   onClick={() => {
                     const autoSelected = new Set<string>();
                     for (let i = 0; i < Math.min(scrapedData.images!.length, availableSlots); i++) {
@@ -309,20 +309,20 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     setSelectedImages(autoSelected);
                   }}
                 >
-                  Auto
+                  Auto-selecionar
                 </Button>
               </div>
               
-              <div className="grid grid-cols-6 gap-1 max-h-[100px] overflow-y-auto">
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-h-[140px] overflow-y-auto">
                 {scrapedData.images.slice(0, 20).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative aspect-square rounded overflow-hidden border-2 transition-all",
+                      "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
                       selectedImages.has(imageUrl) 
-                        ? "border-primary ring-1 ring-primary/20" 
+                        ? "border-primary ring-2 ring-primary/30" 
                         : "border-border hover:border-primary/50"
                     )}
                   >
@@ -336,8 +336,8 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     />
                     {selectedImages.has(imageUrl) && (
                       <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <div className="bg-primary text-primary-foreground rounded-full p-0.5">
-                          <Check className="h-2 w-2" />
+                        <div className="bg-primary text-primary-foreground rounded-full p-1">
+                          <Check className="h-3 w-3" />
                         </div>
                       </div>
                     )}
@@ -348,59 +348,57 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
           )}
 
           {/* Field Mapping */}
-           <div className="space-y-1">
-            <Label className="text-[10px] font-medium">Mapeamento</Label>
-             <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
-               {getScrapedFields().map((field) => (
-                 <div key={field} className="flex items-center gap-1 p-1.5 rounded bg-background border text-[10px]">
-                   <div className="flex-1 min-w-0">
-                     <p className="font-medium truncate">
-                       {SCRAPED_FIELD_LABELS[field] || field}
-                     </p>
-                     <p className="text-muted-foreground truncate text-[9px]">
-                       {formatValue(scrapedData?.[field])}
-                     </p>
-                   </div>
-                   
-                   <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                   
-                   <Select
-                     value={getMappedSystemField(field)}
-                     onValueChange={(value) => updateMapping(field, value)}
-                   >
-                     <SelectTrigger className="w-[100px] h-6 text-[10px]">
-                       <SelectValue placeholder="Ignorar" />
-                     </SelectTrigger>
-                     <SelectContent>
-                       <SelectItem value="none">Ignorar</SelectItem>
-                       {SYSTEM_FIELDS.map((sf) => (
-                         <SelectItem key={sf.key} value={sf.key}>
-                           {sf.label}
-                         </SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
-                 </div>
-               ))}
-             </div>
-           </div>
-
-           <div className="flex items-center justify-between pt-2 border-t mt-2">
-              <span className="text-[10px] text-muted-foreground">
-                {mappings.length} campo(s)
-              </span>
-              <Button 
-                type="button"
-                size="sm"
-                onClick={handleApplyMapping}
-                disabled={mappings.length === 0}
-                className="h-7 text-xs"
-              >
-                <Check className="h-3 w-3 mr-1" />
-                Aplicar
-              </Button>
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Mapeamento de Campos</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[180px] overflow-y-auto pr-1">
+              {getScrapedFields().map((field) => (
+                <div key={field} className="flex items-center gap-2 p-2 rounded bg-background border">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">
+                      {SCRAPED_FIELD_LABELS[field] || field}
+                    </p>
+                    <p className="text-muted-foreground truncate text-[10px]">
+                      {formatValue(scrapedData?.[field])}
+                    </p>
+                  </div>
+                  
+                  <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                  
+                  <Select
+                    value={getMappedSystemField(field)}
+                    onValueChange={(value) => updateMapping(field, value)}
+                  >
+                    <SelectTrigger className="w-[130px] h-8 text-xs">
+                      <SelectValue placeholder="Ignorar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Ignorar</SelectItem>
+                      {SYSTEM_FIELDS.map((sf) => (
+                        <SelectItem key={sf.key} value={sf.key}>
+                          {sf.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
             </div>
-         </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t mt-3">
+            <span className="text-xs text-muted-foreground">
+              {mappings.length} campo(s) + {selectedImages.size} foto(s)
+            </span>
+            <Button 
+              type="button"
+              onClick={handleApplyMapping}
+              disabled={mappings.length === 0 && selectedImages.size === 0}
+            >
+              <Check className="h-4 w-4 mr-2" />
+              Aplicar Dados
+            </Button>
+          </div>
+        </div>
        )}
      </div>
    );
