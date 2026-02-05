@@ -861,7 +861,7 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>
             {editingProduct ? "Editar Produto" : duplicatingProduct ? "Duplicar Produto" : "Novo Produto"}
