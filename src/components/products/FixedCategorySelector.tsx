@@ -1,23 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface MainCategory {
@@ -54,8 +38,8 @@ export function FixedCategorySelector({
   const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mainCategoryOpen, setMainCategoryOpen] = useState(false);
-  const [subcategoryOpen, setSubcategoryOpen] = useState(false);
+  const mainSelectRef = useRef<HTMLSelectElement>(null);
+  const subSelectRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -94,9 +78,9 @@ export function FixedCategorySelector({
     ? subcategories.filter(s => s.main_category_id === selectedMainCategory.id)
     : [];
 
-  const handleMainCategoryChange = (value: string) => {
+  const handleMainCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
     onMainCategoryChange(value);
-    setMainCategoryOpen(false);
     const newMainCat = mainCategories.find(c => c.name === value);
     if (!newMainCat?.has_subcategories) {
       onSubcategoryChange("");
@@ -108,9 +92,8 @@ export function FixedCategorySelector({
     }
   };
 
-  const handleSubcategoryChange = (value: string) => {
-    onSubcategoryChange(value);
-    setSubcategoryOpen(false);
+  const handleSubcategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    onSubcategoryChange(e.target.value);
   };
 
   return (
@@ -132,106 +115,42 @@ export function FixedCategorySelector({
         </Label>
       </div>
 
-      {/* Main Category Combobox */}
+      {/* Main Category Select */}
       <div className="space-y-2">
         <Label>Categoria Principal *</Label>
-        <Popover open={mainCategoryOpen} onOpenChange={setMainCategoryOpen} modal={true}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={mainCategoryOpen}
-              className="w-full justify-between font-normal"
-              disabled={loading}
-            >
-              {mainCategory || (loading ? "Carregando..." : "Selecione a categoria")}
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Buscar categoria..." />
-              <CommandList>
-                <CommandEmpty>Nenhuma categoria encontrada.</CommandEmpty>
-                <CommandGroup>
-                  {mainCategories.map((cat) => (
-                    <CommandItem
-                      key={cat.id}
-                      value={cat.name}
-                      onSelect={(currentValue) => {
-                        const selected = mainCategories.find(
-                          c => c.name.toLowerCase() === currentValue.toLowerCase()
-                        );
-                        if (selected) {
-                          handleMainCategoryChange(selected.name);
-                        }
-                      }}
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          mainCategory === cat.name ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      {cat.name}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+        <select
+          ref={mainSelectRef}
+          value={mainCategory}
+          onChange={handleMainCategoryChange}
+          disabled={loading}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="">{loading ? "Carregando..." : "Selecione a categoria"}</option>
+          {mainCategories.map((cat) => (
+            <option key={cat.id} value={cat.name}>
+              {cat.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Subcategory Combobox */}
+      {/* Subcategory Select */}
       {selectedMainCategory?.has_subcategories && availableSubcategories.length > 0 && (
         <div className="space-y-2">
           <Label>Subcategoria</Label>
-          <Popover open={subcategoryOpen} onOpenChange={setSubcategoryOpen} modal={true}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={subcategoryOpen}
-                className="w-full justify-between font-normal"
-              >
-                {subcategory || "Selecione a subcategoria"}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Buscar subcategoria..." />
-                <CommandList>
-                  <CommandEmpty>Nenhuma subcategoria encontrada.</CommandEmpty>
-                  <CommandGroup>
-                    {availableSubcategories.map((sub) => (
-                      <CommandItem
-                        key={sub.id}
-                        value={sub.name}
-                        onSelect={(currentValue) => {
-                          const selected = availableSubcategories.find(
-                            s => s.name.toLowerCase() === currentValue.toLowerCase()
-                          );
-                          if (selected) {
-                            handleSubcategoryChange(selected.name);
-                          }
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            subcategory === sub.name ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        {sub.name}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          <select
+            ref={subSelectRef}
+            value={subcategory}
+            onChange={handleSubcategoryChange}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">Selecione a subcategoria</option>
+            {availableSubcategories.map((sub) => (
+              <option key={sub.id} value={sub.name}>
+                {sub.name}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
