@@ -130,7 +130,7 @@
            <SelectTrigger>
              <SelectValue placeholder={loading ? "Carregando..." : "Selecione a categoria"} />
            </SelectTrigger>
-            <SelectContent portal={false}>
+            <SelectContent className="z-[9999]">
              {mainCategories.map((cat) => (
                <SelectItem key={cat.id} value={cat.name}>
                  {cat.name}
@@ -151,7 +151,7 @@
              <SelectTrigger>
                <SelectValue placeholder="Selecione a subcategoria" />
              </SelectTrigger>
-            <SelectContent portal={false}>
+            <SelectContent className="z-[9999]">
                {availableSubcategories.map((sub) => (
                  <SelectItem key={sub.id} value={sub.name}>
                    {sub.name}
