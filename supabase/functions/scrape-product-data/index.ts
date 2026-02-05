@@ -36,7 +36,7 @@
  
      console.log('Scraping product data from:', formattedUrl);
  
-     // First, scrape with JSON extraction for structured data
+      // Scrape with extract format for structured data
      const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
        method: 'POST',
        headers: {
@@ -45,24 +45,21 @@
        },
        body: JSON.stringify({
          url: formattedUrl,
-         formats: [
-           'markdown',
-           {
-             type: 'json',
-             prompt: `Extract product information from this e-commerce page. Return a JSON object with these fields:
-               - name: product name/title
-               - description: product description (full text)
-               - price: numeric price value (just the number, no currency symbol)
-               - brand: brand or manufacturer name
-               - sku: product code/SKU/reference
-               - category: product category
-               - color: product color if mentioned
-               - material: material/fabric if mentioned
-               - sizes: array of available sizes if listed
-               
-               Only include fields that are clearly present on the page. Return null for missing fields.`
-           }
-         ],
+          formats: ['markdown', 'extract'],
+          extract: {
+            prompt: `Extract product information from this e-commerce page. Return a JSON object with these fields:
+              - name: product name/title
+              - description: product description (full text)
+              - price: numeric price value (just the number, no currency symbol)
+              - brand: brand or manufacturer name
+              - sku: product code/SKU/reference
+              - category: product category
+              - color: product color if mentioned
+              - material: material/fabric if mentioned
+              - sizes: array of available sizes if listed
+              
+              Only include fields that are clearly present on the page. Return null for missing fields.`
+          },
          onlyMainContent: true,
          waitFor: 2000,
        }),
@@ -79,7 +76,7 @@
      }
  
      // Extract product data from response
-     const productData = data.data?.json || data.json || {};
+      const productData = data.data?.extract || data.extract || {};
      
      // Now get images separately with better extraction
      const imagesResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
