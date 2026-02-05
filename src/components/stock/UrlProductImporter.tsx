@@ -311,14 +311,15 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                 </Button>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <ScrollArea className="w-full">
+                <div className="flex gap-3 pb-3">
                 {scrapedData.images.slice(0, 16).map((imageUrl, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleImageSelection(imageUrl)}
                     className={cn(
-                      "relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all min-h-[120px]",
+                      "relative flex-shrink-0 w-[100px] h-[130px] rounded-lg overflow-hidden border-2 transition-all",
                       selectedImages.has(imageUrl) 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-border hover:border-primary/50"
@@ -341,7 +342,8 @@ export function UrlProductImporter({ onDataImported, maxImages = 3, currentImage
                     )}
                   </button>
                 ))}
-              </div>
+                </div>
+              </ScrollArea>
               </div>
           )}
 
