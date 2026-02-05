@@ -59,7 +59,6 @@ interface Product {
   
   // OBS: tamanho/cor principais ficam nas variantes
   size: string | null;
-  color: string | null;
   color_label: string | null;
   stock_quantity: number;
   min_stock_level: number;
@@ -70,6 +69,9 @@ interface Product {
   image_url_2: string | null;
   image_url_3: string | null;
   supplier_id: string | null;
+  video_url: string | null;
+  model: string | null;
+  custom_detail: string | null;
   marketing_status: string[] | null;
   suppliers?: { name: string } | null;
   product_variants?: Array<{
@@ -421,7 +423,7 @@ export default function StockControl() {
 
   const getProductColorsLabel = (product: Product) => {
     // Color is now at the product level (color_label)
-    return product.color_label || product.color || "-";
+    return product.color_label || "-";
   };
 
   const getRequestStatus = (status: string) => {
@@ -439,7 +441,6 @@ export default function StockControl() {
     const sizes = new Set<string>();
 
     products.forEach((p) => {
-      if (p.color) colors.add(p.color);
       if (p.color_label) colors.add(p.color_label);
       if (p.size) sizes.add(p.size);
       (p.product_variants || []).forEach((v) => {
@@ -478,7 +479,7 @@ export default function StockControl() {
       
       const normalizedName = normalize(p.name);
       const normalizedSku = normalize(p.sku);
-      const normalizedProductColor = normalize(p.color);
+      const normalizedProductColor = normalize(p.color_label);
       const normalizedProductSize = normalize(p.size);
       
       // Get all variant colors and sizes
@@ -511,7 +512,7 @@ export default function StockControl() {
          productSupplierName.toLowerCase() === selectedSupplierName.toLowerCase());
       
       // Color - check product color and variants (case-insensitive)
-      const productColors = [p.color, p.color_label].filter(Boolean);
+      const productColors = [p.color_label].filter(Boolean);
       const normalizedFilterColor = normalize(filters.color);
       const matchesColor = filters.color === "all" || 
         productColors.some(c => normalize(c) === normalizedFilterColor);
