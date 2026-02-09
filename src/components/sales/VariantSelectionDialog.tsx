@@ -235,7 +235,7 @@ export function VariantSelectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[85vh] flex flex-col !left-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 rounded-t-2xl sm:rounded-lg sm:!left-[50%] sm:!top-[50%] sm:!bottom-auto sm:!translate-x-[-50%] sm:!translate-y-[-50%]">
+      <DialogContent className="sm:max-w-md max-h-[100dvh] sm:max-h-[85vh] flex flex-col">
         <DialogHeader className="pb-2">
           <DialogTitle className="text-lg flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
