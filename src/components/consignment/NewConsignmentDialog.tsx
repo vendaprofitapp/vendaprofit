@@ -298,7 +298,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {step === "details" && "Nova Malinha - Dados"}
@@ -390,7 +390,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
               )}
             </div>
 
-            <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4">
+            <div className="flex-1 overflow-hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Products list */}
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-muted px-3 py-2 text-sm font-medium">

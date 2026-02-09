@@ -853,7 +853,7 @@ export function ProductFormDialog({
               {editingProduct ? "Atualize as informações do produto" : "Preencha as informações do produto"}
             </DrawerDescription>
           </DrawerHeader>
-          <ScrollArea className="flex-1 px-4 pb-4 max-h-[60vh]">
+          <ScrollArea className="flex-1 px-4 pb-4 max-h-[75dvh]">
             {formContent}
           </ScrollArea>
           <DrawerFooter className="border-t pt-4">

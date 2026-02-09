@@ -358,7 +358,7 @@ export function EditSaleDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit2 className="h-5 w-5" />
@@ -368,7 +368,7 @@ export function EditSaleDialog({
 
           <div className="space-y-6">
             {/* Sale Info */}
-            <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 p-3 bg-muted/50 rounded-lg">
               <div>
                 <p className="text-sm text-muted-foreground">ID da Venda</p>
                 <p className="font-mono font-medium">{sale.id.slice(0, 8)}</p>
@@ -408,7 +408,7 @@ export function EditSaleDialog({
             </div>
 
             {/* Customer Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Nome do Cliente</Label>
                 <Input
@@ -428,7 +428,7 @@ export function EditSaleDialog({
             </div>
 
             {/* Payment & Discount */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Forma de Pagamento</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -463,7 +463,7 @@ export function EditSaleDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Tipo de Desconto</Label>
                 <Select value={discountType} onValueChange={setDiscountType}>
