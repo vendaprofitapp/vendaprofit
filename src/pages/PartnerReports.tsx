@@ -62,6 +62,13 @@ interface Profile {
   phone?: string;
 }
 
+interface PaymentReminder {
+  id: string;
+  sale_id: string | null;
+  is_paid: boolean;
+  amount: number;
+}
+
 interface PartnerSummary {
   partnerId: string;
   partnerName: string;
@@ -74,6 +81,8 @@ interface PartnerSummary {
   totalProfit: number;
   sellerEarnings: number;
   partnerEarnings: number;
+  deferredSellerEarnings: number;
+  deferredPartnerEarnings: number;
   salesCount: number;
 }
 
@@ -194,6 +203,21 @@ export default function PartnerReports() {
     enabled: !!user,
   });
 
+  // Fetch payment reminders to identify unpaid deferred sales
+  const { data: paymentReminders = [] } = useQuery({
+    queryKey: ["partner-payment-reminders", dateRange.start, dateRange.end],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payment_reminders")
+        .select("id, sale_id, is_paid, amount")
+        .gte("created_at", dateRange.start.toISOString())
+        .lte("created_at", dateRange.end.toISOString());
+      if (error) throw error;
+      return data as PaymentReminder[];
+    },
+    enabled: !!user,
+  });
+
   // Fetch profiles
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles"],
@@ -237,7 +261,7 @@ export default function PartnerReports() {
     return map;
   }, [profiles]);
 
-  const splitsBySaleId = useMemo(() => {
+   const splitsBySaleId = useMemo(() => {
     const map = new Map<string, FinancialSplit[]>();
     for (const s of financialSplits) {
       const arr = map.get(s.sale_id) ?? [];
@@ -246,6 +270,17 @@ export default function PartnerReports() {
     }
     return map;
   }, [financialSplits]);
+
+  // Map of sale_id -> whether the sale has an unpaid deferred payment
+  const unpaidDeferredSaleIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of paymentReminders) {
+      if (r.sale_id && !r.is_paid) {
+        set.add(r.sale_id);
+      }
+    }
+    return set;
+  }, [paymentReminders]);
 
   const detectKindBySplits = useCallback((saleId: string): Exclude<ReportKind, "all"> | "own" => {
     const splits = splitsBySaleId.get(saleId) ?? [];
@@ -268,6 +303,14 @@ export default function PartnerReports() {
       return saleKind === kind;
     });
 
+    const newSummary = (id: string, name: string, email: string, groupId: string, groupName: string, isDirect: boolean): PartnerSummary => ({
+      partnerId: id, partnerName: name, partnerEmail: email, groupId, groupName, isDirect,
+      totalSales: 0, totalCost: 0, totalProfit: 0,
+      sellerEarnings: 0, partnerEarnings: 0,
+      deferredSellerEarnings: 0, deferredPartnerEarnings: 0,
+      salesCount: 0,
+    });
+
     for (const sale of relevantSales) {
       const splits = splitsBySaleId.get(sale.id) ?? [];
       const myTotalInSale = splits.filter((s) => s.user_id === user.id).reduce((sum, s) => sum + s.amount, 0);
@@ -278,33 +321,24 @@ export default function PartnerReports() {
       const groupId = saleKind;
       const isDirect = saleKind === "partnerships";
 
+      const isDeferred = unpaidDeferredSaleIds.has(sale.id);
+
       // Vendas que EU fiz (posso dever para outros)
       if (sale.owner_id === user.id) {
         if (otherSplits.length === 0) {
-          // Estoque próprio: registrar como "minha venda" sem parceiro
           const key = `__own__-${groupId}`;
           if (!mySalesMap.has(key)) {
-            mySalesMap.set(key, {
-              partnerId: "__own__",
-              partnerName: "(Sem parceiro)",
-              partnerEmail: "",
-              groupId,
-              groupName,
-              isDirect,
-              totalSales: 0,
-              totalCost: 0,
-              totalProfit: 0,
-              sellerEarnings: 0,
-              partnerEarnings: 0,
-              salesCount: 0,
-            });
+            mySalesMap.set(key, newSummary("__own__", "(Sem parceiro)", "", groupId, groupName, isDirect));
           }
           const summary = mySalesMap.get(key)!;
           summary.totalSales += sale.total;
-          summary.sellerEarnings += myTotalInSale;
+          if (isDeferred) {
+            summary.deferredSellerEarnings += myTotalInSale;
+          } else {
+            summary.sellerEarnings += myTotalInSale;
+          }
           summary.salesCount += 1;
         } else {
-          // Com parceiro(s): agrupar por recebedor
           const byRecipient = new Map<string, number>();
           for (const s of otherSplits) {
             byRecipient.set(s.user_id, (byRecipient.get(s.user_id) ?? 0) + s.amount);
@@ -314,25 +348,17 @@ export default function PartnerReports() {
             const partner = profileMap.get(partnerId);
             const key = `${partnerId}-${groupId}`;
             if (!mySalesMap.has(key)) {
-              mySalesMap.set(key, {
-                partnerId,
-                partnerName: partner?.full_name ?? "Parceiro",
-                partnerEmail: partner?.email ?? "",
-                groupId,
-                groupName,
-                isDirect,
-                totalSales: 0,
-                totalCost: 0,
-                totalProfit: 0,
-                sellerEarnings: 0,
-                partnerEarnings: 0,
-                salesCount: 0,
-              });
+              mySalesMap.set(key, newSummary(partnerId, partner?.full_name ?? "Parceiro", partner?.email ?? "", groupId, groupName, isDirect));
             }
             const summary = mySalesMap.get(key)!;
             summary.totalSales += sale.total;
-            summary.sellerEarnings += myTotalInSale;
-            summary.partnerEarnings += owed;
+            if (isDeferred) {
+              summary.deferredSellerEarnings += myTotalInSale;
+              summary.deferredPartnerEarnings += owed;
+            } else {
+              summary.sellerEarnings += myTotalInSale;
+              summary.partnerEarnings += owed;
+            }
             summary.salesCount += 1;
           }
         }
@@ -345,25 +371,17 @@ export default function PartnerReports() {
 
         const key = `${sale.owner_id}-${groupId}`;
         if (!partnerSalesMap.has(key)) {
-          partnerSalesMap.set(key, {
-            partnerId: sale.owner_id,
-            partnerName: seller?.full_name ?? "Vendedor",
-            partnerEmail: seller?.email ?? "",
-            groupId,
-            groupName,
-            isDirect,
-            totalSales: 0,
-            totalCost: 0,
-            totalProfit: 0,
-            sellerEarnings: 0,
-            partnerEarnings: 0,
-            salesCount: 0,
-          });
+          partnerSalesMap.set(key, newSummary(sale.owner_id, seller?.full_name ?? "Vendedor", seller?.email ?? "", groupId, groupName, isDirect));
         }
         const summary = partnerSalesMap.get(key)!;
         summary.totalSales += sale.total;
-        summary.partnerEarnings += myTotalInSale; // meu ganho
-        summary.sellerEarnings += sellerTotalInSale; // ganho do vendedor
+        if (isDeferred) {
+          summary.deferredPartnerEarnings += myTotalInSale;
+          summary.deferredSellerEarnings += sellerTotalInSale;
+        } else {
+          summary.partnerEarnings += myTotalInSale;
+          summary.sellerEarnings += sellerTotalInSale;
+        }
         summary.salesCount += 1;
       }
     }
@@ -374,21 +392,27 @@ export default function PartnerReports() {
     };
   };
 
-  const allSummaries = useMemo(() => calculateSummaries("all"), [salesData, financialSplits, profiles, user]);
-  const partnershipSummaries = useMemo(() => calculateSummaries("partnerships"), [salesData, financialSplits, profiles, user]);
-  const groupSummaries = useMemo(() => calculateSummaries("groups"), [salesData, financialSplits, profiles, user]);
+  const allSummaries = useMemo(() => calculateSummaries("all"), [salesData, financialSplits, profiles, user, paymentReminders]);
+  const partnershipSummaries = useMemo(() => calculateSummaries("partnerships"), [salesData, financialSplits, profiles, user, paymentReminders]);
+  const groupSummaries = useMemo(() => calculateSummaries("groups"), [salesData, financialSplits, profiles, user, paymentReminders]);
 
   // Calculate totals for each type
   const calculateTotals = (mySales: PartnerSummary[], partnerSales: PartnerSummary[]) => {
     const mySellerEarnings = mySales.reduce((sum, s) => sum + s.sellerEarnings, 0);
     const iOwePartners = mySales.reduce((sum, s) => sum + s.partnerEarnings, 0);
     const myOwnerEarnings = partnerSales.reduce((sum, s) => sum + s.partnerEarnings, 0);
+    const deferredIOwe = mySales.reduce((sum, s) => sum + s.deferredPartnerEarnings, 0);
+    const deferredMyEarnings = mySales.reduce((sum, s) => sum + s.deferredSellerEarnings, 0);
+    const deferredOwnerEarnings = partnerSales.reduce((sum, s) => sum + s.deferredPartnerEarnings, 0);
     return {
       mySellerEarnings,
       iOwePartners,
       myOwnerEarnings,
       partnersOweMe: myOwnerEarnings,
       netBalance: myOwnerEarnings - iOwePartners,
+      deferredIOwe,
+      deferredMyEarnings,
+      deferredOwnerEarnings,
     };
   };
 
@@ -442,10 +466,23 @@ export default function PartnerReports() {
       text += `  *Subtotal: ${formatCurrency(totals.partnersOweMe)}*\n\n`;
     }
 
+    // Deferred amounts
+    if (hasDeferredAmounts(totals)) {
+      text += `\n⏳ *VENDAS A PRAZO (PENDENTES):*\n`;
+      if (totals.deferredIOwe > 0) {
+        text += `  • Devo (pendente): ${formatCurrency(totals.deferredIOwe)}\n`;
+      }
+      if (totals.deferredOwnerEarnings > 0) {
+        text += `  • A receber (pendente): ${formatCurrency(totals.deferredOwnerEarnings)}\n`;
+      }
+      text += `  _Não incluídos no saldo final_\n\n`;
+    }
+
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
     const balanceEmoji = totals.netBalance >= 0 ? '✅' : '🔴';
     const balanceLabel = totals.netBalance >= 0 ? 'A RECEBER' : 'A PAGAR';
     text += `${balanceEmoji} *SALDO FINAL (${balanceLabel}): ${formatCurrency(Math.abs(totals.netBalance))}*\n`;
+    text += `_(apenas vendas já recebidas)_\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     text += `_Gerado por VendaProfit_`;
     return text;
@@ -470,69 +507,111 @@ export default function PartnerReports() {
 
   const currentGroups = activeTab === "partnerships" ? directPartnerships : regularGroups;
 
+  const hasDeferredAmounts = (totals: ReturnType<typeof calculateTotals>) => 
+    totals.deferredIOwe > 0 || totals.deferredMyEarnings > 0 || totals.deferredOwnerEarnings > 0;
+
   const renderSummaryCards = (totals: ReturnType<typeof calculateTotals>, isPartnership: boolean) => (
-    <div className="grid gap-4 md:grid-cols-4 mb-6">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Meus Ganhos (Vendas)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-bold text-primary">
-            {formatCurrency(totals.mySellerEarnings)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {isPartnership ? "Vendas de peças de parceiras" : "Vendas de peças de membros"}
-          </p>
-        </CardContent>
-      </Card>
+    <div className="space-y-4 mb-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Meus Ganhos (Vendas)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-primary">
+              {formatCurrency(totals.mySellerEarnings)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isPartnership ? "Vendas de peças de parceiras" : "Vendas de peças de membros"}
+            </p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {isPartnership ? "Devo às Parceiras" : "Devo aos Donos"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-bold text-destructive">
-            {formatCurrency(totals.iOwePartners)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {isPartnership ? "Parte das parceiras" : "Custo + comissão dos donos"}
-          </p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {isPartnership ? "Devo às Parceiras" : "Devo aos Donos"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-destructive">
+              {formatCurrency(totals.iOwePartners)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isPartnership ? "Parte das parceiras" : "Custo + comissão dos donos"}
+            </p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Minhas Peças Vendidas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-bold text-primary">
-            {formatCurrency(totals.myOwnerEarnings)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {isPartnership ? "Vendidas por parceiras" : "Vendidas por membros"}
-          </p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Minhas Peças Vendidas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-primary">
+              {formatCurrency(totals.myOwnerEarnings)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isPartnership ? "Vendidas por parceiras" : "Vendidas por membros"}
+            </p>
+          </CardContent>
+        </Card>
 
-      <Card className={totals.netBalance >= 0 ? "border-green-500/50" : "border-destructive/50"}>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Saldo</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={`text-2xl font-bold ${totals.netBalance >= 0 ? "text-green-600" : "text-destructive"}`}>
-            {formatCurrency(totals.netBalance)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {totals.netBalance >= 0 ? "A receber" : "A pagar"}
-          </p>
-        </CardContent>
-      </Card>
+        <Card className={totals.netBalance >= 0 ? "border-green-500/50" : "border-destructive/50"}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Saldo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-bold ${totals.netBalance >= 0 ? "text-green-600" : "text-destructive"}`}>
+              {formatCurrency(totals.netBalance)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {totals.netBalance >= 0 ? "A receber" : "A pagar"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Deferred (a prazo) section */}
+      {hasDeferredAmounts(totals) && (
+        <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <Calendar className="h-4 w-4" />
+              Vendas a Prazo (Pagamento Pendente)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Estes valores são de vendas a prazo ainda não recebidas. Não estão incluídos nos totais acima até que o pagamento seja confirmado.
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              {totals.deferredMyEarnings > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-md bg-background/80">
+                  <span className="text-sm text-muted-foreground">Meus ganhos pendentes</span>
+                  <span className="font-semibold text-amber-600">{formatCurrency(totals.deferredMyEarnings)}</span>
+                </div>
+              )}
+              {totals.deferredIOwe > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-md bg-background/80">
+                  <span className="text-sm text-muted-foreground">{isPartnership ? "Devo (pendente)" : "Devo aos donos (pendente)"}</span>
+                  <span className="font-semibold text-amber-600">{formatCurrency(totals.deferredIOwe)}</span>
+                </div>
+              )}
+              {totals.deferredOwnerEarnings > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-md bg-background/80">
+                  <span className="text-sm text-muted-foreground">A receber (pendente)</span>
+                  <span className="font-semibold text-amber-600">{formatCurrency(totals.deferredOwnerEarnings)}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 
@@ -583,9 +662,15 @@ export default function PartnerReports() {
                     <TableCell className="text-right">{formatCurrency(summary.totalSales)}</TableCell>
                     <TableCell className="text-right text-primary font-medium">
                       {formatCurrency(summary.sellerEarnings)}
+                      {summary.deferredSellerEarnings > 0 && (
+                        <p className="text-xs text-amber-600 font-normal">+ {formatCurrency(summary.deferredSellerEarnings)} a prazo</p>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-destructive font-medium">
                       {formatCurrency(summary.partnerEarnings)}
+                      {summary.deferredPartnerEarnings > 0 && (
+                        <p className="text-xs text-amber-600 font-normal">+ {formatCurrency(summary.deferredPartnerEarnings)} a prazo</p>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -640,9 +725,15 @@ export default function PartnerReports() {
                     <TableCell className="text-right">{formatCurrency(summary.totalSales)}</TableCell>
                     <TableCell className="text-right text-primary font-medium">
                       {formatCurrency(summary.partnerEarnings)}
+                      {summary.deferredPartnerEarnings > 0 && (
+                        <p className="text-xs text-amber-600 font-normal">+ {formatCurrency(summary.deferredPartnerEarnings)} a prazo</p>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {formatCurrency(summary.sellerEarnings)}
+                      {summary.deferredSellerEarnings > 0 && (
+                        <p className="text-xs text-amber-600 font-normal">+ {formatCurrency(summary.deferredSellerEarnings)} a prazo</p>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
