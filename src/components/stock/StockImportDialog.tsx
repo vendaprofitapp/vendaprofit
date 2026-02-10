@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -604,6 +605,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const productImageRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
   
   const [loading, setLoading] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importTotal, setImportTotal] = useState(0);
   const [products, setProducts] = useState<ImportedProduct[]>([]);
   const [existingProducts, setExistingProducts] = useState<ExistingProduct[]>([]);
   const [supplierName, setSupplierName] = useState("");
@@ -1091,6 +1094,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     }
 
     setLoading(true);
+    setImportProgress(0);
+    setImportTotal(selectedProducts.length);
 
     // Create supplier if needed (but first check if it already exists)
     let finalSupplierId = supplierId === "none" ? null : supplierId;
@@ -1130,7 +1135,9 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     let successCount = 0;
     let updateCount = 0;
 
-    for (const product of selectedProducts) {
+    for (let i = 0; i < selectedProducts.length; i++) {
+      const product = selectedProducts[i];
+      setImportProgress(i + 1);
       if (product.existingProduct) {
         // Update existing product stock - need to handle variants properly
         const productId = product.existingProduct.id;
@@ -1352,6 +1359,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     }
 
     setLoading(false);
+    setImportProgress(0);
+    setImportTotal(0);
   };
 
   const hasProductsWithErrors = products.some(p => p.selected && p.hasErrors);
@@ -1764,13 +1773,23 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           />
         )}
 
+        {loading && importTotal > 0 && (
+          <div className="space-y-2 px-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Importando produtos...</span>
+              <span className="font-medium">{importProgress}/{importTotal}</span>
+            </div>
+            <Progress value={(importProgress / importTotal) * 100} className="h-3" />
+          </div>
+        )}
+
         <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-          {step === "review" && (
+          {step === "review" && !loading && (
             <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setStep("upload")}>
               Voltar
             </Button>
           )}
-          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handleClose}>
+          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handleClose} disabled={loading}>
             Cancelar
           </Button>
           {step === "review" && (
@@ -1781,7 +1800,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               disabled={loading || hasProductsWithErrors}
             >
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Importar {products.filter(p => p.selected).length}
+              {loading ? `Importando ${importProgress}/${importTotal}` : `Importar ${products.filter(p => p.selected).length}`}
             </Button>
           )}
         </DialogFooter>
