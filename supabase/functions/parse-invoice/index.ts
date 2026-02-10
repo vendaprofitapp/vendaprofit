@@ -8,25 +8,23 @@ const corsHeaders = {
 
 const INVOICE_PROMPT = `Analise esta imagem de nota fiscal e extraia os produtos listados.
 
-IMPORTANTE: Muitos produtos têm COR e TAMANHO incluídos no nome. Você DEVE:
-1. Identificar e EXTRAIR a cor e tamanho do nome do produto
-2. Retornar o nome LIMPO (sem cor e tamanho)
-3. Agrupar produtos iguais que diferem apenas em cor/tamanho
+IMPORTANTE: O sistema usa o modelo "Cor por Produto", onde cada combinação de modelo+cor é um produto separado.
+O nome do produto DEVE INCLUIR A COR. A única variante permitida é TAMANHO.
 
-Exemplos de extração:
-- "CROPPED AMANDA PRETO G" → name: "CROPPED AMANDA", color: "PRETO", size: "G"
-- "VESTIDO MARIA OFF WHITE P" → name: "VESTIDO MARIA", color: "OFF WHITE", size: "P"
-- "BLUSA FLORAL AZUL MARINHO GG" → name: "BLUSA FLORAL", color: "AZUL MARINHO", size: "GG"
-- "CALÇA JEANS CLARA 38" → name: "CALÇA JEANS", color: "CLARA", size: "38"
+Exemplos de como montar o nome:
+- "CROPPED AMANDA PRETO G" → name: "CROPPED AMANDA PRETO", size: "G"
+- "VESTIDO MARIA OFF WHITE P" → name: "VESTIDO MARIA OFF WHITE", size: "P"
+- "BLUSA FLORAL AZUL MARINHO GG" → name: "BLUSA FLORAL AZUL MARINHO", size: "GG"
+- "CALÇA JEANS CLARA 38" → name: "CALÇA JEANS CLARA", size: "38"
 
 Cores comuns: PRETO, BRANCO, OFF WHITE, AZUL, VERMELHO, VERDE, ROSA, BEGE, MARROM, CINZA, AMARELO, LARANJA, ROXO, NUDE, CARAMELO, MARSALA, BORDÔ, CREME, CORAL, LILÁS, VINHO, GRAFITE, MOSTARDA, TERRACOTA, MILITAR, MARINHO, etc.
 
 Tamanhos comuns: PP, P, M, G, GG, XG, XXG, EXG, EXGG, ÚNICO, UN, 34, 36, 38, 40, 42, 44, 46, 48, 50, etc.
 
 Para cada produto encontrado, extraia:
-- name: nome do produto SEM cor e SEM tamanho
-- size: tamanho extraído do nome ou do campo próprio
-- color: cor extraída do nome ou do campo próprio
+- name: nome do produto COM a cor incluída, SEM o tamanho (ex: "TOP CAROL VERMELHO")
+- color: cor extraída (ex: "VERMELHO") - será usada como color_label do produto
+- size: tamanho extraído (ex: "G", "38", etc.)
 - cost_price: preço de custo/unitário (apenas números, sem símbolos de moeda)
 - quantity: quantidade (apenas números)
 - supplier: nome do fornecedor/empresa emissora da nota
@@ -37,10 +35,10 @@ Retorne APENAS um JSON válido no formato:
   "supplier": "nome do fornecedor da nota",
   "products": [
     {
-      "name": "nome do produto LIMPO sem cor/tamanho",
+      "name": "nome do produto COM cor, SEM tamanho",
       "original_name": "nome original completo",
+      "color": "cor extraída",
       "size": "tamanho ou null",
-      "color": "cor ou null",
       "cost_price": 0.00,
       "quantity": 1
     }
