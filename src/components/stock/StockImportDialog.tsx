@@ -1206,8 +1206,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               .from("products")
               .update({ 
                 stock_quantity: totalVariantStock,
-                cost_price: product.cost_price || undefined,
-                supplier_id: finalSupplierId,
               })
               .eq("id", productId);
             
@@ -1221,28 +1219,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             .from("products")
             .update({ 
               stock_quantity: newQuantity,
-              cost_price: product.cost_price || undefined,
-              supplier_id: finalSupplierId,
             })
             .eq("id", productId);
           
           if (!error) {
             updateCount++;
-          }
-        }
-        
-        // Upload images if any (for main product)
-        if (product.images.length > 0) {
-          const urls = await uploadProductImages(productId, product.images);
-          if (urls.length > 0) {
-            await supabase
-              .from("products")
-              .update({
-                image_url: urls[0] || null,
-                image_url_2: urls[1] || null,
-                image_url_3: urls[2] || null,
-              })
-              .eq("id", productId);
           }
         }
       } else {
