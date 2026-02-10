@@ -879,14 +879,18 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         });
       }
 
-      if (parsedProducts.length === 0) {
-        toast.error("Nenhum produto encontrado na planilha");
+      // Filtrar produtos com estoque zerado para acelerar a importação
+      const filteredProducts = parsedProducts.filter(p => (p.quantity || 0) > 0);
+      console.log(`Produtos totais: ${parsedProducts.length}, com estoque: ${filteredProducts.length}, ignorados (zerados): ${parsedProducts.length - filteredProducts.length}`);
+
+      if (filteredProducts.length === 0) {
+        toast.error("Nenhum produto com estoque encontrado na planilha");
         setLoading(false);
         return;
       }
 
-      processProducts(parsedProducts);
-      toast.success(`${parsedProducts.length} produtos encontrados`);
+      processProducts(filteredProducts);
+      toast.success(`${filteredProducts.length} produtos com estoque encontrados (${parsedProducts.length - filteredProducts.length} zerados ignorados)`);
     } catch (error) {
       console.error("Error parsing spreadsheet:", error);
       toast.error("Erro ao processar planilha");
