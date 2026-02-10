@@ -937,8 +937,12 @@ export default function StoreCatalog() {
         const matchingSizePrices: Record<string, MarketingPrices> = {};
         const matchingSizeDeliveryDays: Record<string, number | null> = {};
         
+        // For "launch" filter, also include products marked as is_new_release
+        const isLaunchFilter = selectedMarketingFilter === "launch";
+        const itemIsNewRelease = isLaunchFilter && item.is_new_release;
+        
         Object.entries(item.sizeMarketingStatus).forEach(([size, status]) => {
-          if (hasStatus(status, selectedMarketingFilter as MarketingStatusValue)) {
+          if (hasStatus(status, selectedMarketingFilter as MarketingStatusValue) || itemIsNewRelease) {
             matchingSizes.push(size);
             matchingSizeStatuses[size] = status;
             matchingSizePrices[size] = item.sizeMarketingPrices[size] ?? null;
@@ -957,7 +961,7 @@ export default function StoreCatalog() {
           (item.color_label && item.color_label.toLowerCase().includes(search.toLowerCase()));
         const matchesMainCat = !selectedMainCategory || 
           (selectedMainCategory.toLowerCase() === "lançamentos" 
-            ? item.is_new_release 
+            ? (item.is_new_release || Object.values(item.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
             : (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
         const matchesSubCat = !selectedSubcategory || 
           (item.subcategory && item.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
@@ -1004,7 +1008,7 @@ export default function StoreCatalog() {
           (p.color_label && p.color_label.toLowerCase().includes(search.toLowerCase()));
         const matchesMainCat = !selectedMainCategory || 
           (selectedMainCategory.toLowerCase() === "lançamentos" 
-            ? p.is_new_release 
+            ? (p.is_new_release || Object.values(p.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
             : (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
         const matchesSubCat = !selectedSubcategory || 
           (p.subcategory && p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
