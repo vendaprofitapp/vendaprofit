@@ -98,6 +98,7 @@ interface Product {
   custom_detail?: string | null;
   main_category?: string | null;
   subcategory?: string | null;
+  is_new_release?: boolean;
 }
 
 // A display item represents one card in the catalog (either a product or a color variant)
@@ -115,6 +116,7 @@ interface CatalogDisplayItem {
   category_3?: string | null;
   main_category: string | null;
   subcategory: string | null;
+  is_new_release: boolean;
   color: string | null;
   model: string | null;
   color_label: string | null;
@@ -416,7 +418,7 @@ export default function StoreCatalog() {
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
-          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail")
+          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
@@ -436,7 +438,7 @@ export default function StoreCatalog() {
           .select(`
             product_id,
             products!inner (
-              id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail
+              id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail, is_new_release
             )
           `)
           .in("group_id", allPartnershipGroupIds);
@@ -509,6 +511,7 @@ export default function StoreCatalog() {
         category_3?: string | null;
         main_category: string | null;
         subcategory: string | null;
+        is_new_release: boolean;
         color: string | null;
         model: string | null;
         color_label: string | null;
@@ -571,6 +574,7 @@ export default function StoreCatalog() {
               category_3: (product as any).category_3,
               main_category: (product as any).main_category || null,
               subcategory: (product as any).subcategory || null,
+              is_new_release: !!(product as any).is_new_release,
             color: productColorLabel,
             model: productModel,
             color_label: productColorLabel,
@@ -605,6 +609,7 @@ export default function StoreCatalog() {
             category_3: (product as any).category_3,
             main_category: (product as any).main_category || null,
             subcategory: (product as any).subcategory || null,
+            is_new_release: !!(product as any).is_new_release,
             color: productColorLabel,
             model: productModel,
             color_label: productColorLabel,
@@ -682,6 +687,7 @@ export default function StoreCatalog() {
               category_3: (product as any).category_3,
               main_category: (product as any).main_category || null,
               subcategory: (product as any).subcategory || null,
+              is_new_release: !!(product as any).is_new_release,
               color: productColorLabel,
               model: productModel,
               color_label: productColorLabel,
@@ -741,6 +747,7 @@ export default function StoreCatalog() {
           category_3: cardData.category_3,
           main_category: cardData.main_category,
           subcategory: cardData.subcategory,
+          is_new_release: cardData.is_new_release,
           color: cardData.color,
           model: cardData.model,
           color_label: cardData.color_label,
@@ -949,7 +956,9 @@ export default function StoreCatalog() {
           (item.model && item.model.toLowerCase().includes(search.toLowerCase())) ||
           (item.color_label && item.color_label.toLowerCase().includes(search.toLowerCase()));
         const matchesMainCat = !selectedMainCategory || 
-          (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase());
+          (selectedMainCategory.toLowerCase() === "lançamentos" 
+            ? item.is_new_release 
+            : (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
         const matchesSubCat = !selectedSubcategory || 
           (item.subcategory && item.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
@@ -994,7 +1003,9 @@ export default function StoreCatalog() {
           (p.model && p.model.toLowerCase().includes(search.toLowerCase())) ||
           (p.color_label && p.color_label.toLowerCase().includes(search.toLowerCase()));
         const matchesMainCat = !selectedMainCategory || 
-          (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase());
+          (selectedMainCategory.toLowerCase() === "lançamentos" 
+            ? p.is_new_release 
+            : (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
         const matchesSubCat = !selectedSubcategory || 
           (p.subcategory && p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
