@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +69,12 @@ interface ImportedProduct {
   price: number;
   quantity: number;
   category: string;
+  main_category: string;
+  subcategory: string;
+  is_new_release: boolean;
+  model: string;
+  color_label: string;
+  custom_detail: string;
   description: string;
   min_stock_level: number;
   selected: boolean;
@@ -405,23 +412,36 @@ function EditProductWithVariantsDialog({
               />
             </div>
             
+            {/* Hierarchical Category Selector */}
+            <FixedCategorySelector
+              mainCategory={product.main_category || ""}
+              subcategory={product.subcategory || ""}
+              isNewRelease={product.is_new_release || false}
+              onMainCategoryChange={(value) => onUpdateProduct({ main_category: value, category: value })}
+              onSubcategoryChange={(value) => onUpdateProduct({ subcategory: value })}
+              onIsNewReleaseChange={(value) => onUpdateProduct({ is_new_release: value })}
+            />
+
+            {/* Model / Color Label / Custom Detail */}
             <div className="grid gap-2">
-              <Label>Categoria *</Label>
-              <Select
-                value={product.category}
-                onValueChange={(value) => onUpdateProduct({ category: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.name}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Filtros do Produto</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Input
+                  value={product.model || ""}
+                  onChange={(e) => onUpdateProduct({ model: e.target.value })}
+                  placeholder="Modelo (ex: Top Carol)"
+                />
+                <Input
+                  value={product.color_label || ""}
+                  onChange={(e) => onUpdateProduct({ color_label: e.target.value })}
+                  placeholder="Cor (ex: Vermelho)"
+                />
+                <Input
+                  value={product.custom_detail || ""}
+                  onChange={(e) => onUpdateProduct({ custom_detail: e.target.value })}
+                  placeholder="Detalhe (ex: Canelado)"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -621,6 +641,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   // Extended interface for existing products with category
   interface ExistingProductWithCategory extends ExistingProduct {
     category: string;
+    main_category: string | null;
+    subcategory: string | null;
   }
   
   const [existingProductsFull, setExistingProductsFull] = useState<ExistingProductWithCategory[]>([]);
@@ -630,7 +652,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     
     const { data } = await supabase
       .from("products")
-      .select("id, name, stock_quantity, category")
+      .select("id, name, stock_quantity, category, main_category, subcategory")
       .eq("owner_id", user.id);
     
     // Also set for backward compatibility
@@ -670,7 +692,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const checkProductErrors = (product: ImportedProduct): boolean => {
     // Products matching existing ones don't need category
     if (product.existingProduct) return !product.name.trim();
-    return !product.name.trim() || !product.category;
+    return !product.name.trim() || !product.main_category;
   };
 
   const resetState = () => {
@@ -687,7 +709,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     onOpenChange(false);
   };
 
-  const processProducts = (parsedProducts: { name: string; original_name?: string; sku: string | null; size: string | null; color: string | null; cost_price: number; price?: number; quantity: number; category?: string }[]) => {
+  const processProducts = (parsedProducts: { name: string; original_name?: string; sku: string | null; size: string | null; color: string | null; cost_price: number; price?: number; quantity: number; category?: string; subcategory?: string; model?: string; color_label?: string }[]) => {
     // Expand items that contain multiple colors in a single line (e.g. "ROSA, NAVY BLUE E PRETA")
     const splitColors = (raw: string) => {
       const cleaned = raw
@@ -758,7 +780,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       console.log(`Produto "${groupName}": ${items.length} item(s), hasVariantInfo: ${hasVariantInfo}, variants:`, variants);
 
       // Inherit category from existing product if available
-      const inheritedCategory = existing?.category || baseItem.category || "";
+      const inheritedMainCategory = existing?.main_category || existing?.category || baseItem.category || "";
+      const inheritedSubcategory = existing?.subcategory || baseItem.subcategory || "";
 
       const product: ImportedProduct = {
         name: baseItem.name.trim().replace(/\s+/g, ' '), // Normalize name spaces
@@ -769,7 +792,13 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         cost_price: baseItem.cost_price,
         price: baseItem.price || 0,
         quantity: totalQuantity,
-        category: inheritedCategory,
+        category: inheritedMainCategory,
+        main_category: inheritedMainCategory,
+        subcategory: inheritedSubcategory,
+        is_new_release: false,
+        model: baseItem.model || "",
+        color_label: baseItem.color_label || variants[0]?.color || "",
+        custom_detail: "",
         description: "",
         min_stock_level: 5,
         selected: true,
@@ -818,6 +847,9 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const priceIdx = headers.findIndex(h => h.includes('venda') || h.includes('price') || h.includes('preco') || h.includes('preço'));
       const qtyIdx = headers.findIndex(h => h.includes('qtd') || h.includes('quantidade') || h.includes('qty') || h.includes('quantity'));
       const categoryIdx = headers.findIndex(h => h.includes('categoria') || h.includes('category'));
+      const subcategoryIdx = headers.findIndex(h => h.includes('subcategoria') || h.includes('subcategory'));
+      const modelIdx = headers.findIndex(h => h.includes('modelo') || h.includes('model'));
+      const colorLabelIdx = headers.findIndex(h => h === 'cor_label' || h === 'color_label');
 
       if (nameIdx === -1) {
         toast.error("Coluna 'Nome' não encontrada na planilha");
@@ -841,6 +873,9 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           price: priceIdx >= 0 ? parseFloat(values[priceIdx]?.replace(',', '.')) || 0 : 0,
           quantity: qtyIdx >= 0 ? parseInt(values[qtyIdx]) || 1 : 1,
           category: categoryIdx >= 0 ? values[categoryIdx] || "" : "",
+          subcategory: subcategoryIdx >= 0 ? values[subcategoryIdx] || "" : "",
+          model: modelIdx >= 0 ? values[modelIdx] || "" : "",
+          color_label: colorLabelIdx >= 0 ? values[colorLabelIdx] || "" : "",
         });
       }
 
@@ -958,14 +993,21 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       if (i !== index) return p;
       const updated = { ...p, ...updates };
       
+      // Sync category with main_category
+      if (updates.main_category !== undefined) {
+        updated.category = updates.main_category;
+      }
+      
       // If name was changed, re-check for existing product
       if (updates.name !== undefined && updates.name !== p.name) {
         const existingMatch = findDuplicate(updates.name);
         updated.existingProduct = existingMatch;
         
         // If we found an existing product, inherit its category
-        if (existingMatch && existingMatch.category) {
-          updated.category = existingMatch.category;
+        if (existingMatch) {
+          updated.main_category = existingMatch.main_category || existingMatch.category || "";
+          updated.category = updated.main_category;
+          updated.subcategory = existingMatch.subcategory || "";
         }
       }
       
@@ -1215,10 +1257,16 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             description: product.description || null,
             size: product.size,
             color: product.color,
+            color_label: product.color_label || null,
+            model: product.model || null,
+            custom_detail: product.custom_detail || null,
             cost_price: product.cost_price,
             price: product.price,
             stock_quantity: product.quantity,
-            category: product.category || "Outros",
+            category: product.main_category || product.category || "Outros",
+            main_category: product.main_category || null,
+            subcategory: product.subcategory || null,
+            is_new_release: product.is_new_release || false,
             min_stock_level: product.min_stock_level || 5,
             owner_id: user.id,
             supplier_id: finalSupplierId,
@@ -1454,8 +1502,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                       <span className={`font-semibold text-sm block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
                         {product.name || "(sem nome)"}
                       </span>
-                      <span className={`text-xs ${!product.category ? "text-destructive" : "text-muted-foreground"}`}>
-                        {product.category || "(categoria)"}
+                      <span className={`text-xs ${!product.main_category ? "text-destructive" : "text-muted-foreground"}`}>
+                        {product.main_category || "(categoria)"}{product.subcategory ? ` › ${product.subcategory}` : ""}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -1604,9 +1652,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className={!product.category ? "text-destructive" : "text-muted-foreground"}>
-                          {product.category || "(obrigatório)"}
-                        </span>
+                        <div>
+                          <span className={!product.main_category ? "text-destructive" : "text-muted-foreground"}>
+                            {product.main_category || "(obrigatório)"}
+                          </span>
+                          {product.subcategory && (
+                            <span className="text-xs text-muted-foreground block">› {product.subcategory}</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {product.variants.length > 0 ? (
