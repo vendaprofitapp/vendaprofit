@@ -1144,6 +1144,22 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         
         // Check if this product has variants that we need to update
         if (product.variants.length > 0) {
+          // Aggregate quantities by size first (multiple colors may share the same size)
+          const sizeQtyMap = new Map<string, number>();
+          const sizeColorImages = new Map<string, { color: string; colorImages: typeof product.colorImages }>();
+          
+          for (const variant of product.variants) {
+            const normalizedSize = (variant.size || 'ÚNICO').toUpperCase().trim();
+            const current = sizeQtyMap.get(normalizedSize) || 0;
+            sizeQtyMap.set(normalizedSize, current + variant.quantity);
+            // Keep first color's images for new variants
+            if (!sizeColorImages.has(normalizedSize) && variant.color) {
+              sizeColorImages.set(normalizedSize, { color: variant.color, colorImages: product.colorImages });
+            }
+          }
+          
+          console.log(`Produto "${product.name}" - estoque agregado por tamanho:`, Object.fromEntries(sizeQtyMap));
+
           // Fetch existing variants for this product
           const { data: existingVariants } = await supabase
             .from("product_variants")
@@ -1152,9 +1168,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           
           let variantUpdated = false;
           
-          for (const variant of product.variants) {
-            // Normalize for comparison
-            const variantSize = (variant.size || '').toLowerCase().trim();
+          for (const [size, totalQty] of sizeQtyMap.entries()) {
+            const variantSize = size.toLowerCase().trim();
             
             // Find matching existing variant by size
             const matchingVariant = existingVariants?.find(ev => {
@@ -1163,26 +1178,27 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             });
             
             if (matchingVariant) {
-              // Update existing variant's stock
-              const newVariantQty = matchingVariant.stock_quantity + variant.quantity;
+              // Update existing variant's stock (add to current)
+              const newVariantQty = matchingVariant.stock_quantity + totalQty;
               const { error: variantError } = await supabase
                 .from("product_variants")
                 .update({ stock_quantity: newVariantQty })
                 .eq("id", matchingVariant.id);
               
-              if (!variantError) {
+              if (variantError) {
+                console.error(`Erro ao atualizar variante ${size}:`, variantError);
+              } else {
                 variantUpdated = true;
-                console.log(`Variante atualizada: ${variant.size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
+                console.log(`Variante atualizada: ${size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
               }
             } else {
-              // Create new variant for this color/size combination
-              // Get color images if available
+              // Create new variant for this size
+              const colorInfo = sizeColorImages.get(size);
               const colorUrls: string[] = [];
-              if (variant.color && product.colorImages[variant.color]) {
-                const colorData = product.colorImages[variant.color];
-                // Upload files first
+              if (colorInfo && product.colorImages[colorInfo.color]) {
+                const colorData = product.colorImages[colorInfo.color];
                 if (colorData.files.length > 0) {
-                  const uploaded = await uploadProductImages(productId, colorData.files, variant.color.replace(/\s+/g, '_'));
+                  const uploaded = await uploadProductImages(productId, colorData.files, colorInfo.color.replace(/\s+/g, '_'));
                   colorUrls.push(...uploaded);
                 }
                 colorUrls.push(...colorData.urls);
@@ -1192,15 +1208,15 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 .from("product_variants")
                 .insert({
                   product_id: productId,
-                  size: variant.size || "ÚNICO",
-                  stock_quantity: variant.quantity,
+                  size: size || "ÚNICO",
+                  stock_quantity: totalQty,
                 });
               
               if (insertError) {
-                console.error(`Erro ao criar variante ${variant.size}:`, insertError);
+                console.error(`Erro ao criar variante ${size}:`, insertError);
               } else {
                 variantUpdated = true;
-                console.log(`Nova variante criada: ${variant.size} com ${variant.quantity} unidades`);
+                console.log(`Nova variante criada: ${size} com ${totalQty} unidades`);
               }
             }
           }
