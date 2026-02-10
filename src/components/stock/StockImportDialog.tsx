@@ -1326,7 +1326,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] sm:w-auto p-4 sm:p-6">
+      <DialogContent className={`${step === "review" ? "sm:max-w-[95vw] sm:w-[95vw] sm:h-[90vh]" : "max-w-4xl"} max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] p-4 sm:p-6`}>
         <DialogHeader>
           <DialogTitle>Importar Estoque</DialogTitle>
           <DialogDescription>
@@ -1556,20 +1556,21 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             </div>
 
             {/* Desktop Table View */}
-            <div className="hidden md:block border rounded-lg overflow-hidden">
+            <div className="hidden md:block border rounded-lg overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12"></TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Cor/Tam</TableHead>
-                    <TableHead>Custo</TableHead>
-                    <TableHead>Qtd</TableHead>
-                    <TableHead>Fotos</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-12"></TableHead>
-                  </TableRow>
+                    <TableRow>
+                     <TableHead className="w-12"></TableHead>
+                     <TableHead className="min-w-[200px]">Produto</TableHead>
+                     <TableHead className="min-w-[120px]">Categoria</TableHead>
+                     <TableHead className="min-w-[120px]">Cor/Tam</TableHead>
+                     <TableHead className="min-w-[100px]">Custo</TableHead>
+                     <TableHead className="min-w-[100px]">Preço</TableHead>
+                     <TableHead className="min-w-[60px]">Qtd</TableHead>
+                     <TableHead className="min-w-[120px]">Fotos</TableHead>
+                     <TableHead className="min-w-[100px]">Status</TableHead>
+                     <TableHead className="w-12"></TableHead>
+                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {products.map((product, idx) => (
@@ -1617,6 +1618,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                         )}
                       </TableCell>
                       <TableCell>R$ {product.cost_price.toFixed(2)}</TableCell>
+                      <TableCell>R$ {product.price.toFixed(2)}</TableCell>
                       <TableCell>{product.quantity}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
