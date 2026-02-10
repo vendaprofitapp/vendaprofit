@@ -497,8 +497,9 @@ export default function StockControl() {
       const matchesNewRelease = filters.isNewRelease === "all" || 
         (filters.isNewRelease === "yes" ? p.is_new_release === true : p.is_new_release !== true);
       
-      // Status filter
-      const matchesStatus = filters.status === "all" || statusKey === filters.status;
+      // Status filter - "available" means any product with stock > 0 (includes low stock)
+      const matchesStatus = filters.status === "all" || 
+        (filters.status === "available" ? stockNum > 0 : statusKey === filters.status);
       
       // Supplier - compare by name to handle duplicated suppliers across users
       const selectedSupplierName = filters.supplier === "all" 
