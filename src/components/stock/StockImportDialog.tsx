@@ -923,16 +923,40 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     setLoading(true);
 
     try {
+      // Get user AI config for BYOK headers
+      let aiHeaders: Record<string, string> = {};
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("preferred_ai_provider, gemini_api_key, openai_api_key")
+          .eq("id", user.id)
+          .single();
+        
+        if (profile) {
+          const provider = (profile.preferred_ai_provider as string) || "gemini";
+          const apiKey = provider === "openai" ? profile.openai_api_key : profile.gemini_api_key;
+          if (apiKey) {
+            aiHeaders = {
+              "x-ai-provider": provider,
+              "x-ai-key": apiKey,
+            };
+          }
+        }
+      }
+
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = (reader.result as string).split(',')[1];
         
         const { data, error } = await supabase.functions.invoke('parse-invoice', {
-          body: { imageBase64: base64, mimeType: file.type }
+          body: { imageBase64: base64, mimeType: file.type },
+          headers: aiHeaders,
         });
 
         if (error || !data?.success) {
-          toast.error(data?.error || "Erro ao processar nota fiscal");
+          const errorMsg = data?.error || error?.message || "Erro ao processar nota fiscal";
+          toast.error(errorMsg);
+          console.error("Invoice parse error:", error, data);
           setLoading(false);
           return;
         }
@@ -943,19 +967,20 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           setSupplierName(invoiceData.supplier);
         }
 
+        // Map invoice AI response to processProducts format
+        // The AI returns: name, original_name, size, color, cost_price, quantity
         const parsedProducts = (invoiceData.products || []).map((p: any) => ({
           name: p.name || "Produto sem nome",
           original_name: p.original_name || p.name || "Produto sem nome",
-          sku: p.sku || null,
           size: p.size || null,
           color: p.color || null,
           cost_price: parseFloat(p.cost_price) || 0,
           price: parseFloat(p.price) || 0,
           quantity: parseInt(p.quantity) || 1,
-          category: p.category || "",
+          category: "",
         }));
         
-        console.log("Produtos parseados da IA:", parsedProducts);
+        console.log("Produtos parseados da NF:", parsedProducts);
 
         if (parsedProducts.length === 0) {
           toast.error("Nenhum produto identificado na nota fiscal");
