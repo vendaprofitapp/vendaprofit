@@ -96,6 +96,8 @@ interface Product {
   model?: string | null;
   color_label?: string | null;
   custom_detail?: string | null;
+  main_category?: string | null;
+  subcategory?: string | null;
 }
 
 // A display item represents one card in the catalog (either a product or a color variant)
@@ -111,6 +113,8 @@ interface CatalogDisplayItem {
   category: string;
   category_2?: string | null;
   category_3?: string | null;
+  main_category: string | null;
+  subcategory: string | null;
   color: string | null;
   model: string | null;
   color_label: string | null;
@@ -204,6 +208,8 @@ export default function StoreCatalog() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [showOpportunities, setShowOpportunities] = useState(false);
   const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatusValue | "all">("all");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -322,6 +328,33 @@ export default function StoreCatalog() {
     enabled: !!slug,
   });
 
+  // Fetch system categories (main_categories + subcategories)
+  const { data: systemMainCategories = [] } = useQuery({
+    queryKey: ["system-main-categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("main_categories")
+        .select("*")
+        .eq("is_active", true)
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: systemSubcategories = [] } = useQuery({
+    queryKey: ["system-subcategories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subcategories")
+        .select("*")
+        .eq("is_active", true)
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Check if current user is the store owner
   const isStoreOwner = useMemo(() => {
     return user?.id === store?.owner_id;
@@ -383,7 +416,7 @@ export default function StoreCatalog() {
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
-          .select("id, name, description, price, category, category_2, category_3, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail")
+          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
@@ -403,7 +436,7 @@ export default function StoreCatalog() {
           .select(`
             product_id,
             products!inner (
-              id, name, description, price, category, category_2, category_3, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail
+              id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail
             )
           `)
           .in("group_id", allPartnershipGroupIds);
@@ -474,6 +507,8 @@ export default function StoreCatalog() {
         category: string;
         category_2?: string | null;
         category_3?: string | null;
+        main_category: string | null;
+        subcategory: string | null;
         color: string | null;
         model: string | null;
         color_label: string | null;
@@ -534,6 +569,8 @@ export default function StoreCatalog() {
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
+              main_category: (product as any).main_category || null,
+              subcategory: (product as any).subcategory || null,
             color: productColorLabel,
             model: productModel,
             color_label: productColorLabel,
@@ -566,6 +603,8 @@ export default function StoreCatalog() {
             category: product.category,
             category_2: (product as any).category_2,
             category_3: (product as any).category_3,
+            main_category: (product as any).main_category || null,
+            subcategory: (product as any).subcategory || null,
             color: productColorLabel,
             model: productModel,
             color_label: productColorLabel,
@@ -641,6 +680,8 @@ export default function StoreCatalog() {
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
+              main_category: (product as any).main_category || null,
+              subcategory: (product as any).subcategory || null,
               color: productColorLabel,
               model: productModel,
               color_label: productColorLabel,
@@ -698,6 +739,8 @@ export default function StoreCatalog() {
           category: cardData.category,
           category_2: cardData.category_2,
           category_3: cardData.category_3,
+          main_category: cardData.main_category,
+          subcategory: cardData.subcategory,
           color: cardData.color,
           model: cardData.model,
           color_label: cardData.color_label,
@@ -905,13 +948,15 @@ export default function StoreCatalog() {
           (item.color && item.color.toLowerCase().includes(search.toLowerCase())) ||
           (item.model && item.model.toLowerCase().includes(search.toLowerCase())) ||
           (item.color_label && item.color_label.toLowerCase().includes(search.toLowerCase()));
-        const productCategories = [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase());
-        const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+        const matchesMainCat = !selectedMainCategory || 
+          (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase());
+        const matchesSubCat = !selectedSubcategory || 
+          (item.subcategory && item.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
         // Also check customer filters
         if (!matchesCustomerFilters(item, matchingSizes)) return;
         
-        if (matchesSearch && matchesCategory) {
+        if (matchesSearch && matchesMainCat && matchesSubCat) {
           // Use the original item.id (product_color) as the grouping key
           const groupKey = item.id;
           
@@ -948,21 +993,24 @@ export default function StoreCatalog() {
           (p.color && p.color.toLowerCase().includes(search.toLowerCase())) ||
           (p.model && p.model.toLowerCase().includes(search.toLowerCase())) ||
           (p.color_label && p.color_label.toLowerCase().includes(search.toLowerCase()));
-        const productCategories = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
-        const matchesCategory = !selectedCategory || productCategories.includes(selectedCategory.toLowerCase());
+        const matchesMainCat = !selectedMainCategory || 
+          (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase());
+        const matchesSubCat = !selectedSubcategory || 
+          (p.subcategory && p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
         // Legacy opportunity filter (category-based)
         if (showOpportunities) {
-          const hasOpportunity = productCategories.some(c => c?.toLowerCase() === "oportunidades");
+          const pCats = [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase());
+          const hasOpportunity = pCats.some(c => c?.toLowerCase() === "oportunidades");
           if (!hasOpportunity) return false;
         }
 
         // Customer filters
         if (!matchesCustomerFilters(p)) return false;
         
-        return matchesSearch && matchesCategory;
+        return matchesSearch && matchesMainCat && matchesSubCat;
       });
-  }, [catalogItems, selectedMarketingFilter, search, selectedCategory, showOpportunities, customerFilters, secretAreaUnlocked]);
+  }, [catalogItems, selectedMarketingFilter, search, selectedMainCategory, selectedSubcategory, showOpportunities, customerFilters, secretAreaUnlocked]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -1442,36 +1490,88 @@ export default function StoreCatalog() {
           primaryColor={primaryColor}
         />
 
-        {/* Category Pills - horizontal scroll on mobile */}
+        {/* System Category Pills - Main Categories with Subcategories */}
         {(() => {
           const filterConfig = store.filter_buttons_config || defaultFilterButtonsConfig;
           const categoriesConfig = filterConfig.categories;
           
-          // Only show if categories are visible and there are categories to show
-          if (!categoriesConfig.visible || categories.length === 0) return null;
+          if (!categoriesConfig.visible || systemMainCategories.length === 0) return null;
+          
+          const subcatsForSelected = selectedMainCategory 
+            ? systemSubcategories.filter(sc => {
+                const mainCat = systemMainCategories.find(mc => mc.name === selectedMainCategory);
+                return mainCat && sc.main_category_id === mainCat.id;
+              })
+            : [];
           
           return (
-            <div className="overflow-x-auto pb-2 -mx-4 px-4 mb-6 scrollbar-hide">
-              <div className="flex gap-2 min-w-max">
-                {categories.map(cat => (
-                  <button
-                    key={cat}
-                    className={cn(
-                      "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
-                    )}
-                    style={{
-                      backgroundColor: selectedCategory === cat ? categoriesConfig.color : '#f3f4f6',
-                      color: selectedCategory === cat ? 'white' : '#4b5563'
-                    }}
-                    onClick={() => {
-                      setSelectedCategory(selectedCategory === cat ? null : cat);
-                      setShowOpportunities(false);
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
+            <div className="mb-6">
+              {/* Main Categories */}
+              <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+                <div className="flex gap-2 min-w-max">
+                  {systemMainCategories.map(cat => (
+                    <button
+                      key={cat.id}
+                      className={cn(
+                        "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
+                      )}
+                      style={{
+                        backgroundColor: selectedMainCategory === cat.name ? categoriesConfig.color : '#f3f4f6',
+                        color: selectedMainCategory === cat.name ? 'white' : '#4b5563'
+                      }}
+                      onClick={() => {
+                        if (selectedMainCategory === cat.name) {
+                          setSelectedMainCategory(null);
+                          setSelectedSubcategory(null);
+                        } else {
+                          setSelectedMainCategory(cat.name);
+                          setSelectedSubcategory(null);
+                        }
+                        setShowOpportunities(false);
+                      }}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
               </div>
+              
+              {/* Subcategories - shown when a main category with subcategories is selected */}
+              {selectedMainCategory && subcatsForSelected.length > 0 && (
+                <div className="overflow-x-auto pb-2 -mx-4 px-4 mt-2 scrollbar-hide">
+                  <div className="flex gap-2 min-w-max">
+                    <button
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
+                      )}
+                      style={{
+                        backgroundColor: !selectedSubcategory ? `${categoriesConfig.color}30` : '#f3f4f6',
+                        color: !selectedSubcategory ? categoriesConfig.color : '#6b7280'
+                      }}
+                      onClick={() => setSelectedSubcategory(null)}
+                    >
+                      Todos
+                    </button>
+                    {subcatsForSelected.map(sub => (
+                      <button
+                        key={sub.id}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
+                        )}
+                        style={{
+                          backgroundColor: selectedSubcategory === sub.name ? `${categoriesConfig.color}30` : '#f3f4f6',
+                          color: selectedSubcategory === sub.name ? categoriesConfig.color : '#6b7280'
+                        }}
+                        onClick={() => {
+                          setSelectedSubcategory(selectedSubcategory === sub.name ? null : sub.name);
+                        }}
+                      >
+                        {sub.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
