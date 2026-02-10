@@ -50,7 +50,6 @@ import { useFixedCategories } from "@/components/products/FixedCategorySelector"
 const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
 
 interface ProductVariant {
-  color: string | null;
   size: string | null;
   quantity: number;
 }
@@ -133,9 +132,8 @@ function EditProductWithVariantsDialog({
     if (product.variants.length > 0) {
       return product.variants;
     }
-    // Create initial variant from product color/size/quantity
+    // Create initial variant from product size/quantity
     return [{
-      color: product.color,
       size: product.size,
       quantity: product.quantity,
     }];
@@ -151,77 +149,21 @@ function EditProductWithVariantsDialog({
     onUpdateColorImages(colorImages);
   }, [colorImages]);
 
-  // Get unique colors from variants
-  const getUniqueColors = (): string[] => {
-    const colors = new Set<string>();
-    localVariants.forEach(v => {
-      if (v.color) colors.add(v.color);
-    });
-    return Array.from(colors);
-  };
-
-  // Group variants by color
-  const variantsByColor = localVariants.reduce((acc, variant, index) => {
-    const color = variant.color || "__no_color__";
-    if (!acc[color]) acc[color] = [];
-    acc[color].push({ variant, index });
-    return acc;
-  }, {} as { [color: string]: { variant: ProductVariant; index: number }[] });
-
+  // Variants are size-only now, no color grouping needed
   const totalStock = localVariants.reduce((sum, v) => sum + (v.quantity || 0), 0);
 
   const addVariant = () => {
-    setLocalVariants(prev => [...prev, { color: null, size: null, quantity: 0, sku: null }]);
+    setLocalVariants(prev => [...prev, { size: null, quantity: 0 }]);
   };
 
   const removeVariant = (index: number) => {
-    const variant = localVariants[index];
     setLocalVariants(prev => prev.filter((_, i) => i !== index));
-    
-    // Check if this was the last variant with this color
-    const remainingWithColor = localVariants.filter((v, i) => i !== index && v.color === variant.color);
-    if (remainingWithColor.length === 0 && variant.color) {
-      // Clean up images for this color
-      const ci = colorImages[variant.color];
-      if (ci) {
-        ci.previewUrls.forEach(url => URL.revokeObjectURL(url));
-      }
-      setColorImages(prev => {
-        const { [variant.color!]: _, ...rest } = prev;
-        return rest;
-      });
-    }
   };
 
   const updateVariant = (index: number, field: keyof ProductVariant, value: string | number | null) => {
-    const oldVariant = localVariants[index];
-    
     setLocalVariants(prev => prev.map((v, i) => 
       i === index ? { ...v, [field]: value } : v
     ));
-    
-    // If color changed, initialize color images for new color
-    if (field === 'color' && typeof value === 'string' && value !== oldVariant.color) {
-      if (value && !colorImages[value]) {
-        setColorImages(prev => ({
-          ...prev,
-          [value]: { urls: [], files: [], previewUrls: [] }
-        }));
-      }
-      
-      // Check if old color still has variants
-      const remainingWithOldColor = localVariants.filter((v, i) => i !== index && v.color === oldVariant.color);
-      if (remainingWithOldColor.length === 0 && oldVariant.color) {
-        const ci = colorImages[oldVariant.color];
-        if (ci) {
-          ci.previewUrls.forEach(url => URL.revokeObjectURL(url));
-        }
-        setColorImages(prev => {
-          const { [oldVariant.color!]: _, ...rest } = prev;
-          return rest;
-        });
-      }
-    }
   };
 
   const toggleColorExpanded = (color: string) => {
@@ -475,102 +417,55 @@ function EditProductWithVariantsDialog({
               />
             </div>
 
-            {/* Variants Section grouped by Color */}
+            {/* Variants Section - Size only */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-medium">Variantes por Cor *</Label>
+                <Label className="text-base font-medium">Variantes por Tamanho *</Label>
                 <span className="text-sm text-muted-foreground">
                   Total: {totalStock} un.
                 </span>
               </div>
               
-              <div className="space-y-4">
-                {Object.entries(variantsByColor).map(([color, items]) => (
-                  <Collapsible 
-                    key={color} 
-                    open={expandedColors[color] ?? true}
-                    onOpenChange={() => toggleColorExpanded(color)}
-                  >
-                    <div className="border rounded-lg p-3 bg-muted/30">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">
-                              {color === "__no_color__" ? "Sem cor definida" : color}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ({items.length} variante{items.length > 1 ? 's' : ''})
-                            </span>
-                          </div>
-                          {expandedColors[color] ? (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
-                      </CollapsibleTrigger>
-                      
-                      <CollapsibleContent>
-                        {/* Images for this color */}
-                        {color !== "__no_color__" && renderColorImages(color)}
-                        
-                        {/* Variants for this color */}
-                        <div className="space-y-2 mt-3">
-                          {items.map(({ variant, index }) => (
-                            <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-                              <Select
-                                value={variant.size || ""}
-                                onValueChange={(value) => updateVariant(index, "size", value || null)}
-                              >
-                                <SelectTrigger className="w-20 sm:w-24">
-                                  <SelectValue placeholder="Tam." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableSizes.map((size) => (
-                                    <SelectItem key={size} value={size}>
-                                      {size}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              
-                              <div className="w-28 sm:w-32">
-                                <ProductColorCombobox
-                                  value={variant.color || ""}
-                                  onChange={(value) => updateVariant(index, "color", value || null)}
-                                  existingProductId={product.existingProduct?.id || null}
-                                  userColors={userColors}
-                                  placeholder="Cor"
-                                />
-                              </div>
-                              
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                placeholder="Qtd"
-                                className="w-16 sm:w-20"
-                                value={variant.quantity || ""}
-                                onChange={(e) => updateVariant(index, "quantity", parseInt(e.target.value) || 0)}
-                              />
-                              
-                              
-                              {localVariants.length > 1 && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
-                                  onClick={() => removeVariant(index)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
-                    </div>
-                  </Collapsible>
+              <div className="space-y-2">
+                {localVariants.map((variant, index) => (
+                  <div key={index} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                    <Select
+                      value={variant.size || ""}
+                      onValueChange={(value) => updateVariant(index, "size", value || null)}
+                    >
+                      <SelectTrigger className="w-24 sm:w-28">
+                        <SelectValue placeholder="Tamanho" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableSizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="Qtd"
+                      className="w-16 sm:w-20"
+                      value={variant.quantity || ""}
+                      onChange={(e) => updateVariant(index, "quantity", parseInt(e.target.value) || 0)}
+                    />
+                    
+                    {localVariants.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-destructive hover:text-destructive shrink-0"
+                        onClick={() => removeVariant(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 ))}
               </div>
               
@@ -766,10 +661,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const baseItem = items[0];
       const existing = findDuplicate(baseItem.name);
       
-      // Create variants from all items in the group
-      // Always create variants if we have color OR size detected
+      // Create size-only variants (color is part of product name now)
       const variants: ProductVariant[] = items.map(item => ({
-        color: normalizeColorToExisting(item.color),
         size: item.size,
         quantity: item.quantity,
       }));
@@ -777,8 +670,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       // Calculate total quantity
       const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
-      // Check if any variant has color or size
-      const hasVariantInfo = variants.some(v => v.color || v.size);
+      // Check if any variant has size
+      const hasVariantInfo = variants.some(v => v.size);
       
       console.log(`Produto "${groupName}": ${items.length} item(s), hasVariantInfo: ${hasVariantInfo}, variants:`, variants);
 
@@ -789,9 +682,9 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const product: ImportedProduct = {
         name: baseItem.name.trim().replace(/\s+/g, ' '), // Normalize name spaces
         original_name: items.map(i => i.original_name || i.name).join(", "),
-        // Always populate color/size from first variant
+        // Color is part of product name now, not a variant field
         size: variants[0]?.size || null,
-        color: variants[0]?.color || null,
+        color: baseItem.color || null,
         cost_price: baseItem.cost_price,
         price: baseItem.price || 0,
         quantity: totalQuantity,
@@ -800,7 +693,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         subcategory: inheritedSubcategory,
         is_new_release: false,
         model: baseItem.model || "",
-        color_label: baseItem.color_label || variants[0]?.color || "",
+        color_label: baseItem.color_label || baseItem.color || "",
         custom_detail: "",
         description: "",
         min_stock_level: 5,
@@ -968,12 +861,14 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         }
 
         // Map invoice AI response to processProducts format
-        // The AI returns: name, original_name, size, color, cost_price, quantity
+        // The AI now returns name WITH color included (e.g., "CROPPED AMANDA PRETO")
+        // color is used as color_label for the product
         const parsedProducts = (invoiceData.products || []).map((p: any) => ({
           name: p.name || "Produto sem nome",
           original_name: p.original_name || p.name || "Produto sem nome",
           size: p.size || null,
-          color: p.color || null,
+          color: p.color || null, // Used as color_label, not variant
+          color_label: p.color || null,
           cost_price: parseFloat(p.cost_price) || 0,
           price: parseFloat(p.price) || 0,
           quantity: parseInt(p.quantity) || 1,
@@ -1177,10 +1072,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             const normalizedSize = (variant.size || 'ÚNICO').toUpperCase().trim();
             const current = sizeQtyMap.get(normalizedSize) || 0;
             sizeQtyMap.set(normalizedSize, current + variant.quantity);
-            // Keep first color's images for new variants
-            if (!sizeColorImages.has(normalizedSize) && variant.color) {
-              sizeColorImages.set(normalizedSize, { color: variant.color, colorImages: product.colorImages });
-            }
+            // No color in variants anymore
           }
           
           console.log(`Produto "${product.name}" - estoque agregado por tamanho:`, Object.fromEntries(sizeQtyMap));
@@ -1357,14 +1249,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             }
 
             const variantsToInsert = product.variants.map(v => {
-              const colorUrls = v.color ? (colorImageUrls[v.color] || []) : [];
               return {
                 product_id: newProduct.id,
                 size: v.size || "ÚNICO",
                 stock_quantity: v.quantity,
-                image_url: colorUrls[0] || null,
-                image_url_2: colorUrls[1] || null,
-                image_url_3: colorUrls[2] || null,
               };
             });
 
@@ -1580,7 +1468,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                   {/* Variants info */}
                   {product.variants.length > 0 && (
                     <p className="text-[11px] text-muted-foreground mb-2 line-clamp-1">
-                      {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
+                      {product.variants.map(v => `${v.size || '?'}`).join(", ")}
                     </p>
                   )}
 
@@ -1693,7 +1581,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                           </span>
                           {product.variants.length > 0 && (
                             <span className="text-xs text-muted-foreground block mt-1">
-                              {product.variants.map(v => `${v.color || '?'}/${v.size || '?'}`).join(", ")}
+                              {product.variants.map(v => `${v.size || '?'}`).join(", ")}
                             </span>
                           )}
                         </div>
@@ -1814,8 +1702,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               updateProduct(editingIndex, { 
                 variants, 
                 quantity: totalQuantity,
-                // Update main color/size from first variant if available
-                color: variants[0]?.color || null,
                 size: variants[0]?.size || null,
               });
             }}
