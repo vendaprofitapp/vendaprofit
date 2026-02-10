@@ -18,54 +18,32 @@ import { cn } from "@/lib/utils";
 
 export type MarketingStatusValue = "opportunity" | "presale" | "launch" | "secret";
 export type MarketingStatus = MarketingStatusValue[] | null;
+export type MarketingPrices = Record<string, number> | null; // { "opportunity": 99.90, "secret": 79.90 }
 
 interface MarketingStatusSelectorProps {
   value: MarketingStatus;
   onChange: (value: MarketingStatus) => void;
-  marketingPrice?: number | null;
-  onMarketingPriceChange?: (price: number | null) => void;
+  marketingPrices?: MarketingPrices;
+  onMarketingPricesChange?: (prices: MarketingPrices) => void;
   compact?: boolean;
 }
 
 const statusOptions: { value: MarketingStatusValue; icon: typeof Flame; label: string; color: string; bgColor: string }[] = [
-  { 
-    value: "opportunity", 
-    icon: Flame, 
-    label: "Oportunidade", 
-    color: "text-orange-500",
-    bgColor: "hover:bg-orange-500/10"
-  },
-  { 
-    value: "presale", 
-    icon: Clock, 
-    label: "Pré-venda", 
-    color: "text-purple-500",
-    bgColor: "hover:bg-purple-500/10"
-  },
-  { 
-    value: "launch", 
-    icon: Rocket, 
-    label: "Lançamento", 
-    color: "text-green-500",
-    bgColor: "hover:bg-green-500/10"
-  },
-  { 
-    value: "secret", 
-    icon: Lock, 
-    label: "Área Secreta", 
-    color: "text-rose-500",
-    bgColor: "hover:bg-rose-500/10"
-  },
+  { value: "opportunity", icon: Flame, label: "Oportunidade", color: "text-orange-500", bgColor: "hover:bg-orange-500/10" },
+  { value: "presale", icon: Clock, label: "Pré-venda", color: "text-purple-500", bgColor: "hover:bg-purple-500/10" },
+  { value: "launch", icon: Rocket, label: "Lançamento", color: "text-green-500", bgColor: "hover:bg-green-500/10" },
+  { value: "secret", icon: Lock, label: "Área Secreta", color: "text-rose-500", bgColor: "hover:bg-rose-500/10" },
 ];
 
 export function MarketingStatusSelector({ 
   value, 
   onChange, 
-  marketingPrice,
-  onMarketingPriceChange,
+  marketingPrices,
+  onMarketingPricesChange,
   compact = true 
 }: MarketingStatusSelectorProps) {
   const currentValues = value || [];
+  const prices = marketingPrices || {};
   const [openPopover, setOpenPopover] = useState<MarketingStatusValue | null>(null);
   const [tempPrice, setTempPrice] = useState<string>("");
   
@@ -73,16 +51,16 @@ export function MarketingStatusSelector({
     const isSelected = currentValues.includes(status);
     
     if (isSelected) {
-      // Removing status - just toggle off
       const newValues = currentValues.filter(v => v !== status);
       onChange(newValues.length > 0 ? newValues : null);
-      // Clear price if no marketing status is active
-      if (newValues.length === 0 && onMarketingPriceChange) {
-        onMarketingPriceChange(null);
+      // Remove price for this status
+      if (onMarketingPricesChange) {
+        const newPrices = { ...prices };
+        delete newPrices[status];
+        onMarketingPricesChange(Object.keys(newPrices).length > 0 ? newPrices : null);
       }
     } else {
-      // Adding status - open popover to set price
-      setTempPrice(marketingPrice ? String(marketingPrice) : "");
+      setTempPrice(prices[status] ? String(prices[status]) : "");
       setOpenPopover(status);
     }
   };
@@ -91,10 +69,10 @@ export function MarketingStatusSelector({
     const newValues = [...currentValues, status];
     onChange(newValues);
     
-    if (onMarketingPriceChange && tempPrice) {
+    if (onMarketingPricesChange && tempPrice) {
       const price = parseFloat(tempPrice.replace(",", "."));
       if (!isNaN(price) && price > 0) {
-        onMarketingPriceChange(price);
+        onMarketingPricesChange({ ...prices, [status]: price });
       }
     }
     
@@ -109,198 +87,94 @@ export function MarketingStatusSelector({
     setTempPrice("");
   };
 
-  if (compact) {
-    // Compact mode: show selected statuses or a neutral icon
-    
-    return (
-      <TooltipProvider delayDuration={200}>
-        <div className="flex items-center gap-0.5">
-          {statusOptions.map((option) => {
-            const Icon = option.icon;
-            const isSelected = currentValues.includes(option.value);
-            
-            return (
-              <Popover 
-                key={option.value} 
-                open={openPopover === option.value}
-                onOpenChange={(open) => !open && setOpenPopover(null)}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => handleStatusClick(option.value)}
-                        className={cn(
-                          "flex items-center justify-center w-6 h-6 rounded transition-all",
-                          option.bgColor,
-                          isSelected ? option.color : "text-muted-foreground/30",
-                          isSelected && "ring-1 ring-current/30 scale-110"
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </button>
-                    </PopoverTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    <p className="font-medium">{option.label}</p>
-                    <p className="text-muted-foreground">
-                      {isSelected ? "Clique para remover" : "Clique para adicionar"}
-                    </p>
-                    {isSelected && marketingPrice && (
-                      <p className="text-primary font-medium">
-                        Preço: R$ {marketingPrice.toFixed(2)}
-                      </p>
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-                <PopoverContent className="w-64 p-3" side="top" align="center">
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-sm font-medium flex items-center gap-2">
-                        <Icon className={cn("h-4 w-4", option.color)} />
-                        {option.label}
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Defina um preço promocional para esta variante
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`price-${option.value}`} className="text-xs">
-                        Preço Promocional (R$)
-                      </Label>
-                      <Input
-                        id={`price-${option.value}`}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="Ex: 99.90"
-                        value={tempPrice}
-                        onChange={(e) => setTempPrice(e.target.value)}
-                        className="h-9"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleSkipPrice(option.value)}
-                      >
-                        Pular
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleConfirmPrice(option.value)}
-                      >
-                        Confirmar
-                      </Button>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            );
-          })}
-        </div>
-      </TooltipProvider>
-    );
-  }
+  const renderStatusButton = (option: typeof statusOptions[0], isCompact: boolean) => {
+    const Icon = option.icon;
+    const isSelected = currentValues.includes(option.value);
+    const statusPrice = prices[option.value];
+    const btnSize = isCompact ? "w-6 h-6" : "w-8 h-8";
+    const iconSize = isCompact ? "h-3.5 w-3.5" : "h-4 w-4";
 
-  // Full mode: show all options with toggle behavior
+    return (
+      <Popover 
+        key={option.value} 
+        open={openPopover === option.value}
+        onOpenChange={(open) => !open && setOpenPopover(null)}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                onClick={() => handleStatusClick(option.value)}
+                className={cn(
+                  "flex items-center justify-center rounded transition-all",
+                  btnSize,
+                  option.bgColor,
+                  isCompact
+                    ? cn(isSelected ? option.color : "text-muted-foreground/30", isSelected && "ring-1 ring-current/30 scale-110")
+                    : cn(option.color, isSelected && "ring-2 ring-current/50 scale-110", !isSelected && "opacity-40 hover:opacity-100")
+                )}
+              >
+                <Icon className={iconSize} />
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            <p className="font-medium">{option.label}</p>
+            <p className="text-muted-foreground">
+              {isSelected ? "Clique para remover" : "Clique para adicionar"}
+            </p>
+            {isSelected && statusPrice && (
+              <p className="text-primary font-medium">
+                Preço: R$ {statusPrice.toFixed(2)}
+              </p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+        <PopoverContent className="w-64 p-3" side="top" align="center">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Icon className={cn("h-4 w-4", option.color)} />
+                {option.label}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Defina um preço promocional para este status
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`price-${option.value}`} className="text-xs">
+                Preço Promocional (R$)
+              </Label>
+              <Input
+                id={`price-${option.value}`}
+                type="text"
+                inputMode="decimal"
+                placeholder="Ex: 99.90"
+                value={tempPrice}
+                onChange={(e) => setTempPrice(e.target.value)}
+                className="h-9"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => handleSkipPrice(option.value)}>
+                Pular
+              </Button>
+              <Button type="button" size="sm" className="flex-1" onClick={() => handleConfirmPrice(option.value)}>
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex items-center gap-1">
-        {statusOptions.map((option) => {
-          const Icon = option.icon;
-          const isSelected = currentValues.includes(option.value);
-          
-          return (
-            <Popover 
-              key={option.value}
-              open={openPopover === option.value}
-              onOpenChange={(open) => !open && setOpenPopover(null)}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleStatusClick(option.value)}
-                      className={cn(
-                        "flex items-center justify-center w-8 h-8 rounded-md transition-all",
-                        option.bgColor,
-                        option.color,
-                        isSelected && "ring-2 ring-current/50 scale-110",
-                        !isSelected && "opacity-40 hover:opacity-100"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  </PopoverTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  {option.label}
-                  {isSelected ? " (selecionado)" : ""}
-                  {isSelected && marketingPrice && (
-                    <span className="block text-primary">
-                      Preço: R$ {marketingPrice.toFixed(2)}
-                    </span>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-              <PopoverContent className="w-64 p-3" side="top" align="center">
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-medium flex items-center gap-2">
-                      <Icon className={cn("h-4 w-4", option.color)} />
-                      {option.label}
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Defina um preço promocional para esta variante
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor={`price-full-${option.value}`} className="text-xs">
-                      Preço Promocional (R$)
-                    </Label>
-                    <Input
-                      id={`price-full-${option.value}`}
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="Ex: 99.90"
-                      value={tempPrice}
-                      onChange={(e) => setTempPrice(e.target.value)}
-                      className="h-9"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleSkipPrice(option.value)}
-                    >
-                      Pular
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleConfirmPrice(option.value)}
-                    >
-                      Confirmar
-                    </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          );
-        })}
+      <div className={cn("flex items-center", compact ? "gap-0.5" : "gap-1")}>
+        {statusOptions.map((option) => renderStatusButton(option, compact))}
       </div>
     </TooltipProvider>
   );
