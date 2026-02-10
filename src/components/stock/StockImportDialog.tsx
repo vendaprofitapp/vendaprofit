@@ -1196,9 +1196,11 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                   stock_quantity: variant.quantity,
                 });
               
-              if (!insertError) {
+              if (insertError) {
+                console.error(`Erro ao criar variante ${variant.size}:`, insertError);
+              } else {
                 variantUpdated = true;
-                console.log(`Nova variante criada: ${variant.color}/${variant.size} com ${variant.quantity} unidades`);
+                console.log(`Nova variante criada: ${variant.size} com ${variant.quantity} unidades`);
               }
             }
           }
@@ -1233,7 +1235,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             })
             .eq("id", productId);
           
-          if (!error) {
+          if (error) {
+            console.error(`Erro ao atualizar estoque de "${product.name}":`, error);
+          } else {
+            console.log(`Estoque de "${product.name}" atualizado: ${product.existingProduct.stock_quantity} → ${newQuantity}`);
             updateCount++;
           }
         }
@@ -1269,7 +1274,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           .select("id")
           .single();
 
-        if (!error && newProduct) {
+        if (error) {
+          console.error(`Erro ao criar produto "${product.name}":`, error);
+          toast.error(`Erro ao criar "${product.name}": ${error.message}`);
+        } else if (newProduct) {
           // Upload local images if any (and update URLs)
           if (product.images.length > 0) {
             const uploadedUrls = await uploadProductImages(newProduct.id, product.images);
@@ -1311,7 +1319,6 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               const colorUrls = v.color ? (colorImageUrls[v.color] || []) : [];
               return {
                 product_id: newProduct.id,
-                color: v.color,
                 size: v.size || "ÚNICO",
                 stock_quantity: v.quantity,
                 image_url: colorUrls[0] || null,
@@ -1320,12 +1327,17 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               };
             });
 
+            console.log("Inserindo variantes:", JSON.stringify(variantsToInsert));
+
             const { error: variantError } = await supabase
               .from("product_variants")
               .insert(variantsToInsert);
 
             if (variantError) {
-              console.error("Error creating variants:", variantError);
+              console.error("Erro ao criar variantes:", variantError);
+              toast.error(`Erro nas variantes de "${product.name}": ${variantError.message}`);
+            } else {
+              console.log(`${variantsToInsert.length} variante(s) criadas para "${product.name}"`);
             }
             
             // Also use first variant's image as main product image if not set
