@@ -139,7 +139,7 @@ serve(async (req) => {
     const userProvider = req.headers.get("x-ai-provider") as "gemini" | "openai" | null;
     const userKey = req.headers.get("x-ai-key");
 
-    // If user provided their own key, use it directly
+    // If user provided their own key, try it first but fall back to system keys
     if (userKey && userProvider) {
       console.log(`Using user-provided ${userProvider} key`);
       
@@ -151,43 +151,31 @@ serve(async (req) => {
           response = await callGeminiDirect(imageBase64, mimeType, userKey);
         }
 
-        if (!response.ok) {
+        if (response.ok) {
+          const data = await response.json();
+          let content;
+          
+          if (userProvider === "openai") {
+            content = data.choices?.[0]?.message?.content;
+          } else {
+            content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          }
+
+          if (content) {
+            const parsedData = parseAIResponse(content);
+            return new Response(
+              JSON.stringify({ success: true, data: parsedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
           const errorText = await response.text();
           console.error(`${userProvider} error:`, response.status, errorText);
-          return new Response(
-            JSON.stringify({ success: false, error: `Erro ao processar com ${userProvider}. Verifique sua chave API.` }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          console.log("User key failed, falling back to system keys...");
         }
-
-        const data = await response.json();
-        let content;
-        
-        if (userProvider === "openai") {
-          content = data.choices?.[0]?.message?.content;
-        } else {
-          content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        }
-
-        if (!content) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Resposta vazia da IA' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const parsedData = parseAIResponse(content);
-
-        return new Response(
-          JSON.stringify({ success: true, data: parsedData }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
       } catch (userKeyError) {
         console.error("Error with user key:", userKeyError);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Erro ao usar sua chave API. Verifique as configurações.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        console.log("User key failed, falling back to system keys...");
       }
     }
 
