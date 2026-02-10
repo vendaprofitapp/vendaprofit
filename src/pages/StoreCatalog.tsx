@@ -17,7 +17,7 @@ import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
 import { useAuth } from "@/hooks/useAuth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Standard size order for clothing
+import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
 
 const sortSizes = (sizes: string[]): string[] => {
@@ -75,7 +75,7 @@ interface ProductVariant {
   image_url_3: string | null;
   video_url: string | null;
   marketing_status: MarketingStatus;
-  marketing_price: number | null;
+  marketing_prices: MarketingPrices;
   marketing_delivery_days: number | null;
 }
 
@@ -108,7 +108,7 @@ interface CatalogDisplayItem {
   name: string;
   description: string | null;
   price: number;
-  marketingPrice: number | null; // Special price for this item
+  marketingPrices: MarketingPrices; // Per-status prices for this item
   marketingDeliveryDays: number | null; // Delivery days for presale
   category: string;
   category_2?: string | null;
@@ -122,7 +122,7 @@ interface CatalogDisplayItem {
   size?: string; // Specific size when showing individual variants
   sizes: string[];
   sizeMarketingStatus: Record<string, MarketingStatus>; // marketing status per size
-  sizeMarketingPrice: Record<string, number | null>; // marketing price per size
+  sizeMarketingPrices: Record<string, MarketingPrices>; // marketing prices per size (per status)
   sizeMarketingDeliveryDays: Record<string, number | null>; // delivery days per size
   sizeIsPartner: Record<string, boolean>; // track which sizes are from partner stock
   marketingStatus: MarketingStatus; // highest priority marketing status for the card
@@ -458,7 +458,7 @@ export default function StoreCatalog() {
       // Fetch variants for all products (including marketing fields and video)
       const { data: variants } = await supabase
         .from("product_variants")
-        .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_price, marketing_delivery_days")
+        .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
         .in("product_id", allProducts.map(p => p.id))
         .gt("stock_quantity", 0);
 
@@ -494,7 +494,7 @@ export default function StoreCatalog() {
         size: string;
         isPartner: boolean;
         marketingStatus: MarketingStatus;
-        marketingPrice: number | null;
+        marketingPrices: MarketingPrices;
         marketingDeliveryDays: number | null;
         stock: number;
       }
@@ -528,7 +528,7 @@ export default function StoreCatalog() {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
           marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
-          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+          marketing_prices: ((v as any).marketing_prices as MarketingPrices) || null,
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
         
@@ -556,7 +556,7 @@ export default function StoreCatalog() {
               size: v.size,
               isPartner: false,
               marketingStatus: v.marketing_status,
-              marketingPrice: v.marketing_price,
+              marketingPrices: v.marketing_prices,
               marketingDeliveryDays: v.marketing_delivery_days,
               stock: v.stock_quantity,
             }));
@@ -590,7 +590,7 @@ export default function StoreCatalog() {
             size: product.size,
             isPartner: false,
             marketingStatus: null,
-            marketingPrice: null,
+            marketingPrices: null,
             marketingDeliveryDays: null,
             stock: product.stock_quantity,
           }] : [];
@@ -628,7 +628,7 @@ export default function StoreCatalog() {
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
           marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
-          marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+          marketing_prices: ((v as any).marketing_prices as MarketingPrices) || null,
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
         
@@ -647,7 +647,7 @@ export default function StoreCatalog() {
                   size: v.size,
                   isPartner: true,
                   marketingStatus: v.marketing_status,
-                  marketingPrice: v.marketing_price,
+                  marketingPrices: v.marketing_prices,
                   marketingDeliveryDays: v.marketing_delivery_days,
                   stock: v.stock_quantity,
                 });
@@ -667,7 +667,7 @@ export default function StoreCatalog() {
                 size: v.size,
                 isPartner: true,
                 marketingStatus: v.marketing_status,
-                marketingPrice: v.marketing_price,
+                marketingPrices: v.marketing_prices,
                 marketingDeliveryDays: v.marketing_delivery_days,
                 stock: v.stock_quantity,
               }));
@@ -704,13 +704,13 @@ export default function StoreCatalog() {
         
         // Build maps per size
         const sizeMarketingStatus: Record<string, MarketingStatus> = {};
-        const sizeMarketingPrice: Record<string, number | null> = {};
+        const sizeMarketingPrices: Record<string, MarketingPrices> = {};
         const sizeMarketingDeliveryDays: Record<string, number | null> = {};
         const sizeIsPartner: Record<string, boolean> = {};
         
         cardData.sizes.forEach(s => {
           sizeMarketingStatus[s.size] = s.marketingStatus;
-          sizeMarketingPrice[s.size] = s.marketingPrice;
+          sizeMarketingPrices[s.size] = s.marketingPrices;
           sizeMarketingDeliveryDays[s.size] = s.marketingDeliveryDays;
           sizeIsPartner[s.size] = s.isPartner;
         });
@@ -720,7 +720,7 @@ export default function StoreCatalog() {
         const marketingStatus = getPriorityMarketingStatus(allStatuses);
         
         const prioritySizeInfo = cardData.sizes.find(s => s.marketingStatus === marketingStatus);
-        const marketingPrice = prioritySizeInfo?.marketingPrice ?? null;
+        const marketingPrices = prioritySizeInfo?.marketingPrices ?? null;
         const marketingDeliveryDays = prioritySizeInfo?.marketingDeliveryDays ?? null;
         
         // isPartner = true only if ALL sizes are from partner
@@ -734,7 +734,7 @@ export default function StoreCatalog() {
           name: cardData.name,
           description: cardData.description,
           price: cardData.price,
-          marketingPrice,
+          marketingPrices,
           marketingDeliveryDays,
           category: cardData.category,
           category_2: cardData.category_2,
@@ -747,7 +747,7 @@ export default function StoreCatalog() {
           custom_detail: cardData.custom_detail,
           sizes: [...new Set(sizes)],
           sizeMarketingStatus,
-          sizeMarketingPrice,
+          sizeMarketingPrices,
           sizeMarketingDeliveryDays,
           sizeIsPartner,
           marketingStatus,
@@ -882,13 +882,13 @@ export default function StoreCatalog() {
       // If item has some secret sizes, return item with only non-secret sizes
       if (nonSecretSizes.length < item.sizes.length) {
         const newSizeMarketingStatus: Record<string, MarketingStatus> = {};
-        const newSizeMarketingPrice: Record<string, number | null> = {};
+        const newSizeMarketingPrices: Record<string, MarketingPrices> = {};
         const newSizeMarketingDeliveryDays: Record<string, number | null> = {};
         const newSizeIsPartner: Record<string, boolean> = {};
         
         nonSecretSizes.forEach(size => {
           newSizeMarketingStatus[size] = item.sizeMarketingStatus[size];
-          newSizeMarketingPrice[size] = item.sizeMarketingPrice[size];
+          newSizeMarketingPrices[size] = item.sizeMarketingPrices[size];
           newSizeMarketingDeliveryDays[size] = item.sizeMarketingDeliveryDays[size];
           newSizeIsPartner[size] = item.sizeIsPartner[size];
         });
@@ -904,7 +904,7 @@ export default function StoreCatalog() {
           ...item,
           sizes: nonSecretSizes,
           sizeMarketingStatus: newSizeMarketingStatus,
-          sizeMarketingPrice: newSizeMarketingPrice,
+          sizeMarketingPrices: newSizeMarketingPrices,
           sizeMarketingDeliveryDays: newSizeMarketingDeliveryDays,
           sizeIsPartner: newSizeIsPartner,
           marketingStatus: newMarketingStatus,
@@ -927,14 +927,14 @@ export default function StoreCatalog() {
         // Collect all sizes with matching marketing status for this product/color
         const matchingSizes: string[] = [];
         const matchingSizeStatuses: Record<string, MarketingStatus> = {};
-        const matchingSizePrices: Record<string, number | null> = {};
+        const matchingSizePrices: Record<string, MarketingPrices> = {};
         const matchingSizeDeliveryDays: Record<string, number | null> = {};
         
         Object.entries(item.sizeMarketingStatus).forEach(([size, status]) => {
           if (hasStatus(status, selectedMarketingFilter as MarketingStatusValue)) {
             matchingSizes.push(size);
             matchingSizeStatuses[size] = status;
-            matchingSizePrices[size] = item.sizeMarketingPrice[size] ?? null;
+            matchingSizePrices[size] = item.sizeMarketingPrices[size] ?? null;
             matchingSizeDeliveryDays[size] = item.sizeMarketingDeliveryDays[size] ?? null;
           }
         });
@@ -960,9 +960,9 @@ export default function StoreCatalog() {
           // Use the original item.id (product_color) as the grouping key
           const groupKey = item.id;
           
-          // Get marketing price from the first matching size
+          // Get marketing prices from the first matching size
           const firstSize = matchingSizes[0];
-          const marketingPrice = matchingSizePrices[firstSize] ?? null;
+          const marketingPrices = matchingSizePrices[firstSize] ?? null;
           const marketingDeliveryDays = matchingSizeDeliveryDays[firstSize] ?? null;
           
           groupedCards.set(groupKey, {
@@ -970,10 +970,10 @@ export default function StoreCatalog() {
             id: `${item.id}_marketing`,
             sizes: sortSizes(matchingSizes), // All matching sizes grouped
             sizeMarketingStatus: matchingSizeStatuses,
-            sizeMarketingPrice: matchingSizePrices,
+            sizeMarketingPrices: matchingSizePrices,
             sizeMarketingDeliveryDays: matchingSizeDeliveryDays,
             marketingStatus: [selectedMarketingFilter as MarketingStatusValue],
-            marketingPrice,
+            marketingPrices,
             marketingDeliveryDays,
           });
         }
@@ -2006,9 +2006,10 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
 
           {/* Price - Show marketing price if available */}
           {(() => {
-            const displayMarketingPrice = selectedSize 
-              ? item.sizeMarketingPrice?.[selectedSize] 
-              : item.marketingPrice;
+            // Resolve per-status price: use the active marketing filter status to pick the right price
+            const activeStatus = item.marketingStatus?.[0] as string | undefined;
+            const sizePrices = selectedSize ? item.sizeMarketingPrices?.[selectedSize] : item.marketingPrices;
+            const displayMarketingPrice = activeStatus && sizePrices ? sizePrices[activeStatus] : null;
             const hasSpecialPrice = displayMarketingPrice && displayMarketingPrice !== item.price;
             
             return (

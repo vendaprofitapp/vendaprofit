@@ -34,7 +34,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
  import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
 import { ProductVideoUpload } from "@/components/stock/ProductVideoUpload";
-import { MarketingStatusSelector, type MarketingStatus } from "@/components/stock/MarketingStatusSelector";
+import { MarketingStatusSelector, type MarketingStatus, type MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
 import { UrlProductImporter } from "@/components/stock/UrlProductImporter";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
@@ -78,7 +78,7 @@ interface ProductVariant {
   size: string;
   stock_quantity: number;
   marketing_status?: MarketingStatus;
-  marketing_price?: number | null;
+  marketing_prices?: MarketingPrices;
   marketing_delivery_days?: number | null;
 }
 
@@ -113,7 +113,7 @@ const createDefaultVariants = (): ProductVariant[] =>
     size, 
     stock_quantity: 0, 
     marketing_status: null, 
-    marketing_price: null, 
+    marketing_prices: null, 
     marketing_delivery_days: null 
   }));
 
@@ -217,7 +217,7 @@ export function ProductFormDialog({
   const fetchProductVariants = async (productId: string) => {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("id, size, stock_quantity, marketing_status, marketing_price, marketing_delivery_days")
+      .select("id, size, stock_quantity, marketing_status, marketing_prices, marketing_delivery_days")
       .eq("product_id", productId)
       .order("size", { ascending: true });
     
@@ -227,7 +227,7 @@ export function ProductFormDialog({
         size: v.size,
         stock_quantity: v.stock_quantity,
         marketing_status: (v.marketing_status as MarketingStatus) || null,
-        marketing_price: v.marketing_price ? Number(v.marketing_price) : null,
+        marketing_prices: (v as any).marketing_prices as MarketingPrices || null,
         marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
       }));
       setProductVariants(sortVariantsBySize(variants));
@@ -349,17 +349,17 @@ export function ProductFormDialog({
 
   // Variant handlers
   const addProductVariant = () => {
-    setProductVariants(prev => [...prev, { size: "", stock_quantity: 0, marketing_status: null, marketing_price: null, marketing_delivery_days: null }]);
+    setProductVariants(prev => [...prev, { size: "", stock_quantity: 0, marketing_status: null, marketing_prices: null, marketing_delivery_days: null }]);
   };
 
   const removeProductVariant = (index: number) => {
     setProductVariants(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateProductVariant = (index: number, field: keyof ProductVariant, value: string | number | MarketingStatus | null) => {
+  const updateProductVariant = (index: number, field: keyof ProductVariant, value: any) => {
     let updates: Partial<ProductVariant> = { [field]: value };
     if (field === 'marketing_status' && value === null) {
-      updates.marketing_price = null;
+      updates.marketing_prices = null;
       updates.marketing_delivery_days = null;
     }
     
@@ -462,14 +462,14 @@ export function ProductFormDialog({
         if (existing) {
           existing.stock_quantity = (existing.stock_quantity || 0) + (Number(v.stock_quantity) || 0);
           existing.marketing_status = v.marketing_status || existing.marketing_status;
-          existing.marketing_price = v.marketing_price ?? existing.marketing_price;
+          existing.marketing_prices = v.marketing_prices ?? existing.marketing_prices;
           existing.marketing_delivery_days = v.marketing_delivery_days ?? existing.marketing_delivery_days;
         } else {
           variantMap.set(key, {
             size: v.size,
             stock_quantity: Number(v.stock_quantity) || 0,
             marketing_status: v.marketing_status || null,
-            marketing_price: v.marketing_price ?? null,
+            marketing_prices: v.marketing_prices ?? null,
             marketing_delivery_days: v.marketing_delivery_days ?? null,
           });
         }
@@ -490,7 +490,7 @@ export function ProductFormDialog({
           size: v.size,
           stock_quantity: v.stock_quantity,
           marketing_status: marketingStatusArray,
-          marketing_price: v.marketing_price,
+          marketing_prices: v.marketing_prices,
           marketing_delivery_days: v.marketing_delivery_days,
         };
       });
@@ -517,7 +517,7 @@ export function ProductFormDialog({
               .update({
                 stock_quantity: variant.stock_quantity,
                 marketing_status: variant.marketing_status,
-                marketing_price: variant.marketing_price,
+                marketing_prices: variant.marketing_prices,
                 marketing_delivery_days: variant.marketing_delivery_days,
               })
               .eq("id", existingId);
@@ -806,8 +806,8 @@ export function ProductFormDialog({
                 <MarketingStatusSelector
                   value={variant.marketing_status || null}
                   onChange={(status) => updateProductVariant(index, "marketing_status", status)}
-                  marketingPrice={variant.marketing_price}
-                  onMarketingPriceChange={(price) => updateProductVariant(index, "marketing_price", price)}
+                  marketingPrices={variant.marketing_prices}
+                  onMarketingPricesChange={(prices) => updateProductVariant(index, "marketing_prices", prices)}
                   compact
                 />
               </div>
