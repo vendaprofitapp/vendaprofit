@@ -739,7 +739,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         remainder = Math.max(0, remainder - 1);
         return { ...p, color, quantity: q };
       });
-    }).filter((p) => (p.quantity || 0) > 0);
+    });
 
     console.log("Processando produtos (original):", parsedProducts);
     console.log("Processando produtos (expandido):", expandedProducts);
@@ -845,7 +845,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
       const colorIdx = headers.findIndex(h => h.includes('cor') || h.includes('color'));
       const costIdx = headers.findIndex(h => h.includes('custo') || h.includes('cost'));
       const priceIdx = headers.findIndex(h => h.includes('venda') || h.includes('price') || h.includes('preco') || h.includes('preço'));
-      const qtyIdx = headers.findIndex(h => h.includes('qtd') || h.includes('quantidade') || h.includes('qty') || h.includes('quantity'));
+      const qtyIdx = headers.findIndex(h => h.includes('qtd') || h.includes('quantidade') || h.includes('qty') || h.includes('quantity') || h.includes('estoque'));
       const categoryIdx = headers.findIndex(h => h.includes('categoria') || h.includes('category'));
       const subcategoryIdx = headers.findIndex(h => h.includes('subcategoria') || h.includes('subcategory'));
       const modelIdx = headers.findIndex(h => h.includes('modelo') || h.includes('model'));
@@ -871,7 +871,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           color: colorIdx >= 0 ? values[colorIdx] || null : null,
           cost_price: costIdx >= 0 ? parseFloat(values[costIdx]?.replace(',', '.')) || 0 : 0,
           price: priceIdx >= 0 ? parseFloat(values[priceIdx]?.replace(',', '.')) || 0 : 0,
-          quantity: qtyIdx >= 0 ? parseInt(values[qtyIdx]) || 1 : 1,
+          quantity: qtyIdx >= 0 ? (values[qtyIdx] !== '' && values[qtyIdx] !== undefined ? parseInt(values[qtyIdx]) || 0 : 0) : 1,
           category: categoryIdx >= 0 ? values[categoryIdx] || "" : "",
           subcategory: subcategoryIdx >= 0 ? values[subcategoryIdx] || "" : "",
           model: modelIdx >= 0 ? values[modelIdx] || "" : "",
