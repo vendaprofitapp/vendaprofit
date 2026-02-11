@@ -844,8 +844,8 @@ export function ProductFormDialog({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="max-h-[90vh]">
-          <DrawerHeader>
+        <DrawerContent className="max-h-[95dvh] flex flex-col">
+          <DrawerHeader className="shrink-0">
             <DrawerTitle>
               {editingProduct ? "Editar Produto" : duplicatingProduct ? "Duplicar Produto" : "Novo Produto"}
             </DrawerTitle>
@@ -853,10 +853,10 @@ export function ProductFormDialog({
               {editingProduct ? "Atualize as informações do produto" : "Preencha as informações do produto"}
             </DrawerDescription>
           </DrawerHeader>
-          <ScrollArea className="flex-1 px-4 pb-4 max-h-[75dvh]">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 min-h-0">
             {formContent}
-          </ScrollArea>
-          <DrawerFooter className="border-t pt-4">
+          </div>
+          <DrawerFooter className="shrink-0 border-t pt-4">
             <Button onClick={handleSave} disabled={saving} className="w-full">
               {saving ? "Salvando..." : editingProduct ? "Salvar Alterações" : "Cadastrar Produto"}
             </Button>
