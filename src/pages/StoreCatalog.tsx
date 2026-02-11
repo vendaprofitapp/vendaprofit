@@ -1039,19 +1039,22 @@ export default function StoreCatalog() {
     
     const hasPartnerProducts = cart.some(item => item.displayItem.isPartner);
     
+    const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+    
     let message = "Olá! Gostaria de fazer o seguinte pedido:\n\n";
     
     cart.forEach((item, index) => {
       const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
       const partnerMark = item.displayItem.isPartner ? " *" : "";
-      message += `${index + 1}. ${item.displayItem.name}${colorInfo}${partnerMark}\n`;
-      message += `   Tamanho: ${item.selectedSize}\n`;
-      message += `   Quantidade: ${item.quantity}\n`;
-      message += `   Preço unitário: ${formatPrice(item.displayItem.price)}\n`;
-      message += `   Subtotal: ${formatPrice(item.displayItem.price * item.quantity)}\n\n`;
+      const emoji = index < numberEmojis.length ? numberEmojis[index] : `${index + 1}.`;
+      message += `${emoji} ${item.displayItem.name}${colorInfo}${partnerMark}\n`;
+      message += `Tamanho: ${item.selectedSize}\n`;
+      message += `Quantidade: ${item.quantity}\n`;
+      message += `Preço unitário: ${formatPrice(item.displayItem.price)}\n`;
+      message += `Subtotal: ${formatPrice(item.displayItem.price * item.quantity)}\n\n`;
     });
     
-    message += `*TOTAL: ${formatPrice(cartTotal)}*`;
+    message += `✅ *TOTAL: ${formatPrice(cartTotal)}*`;
     
     if (hasPartnerProducts) {
       message += "\n\n_* Produto de estoque parceiro_";
