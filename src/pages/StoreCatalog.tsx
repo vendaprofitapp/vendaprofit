@@ -144,6 +144,7 @@ interface CartItem {
   displayItem: CatalogDisplayItem;
   selectedSize: string;
   quantity: number;
+  effectivePrice: number; // The price shown when item was added (may differ from base price due to marketing)
 }
 
 // Filter button configuration type
@@ -264,7 +265,7 @@ export default function StoreCatalog() {
   };
 
   // Cart functions
-  const addToCart = (item: CatalogDisplayItem, size: string) => {
+  const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
     setCart(prev => {
       const existingIndex = prev.findIndex(
         c => c.displayItem.id === item.id && c.selectedSize === size
@@ -279,7 +280,7 @@ export default function StoreCatalog() {
         return updated;
       }
       
-      return [...prev, { displayItem: item, selectedSize: size, quantity: 1 }];
+      return [...prev, { displayItem: item, selectedSize: size, quantity: 1, effectivePrice }];
     });
     toast.success(`${item.name} adicionado à sacola`);
   };
@@ -304,7 +305,7 @@ export default function StoreCatalog() {
     setCart([]);
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.displayItem.price * item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + item.effectivePrice * item.quantity, 0);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Fetch store settings
@@ -1050,8 +1051,8 @@ export default function StoreCatalog() {
       message += `${emoji} ${item.displayItem.name}${colorInfo}${partnerMark}\n`;
       message += `Tamanho: ${item.selectedSize}\n`;
       message += `Quantidade: ${item.quantity}\n`;
-      message += `Preço unitário: ${formatPrice(item.displayItem.price)}\n`;
-      message += `Subtotal: ${formatPrice(item.displayItem.price * item.quantity)}\n\n`;
+      message += `Preço unitário: ${formatPrice(item.effectivePrice)}\n`;
+      message += `Subtotal: ${formatPrice(item.effectivePrice * item.quantity)}\n\n`;
     });
     
     message += `✅ *TOTAL: ${formatPrice(cartTotal)}*`;
@@ -1248,7 +1249,7 @@ export default function StoreCatalog() {
                                 <span className="text-xs text-gray-500">Tam: {item.selectedSize}</span>
                               </div>
                               <p className="text-sm font-semibold mt-2 text-gray-900">
-                                {formatPrice(item.displayItem.price * item.quantity)}
+                                {formatPrice(item.effectivePrice * item.quantity)}
                               </p>
                               <div className="flex items-center gap-2 mt-2">
                                 <button
@@ -1785,7 +1786,7 @@ interface BoutiqueProductCardProps {
   item: CatalogDisplayItem;
   primaryColor: string;
   cardBackgroundColor: string;
-  onAddToCart: (item: CatalogDisplayItem, size: string) => void;
+  onAddToCart: (item: CatalogDisplayItem, size: string, effectivePrice: number) => void;
   isStoreOwner: boolean;
 }
 
@@ -1848,7 +1849,14 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
       toast.error("Selecione um tamanho");
       return;
     }
-    onAddToCart(item, selectedSize || "Único");
+    const size = selectedSize || "Único";
+    // Resolve the effective price: check marketing price for the selected size/status
+    const activeStatus = item.marketingStatus?.[0] as string | undefined;
+    const sizePrices = size !== "Único" ? item.sizeMarketingPrices?.[size] : item.marketingPrices;
+    const marketingPrice = activeStatus && sizePrices ? sizePrices[activeStatus] : null;
+    const resolvedPrice = (marketingPrice && marketingPrice > 0) ? marketingPrice : item.price;
+    
+    onAddToCart(item, size, resolvedPrice);
     setSelectedSize("");
   };
 
