@@ -156,8 +156,7 @@ export function ProductFilters({
           <div className="grid gap-2">
             <Label>Categoria Principal</Label>
             <Select value={filters.mainCategory} onValueChange={(v) => {
-              updateFilter("mainCategory", v);
-              updateFilter("subcategory", "all");
+              onFiltersChange({ ...filters, mainCategory: v, subcategory: "all" });
             }}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas" />
