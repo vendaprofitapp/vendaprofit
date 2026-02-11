@@ -496,6 +496,17 @@ export default function Sales() {
     mutationFn: async () => {
       if (!user || cart.length === 0) throw new Error("Carrinho vazio");
 
+      // Block sale if cart contains partner items not from approved reservations
+      const unauthorizedPartnerItems = cart.filter(item => item.isPartnerStock);
+      if (unauthorizedPartnerItems.length > 0) {
+        // Partner items in cart should ONLY come from approved stock requests (via sessionStorage flow)
+        // If they're here from direct addition, block the sale
+        const fromApprovedRequest = sessionStorage.getItem("pendingSaleFromRequest");
+        if (!fromApprovedRequest && unauthorizedPartnerItems.some(item => !item.ownerName)) {
+          throw new Error("Produtos de parceiros só podem ser vendidos após aprovação da Solicitação de Reserva.");
+        }
+      }
+
       // Separate own stock items and partner items
       const ownStockItems = cart.filter(item => !item.isPartnerStock);
       const partnerItems = cart.filter(item => item.isPartnerStock);
@@ -951,12 +962,19 @@ export default function Sales() {
 
   // Opens variant selection dialog before adding to cart
   const handleProductClick = (product: Product & { isPartner?: boolean; ownerName?: string }) => {
+    // Block direct addition of partner products - must go through Solicitação de Reserva
+    if (product.isPartner) {
+      const partnerProduct: PartnerProduct = {
+        ...product,
+        ownerName: product.ownerName || "Parceira",
+        ownerEmail: "",
+      };
+      handleRequestReserve(partnerProduct);
+      return;
+    }
+    
     setSelectedProductForVariant(product);
-    setSelectedProductPartnerInfo(
-      product.isPartner 
-        ? { isPartner: true, ownerName: product.ownerName } 
-        : null
-    );
+    setSelectedProductPartnerInfo(null);
     setShowVariantDialog(true);
     setProductSearch("");
   };
@@ -1730,17 +1748,28 @@ export default function Sales() {
                               type="button"
                               key={`partner-${product.id}`}
                               className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => handleProductClick(product as Product)}
+                              onClick={() => {
+                                // Partner products MUST go through Solicitação de Reserva
+                                const partnerProduct: PartnerProduct = {
+                                  ...product,
+                                  ownerName: product.ownerName,
+                                  ownerEmail: "",
+                                };
+                                handleRequestReserve(partnerProduct);
+                              }}
                             >
                               <div>
                                 <p className="font-medium">{product.name}</p>
                                 <p className="text-xs text-primary">
-                                  {product.ownerName} • {product.stock_quantity} un
+                                  {product.ownerName} • {product.stock_quantity} un • Requer reserva
                                 </p>
                               </div>
-                              <p className="font-semibold">
-                                R$ {product.price.toFixed(2).replace(".", ",")}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold">
+                                  R$ {product.price.toFixed(2).replace(".", ",")}
+                                </p>
+                                <Clock className="h-4 w-4 text-primary" />
+                              </div>
                             </button>
                           ))}
                         </>
