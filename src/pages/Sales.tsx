@@ -79,6 +79,7 @@ interface CartItem {
   isPartnerStock: boolean;
   ownerName?: string;
   variant?: ProductVariant | null;
+  fromApprovedRequest?: boolean;
 }
 
 interface Sale {
@@ -497,14 +498,9 @@ export default function Sales() {
       if (!user || cart.length === 0) throw new Error("Carrinho vazio");
 
       // Block sale if cart contains partner items not from approved reservations
-      const unauthorizedPartnerItems = cart.filter(item => item.isPartnerStock);
+      const unauthorizedPartnerItems = cart.filter(item => item.isPartnerStock && !item.fromApprovedRequest);
       if (unauthorizedPartnerItems.length > 0) {
-        // Partner items in cart should ONLY come from approved stock requests (via sessionStorage flow)
-        // If they're here from direct addition, block the sale
-        const fromApprovedRequest = sessionStorage.getItem("pendingSaleFromRequest");
-        if (!fromApprovedRequest && unauthorizedPartnerItems.some(item => !item.ownerName)) {
-          throw new Error("Produtos de parceiros só podem ser vendidos após aprovação da Solicitação de Reserva.");
-        }
+        throw new Error("Produtos de parceiros só podem ser vendidos após aprovação da Solicitação de Reserva.");
       }
 
       // Separate own stock items and partner items
@@ -987,6 +983,11 @@ export default function Sales() {
     isPartnerStock: boolean = false,
     ownerName?: string
   ) => {
+    // Block partner stock from being added via variant dialog - must go through reservation
+    if (isPartnerStock) {
+      toast({ title: "Produto de parceiro", description: "Use a Solicitação de Reserva para vender produtos de parceiros.", variant: "destructive" });
+      return;
+    }
     const stockLimit = variant ? variant.stock_quantity : product.stock_quantity;
     
     setCart((prev) => {
@@ -1200,13 +1201,14 @@ export default function Sales() {
         image_url: null,
       } as ProductVariant : null;
 
-      // Add to cart as partner stock
+      // Add to cart as partner stock WITH fromApprovedRequest flag
       setCart([{
         product: partnerProduct,
         quantity: saleData.quantity,
         isPartnerStock: true,
         ownerName: saleData.ownerName,
         variant,
+        fromApprovedRequest: true,
       }]);
 
       // Open the new sale dialog
@@ -2366,15 +2368,12 @@ export default function Sales() {
         userId={user?.id || ""}
       />
 
-      {/* Variant Selection Dialog - Now includes partner variants */}
+      {/* Variant Selection Dialog - Own stock only */}
       <VariantSelectionDialog
         open={showVariantDialog}
         onOpenChange={setShowVariantDialog}
         product={selectedProductForVariant}
         onConfirm={handleVariantConfirm}
-        userGroups={userGroups}
-        profiles={profiles}
-        userId={user?.id}
       />
 
       {/* Voice Sale Dialog - Similarity Search */}

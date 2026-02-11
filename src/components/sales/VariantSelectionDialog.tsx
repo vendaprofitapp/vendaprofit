@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Minus, Plus, Package, Check, Users } from "lucide-react";
+import { Loader2, Minus, Plus, Package, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -14,14 +14,6 @@ interface ProductVariant {
   size: string;
   stock_quantity: number;
   image_url: string | null;
-}
-
-// Extended variant with partner info
-interface ExtendedVariant extends ProductVariant {
-  isPartner: boolean;
-  ownerName?: string;
-  ownerId?: string;
-  productName?: string;
 }
 
 interface Product {
@@ -36,20 +28,11 @@ interface Product {
   size: string | null;
 }
 
-interface Profile {
-  id: string;
-  full_name: string;
-  email: string;
-}
-
 interface VariantSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null;
-  onConfirm: (product: Product, variant: ExtendedVariant | null, quantity: number, isPartnerStock: boolean, ownerName?: string) => void;
-  userGroups?: string[];
-  profiles?: Profile[];
-  userId?: string;
+  onConfirm: (product: Product, variant: ProductVariant | null, quantity: number, isPartnerStock: boolean, ownerName?: string) => void;
 }
 
 // Size ordering helper
@@ -70,13 +53,10 @@ export function VariantSelectionDialog({
   onOpenChange,
   product,
   onConfirm,
-  userGroups = [],
-  profiles = [],
-  userId,
 }: VariantSelectionDialogProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [variants, setVariants] = useState<ExtendedVariant[]>([]);
-  const [selectedVariant, setSelectedVariant] = useState<ExtendedVariant | null>(null);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [step, setStep] = useState<'size' | 'quantity'>('size');
 
@@ -94,7 +74,7 @@ export function VariantSelectionDialog({
 
   const fetchAllVariants = async (prod: Product) => {
     try {
-      // Fetch own product variants
+      // Fetch ONLY own product variants (never partner variants)
       const { data: ownVariants, error: ownError } = await supabase
         .from("product_variants")
         .select("id, product_id, size, stock_quantity, image_url")
@@ -104,89 +84,9 @@ export function VariantSelectionDialog({
 
       if (ownError) throw ownError;
 
-      // Map own variants with partner flag = false
-      const ownExtended: ExtendedVariant[] = (ownVariants || []).map(v => ({
-        ...v,
-        isPartner: false,
-        ownerId: prod.owner_id,
-      }));
-
-      // Fetch partner product variants (same name, different owner, in shared groups)
-      let partnerExtended: ExtendedVariant[] = [];
-      
-      if (userGroups.length > 0 && userId) {
-        // Normalize the product name for comparison (remove extra spaces, lowercase)
-        const normalizedName = prod.name.toLowerCase().trim().replace(/\s+/g, ' ');
-        
-        // Find partner products with same name that are shared with user
-        const { data: partnerProducts, error: partnerError } = await supabase
-          .from("product_partnerships")
-          .select(`
-            group_id,
-            product:products!inner(
-              id, 
-              name, 
-              price, 
-              owner_id, 
-              stock_quantity
-            )
-          `)
-          .in("group_id", userGroups)
-          .neq("products.owner_id", userId)
-          .eq("products.is_active", true);
-
-        if (!partnerError && partnerProducts) {
-          // Get unique partner product IDs that match the name (normalized comparison)
-          const partnerProductIds = new Set<string>();
-          const productOwnerMap = new Map<string, string>();
-          
-          for (const pp of partnerProducts) {
-            const p = (pp as any).product;
-            if (p && p.id !== prod.id) {
-              // Normalize partner product name for comparison
-              const partnerNormalizedName = p.name.toLowerCase().trim().replace(/\s+/g, ' ');
-              
-              // Match if names are equal after normalization
-              if (partnerNormalizedName === normalizedName) {
-                partnerProductIds.add(p.id);
-                productOwnerMap.set(p.id, p.owner_id);
-              }
-            }
-          }
-
-          if (partnerProductIds.size > 0) {
-            // Fetch variants for partner products
-            const { data: pVariants, error: pVarError } = await supabase
-              .from("product_variants")
-              .select("id, product_id, size, stock_quantity, image_url")
-              .in("product_id", Array.from(partnerProductIds))
-              .gt("stock_quantity", 0)
-              .order("size");
-
-            if (!pVarError && pVariants) {
-              partnerExtended = pVariants.map(v => {
-                const ownerId = productOwnerMap.get(v.product_id);
-                const owner = profiles.find(p => p.id === ownerId);
-                return {
-                  ...v,
-                  isPartner: true,
-                  ownerId: ownerId,
-                  ownerName: owner?.full_name || "Parceira",
-                };
-              });
-            }
-          }
-        }
-      }
-
-      // Combine and sort all variants
-      const allVariants = [...ownExtended, ...partnerExtended];
-      
-      const sortedData = allVariants.sort((a, b) => {
-        // Own variants first
-        if (a.isPartner !== b.isPartner) return a.isPartner ? 1 : -1;
-        return getSizeIndex(a.size) - getSizeIndex(b.size);
-      });
+      const sortedData = (ownVariants || []).sort((a, b) => 
+        getSizeIndex(a.size) - getSizeIndex(b.size)
+      );
 
       setVariants(sortedData);
 
@@ -206,7 +106,7 @@ export function VariantSelectionDialog({
     }
   };
 
-  const handleSizeSelect = (variant: ExtendedVariant) => {
+  const handleSizeSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
     setQuantity(1);
     setStep('quantity');
@@ -214,9 +114,8 @@ export function VariantSelectionDialog({
 
   const handleConfirm = () => {
     if (!product) return;
-    const isPartner = selectedVariant?.isPartner || false;
-    const ownerName = selectedVariant?.ownerName;
-    onConfirm(product, selectedVariant, quantity, isPartner, ownerName);
+    // Always own stock (partner variants no longer shown here)
+    onConfirm(product, selectedVariant, quantity, false);
     onOpenChange(false);
   };
 
@@ -320,14 +219,6 @@ export function VariantSelectionDialog({
                         )}>
                           {variant.stock_quantity} un
                         </span>
-                        {variant.isPartner && (
-                          <span className={cn(
-                            "block text-[10px] mt-0.5",
-                            selectedVariant?.id === variant.id ? "text-primary-foreground/70" : "text-amber-600"
-                          )}>
-                            {variant.ownerName || "Parceira"}
-                          </span>
-                        )}
                       </button>
                     ))}
                   </div>
@@ -338,12 +229,6 @@ export function VariantSelectionDialog({
               {step === 'quantity' && selectedVariant && (
                 <div>
                   <p className="text-sm font-medium mb-3">Quantidade:</p>
-                  {selectedVariant.isPartner && (
-                    <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800">
-                      <Users className="h-4 w-4" />
-                      <span>Estoque da <strong>{selectedVariant.ownerName}</strong></span>
-                    </div>
-                  )}
                   <div className="flex items-center justify-center gap-4">
                     <Button
                       type="button"
