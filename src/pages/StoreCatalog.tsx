@@ -1,11 +1,11 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -209,10 +209,11 @@ interface StoreSettings {
 export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(() => searchParams.get("categoria") || null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(() => searchParams.get("sub") || null);
   const [showOpportunities, setShowOpportunities] = useState(false);
   const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatusValue | "all">("all");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -1542,9 +1543,11 @@ export default function StoreCatalog() {
                         if (selectedMainCategory === cat.name) {
                           setSelectedMainCategory(null);
                           setSelectedSubcategory(null);
+                          setSearchParams(prev => { prev.delete("categoria"); prev.delete("sub"); return prev; }, { replace: true });
                         } else {
                           setSelectedMainCategory(cat.name);
                           setSelectedSubcategory(null);
+                          setSearchParams(prev => { prev.set("categoria", cat.name); prev.delete("sub"); return prev; }, { replace: true });
                         }
                         setShowOpportunities(false);
                       }}
@@ -1567,7 +1570,7 @@ export default function StoreCatalog() {
                         backgroundColor: !selectedSubcategory ? `${categoriesConfig.color}30` : '#f3f4f6',
                         color: !selectedSubcategory ? categoriesConfig.color : '#6b7280'
                       }}
-                      onClick={() => setSelectedSubcategory(null)}
+                      onClick={() => { setSelectedSubcategory(null); setSearchParams(prev => { prev.delete("sub"); return prev; }, { replace: true }); }}
                     >
                       Todos
                     </button>
@@ -1582,13 +1585,33 @@ export default function StoreCatalog() {
                           color: selectedSubcategory === sub.name ? categoriesConfig.color : '#6b7280'
                         }}
                         onClick={() => {
-                          setSelectedSubcategory(selectedSubcategory === sub.name ? null : sub.name);
+                          const newVal = selectedSubcategory === sub.name ? null : sub.name;
+                          setSelectedSubcategory(newVal);
+                          setSearchParams(prev => { if (newVal) prev.set("sub", newVal); else prev.delete("sub"); return prev; }, { replace: true });
                         }}
                       >
                         {sub.name}
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Copy filtered link button */}
+              {selectedMainCategory && (
+                <div className="flex justify-end mt-2">
+                  <button
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition-all hover:opacity-80"
+                    style={{ backgroundColor: `${categoriesConfig.color}15`, color: categoriesConfig.color }}
+                    onClick={() => {
+                      const url = new URL(window.location.href);
+                      navigator.clipboard.writeText(url.toString());
+                      toast.success("Link copiado!");
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copiar link filtrado
+                  </button>
                 </div>
               )}
             </div>
