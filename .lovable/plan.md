@@ -1,42 +1,48 @@
-# Correção: Bloqueio Total de Venda de Produtos de Parceiros sem Reserva
 
-## Problema Identificado
+# Links Filtrados por Categoria no Catálogo da Loja
 
-Existem **duas brechas** no sistema que permitem vender produtos de parceiros sem passar pela Solicitação de Reserva:
+## O que será feito
 
-1. **Brecha no Diálogo de Variantes (VariantSelectionDialog)**: Quando o usuário clica em um produto PRÓPRIO para selecionar tamanho, o sistema busca variantes de parceiros com o mesmo nome e as exibe junto com as próprias. Se o usuário seleciona uma variante de parceiro, ela é adicionada diretamente ao carrinho sem exigir reserva.
-2. **Brecha na validação da venda (createSaleMutation)**: A verificação que deveria bloquear itens de parceiros no carrinho é fraca -- ela só bloqueia se o item não tem `ownerName`, mas itens vindos do VariantSelectionDialog sempre têm `ownerName`, passando pela validação.  
-3. Na usuaria teamwodbrasil@gmail.com, aparece as divisões da parceria no momento da venda, mas na usuaria [isabellegalx1@gmail.com](mailto:isabellegalx1@gmail.com) não aparece, como se ela não estivesse em uam parceria, mas consta a parceria no cadastro dela.
+Permitir que lojistas compartilhem links do catálogo já filtrados por categoria ou subcategoria. Por exemplo:
+- `vendaprofit.lovable.app/minha-loja?categoria=Feminino` -- abre mostrando só produtos femininos
+- `vendaprofit.lovable.app/minha-loja?categoria=Feminino&sub=Tops` -- abre mostrando só tops femininos
 
-## Solução
+## Como funciona hoje
 
-### 1. Remover variantes de parceiros do VariantSelectionDialog
+Os filtros de categoria são estados locais do React (`useState`). Quando o cliente acessa o link da loja, sempre começa sem filtros -- vendo todos os produtos.
 
-O diálogo de seleção de variantes (tamanhos) só deve exibir variantes do estoque próprio do usuário. A lógica de buscar variantes de parceiros (linhas 96-155 do componente) será removida, já que o fluxo correto para produtos de parceiros é sempre via Solicitação de Reserva.
+## Mudanças necessárias
 
-### 2. Fortalecer a validação no createSaleMutation
+### Arquivo: `src/pages/StoreCatalog.tsx`
 
-A verificação no momento de finalizar a venda será reforçada: qualquer item marcado como `isPartnerStock: true` será bloqueado, A MENOS que tenha sido adicionado via o fluxo de reserva aprovada (detectado via `sessionStorage`).
+1. **Importar `useSearchParams`** do `react-router-dom` para ler parâmetros da URL
+2. **Inicializar os filtros a partir da URL**: ao carregar a pagina, ler os parametros `categoria` e `sub` da URL e usar como valores iniciais de `selectedMainCategory` e `selectedSubcategory`
+3. **Sincronizar URL com filtros**: quando o usuario clicar nas badges de categoria/subcategoria, atualizar tambem os parametros da URL (sem recarregar a pagina), para que o link possa ser copiado e compartilhado a qualquer momento
+4. **Adicionar botao de copiar link filtrado**: um pequeno botao ao lado dos filtros ativos que copia o link atual (com os filtros aplicados) para a area de transferencia, facilitando o compartilhamento
 
-### 3. Bloquear a função handleVariantConfirm
+### Experiencia do usuario
 
-Adicionar uma verificação extra: se o `handleVariantConfirm` receber `isPartnerStock: true`, redirecionar automaticamente para o fluxo de Solicitação de Reserva em vez de adicionar ao carrinho.
+- Cliente recebe um link como `vendaprofit.lovable.app/minhaloja?categoria=Feminino&sub=Tops`
+- Ao abrir, o catalogo ja mostra filtrado por "Feminino > Tops"
+- As badges de categoria ja aparecem selecionadas
+- O cliente pode mudar os filtros normalmente, e a URL se atualiza automaticamente
 
----
+## Detalhes tecnicos
 
-## Detalhes Técnicos
+```text
+URL: /:slug?categoria=Feminino&sub=Tops
 
-### Arquivo: `src/components/sales/VariantSelectionDialog.tsx`
+useSearchParams() -> le "categoria" e "sub"
+  |
+  v
+useState inicializa com valores da URL
+  |
+  v
+Ao clicar em categoria -> setSelectedMainCategory + setSearchParams
+```
 
-- Remover toda a lógica de busca de variantes de parceiros (o bloco que consulta `product_partnerships` e `product_variants` de parceiros)
-- Manter apenas a busca de variantes do produto selecionado (próprias)
-- Remover as props `userGroups`, `profiles`, `userId` que serviam apenas para esta funcionalidade
-
-### Arquivo: `src/pages/Sales.tsx`
-
-- **handleVariantConfirm** (linha 983): Adicionar guarda que bloqueia qualquer tentativa de adicionar `isPartnerStock: true` e redireciona para reserva
-- **createSaleMutation** (linha 500-508): Substituir a verificação fraca por uma mais rigorosa -- bloquear QUALQUER item com `isPartnerStock: true` que não veio do fluxo de reserva aprovada (verificar via flag no CartItem)
-- **CartItem interface**: Adicionar campo `fromApprovedRequest: boolean` para marcar itens que vieram de reservas aprovadas, tornando a validação inequívoca
-- Atualizar o fluxo de `pendingSaleFromRequest` (sessionStorage) para marcar `fromApprovedRequest: true` nos itens adicionados  
-
-  &nbsp;
+- Usar `useSearchParams` do react-router-dom (ja instalado)
+- Os nomes dos parametros serao `categoria` e `sub` (amigaveis em portugues)
+- A sincronizacao sera bidirecional: URL -> estado (ao carregar) e estado -> URL (ao clicar)
+- Um `useEffect` fara a leitura inicial dos parametros
+- O botao de copiar link usara `navigator.clipboard.writeText()`
