@@ -2096,7 +2096,7 @@ export default function Sales() {
               <Button
                 className="w-full"
                 size="lg"
-                disabled={cart.filter(i => !i.isPartnerStock).length === 0 || createSaleMutation.isPending}
+                disabled={cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 || createSaleMutation.isPending}
                 onClick={() => createSaleMutation.mutate()}
               >
                 {createSaleMutation.isPending ? "Registrando..." : "Finalizar Venda"}
