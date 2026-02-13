@@ -1,55 +1,41 @@
 
 
-# Melhorar Visualizacao da Descricao no Lightbox
+# Replicar Produtos da Camila para Tessa
 
-## Problema Atual
+## Situacao Atual
 
-A descricao do produto esta sendo exibida como texto branco semi-transparente (`text-white/70`) diretamente sobre a imagem, com `line-clamp-2` sem opcao de expandir. Isso causa:
-- Dificuldade de leitura quando a imagem tem cores claras
-- Texto cortado sem possibilidade de ver o restante
-- Visual "solto" sem delimitacao clara
+| | Camila (teamwodbrasil) | Tessa (tessaforwod) |
+|---|---|---|
+| User ID | `98191e2a-...` | `26699c3e-...` |
+| Produtos (POWERED BY COFFEE) | 179 (com categorias, fornecedor, variantes) | 274 (sem fornecedor, sem categorias) |
+| Variantes | 1.011 | desconhecidas |
+| Supplier ID (POWERED BY COFFEE) | `1942efb6-...` | `1c4161e9-...` |
 
-## Solucao Proposta: Card com fundo e "Ver mais"
+## Plano de Execucao
 
-Manter a descricao na mesma posicao (abaixo do nome, sobre a imagem), mas:
+### Passo 1 - Limpar produtos atuais da Tessa
 
-1. Envolver nome + descricao em um card com fundo escuro semi-transparente e blur
-2. Adicionar botao "Ver mais / Ver menos" para descricoes longas (mais de 100 caracteres)
-3. Melhorar o contraste e espaçamento
+Deletar as variantes e depois os 274 produtos atuais da Tessa, pois estao incompletos (sem fornecedor, sem categorias).
 
-### Mudanca em `src/pages/StoreCatalog.tsx`
+### Passo 2 - Copiar 179 produtos da Camila para Tessa
 
-**De (linhas 2260-2275):**
-- Texto solto sobre a imagem sem fundo
-- `line-clamp-2` sem expansao
+Inserir os produtos com:
+- `owner_id` = Tessa
+- `supplier_id` = fornecedor POWERED BY COFFEE da Tessa (`1c4161e9-...`)
+- `stock_quantity` = 0
+- Todos os demais campos copiados: nome, descricao, categorias (`main_category`, `subcategory`, `category`), preco, custo, SKU, cor, modelo, imagens, video, marketing_status, is_new_release, etc.
 
-**Para:**
-- Container com `bg-black/50 backdrop-blur-sm rounded-xl p-4 mx-4 mb-4`
-- Descricao com `line-clamp-3` por padrao
-- Botao "Ver mais" que remove o clamp e mostra texto completo
-- Botao "Ver menos" para recolher
-- Estado `descriptionExpanded` controlando a expansao (resetado ao trocar de produto)
+### Passo 3 - Copiar variantes (tamanhos)
 
-### Detalhes tecnicos
+Para cada produto copiado, replicar as variantes usando mapeamento posicional (ROW_NUMBER por data de criacao) para garantir vinculacao 1:1 correta entre produto origem e destino. Todas as variantes terao `stock_quantity` = 0.
 
-```text
-<div className="absolute bottom-4 left-0 right-0 px-4">
-  <div className="bg-black/50 backdrop-blur-sm rounded-xl p-4 max-w-lg mx-auto">
-    <p>Nome do produto + cor + contador</p>
-    {description && (
-      <>
-        <p className={descriptionExpanded ? "" : "line-clamp-3"}>
-          {item.description}
-        </p>
-        {item.description.length > 100 && (
-          <button onClick={toggle}>Ver mais / Ver menos</button>
-        )}
-      </>
-    )}
-  </div>
-</div>
-```
+## Detalhes Tecnicos
 
-- Adicionar estado `descriptionExpanded` (useState boolean)
-- Resetar para `false` quando `selectedItem` mudar (useEffect existente ou novo)
-- Estilo do botao: `text-white/60 text-xs mt-1 hover:text-white/90`
+Serao executadas 3 queries SQL via migration/insert tool:
+
+1. `DELETE FROM product_variants WHERE product_id IN (SELECT id FROM products WHERE owner_id = 'tessa_id')`
+2. `DELETE FROM products WHERE owner_id = 'tessa_id'`
+3. `INSERT INTO products (...) SELECT ... FROM products WHERE owner_id = 'camila_id' AND supplier_id = 'camila_supplier_id'` -- com owner_id e supplier_id substituidos, stock = 0
+4. `INSERT INTO product_variants (...) SELECT ...` -- usando mapeamento posicional ROW_NUMBER para vincular variantes aos novos produtos
+
+Nenhuma alteracao de schema e necessaria. Apenas operacoes de dados (DELETE + INSERT).
