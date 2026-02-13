@@ -270,7 +270,7 @@ export default function Sales() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("origin_zip, melhor_envio_token, superfrete_token")
+        .select("origin_zip, melhor_envio_token, superfrete_token, cpf")
         .eq("id", user?.id)
         .single();
       if (error) throw error;
@@ -2167,6 +2167,7 @@ export default function Sales() {
                 quoteProducts={quoteProducts}
                 saleId={saleIdForShipping}
                 saleTotal={subtotal}
+                customerCpf={selectedCustomerId ? (registeredCustomers.find(c => c.id === selectedCustomerId) as any)?.cpf : null}
                 customerName={customerName}
                 customerPhone={customerPhone}
                 shippingLabelUrl={shippingLabelUrl}

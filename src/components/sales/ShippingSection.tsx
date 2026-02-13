@@ -39,6 +39,7 @@ export interface ShippingConfig {
   origin_zip?: string | null;
   melhor_envio_token?: string | null;
   superfrete_token?: string | null;
+  cpf?: string | null;
 }
 
 interface ShippingOption {
@@ -58,6 +59,7 @@ interface ShippingSectionProps {
   quoteProducts?: ShippingQuoteProduct[];
   saleId?: string;
   saleTotal?: number;
+  customerCpf?: string | null;
   customerName?: string;
   customerPhone?: string;
   shippingLabelUrl?: string | null;
@@ -94,7 +96,7 @@ function hasAddress(addr?: CustomerAddress | null): boolean {
   return !!(addr.address_street || addr.address_city || addr.address_zip);
 }
 
-export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, saleTotal, customerName, customerPhone, shippingLabelUrl, onLabelGenerated, onTrackingGenerated }: ShippingSectionProps) {
+export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, saleTotal, customerCpf, customerName, customerPhone, shippingLabelUrl, onLabelGenerated, onTrackingGenerated }: ShippingSectionProps) {
   const [addressOpen, setAddressOpen] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
@@ -187,6 +189,19 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   const handlePurchaseShipping = async () => {
     if (!value.company || !value.cost || selectedQuoteIndex === null) return;
 
+    // Validate CPFs before proceeding
+    const sellerCpf = shippingConfig?.cpf?.replace(/\D/g, "") || "";
+    const custCpf = customerCpf?.replace(/\D/g, "") || "";
+
+    if (!sellerCpf) {
+      setPurchaseError("CPF do vendedor não configurado. Vá em Configurações > Integração de Frete e preencha seu CPF.");
+      return;
+    }
+    if (!custCpf) {
+      setPurchaseError("CPF do cliente não cadastrado. Edite o cliente e preencha o CPF antes de gerar a etiqueta.");
+      return;
+    }
+
     setPurchasing(true);
     setPurchaseError(null);
 
@@ -212,6 +227,8 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
         destination_number: customerAddress?.address_number || "",
         destination_complement: customerAddress?.address_complement || "",
         destination_neighborhood: customerAddress?.address_neighborhood || "",
+        seller_document: sellerCpf,
+        customer_document: custCpf,
       };
 
       if (saleId) {

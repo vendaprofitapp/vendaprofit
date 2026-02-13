@@ -12,6 +12,7 @@ interface ShippingSettingsSectionProps {
     origin_zip?: string | null;
     melhor_envio_token?: string | null;
     superfrete_token?: string | null;
+    cpf?: string | null;
   } | null;
   onUpdate: () => void;
 }
@@ -20,6 +21,7 @@ export function ShippingSettingsSection({ userId, profile, onUpdate }: ShippingS
   const [originZip, setOriginZip] = useState(profile?.origin_zip || "");
   const [melhorEnvioToken, setMelhorEnvioToken] = useState(profile?.melhor_envio_token || "");
   const [superfreteToken, setSuperfreteToken] = useState(profile?.superfrete_token || "");
+  const [sellerCpf, setSellerCpf] = useState(profile?.cpf || "");
   const [showMelhorEnvio, setShowMelhorEnvio] = useState(false);
   const [showSuperfrete, setShowSuperfrete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -29,6 +31,7 @@ export function ShippingSettingsSection({ userId, profile, onUpdate }: ShippingS
       setOriginZip(profile.origin_zip || "");
       setMelhorEnvioToken(profile.melhor_envio_token || "");
       setSuperfreteToken(profile.superfrete_token || "");
+      setSellerCpf(profile.cpf || "");
     }
   }, [profile]);
 
@@ -54,6 +57,7 @@ export function ShippingSettingsSection({ userId, profile, onUpdate }: ShippingS
           origin_zip: originZip.replace(/\D/g, "") || null,
           melhor_envio_token: melhorEnvioToken || null,
           superfrete_token: superfreteToken || null,
+          cpf: sellerCpf.replace(/\D/g, "") || null,
         } as any)
         .eq("id", userId);
 
@@ -87,6 +91,27 @@ export function ShippingSettingsSection({ userId, profile, onUpdate }: ShippingS
       </div>
 
       <div className="space-y-6">
+        {/* CPF do Vendedor */}
+        <div className="space-y-2">
+          <Label htmlFor="seller-cpf">CPF do Vendedor (Remetente)</Label>
+          <Input
+            id="seller-cpf"
+            value={(() => {
+              const digits = sellerCpf.replace(/\D/g, "");
+              if (digits.length > 9) return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+              if (digits.length > 6) return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6)}`;
+              if (digits.length > 3) return `${digits.slice(0,3)}.${digits.slice(3)}`;
+              return digits;
+            })()}
+            onChange={(e) => setSellerCpf(e.target.value.replace(/\D/g, "").slice(0, 11))}
+            placeholder="000.000.000-00"
+            maxLength={14}
+          />
+          <p className="text-xs text-muted-foreground">
+            Obrigatório para gerar etiquetas de frete via Melhor Envio.
+          </p>
+        </div>
+
         {/* CEP de Origem */}
         <div className="space-y-2">
           <Label htmlFor="origin-zip">CEP de Origem</Label>

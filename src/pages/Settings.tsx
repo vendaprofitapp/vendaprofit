@@ -17,7 +17,7 @@ export default function Settings() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("profiles")
-        .select("preferred_ai_provider, gemini_api_key, openai_api_key, origin_zip, melhor_envio_token, superfrete_token")
+        .select("preferred_ai_provider, gemini_api_key, openai_api_key, origin_zip, melhor_envio_token, superfrete_token, cpf")
         .eq("id", user.id)
         .single();
       if (error) throw error;
