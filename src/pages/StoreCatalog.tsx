@@ -1818,6 +1818,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
   const [isHovering, setIsHovering] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -2185,7 +2186,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
       </div>
 
       {/* Image Lightbox Dialog with Navigation */}
-      <Dialog open={imageOpen} onOpenChange={setImageOpen}>
+      <Dialog open={imageOpen} onOpenChange={(open) => { setImageOpen(open); if (!open) setDescriptionExpanded(false); }}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none">
           <button
             onClick={() => setImageOpen(false)}
@@ -2257,21 +2258,36 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </div>
           )}
           
-          <div className="absolute bottom-4 left-0 right-0 text-center px-6">
-            <p className="text-white font-medium text-lg drop-shadow-lg">
-              {item.name}
-              {item.color && <span className="text-white/80"> - {item.color}</span>}
-              {mediaItems.length > 1 && (
-                <span className="text-white/60 ml-2">
-                  ({currentMediaIndex + 1}/{mediaItems.length})
-                </span>
-              )}
-            </p>
-            {item.description && (
-              <p className="text-white/70 text-sm mt-1 drop-shadow-lg line-clamp-2 max-w-lg mx-auto">
-                {item.description}
+          <div className="absolute bottom-4 left-0 right-0 px-4">
+            <div className="bg-black/60 backdrop-blur-sm rounded-xl p-4 max-w-lg mx-auto">
+              <p className="text-white font-medium text-lg text-center">
+                {item.name}
+                {item.color && <span className="text-white/80"> - {item.color}</span>}
+                {mediaItems.length > 1 && (
+                  <span className="text-white/60 ml-2 text-sm">
+                    ({currentMediaIndex + 1}/{mediaItems.length})
+                  </span>
+                )}
               </p>
-            )}
+              {item.description && (
+                <div className="mt-2">
+                  <p className={cn(
+                    "text-white/80 text-sm text-center",
+                    !descriptionExpanded && "line-clamp-3"
+                  )}>
+                    {item.description}
+                  </p>
+                  {item.description.length > 100 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDescriptionExpanded(!descriptionExpanded); }}
+                      className="text-white/60 text-xs mt-1 hover:text-white/90 transition-colors w-full text-center"
+                    >
+                      {descriptionExpanded ? "Ver menos ▲" : "Ver mais ▼"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
