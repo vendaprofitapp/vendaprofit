@@ -17,7 +17,7 @@ import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
 import { useAuth } from "@/hooks/useAuth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WaitlistDialog } from "@/components/catalog/WaitlistDialog";
-import { InstallmentInfo, CartProgressBar, getNextTierMessage, getUnlockedTierMessage, type PurchaseIncentivesConfig, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
+import { InstallmentInfo, CartProgressBar, CartInstallmentWarning, getNextTierMessage, getUnlockedTierMessage, type PurchaseIncentivesConfig, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -1299,6 +1299,11 @@ export default function StoreCatalog() {
                       cartTotal={cartTotal}
                       config={incentivesConfig}
                       primaryColor={primaryColor}
+                    />
+                    {/* Installment minimum warning */}
+                    <CartInstallmentWarning
+                      cartTotal={cartTotal}
+                      config={incentivesConfig}
                     />
                     
                     <ScrollArea className="flex-1 -mx-6 px-6">

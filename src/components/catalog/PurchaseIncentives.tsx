@@ -72,20 +72,23 @@ export function getInstallmentInfo(price: number, config: PurchaseIncentivesConf
   
   const { max_installments, min_amount_per_installment, no_interest } = config.installments;
   
-  // Calculate max possible installments based on min amount
-  let installments = Math.min(
+  // Always show max installments configured by seller
+  const perInstallment = price / max_installments;
+  const minNotReached = perInstallment < min_amount_per_installment;
+  
+  // Calculate how many installments actually meet the minimum
+  const validInstallments = Math.min(
     max_installments,
     Math.floor(price / min_amount_per_installment)
   );
   
-  if (installments < 2) return null;
-  
-  const perInstallment = price / installments;
-  
   return {
-    installments,
+    installments: max_installments,
     perInstallment,
     noInterest: no_interest,
+    minNotReached,
+    validInstallments: Math.max(1, validInstallments),
+    minAmountPerInstallment: min_amount_per_installment,
   };
 }
 
@@ -140,6 +143,45 @@ export function getUnlockedTierMessage(prevTotal: number, newTotal: number, conf
 }
 
 // ============================
+// Component: CartInstallmentWarning
+// Warning in the cart when min per installment is not reached
+// ============================
+interface CartInstallmentWarningProps {
+  cartTotal: number;
+  config: PurchaseIncentivesConfig;
+}
+
+export function CartInstallmentWarning({ cartTotal, config }: CartInstallmentWarningProps) {
+  if (!config.enabled || !config.installments.enabled || cartTotal <= 0) return null;
+  
+  const { max_installments, min_amount_per_installment } = config.installments;
+  const perInstallment = cartTotal / max_installments;
+  const minNotReached = perInstallment < min_amount_per_installment;
+  
+  if (!minNotReached) return null;
+  
+  const validInstallments = Math.max(1, Math.floor(cartTotal / min_amount_per_installment));
+  const amountNeeded = (min_amount_per_installment * max_installments) - cartTotal;
+  
+  const formatPrice = (p: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(p);
+  
+  return (
+    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+      <p className="font-medium text-amber-800">
+        ⚠️ Parcelamento: {validInstallments > 1 ? `até ${validInstallments}x` : "apenas à vista"} disponível
+      </p>
+      <p className="text-amber-700">
+        Para parcelar em {max_installments}x, o mínimo por parcela é {formatPrice(min_amount_per_installment)}.
+        {amountNeeded > 0 && (
+          <> Adicione mais {formatPrice(amountNeeded)} ao carrinho.</>
+        )}
+      </p>
+    </div>
+  );
+}
+
+//
 // Component: InstallmentInfo
 // Below the price on each product card
 // ============================
