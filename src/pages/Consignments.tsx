@@ -3,7 +3,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Send, MessageCircle, Copy, Check, Package, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Eye, Send, MessageCircle, Copy, Check, Package, Clock, CheckCircle, XCircle, Bell, Users, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { NewConsignmentDialog } from "@/components/consignment/NewConsignmentDialog";
 import { ConsignmentDetailsDialog } from "@/components/consignment/ConsignmentDetailsDialog";
+import { useWaitlistNotifications } from "@/hooks/useWaitlistNotifications";
 
 interface Consignment {
   id: string;
@@ -43,6 +44,7 @@ export default function Consignments() {
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [selectedConsignment, setSelectedConsignment] = useState<Consignment | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { groupedByProduct, pendingCount, markNotified, dismissNotification } = useWaitlistNotifications();
 
   const { data: consignments = [], isLoading, refetch } = useQuery({
     queryKey: ["consignments", user?.id],
@@ -132,6 +134,80 @@ export default function Consignments() {
             Nova Malinha
           </Button>
         </div>
+
+        {/* Waitlist Notifications Alert */}
+        {pendingCount > 0 && (
+          <div className="space-y-3">
+            {groupedByProduct.map((group) => (
+              <Card key={group.product_id} className="border-yellow-200 bg-yellow-50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                        <Bell className="h-5 w-5 text-yellow-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-foreground">
+                          {group.product_name} retornou ao estoque
+                        </h4>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          <Users className="h-3 w-3 inline mr-1" />
+                          {group.customers.length} cliente{group.customers.length > 1 ? "s" : ""} na fila de espera
+                        </p>
+                        <div className="mt-2 space-y-1">
+                          {group.customers.map((customer, i) => (
+                            <div key={i} className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">{customer.name}</span>
+                              {customer.phone && (
+                                <button
+                                  className="text-primary hover:underline flex items-center gap-1 text-xs"
+                                  onClick={() => {
+                                    const phone = customer.phone.replace(/\D/g, "");
+                                    const message = `Olá ${customer.name}! 🎉\n\nO produto ${group.product_name} que você estava aguardando está disponível novamente!\n\nDeseja reservar?`;
+                                    window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
+                                  }}
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  {customer.phone}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const contacts = group.customers
+                            .map(c => `${c.name}${c.phone ? ` - ${c.phone}` : ""}`)
+                            .join("\n");
+                          navigator.clipboard.writeText(contacts);
+                          toast.success("Contatos copiados!");
+                        }}
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Copiar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          group.notification_ids.forEach(id => dismissNotification.mutate(id));
+                          toast.success("Notificação dispensada");
+                        }}
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

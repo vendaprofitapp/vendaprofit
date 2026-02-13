@@ -2000,6 +2000,55 @@ export type Database = {
         }
         Relationships: []
       }
+      waitlist_notifications: {
+        Row: {
+          consignment_item_id: string
+          created_at: string
+          id: string
+          product_id: string
+          status: string
+          waitlist_id: string
+        }
+        Insert: {
+          consignment_item_id: string
+          created_at?: string
+          id?: string
+          product_id: string
+          status?: string
+          waitlist_id: string
+        }
+        Update: {
+          consignment_item_id?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          status?: string
+          waitlist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_notifications_consignment_item_id_fkey"
+            columns: ["consignment_item_id"]
+            isOneToOne: false
+            referencedRelation: "consignment_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_notifications_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_notifications_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "product_waitlist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
