@@ -1,137 +1,89 @@
 
+# Faturamento na Visao Geral + Despesas Parceladas
 
-# Controle Financeiro Completo - Com Divisao de Despesas em Parcerias
+## Parte 1: Adicionar "Faturamento" ao Financeiro
 
-## Resumo
+Atualmente a aba "Visao Geral" mostra apenas Lucro de Vendas, Total Despesas, Lucro Liquido Real, Contas a Pagar e Estoque Externo. Falta o **Faturamento** (valor total recebido em vendas).
 
-Criar uma aba completa de controle financeiro dentro da pagina Financeiro, permitindo cadastrar custos fixos, variaveis e de eventos. Alem disso, despesas podem ser vinculadas a uma parceria e divididas automaticamente seguindo as regras ja configuradas (cost_split_ratio) ou com divisao personalizada.
+### Mudanca em `Financial.tsx`
+- Buscar o total de vendas (soma de `sales.total`) no periodo filtrado
+- Adicionar um card "Faturamento" (cor azul) como primeiro card, mostrando o valor total de vendas realizadas
+- Reorganizar os cards: Faturamento | Lucro de Vendas | Total Despesas | Lucro Liquido Real | Contas a Pagar
 
-## Estrutura da Tabela `expenses`
+### Mudanca em `DREReport.tsx`
+- O DRE ja mostra "Receita Bruta de Vendas" que e o faturamento. Nao precisa alteracao aqui.
 
-```text
-expenses
+## Parte 2: Despesas Parceladas
+
+Permitir que ao cadastrar uma despesa, a usuaria possa informar que sera paga em parcelas, definindo quantidade, valor e vencimento de cada parcela.
+
+### Nova tabela: `expense_installments`
+
+```
+expense_installments
   id (uuid, PK)
-  owner_id (uuid)              -- quem cadastrou a despesa
-  amount (numeric)             -- valor total da despesa
-  category (text)              -- ex: "frete", "gasolina", "embalagem"
-  category_type (text)         -- "fixed" | "variable" | "event" | "other"
-  description (text)           -- descricao livre
-  expense_date (date)          -- data da despesa
-  is_recurring (boolean)       -- custo fixo recorrente mensal
-  recurring_day (integer)      -- dia do mes para recorrencia
-  
-  -- Campos de parceria
-  group_id (uuid, nullable)    -- se vinculada a uma parceria/grupo
-  split_mode (text)            -- "none" | "partnership_rules" | "custom"
-  custom_split_percent (numeric, nullable) -- ex: 60 = eu pago 60%, parceiro 40%
-  
-  created_at, updated_at
+  expense_id (uuid)         -- referencia a expenses
+  installment_number (int)  -- 1, 2, 3...
+  amount (numeric)          -- valor da parcela
+  due_date (date)           -- data de vencimento
+  is_paid (boolean)         -- se ja foi paga
+  paid_at (timestamptz)     -- quando foi paga
+  created_at (timestamptz)
 ```
 
-### Logica de Divisao
+RLS: acesso baseado no owner_id da expense pai.
 
-- **`split_mode = 'none'`**: Despesa 100% minha, sem divisao
-- **`split_mode = 'partnership_rules'`**: Usa o `cost_split_ratio` ja configurado na parceria (ex: 50/50)
-- **`split_mode = 'custom'`**: Percentual personalizado definido na hora (ex: eu pago 70%, parceiro 30%)
+### Novas colunas em `expenses`
 
-### Tabela auxiliar `expense_splits`
+- `is_installment` (boolean, default false) -- se a despesa e parcelada
+- `installment_count` (integer, nullable) -- numero de parcelas
 
-```text
-expense_splits
-  id (uuid, PK)
-  expense_id (uuid)            -- referencia a expenses
-  user_id (uuid)               -- quem deve essa parte
-  amount (numeric)             -- valor da parte
-  is_paid (boolean)            -- se ja foi acertado
-  created_at
-```
+### Mudancas no `ExpenseFormDialog.tsx`
 
-Quando uma despesa e vinculada a parceria, o sistema cria automaticamente os splits (um para cada parceiro) usando as regras selecionadas.
+1. Adicionar toggle "Pagamento parcelado"
+2. Quando ativo, mostrar:
+   - Input "Numero de parcelas" (2 a 24)
+   - Ao definir, gerar automaticamente a lista de parcelas com:
+     - Valor dividido igualmente (editavel por parcela)
+     - Data de vencimento mensal a partir da data da despesa (editavel por parcela)
+3. Exibir lista editavel das parcelas com campos de valor e data
+4. Ao salvar, criar os registros em `expense_installments`
 
-## Categorias Pre-definidas
+### Mudancas no `ExpensesList.tsx`
 
-**Custos Fixos**: Aluguel, Internet, Assinaturas, Contador
+- Mostrar badge "Parcelado 3x" quando a despesa for parcelada
+- Mostrar indicador de quantas parcelas ja foram pagas (ex: "2/4 pagas")
+- Ao clicar na despesa parcelada, permitir visualizar e marcar parcelas como pagas
 
-**Custos Variaveis (por venda)**: Frete, Embalagens, Impressoes, Sacolas/caixas
+### Mudancas no `ExpenseSummaryCards.tsx` e `useExpenseTotals`
 
-**Custos de Eventos**: Gasolina, Alimentacao, Stand/espaco, Material divulgacao, Insumos (arara, cabides)
+- Para despesas parceladas, considerar apenas as parcelas com vencimento dentro do periodo filtrado (nao o valor total da despesa)
+- Isso garante que o DRE e os cards reflitam corretamente o custo do periodo
 
-**Outros**: Categoria livre
+### Mudancas no `DREReport.tsx`
 
-## Interface - 3 Abas na pagina Financeiro
+- Ajustar para usar a mesma logica: despesas parceladas contam apenas as parcelas do periodo
 
-### Aba 1: Visao Geral (atualizada)
-- Cards existentes MAIS novo card "Total Despesas" (vermelho)
-- Card "Lucro Liquido Real" = Receitas - Despesas
+## Detalhes Tecnicos
 
-### Aba 2: Despesas
-- Botao "+ Nova Despesa" abre formulario com:
-  - Tipo (Fixo / Variavel / Evento / Outro)
-  - Categoria (dropdown pre-definido + campo livre)
-  - Valor, Data, Descricao
-  - Toggle "Recorrente" (para custos fixos)
-  - **Secao "Dividir com Parceria"** (aparece se usuario tem parcerias ativas):
-    - Dropdown: selecionar parceria
-    - Radio: "Seguir regras da parceria (50/50)" | "Divisao personalizada"
-    - Se personalizada: slider ou input de porcentagem
-- Tabela listando despesas com badge indicando se e dividida
-- Filtro por tipo e por parceria
-- Totais por categoria
+### Arquivos a Criar
+1. Migration SQL para tabela `expense_installments` e colunas `is_installment`/`installment_count` em `expenses`
 
-### Aba 3: DRE Simplificado
-Demonstrativo de resultado:
+### Arquivos a Modificar
+1. `src/pages/Financial.tsx` -- adicionar card de Faturamento com query de vendas
+2. `src/components/financial/ExpenseFormDialog.tsx` -- adicionar secao de parcelamento com lista editavel
+3. `src/components/financial/ExpensesList.tsx` -- exibir info de parcelas e permitir marcar como paga
+4. `src/components/financial/ExpenseSummaryCards.tsx` -- ajustar calculo para considerar parcelas do periodo
+5. `src/components/financial/DREReport.tsx` -- mesma logica de parcelas no periodo
 
-```text
-(+) Receita Bruta de Vendas
-(-) Taxas de Pagamento
-(=) Receita Liquida
-(-) Custo das Mercadorias (CMV)
-(=) Lucro Bruto
-(-) Custos Fixos (minha parte)
-(-) Custos Variaveis (minha parte)
-(-) Custos de Eventos (minha parte)
-(-) Outras Despesas
-(=) LUCRO LIQUIDO REAL
-```
+### Fluxo do Usuario
 
-Nota: quando uma despesa e dividida com parceiro, apenas a parte da usuaria entra no DRE.
-
-## Integracao com Acerto de Contas
-
-As despesas divididas com parceiros aparecerao no relatorio de acerto (PartnerReports / AccountSettlement) como itens a mais no calculo do saldo:
-
-- Se eu paguei uma despesa dividida -> parceiro me deve sua parte
-- Se parceiro pagou -> eu devo minha parte
-
-Isso sera feito consultando `expense_splits` onde `is_paid = false`.
-
-## Arquivos a Criar
-
-1. **Migration SQL** - tabelas `expenses` e `expense_splits` com RLS
-2. **`src/components/financial/ExpenseFormDialog.tsx`** - formulario de cadastro com opcao de divisao
-3. **`src/components/financial/ExpensesList.tsx`** - tabela de despesas com filtros
-4. **`src/components/financial/DREReport.tsx`** - demonstrativo de resultado
-5. **`src/components/financial/ExpenseSummaryCards.tsx`** - cards resumo
-
-## Arquivos a Modificar
-
-1. **`src/pages/Financial.tsx`** - reorganizar com Tabs, integrar novos componentes
-2. **`src/components/reports/AccountSettlement.tsx`** - incluir despesas divididas no calculo de saldo
-
-## Seguranca (RLS)
-
-- `expenses`: SELECT/INSERT/UPDATE/DELETE restrito a `owner_id = auth.uid()`
-- `expense_splits`: SELECT onde `user_id = auth.uid()` OU onde o expense pertence ao usuario
-- UPDATE de `is_paid` permitido para ambos os parceiros envolvidos
-
-## Fluxo do Usuario
-
-1. Acessa Financeiro -> aba "Despesas"
-2. Clica "+ Nova Despesa"
-3. Preenche: "Gasolina - Feira Fitness - R$120 - 10/02/2026"
-4. Ativa "Dividir com Parceria" -> seleciona "Parceria com Isabelle"
-5. Escolhe "Seguir regras da parceria (50/50)"
-6. Sistema cria: R$60 para cada parceira
-7. No Acerto de Contas, Isabelle ve que deve R$60 dessa despesa
-8. Na aba DRE, apenas R$60 (minha parte) e descontado do lucro
-
+1. Clica em "+ Nova Despesa"
+2. Preenche: "Stand Feira Fitness - R$600 - Evento"
+3. Ativa "Pagamento parcelado" -> define 3x
+4. Sistema gera: Parcela 1: R$200 (venc 10/02), Parcela 2: R$200 (venc 10/03), Parcela 3: R$200 (venc 10/04)
+5. Pode editar valores (ex: Parcela 1: R$250, Parcela 2: R$200, Parcela 3: R$150)
+6. Pode editar datas de vencimento individualmente
+7. Salva a despesa
+8. Na listagem, ve "Stand Feira Fitness - R$600 - 3x (1/3 pagas)"
+9. No DRE de fevereiro, aparece apenas R$200 (parcela do mes)
