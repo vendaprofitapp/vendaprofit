@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Users, Filter } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Filter, CreditCard, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -28,6 +28,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -61,6 +67,7 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [installmentsDialogExpenseId, setInstallmentsDialogExpenseId] = useState<string | null>(null);
 
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ["expenses", user?.id, dateRange],
@@ -78,7 +85,6 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
     enabled: !!user,
   });
 
-  // Fetch user's splits to know their actual portion
   const { data: mySplits = [] } = useQuery({
     queryKey: ["expense-splits-mine", user?.id, dateRange],
     queryFn: async () => {
@@ -92,6 +98,40 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
     enabled: !!user,
   });
 
+  // Fetch all installments for expenses in the period
+  const expenseIds = expenses.map((e: any) => e.id);
+  const { data: allInstallments = [] } = useQuery({
+    queryKey: ["expense-installments-list", expenseIds],
+    queryFn: async () => {
+      if (expenseIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("expense_installments")
+        .select("*")
+        .in("expense_id", expenseIds)
+        .order("installment_number");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: expenseIds.length > 0,
+  });
+
+  // Installments for the dialog
+  const dialogInstallments = allInstallments.filter((i: any) => i.expense_id === installmentsDialogExpenseId);
+
+  const markPaidMutation = useMutation({
+    mutationFn: async ({ id, isPaid }: { id: string; isPaid: boolean }) => {
+      const { error } = await supabase
+        .from("expense_installments")
+        .update({ is_paid: isPaid, paid_at: isPaid ? new Date().toISOString() : null })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-installments"] });
+      toast({ title: "Parcela atualizada!" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("expenses").delete().eq("id", id);
@@ -100,6 +140,7 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["expense-splits"] });
+      queryClient.invalidateQueries({ queryKey: ["expense-installments"] });
       toast({ title: "Despesa excluída!" });
       setDeleteId(null);
     },
@@ -113,9 +154,17 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
     return acc;
   }, { total: 0 });
 
-  // Map of my portion per expense
   const mySplitMap = new Map<string, number>();
   mySplits.forEach((s: any) => mySplitMap.set(s.expense_id, s.amount));
+
+  // Installment summary per expense
+  const installmentSummary = new Map<string, { total: number; paid: number }>();
+  allInstallments.forEach((inst: any) => {
+    const existing = installmentSummary.get(inst.expense_id) || { total: 0, paid: 0 };
+    existing.total++;
+    if (inst.is_paid) existing.paid++;
+    installmentSummary.set(inst.expense_id, existing);
+  });
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -182,6 +231,7 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
                     const myPart = expense.split_mode !== "none" && mySplitMap.has(expense.id)
                       ? mySplitMap.get(expense.id)!
                       : expense.amount;
+                    const instSummary = installmentSummary.get(expense.id);
 
                     return (
                       <TableRow key={expense.id}>
@@ -190,12 +240,22 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
                         </TableCell>
                         <TableCell>{expense.category}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge variant="secondary" className={TYPE_COLORS[expense.category_type]}>
                               {TYPE_LABELS[expense.category_type]}
                             </Badge>
                             {expense.split_mode !== "none" && (
                               <Users className="h-3.5 w-3.5 text-primary" />
+                            )}
+                            {expense.is_installment && instSummary && (
+                              <Badge
+                                variant="outline"
+                                className="cursor-pointer text-xs"
+                                onClick={() => setInstallmentsDialogExpenseId(expense.id)}
+                              >
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                {instSummary.paid}/{instSummary.total} pagas
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
@@ -255,12 +315,45 @@ export function ExpensesList({ dateRange }: ExpensesListProps) {
         editingExpense={editingExpense}
       />
 
+      {/* Installments Dialog */}
+      <Dialog open={!!installmentsDialogExpenseId} onOpenChange={() => setInstallmentsDialogExpenseId(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Parcelas da Despesa</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {dialogInstallments.map((inst: any) => (
+              <div key={inst.id} className="flex items-center justify-between p-3 rounded-lg border">
+                <div>
+                  <span className="font-medium text-sm">Parcela {inst.installment_number}</span>
+                  <p className="text-xs text-muted-foreground">
+                    Venc: {format(new Date(inst.due_date + "T12:00:00"), "dd/MM/yyyy")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-sm">{formatCurrency(inst.amount)}</span>
+                  <Button
+                    variant={inst.is_paid ? "default" : "outline"}
+                    size="sm"
+                    className="h-8"
+                    onClick={() => markPaidMutation.mutate({ id: inst.id, isPaid: !inst.is_paid })}
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1" />
+                    {inst.is_paid ? "Paga" : "Marcar paga"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir despesa?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. Os splits com parceiros também serão removidos.
+              Esta ação não pode ser desfeita. Os splits e parcelas também serão removidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -119,6 +119,24 @@ export default function Financial() {
   // Expense totals for overview
   const expenseTotals = useExpenseTotals(user?.id, dateRange);
 
+  // Fetch total revenue (faturamento)
+  const { data: revenueData } = useQuery({
+    queryKey: ["revenue-total", user?.id, dateRange],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sales")
+        .select("total")
+        .eq("owner_id", user?.id!)
+        .eq("status", "completed")
+        .gte("created_at", dateRange.start.toISOString())
+        .lte("created_at", dateRange.end.toISOString());
+      if (error) throw error;
+      return (data || []).reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+    },
+    enabled: !!user,
+  });
+  const totalRevenue = revenueData || 0;
+
   // Calculate financial summary
   const financialSummary = useMemo(() => {
     let netProfit = 0;
@@ -211,7 +229,18 @@ export default function Financial() {
           {/* Tab 1: Visão Geral */}
           <TabsContent value="overview" className="space-y-6">
             {/* Summary Cards - Revenue */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+              <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-cyan-500/10">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Faturamento</CardTitle>
+                  <Wallet className="h-4 w-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalRevenue)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Total de vendas</p>
+                </CardContent>
+              </Card>
+
               <Card className="border-green-500/20 bg-gradient-to-br from-green-500/5 to-emerald-500/10">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Lucro de Vendas</CardTitle>
