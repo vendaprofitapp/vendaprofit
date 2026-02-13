@@ -187,75 +187,100 @@ async function purchaseShippingSuperFrete(
   req: PurchaseShippingRequest,
   token: string
 ) {
-  const superFreteURL = "https://api.superfrete.com/api/v0/checkout";
+  const baseURL = "https://api.superfrete.com/api/v0";
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "User-Agent": "VendaProfit (contato@vendaprofit.com)",
+  };
 
-  const response = await fetch(superFreteURL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      "User-Agent": "VendaProfit (contato@vendaprofit.com)",
+  // Step 1: Create the order
+  const orderBody = {
+    from: {
+      name: req.seller_name || "Vendedor",
+      phone: req.seller_phone || "00000000000",
+      document: req.seller_document || "00000000000",
+      postal_code: req.origin_zip,
+      address: "Endereço do remetente",
+      number: "0",
+      city: "Cidade",
+      state_abbr: "MG",
     },
-    body: JSON.stringify({
-      from: {
-        name: req.seller_name || "Vendedor",
-        phone: req.seller_phone || "00000000000",
-        document: req.seller_document || "00000000000",
-        postal_code: req.origin_zip,
-        address: "Endereço do remetente",
-        number: "0",
-        city: "Cidade",
-        state_abbr: "MG",
+    to: {
+      name: req.customer_name || "Cliente",
+      phone: req.receiver_phone || req.customer_phone || "00000000000",
+      document: req.customer_document || "00000000000",
+      postal_code: req.destination_zip,
+      address: req.destination_street || "Endereço do cliente",
+      number: req.destination_number || "0",
+      complement: req.destination_complement || "",
+      district: req.destination_neighborhood || "Centro",
+      city: req.destination_city || "Cidade",
+      state_abbr: req.destination_state || "MG",
+    },
+    services: String(req.shipping_service_id || 1),
+    products: [
+      {
+        name: "Produto",
+        quantity: 1,
+        unitary_value: Math.max(req.shipping_cost || 1, 1),
       },
-      to: {
-        name: req.customer_name || "Cliente",
-        phone: req.receiver_phone || req.customer_phone || "00000000000",
-        document: req.customer_document || "00000000000",
-        postal_code: req.destination_zip,
-        address: req.destination_street || "Endereço do cliente",
-        number: req.destination_number || "0",
-        complement: req.destination_complement || "",
-        district: req.destination_neighborhood || "Centro",
-        city: req.destination_city || "Cidade",
-        state_abbr: req.destination_state || "MG",
+    ],
+    volumes: [
+      {
+        weight: (req.weight_grams || 300) / 1000,
+        width: req.width_cm || 11,
+        height: req.height_cm || 2,
+        length: req.length_cm || 16,
       },
-      services: [req.shipping_service_id || 1],
-      products: [
-        {
-          name: "Produto",
-          quantity: 1,
-          unitary_value: Math.max(req.shipping_cost || 1, 1),
-        },
-      ],
-      volumes: [
-        {
-          weight: (req.weight_grams || 300) / 1000,
-          width: req.width_cm || 11,
-          height: req.height_cm || 2,
-          length: req.length_cm || 16,
-        },
-      ],
-      options: {
-        insurance_value: Math.max(req.shipping_cost || 1, 1),
-        receipt: false,
-        own_hand: false,
-      },
-    }),
+    ],
+    options: {
+      insurance_value: Math.max(req.shipping_cost || 1, 1),
+      receipt: false,
+      own_hand: false,
+    },
+  };
+
+  console.log("SuperFrete order body:", JSON.stringify(orderBody));
+
+  const orderResponse = await fetch(`${baseURL}/order`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(orderBody),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("SuperFrete error:", response.status, errorText);
-    throw new Error(`SuperFrete error (${response.status}): ${errorText.substring(0, 200)}`);
+  if (!orderResponse.ok) {
+    const errorText = await orderResponse.text();
+    console.error("SuperFrete order error:", orderResponse.status, errorText);
+    throw new Error(`SuperFrete order error (${orderResponse.status}): ${errorText.substring(0, 300)}`);
   }
 
-  const data = await response.json();
+  const orderData = await orderResponse.json();
+  const orderId = orderData.id;
+  console.log("SuperFrete order created:", orderId);
 
-  return {
-    labelUrl: data.label_url || data.print_url || "",
-    tracking: data.tracking || data.tracking_number || data.id || "",
-  };
+  // Step 2: Checkout (purchase the label)
+  const checkoutResponse = await fetch(`${baseURL}/checkout`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [orderId] }),
+  });
+
+  if (!checkoutResponse.ok) {
+    const errorText = await checkoutResponse.text();
+    console.error("SuperFrete checkout error:", checkoutResponse.status, errorText);
+    throw new Error(`SuperFrete checkout error (${checkoutResponse.status}): ${errorText.substring(0, 300)}`);
+  }
+
+  const checkoutData = await checkoutResponse.json();
+  console.log("SuperFrete checkout response:", JSON.stringify(checkoutData));
+
+  // Extract label and tracking from checkout or order data
+  const labelUrl = checkoutData.label_url || checkoutData.print_url || orderData.label_url || "";
+  const tracking = checkoutData.tracking || checkoutData.tracking_number || orderData.tracking || orderId || "";
+
+  return { labelUrl, tracking };
 }
 
 Deno.serve(async (req) => {
