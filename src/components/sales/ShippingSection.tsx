@@ -44,6 +44,7 @@ export interface ShippingConfig {
 interface ShippingOption {
   carrier: string;
   service: string;
+  service_id?: number | null;
   price: number;
   delivery_days: number;
   source: string;
@@ -193,6 +194,7 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
       const body: any = {
         shipping_company: value.company,
         shipping_source: selectedOption?.source || "",
+        shipping_service_id: selectedOption?.service_id || null,
         destination_zip: customerAddress?.address_zip?.replace(/\D/g, ""),
         origin_zip: shippingConfig?.origin_zip?.replace(/\D/g, ""),
         weight_grams: quoteProducts?.[0]?.weight_grams || manualWeight,
@@ -202,6 +204,12 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
         customer_name: customerName,
         customer_phone: customerPhone,
         shipping_address: value.address,
+        destination_city: customerAddress?.address_city || "",
+        destination_state: customerAddress?.address_state || "",
+        destination_street: customerAddress?.address_street || "",
+        destination_number: customerAddress?.address_number || "",
+        destination_complement: customerAddress?.address_complement || "",
+        destination_neighborhood: customerAddress?.address_neighborhood || "",
       };
 
       if (saleId) {

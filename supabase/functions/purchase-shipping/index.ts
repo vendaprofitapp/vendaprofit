@@ -14,6 +14,7 @@ interface PurchaseShippingRequest {
   sale_id?: string;
   shipping_company: string;
   shipping_source?: string;
+  shipping_service_id?: number;
   shipping_cost: number;
   destination_zip: string;
   origin_zip: string;
@@ -25,6 +26,15 @@ interface PurchaseShippingRequest {
   customer_phone?: string;
   shipping_address?: string;
   receiver_phone?: string;
+  // Parsed address fields
+  destination_city?: string;
+  destination_state?: string;
+  destination_street?: string;
+  destination_number?: string;
+  destination_complement?: string;
+  destination_neighborhood?: string;
+  seller_name?: string;
+  seller_phone?: string;
 }
 
 async function purchaseShippingMelhorEnvio(
@@ -40,39 +50,59 @@ async function purchaseShippingMelhorEnvio(
   };
 
   // Step 1: Add to cart
+  const cartBody: any = {
+    service: req.shipping_service_id || 3,
+    from: {
+      name: req.seller_name || "Vendedor",
+      phone: req.seller_phone || "00000000000",
+      email: "contato@vendaprofit.com",
+      postal_code: req.origin_zip,
+      address: "Endereço do remetente",
+      number: "0",
+      city: "Cidade",
+      state_abbr: "MG",
+    },
+    to: {
+      name: req.customer_name || "Cliente",
+      phone: req.customer_phone || "00000000000",
+      email: "cliente@email.com",
+      postal_code: req.destination_zip,
+      address: req.destination_street || "Endereço do destinatário",
+      number: req.destination_number || "0",
+      complement: req.destination_complement || "",
+      district: req.destination_neighborhood || "Centro",
+      city: req.destination_city || "Cidade",
+      state_abbr: req.destination_state || "MG",
+    },
+    products: [
+      {
+        name: "Produto",
+        quantity: 1,
+        unitary_value: 10,
+      },
+    ],
+    volumes: [
+      {
+        weight: (req.weight_grams || 300) / 1000,
+        width: req.width_cm || 11,
+        height: req.height_cm || 2,
+        length: req.length_cm || 16,
+      },
+    ],
+    options: {
+      insurance_value: 0,
+      receipt: false,
+      own_hand: false,
+      non_commercial: true,
+    },
+  };
+
+  console.log("Cart body:", JSON.stringify(cartBody));
+
   const cartResponse = await fetch(`${baseURL}/cart`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      from: { postal_code: req.origin_zip },
-      to: {
-        name: req.customer_name || "Cliente",
-        phone: req.customer_phone || "",
-        postal_code: req.destination_zip,
-        address: req.shipping_address || "",
-      },
-      products: [
-        {
-          name: "Produto",
-          quantity: 1,
-          unitary_value: 10,
-        },
-      ],
-      volumes: [
-        {
-          weight: (req.weight_grams || 300) / 1000,
-          width: req.width_cm || 11,
-          height: req.height_cm || 2,
-          length: req.length_cm || 16,
-        },
-      ],
-      options: {
-        insurance_value: 0,
-        receipt: false,
-        own_hand: false,
-        non_commercial: true,
-      },
-    }),
+    body: JSON.stringify(cartBody),
   });
 
   if (!cartResponse.ok) {
@@ -213,10 +243,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestBody: PurchaseShippingRequest = await req.json();
     const {
       sale_id,
       shipping_company,
       shipping_source,
+      shipping_service_id,
       destination_zip,
       origin_zip,
       weight_grams,
@@ -227,7 +259,15 @@ Deno.serve(async (req) => {
       customer_phone,
       shipping_address,
       receiver_phone,
-    }: PurchaseShippingRequest = await req.json();
+      destination_city,
+      destination_state,
+      destination_street,
+      destination_number,
+      destination_complement,
+      destination_neighborhood,
+      seller_name,
+      seller_phone,
+    } = requestBody;
 
     // Get auth token from header
     const authHeader = req.headers.get("Authorization");
@@ -260,7 +300,7 @@ Deno.serve(async (req) => {
     // Get user's shipping tokens
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("melhor_envio_token, superfrete_token")
+      .select("melhor_envio_token, superfrete_token, full_name, phone")
       .eq("id", userId)
       .single();
 
@@ -276,100 +316,52 @@ Deno.serve(async (req) => {
 
     const source = (shipping_source || "").toLowerCase();
 
+    const purchaseReq: PurchaseShippingRequest = {
+      sale_id,
+      shipping_company,
+      shipping_source,
+      shipping_service_id,
+      shipping_cost: 0,
+      destination_zip,
+      origin_zip,
+      weight_grams,
+      width_cm,
+      height_cm,
+      length_cm,
+      customer_name,
+      customer_phone,
+      shipping_address,
+      receiver_phone,
+      destination_city,
+      destination_state,
+      destination_street,
+      destination_number,
+      destination_complement,
+      destination_neighborhood,
+      seller_name: seller_name || profile.full_name || "Vendedor",
+      seller_phone: seller_phone || profile.phone || "00000000000",
+    };
+
     if (
       (source.includes("melhor envio") || source === "melhor envio") &&
       profile.melhor_envio_token
     ) {
-      const result = await purchaseShippingMelhorEnvio(
-        {
-          sale_id,
-          shipping_company,
-          shipping_source,
-          shipping_cost: 0,
-          destination_zip,
-          origin_zip,
-          weight_grams,
-          width_cm,
-          height_cm,
-          length_cm,
-          customer_name,
-          customer_phone,
-          shipping_address,
-          receiver_phone,
-        },
-        profile.melhor_envio_token
-      );
+      const result = await purchaseShippingMelhorEnvio(purchaseReq, profile.melhor_envio_token);
       labelUrl = result.labelUrl;
       tracking = result.tracking;
     } else if (
       (source.includes("superfrete") || source === "superfrete") &&
       profile.superfrete_token
     ) {
-      const result = await purchaseShippingSuperFrete(
-        {
-          sale_id,
-          shipping_company,
-          shipping_source,
-          shipping_cost: 0,
-          destination_zip,
-          origin_zip,
-          weight_grams,
-          width_cm,
-          height_cm,
-          length_cm,
-          customer_name,
-          customer_phone,
-          shipping_address,
-          receiver_phone,
-        },
-        profile.superfrete_token
-      );
+      const result = await purchaseShippingSuperFrete(purchaseReq, profile.superfrete_token);
       labelUrl = result.labelUrl;
       tracking = result.tracking;
     } else if (profile.melhor_envio_token) {
-      // Fallback: if source not specified but user has Melhor Envio token, use it
-      const result = await purchaseShippingMelhorEnvio(
-        {
-          sale_id,
-          shipping_company,
-          shipping_source,
-          shipping_cost: 0,
-          destination_zip,
-          origin_zip,
-          weight_grams,
-          width_cm,
-          height_cm,
-          length_cm,
-          customer_name,
-          customer_phone,
-          shipping_address,
-          receiver_phone,
-        },
-        profile.melhor_envio_token
-      );
+      const result = await purchaseShippingMelhorEnvio(purchaseReq, profile.melhor_envio_token);
       labelUrl = result.labelUrl;
       tracking = result.tracking;
     } else if (profile.superfrete_token) {
-      // Fallback: use SuperFrete token
-      const result = await purchaseShippingSuperFrete(
-        {
-          sale_id,
-          shipping_company,
-          shipping_source,
-          shipping_cost: 0,
-          destination_zip,
-          origin_zip,
-          weight_grams,
-          width_cm,
-          height_cm,
-          length_cm,
-          customer_name,
-          customer_phone,
-          shipping_address,
-          receiver_phone,
-        },
-        profile.superfrete_token
-      );
+      const result = await purchaseShippingSuperFrete(purchaseReq, profile.superfrete_token);
       labelUrl = result.labelUrl;
       tracking = result.tracking;
     } else {

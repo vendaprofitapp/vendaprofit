@@ -81,6 +81,7 @@ async function quoteMelhorEnvio(
       .map((item: any) => ({
         carrier: item.company?.name || "Transportadora",
         service: item.name || "Serviço",
+        service_id: item.id || null,
         price: parseFloat(item.price) || 0,
         delivery_days: parseInt(item.delivery_time) || parseInt(item.delivery_range?.max) || 0,
         source: "Melhor Envio",
