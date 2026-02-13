@@ -1,125 +1,119 @@
-# Formas de Envio no Lancamento de Vendas
+
+# Integracao de APIs de Cotacao de Frete (Melhor Envio + SuperFrete) - Plano Revisado
 
 ## Resumo
 
-Adicionar uma secao "Forma de Envio" no formulario de nova venda, com 4 opcoes: Presencial, Postagem, Aplicativos (Uber/99) e Outros. Inclui cadastro de endereco nos clientes, integracao futura com APIs de transportadoras, e logica financeira que trata o frete como despesa e/ou receita dependendo de quem paga.
+Integrar as APIs do **Melhor Envio** e **SuperFrete** para cotacao automatica de frete. Os tokens de cada servico serao armazenados **por usuario** na tabela `profiles`, seguindo o mesmo padrao ja usado para chaves de IA (gemini_api_key, openai_api_key). Cada usuario configura seus proprios tokens na pagina de Configuracoes.
 
-## Parte 1: Adicionar Endereco ao Cadastro de Clientes
+## Parte 1: Novas colunas no banco de dados
 
-### Novas colunas na tabela `customers`
-
-```text
-address_street    (text, nullable) - Rua/Logradouro
-address_number    (text, nullable) - Numero
-address_complement (text, nullable) - Complemento
-address_neighborhood (text, nullable) - Bairro
-address_city      (text, nullable) - Cidade
-address_state     (text, nullable) - Estado (UF)
-address_zip       (text, nullable) - CEP
-```
-
-### Mudanca em `Customers.tsx`
-
-- Adicionar campos de endereco no formulario de cadastro/edicao de cliente
-- Secao colapsavel "Endereco de Entrega" com os campos acima
-
-## Parte 2: Novas colunas na tabela `sales`
+### Tabela `profiles` - novos campos
 
 ```text
-shipping_method     (text, nullable)  - "presencial" | "postagem" | "app" | "outros"
-shipping_company    (text, nullable)  - Nome da empresa (Correios, Uber, etc)
-shipping_cost       (numeric, default 0) - Valor do frete
-shipping_payer      (text, nullable)  - "seller" | "buyer"
-shipping_address    (text, nullable)  - Endereco completo de entrega (texto formatado)
-shipping_notes      (text, nullable)  - Observacoes do envio / campo texto livre para "Outros"
-shipping_tracking   (text, nullable)  - Codigo de rastreio (preenchido depois, se aplicavel)
+origin_zip              (text, nullable)    - CEP de origem para calculo de frete
+melhor_envio_token      (text, nullable)    - Token pessoal do Melhor Envio
+superfrete_token        (text, nullable)    - Token pessoal do SuperFrete
 ```
 
-## Parte 3: Interface no Formulario de Venda
+### Tabela `products` - novos campos
 
-Adicionar uma secao **"Forma de Envio"** entre as observacoes e os totais, no lado direito do formulario de nova venda (`Sales.tsx`).
+```text
+weight_grams    (integer, nullable) - Peso em gramas
+width_cm        (integer, nullable) - Largura em cm
+height_cm       (integer, nullable) - Altura em cm
+length_cm       (integer, nullable) - Comprimento em cm
+```
 
-### Opcao 1: Presencial
+## Parte 2: Configuracoes do Usuario (Settings.tsx)
 
-- Seleciona e pronto, sem campos adicionais
-- Nenhum custo de frete adicionado
+Criar uma nova secao **"Integracao de Frete"** na pagina de Configuracoes, seguindo o mesmo visual das secoes de IA e Seguranca ja existentes. Contera:
 
-### Opcao 2: Postagem
+1. **CEP de Origem** - Campo de texto para o CEP de onde saem os produtos
+2. **Token Melhor Envio** - Campo com mascara e botao olho (igual ao padrao das chaves de IA), com link "Obter token" apontando para melhorenvio.com.br
+3. **Token SuperFrete** - Mesmo formato, com link para superfrete.com
+4. Botao "Salvar Configuracoes de Frete"
 
-1. **Endereco**: Se um cliente cadastrado esta selecionado e tem endereco, preenche automaticamente. Senao, abre campos para digitar
-2. **Empresa de postagem**: Campo de texto livre para informar (Correios, Jadlog, etc). Futuramente conectaremos APIs de cotacao
-3. **Valor do frete**: Input numerico
-4. **Quem paga**: Radio com "Vendedora" ou "Compradora"
-  - Se **Vendedora**: valor do frete entra APENAS como despesa da venda (reduz lucro)
-  - Se **Compradora**: valor do frete e somado ao total da venda (entra nos recebidos) E tambem registrado como despesa (pois a vendedora paga a transportadora)
+Os tokens ficam salvos na tabela `profiles` do usuario, nao como secrets globais.
 
-### Opcao 3: Aplicativos (Uber, 99, etc)
+Criar um novo componente: `src/components/settings/ShippingSettingsSection.tsx`
 
-1. Mesmos campos da Postagem (endereco, empresa, valor, quem paga)
-2. **Aviso adicional exibido**: "Responsabilidade do Cliente: A partir do momento em que a encomenda e entregue ao prestador de servico, a responsabilidade e do cliente."
-3. Mesma logica financeira de quem paga
+## Parte 3: Peso e Dimensoes dos Produtos
 
-### Opcao 4: Outros
+Adicionar campos no `ProductFormDialog.tsx`:
+- Peso (g), Largura (cm), Altura (cm), Comprimento (cm)
+- Secao colapsavel "Peso e Dimensoes (para calculo de frete)"
 
-1. **Descricao**: Campo de texto livre para descrever a forma de envio
-2. **Valor**: Input numerico
-3. **Quem paga**: Mesmo radio (Vendedora/Compradora), mesma logica
+## Parte 4: Edge Function `quote-shipping`
 
-### Logica Financeira do Frete
+Criar `supabase/functions/quote-shipping/index.ts` que:
 
-Quando `shipping_payer = "buyer"` (compradora paga):
+1. Recebe no body: `origin_zip`, `destination_zip`, `products[]`, `melhor_envio_token`, `superfrete_token`
+2. Os tokens vem do frontend (lidos do profile do usuario), passados na requisicao
+3. Consulta em paralelo as APIs que tiverem token configurado:
+   - **Melhor Envio**: `POST https://melhorenvio.com.br/api/v2/me/shipment/calculate`
+   - **SuperFrete**: `POST https://api.superfrete.com/api/v0/calculator`
+4. Unifica, ordena por preco e retorna as opcoes
+5. Se uma API falhar, retorna os resultados da outra
+6. Se ambas falharem, retorna erro amigavel
+7. Timeout de 10 segundos por API
 
-- O valor do frete e SOMADO ao total da venda (`sale.total += shipping_cost`)
-- Uma despesa automatica e criada na tabela `expenses` com:
-  - `category = "frete"`
-  - `category_type = "variable"`
-  - `amount = shipping_cost`
-  - Vinculo ao sale_id via campo description
+### Seguranca
+- Os tokens sao enviados pelo frontend por requisicao (nao ficam como secrets globais)
+- A edge function nao armazena nada, apenas proxia as chamadas
+- `verify_jwt = false` no config.toml, mas valida autenticacao via `getClaims()`
 
-Quando `shipping_payer = "seller"` (vendedora paga):
+## Parte 5: Interface no ShippingSection
 
-- O total da venda NAO muda
-- Uma despesa automatica e criada na tabela `expenses` com mesma logica acima
+Quando o usuario seleciona "Postagem":
 
-Resultado: o frete sempre aparece como despesa operacional no DRE, e quando o comprador paga, tambem aparece como receita.
+1. Se o cliente tem CEP, usa automaticamente
+2. Botao **"Cotar Frete"** aparece (somente se o usuario tem pelo menos 1 token configurado e o CEP de origem esta definido)
+3. Ao clicar, chama a edge function com os tokens do profile
+4. Exibe lista de opcoes como cards selecionaveis:
+   - Transportadora + servico, preco, prazo, plataforma de origem
+5. Ao selecionar, preenche automaticamente empresa e valor do frete
+6. Continua com selecao de "quem paga"
+7. Se nenhum token estiver configurado, mostra mensagem com link para Configuracoes
 
-## Parte 4: Exibicao nas Vendas Existentes
+O campo de valor manual continua disponivel para quem preferir nao usar cotacao automatica.
 
-- Na visualizacao de detalhes da venda (dialog de "Ver Venda"), mostrar a secao de envio com todos os dados preenchidos
-- No `EditSaleDialog`, permitir editar os dados de envio
-- Na listagem de vendas, mostrar icone indicativo do tipo de envio
+## Parte 6: Query do Profile na pagina de Vendas
+
+A pagina `Sales.tsx` ja busca dados de clientes. Precisamos tambem buscar o profile do usuario logado para obter `origin_zip`, `melhor_envio_token` e `superfrete_token`, e passar ao ShippingSection.
 
 ## Detalhes Tecnicos
 
 ### Migration SQL
-
-1. Adicionar colunas de endereco na tabela `customers`
-2. Adicionar colunas de shipping na tabela `sales`
+1. Adicionar `origin_zip`, `melhor_envio_token`, `superfrete_token` na tabela `profiles`
+2. Adicionar `weight_grams`, `width_cm`, `height_cm`, `length_cm` na tabela `products`
 
 ### Arquivos a Criar
-
-1. `**src/components/sales/ShippingSection.tsx**` - Componente da secao "Forma de Envio" com toda a logica condicional dos 4 tipos
+1. `supabase/functions/quote-shipping/index.ts` - Edge function de cotacao
+2. `src/components/settings/ShippingSettingsSection.tsx` - Secao de configuracao de frete
 
 ### Arquivos a Modificar
-
-1. `**src/pages/Sales.tsx**` - Integrar ShippingSection no formulario de nova venda, ajustar calculo de total para incluir frete quando comprador paga, criar despesa automatica ao finalizar venda
-2. `**src/pages/Customers.tsx**` - Adicionar campos de endereco no formulario de cliente
-3. `**src/components/sales/EditSaleDialog.tsx**` - Exibir e permitir editar dados de envio
+1. `src/pages/Settings.tsx` - Adicionar ShippingSettingsSection e buscar novos campos do profile
+2. `src/components/stock/ProductFormDialog.tsx` - Campos de peso e dimensoes
+3. `src/components/sales/ShippingSection.tsx` - Botao "Cotar Frete" e lista de opcoes
+4. `src/pages/Sales.tsx` - Buscar profile do usuario para tokens e CEP origem
+5. `supabase/config.toml` - Adicionar `[functions.quote-shipping]` com `verify_jwt = false`
 
 ### Fluxo do Usuario
 
-1. Abre "Nova Venda" e adiciona produtos ao carrinho
-2. Seleciona cliente cadastrado (endereco puxa automaticamente)
-3. Em "Forma de Envio", escolhe "Postagem"
-4. Sistema preenche endereco do cliente automaticamente
-5. Digita "Correios" como empresa, R$25,00 como valor
-6. Seleciona "Compradora paga"
-7. O total da venda atualiza: Subtotal + R$25,00 de frete
-8. Finaliza a venda e sistema abre a opção de enviar as informações do envio em caso de Postagem, aplicativos ou outros para o whatsapp do cliente (cadastrado no sistema)  
+1. Vai em Configuracoes e insere CEP de origem, token do Melhor Envio e/ou token do SuperFrete
+2. Cadastra produto com peso e dimensoes
+3. Abre nova venda, seleciona cliente com CEP
+4. Escolhe "Postagem" como forma de envio
+5. Clica em "Cotar Frete"
+6. Ve opcoes: PAC R$18, SEDEX R$32, Jadlog R$22...
+7. Seleciona a opcao desejada
+8. Escolhe quem paga o frete
+9. Finaliza a venda
 
-9. Sistema cria automaticamente uma despesa de R$25,00 (frete) na tabela expenses
-10. No DRE: os R$25,00 aparecem tanto em Receita (recebido do cliente) quanto em Despesas (pagamento do frete)
+### Tratamento de erros
 
-### Sobre APIs de Transportadoras
-
-A integracao com APIs de cotacao de frete (Correios, Jadlog, Uber, 99) sera implementada em uma fase futura. Por ora, o usuario informa manualmente a empresa e o valor. A estrutura ja esta preparada para receber dados automaticos quando as APIs forem conectadas.
+- Se nenhum token configurado: "Configure seus tokens de frete em Configuracoes para usar a cotacao automatica."
+- Se CEP de origem nao definido: "Configure seu CEP de origem em Configuracoes."
+- Se uma API falhar: mostra resultados da outra
+- Se ambas falharem: "Nao foi possivel cotar. Insira o valor manualmente."
+- Se produtos sem peso/dimensoes: "Informe peso e dimensoes dos produtos para cotar o frete."
