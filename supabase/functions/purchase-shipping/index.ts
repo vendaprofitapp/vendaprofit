@@ -90,7 +90,7 @@ async function purchaseShippingMelhorEnvio(
       },
     ],
     options: {
-      insurance_value: 0,
+      insurance_value: 1,
       receipt: false,
       own_hand: false,
       non_commercial: true,
