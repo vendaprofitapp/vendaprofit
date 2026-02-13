@@ -242,7 +242,7 @@ export default function Sales() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone, instagram, photo_url, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip")
+        .select("id, name, phone, instagram, photo_url, cpf, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip")
         .eq("owner_id", user?.id)
         .order("name");
       if (error) throw error;
