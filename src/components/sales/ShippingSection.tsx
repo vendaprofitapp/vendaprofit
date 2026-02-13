@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Package, Truck, Car, FileText, AlertTriangle, MapPin, Search, Loader2, Settings, Download, FileCheck } from "lucide-react";
+import { Package, Truck, Car, FileText, AlertTriangle, MapPin, Search, Loader2, Settings, Download, FileCheck, MessageCircle, Copy } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +60,7 @@ interface ShippingSectionProps {
   customerPhone?: string;
   shippingLabelUrl?: string | null;
   onLabelGenerated?: (labelUrl: string) => void;
+  onTrackingGenerated?: (tracking: string, labelUrl: string) => void;
 }
 
 const methodOptions = [
@@ -91,7 +92,7 @@ function hasAddress(addr?: CustomerAddress | null): boolean {
   return !!(addr.address_street || addr.address_city || addr.address_zip);
 }
 
-export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, customerName, customerPhone, shippingLabelUrl, onLabelGenerated }: ShippingSectionProps) {
+export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, customerName, customerPhone, shippingLabelUrl, onLabelGenerated, onTrackingGenerated }: ShippingSectionProps) {
   const [addressOpen, setAddressOpen] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
@@ -103,6 +104,8 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   const [manualLength, setManualLength] = useState<number>(0);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [generatedTracking, setGeneratedTracking] = useState<string | null>(null);
+  const [generatedLabelUrl, setGeneratedLabelUrl] = useState<string | null>(null);
 
   // Auto-fill address when customer has one
   useEffect(() => {
@@ -180,35 +183,43 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   };
 
   const handlePurchaseShipping = async () => {
-    if (!saleId || !value.company || !value.cost) return;
+    if (!value.company || !value.cost) return;
 
     setPurchasing(true);
     setPurchaseError(null);
 
     try {
+      const body: any = {
+        shipping_company: value.company,
+        destination_zip: customerAddress?.address_zip?.replace(/\D/g, ""),
+        origin_zip: shippingConfig?.origin_zip?.replace(/\D/g, ""),
+        weight_grams: quoteProducts?.[0]?.weight_grams || manualWeight,
+        width_cm: quoteProducts?.[0]?.width_cm || manualWidth,
+        height_cm: quoteProducts?.[0]?.height_cm || manualHeight,
+        length_cm: quoteProducts?.[0]?.length_cm || manualLength,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        shipping_address: value.address,
+      };
+
+      if (saleId) {
+        body.sale_id = saleId;
+      }
+
       const { data, error } = await supabase.functions.invoke(
         "purchase-shipping",
-        {
-          body: {
-            sale_id: saleId,
-            shipping_company: value.company,
-            destination_zip: customerAddress?.address_zip?.replace(/\D/g, ""),
-            origin_zip: shippingConfig?.origin_zip?.replace(/\D/g, ""),
-            weight_grams: quoteProducts?.[0]?.weight_grams || manualWeight,
-            width_cm: quoteProducts?.[0]?.width_cm || manualWidth,
-            height_cm: quoteProducts?.[0]?.height_cm || manualHeight,
-            length_cm: quoteProducts?.[0]?.length_cm || manualLength,
-            customer_name: customerName,
-            customer_phone: customerPhone,
-            shipping_address: value.address,
-          },
-        }
+        { body }
       );
 
       if (error) throw error;
 
       if (data?.label_url) {
+        setGeneratedLabelUrl(data.label_url);
         onLabelGenerated?.(data.label_url);
+      }
+      if (data?.tracking) {
+        setGeneratedTracking(data.tracking);
+        onTrackingGenerated?.(data.tracking, data.label_url || "");
       }
     } catch (err: any) {
       console.error("Purchase error:", err);
@@ -218,6 +229,19 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
     } finally {
       setPurchasing(false);
     }
+  };
+
+  const currentLabelUrl = shippingLabelUrl || generatedLabelUrl;
+
+  const handleSendWhatsApp = () => {
+    if (!generatedTracking || !customerPhone) return;
+    const phone = customerPhone.replace(/\D/g, "");
+    const phoneFormatted = phone.startsWith("55") ? phone : `55${phone}`;
+    const name = customerName || "Cliente";
+    const message = encodeURIComponent(
+      `Olá ${name}! Seu pedido foi enviado! 📦\n\nCódigo de rastreio: ${generatedTracking}\nAcompanhe em: https://www.linkcorreios.com.br/?id=${generatedTracking}\n\nQualquer dúvida, estou à disposição!`
+    );
+    window.open(`https://wa.me/${phoneFormatted}?text=${message}`, "_blank");
   };
 
   return (
@@ -424,61 +448,96 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
 
               {/* Purchase Label Section */}
               {quoteOptions.length > 0 && selectedQuoteIndex !== null && value.company && value.cost > 0 && (
-                <div className="space-y-2 p-3 bg-muted rounded-lg border border-primary/20">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">Gerar Etiqueta</p>
-                      <p className="text-xs text-muted-foreground">
-                        {value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")
-                          ? "Comprar frete e gerar etiqueta automática"
-                          : "Etiqueta será gerada após confirmar a venda"}
-                      </p>
-                    </div>
-                    {shippingLabelUrl && (
-                      <FileCheck className="h-5 w-5 text-green-600" />
-                    )}
-                  </div>
+                 <div className="space-y-2 p-3 bg-muted rounded-lg border border-primary/20">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-medium">Gerar Etiqueta</p>
+                       <p className="text-xs text-muted-foreground">
+                         {value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")
+                           ? "Comprar frete e gerar etiqueta automática"
+                           : "Etiqueta será gerada após confirmar a venda"}
+                       </p>
+                     </div>
+                     {currentLabelUrl && (
+                       <FileCheck className="h-5 w-5 text-primary" />
+                     )}
+                   </div>
 
-                  {!shippingLabelUrl && (value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")) && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handlePurchaseShipping}
-                      disabled={purchasing}
-                      className="w-full gap-2"
-                    >
-                      {purchasing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <FileCheck className="h-4 w-4" />
-                      )}
-                      {purchasing ? "Gerando..." : "Gerar Etiqueta"}
-                    </Button>
-                  )}
+                   {!currentLabelUrl && (value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")) && (
+                     <Button
+                       type="button"
+                       size="sm"
+                       onClick={handlePurchaseShipping}
+                       disabled={purchasing}
+                       className="w-full gap-2"
+                     >
+                       {purchasing ? (
+                         <Loader2 className="h-4 w-4 animate-spin" />
+                       ) : (
+                         <FileCheck className="h-4 w-4" />
+                       )}
+                       {purchasing ? "Gerando..." : "Gerar Etiqueta"}
+                     </Button>
+                   )}
 
-                  {purchaseError && (
-                    <p className="text-xs text-destructive">{purchaseError}</p>
-                  )}
+                   {purchaseError && (
+                     <p className="text-xs text-destructive">{purchaseError}</p>
+                   )}
 
-                  {shippingLabelUrl && (
-                    <a
-                      href={shippingLabelUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full block"
-                    >
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Baixar Etiqueta
-                      </Button>
-                    </a>
-                  )}
-                </div>
+                   {/* Tracking number display */}
+                   {generatedTracking && (
+                     <div className="p-2 bg-background rounded border">
+                       <p className="text-xs text-muted-foreground">Código de rastreio:</p>
+                       <div className="flex items-center gap-2">
+                         <p className="text-sm font-mono font-semibold flex-1">{generatedTracking}</p>
+                         <Button
+                           type="button"
+                           variant="ghost"
+                           size="sm"
+                           className="h-7 w-7 p-0"
+                           onClick={() => {
+                             navigator.clipboard.writeText(generatedTracking);
+                           }}
+                         >
+                           <Copy className="h-3.5 w-3.5" />
+                         </Button>
+                       </div>
+                     </div>
+                   )}
+
+                   {currentLabelUrl && (
+                     <a
+                       href={currentLabelUrl}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       className="w-full block"
+                     >
+                       <Button
+                         type="button"
+                         variant="outline"
+                         size="sm"
+                         className="w-full gap-2"
+                       >
+                         <Download className="h-4 w-4" />
+                         Baixar Etiqueta
+                       </Button>
+                     </a>
+                   )}
+
+                   {/* WhatsApp button */}
+                   {generatedTracking && customerPhone && (
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="sm"
+                       onClick={handleSendWhatsApp}
+                       className="w-full gap-2"
+                     >
+                       <MessageCircle className="h-4 w-4" />
+                       Enviar Rastreio via WhatsApp
+                     </Button>
+                   )}
+                 </div>
               )}
             </div>
           )}
