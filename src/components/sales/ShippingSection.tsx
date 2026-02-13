@@ -92,6 +92,10 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [selectedQuoteIndex, setSelectedQuoteIndex] = useState<number | null>(null);
+  const [manualWeight, setManualWeight] = useState<number>(0);
+  const [manualWidth, setManualWidth] = useState<number>(0);
+  const [manualHeight, setManualHeight] = useState<number>(0);
+  const [manualLength, setManualLength] = useState<number>(0);
 
   // Auto-fill address when customer has one
   useEffect(() => {
@@ -113,7 +117,9 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   const hasTokens = !!(shippingConfig?.melhor_envio_token || shippingConfig?.superfrete_token);
   const hasOriginZip = !!shippingConfig?.origin_zip;
   const destinationZip = customerAddress?.address_zip?.replace(/\D/g, "");
-  const canQuote = value.method === "postagem" && hasTokens && hasOriginZip && !!destinationZip && quoteProducts && quoteProducts.length > 0;
+  const hasManualDimensions = manualWeight > 0 && manualWidth > 0 && manualHeight > 0 && manualLength > 0;
+  const hasProductDimensions = quoteProducts && quoteProducts.length > 0;
+  const canQuote = value.method === "postagem" && hasTokens && hasOriginZip && !!destinationZip && (hasProductDimensions || hasManualDimensions);
 
   const handleQuote = async () => {
     if (!canQuote) return;
@@ -123,11 +129,19 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
     setSelectedQuoteIndex(null);
 
     try {
+      const productsToQuote = hasProductDimensions ? quoteProducts : [{
+        weight_grams: manualWeight,
+        width_cm: manualWidth,
+        height_cm: manualHeight,
+        length_cm: manualLength,
+        quantity: 1,
+      }];
+
       const { data, error } = await supabase.functions.invoke("quote-shipping", {
         body: {
           origin_zip: shippingConfig!.origin_zip!.replace(/\D/g, ""),
           destination_zip: destinationZip,
-          products: quoteProducts,
+          products: productsToQuote,
           melhor_envio_token: shippingConfig!.melhor_envio_token || null,
           superfrete_token: shippingConfig!.superfrete_token || null,
         },
@@ -255,11 +269,53 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
                 </div>
               )}
 
-              {hasTokens && hasOriginZip && destinationZip && (!quoteProducts || quoteProducts.length === 0) && (
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">
-                    Informe peso e dimensões dos produtos para cotar o frete.
+              {hasTokens && hasOriginZip && destinationZip && !hasProductDimensions && (
+                <div className="space-y-2 p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Os produtos não têm peso/dimensões cadastrados. Informe manualmente para cotar:
                   </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Peso (g)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 500"
+                        value={manualWeight || ""}
+                        onChange={(e) => setManualWeight(Number(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Largura (cm)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 20"
+                        value={manualWidth || ""}
+                        onChange={(e) => setManualWidth(Number(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Altura (cm)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 10"
+                        value={manualHeight || ""}
+                        onChange={(e) => setManualHeight(Number(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Comprimento (cm)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 30"
+                        value={manualLength || ""}
+                        onChange={(e) => setManualLength(Number(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
