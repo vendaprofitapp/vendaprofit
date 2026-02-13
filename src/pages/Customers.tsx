@@ -56,6 +56,7 @@ interface Customer {
   notes: string | null;
   birth_date: string | null;
   size: string | null;
+  cpf: string | null;
   created_at: string;
   address_street: string | null;
   address_number: string | null;
@@ -108,6 +109,7 @@ export default function Customers() {
     photo_url: "",
     birth_date: "",
     size: "",
+    cpf: "",
     address_street: "",
     address_number: "",
     address_complement: "",
@@ -228,6 +230,7 @@ export default function Customers() {
             photo_url: formData.photo_url || null,
             birth_date: formData.birth_date || null,
             size: formData.size || null,
+            cpf: formData.cpf || null,
             address_street: formData.address_street || null,
             address_number: formData.address_number || null,
             address_complement: formData.address_complement || null,
@@ -248,6 +251,7 @@ export default function Customers() {
           photo_url: formData.photo_url || null,
           birth_date: formData.birth_date || null,
           size: formData.size || null,
+          cpf: formData.cpf || null,
           address_street: formData.address_street || null,
           address_number: formData.address_number || null,
           address_complement: formData.address_complement || null,
@@ -311,7 +315,7 @@ export default function Customers() {
     }
   };
 
-  const defaultFormData = { name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "", address_street: "", address_number: "", address_complement: "", address_neighborhood: "", address_city: "", address_state: "", address_zip: "" };
+  const defaultFormData = { name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "", cpf: "", address_street: "", address_number: "", address_complement: "", address_neighborhood: "", address_city: "", address_state: "", address_zip: "" };
 
   const openNewForm = () => {
     setEditingCustomer(null);
@@ -329,6 +333,7 @@ export default function Customers() {
       photo_url: customer.photo_url || "",
       birth_date: customer.birth_date || "",
       size: customer.size || "",
+      cpf: (customer as any).cpf || "",
       address_street: customer.address_street || "",
       address_number: customer.address_number || "",
       address_complement: customer.address_complement || "",
@@ -776,6 +781,23 @@ export default function Customers() {
                   type="date"
                   value={formData.birth_date}
                   onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>CPF</Label>
+                <Input
+                  value={formData.cpf}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
+                    let formatted = digits;
+                    if (digits.length > 9) formatted = `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+                    else if (digits.length > 6) formatted = `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6)}`;
+                    else if (digits.length > 3) formatted = `${digits.slice(0,3)}.${digits.slice(3)}`;
+                    setFormData({ ...formData, cpf: formatted });
+                  }}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
                 />
               </div>
 

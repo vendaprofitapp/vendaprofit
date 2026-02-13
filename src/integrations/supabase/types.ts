@@ -568,6 +568,7 @@ export type Database = {
           address_street: string | null
           address_zip: string | null
           birth_date: string | null
+          cpf: string | null
           created_at: string
           id: string
           instagram: string | null
@@ -588,6 +589,7 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           birth_date?: string | null
+          cpf?: string | null
           created_at?: string
           id?: string
           instagram?: string | null
@@ -608,6 +610,7 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           birth_date?: string | null
+          cpf?: string | null
           created_at?: string
           id?: string
           instagram?: string | null
@@ -1700,6 +1703,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          cpf: string | null
           created_at: string
           email: string
           full_name: string
@@ -1715,6 +1719,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cpf?: string | null
           created_at?: string
           email: string
           full_name: string
@@ -1730,6 +1735,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cpf?: string | null
           created_at?: string
           email?: string
           full_name?: string
