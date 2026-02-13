@@ -653,6 +653,47 @@ export type Database = {
           },
         ]
       }
+      expense_installments: {
+        Row: {
+          amount: number
+          created_at: string
+          due_date: string
+          expense_id: string
+          id: string
+          installment_number: number
+          is_paid: boolean
+          paid_at: string | null
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          due_date: string
+          expense_id: string
+          id?: string
+          installment_number: number
+          is_paid?: boolean
+          paid_at?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          due_date?: string
+          expense_id?: string
+          id?: string
+          installment_number?: number
+          is_paid?: boolean
+          paid_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_installments_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_splits: {
         Row: {
           amount: number
@@ -699,6 +740,8 @@ export type Database = {
           expense_date: string
           group_id: string | null
           id: string
+          installment_count: number | null
+          is_installment: boolean
           is_recurring: boolean
           owner_id: string
           recurring_day: number | null
@@ -715,6 +758,8 @@ export type Database = {
           expense_date?: string
           group_id?: string | null
           id?: string
+          installment_count?: number | null
+          is_installment?: boolean
           is_recurring?: boolean
           owner_id: string
           recurring_day?: number | null
@@ -731,6 +776,8 @@ export type Database = {
           expense_date?: string
           group_id?: string | null
           id?: string
+          installment_count?: number | null
+          is_installment?: boolean
           is_recurring?: boolean
           owner_id?: string
           recurring_day?: number | null

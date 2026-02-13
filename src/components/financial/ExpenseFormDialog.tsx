@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { addMonths, format } from "date-fns";
 
 const CATEGORY_OPTIONS: Record<string, string[]> = {
   fixed: ["Aluguel", "Internet/Telefone", "Assinaturas", "Contador"],
@@ -39,6 +40,12 @@ const TYPE_LABELS: Record<string, string> = {
   event: "Evento/Ação de Venda",
   other: "Outros",
 };
+
+interface Installment {
+  number: number;
+  amount: string;
+  dueDate: string;
+}
 
 interface ExpenseFormDialogProps {
   open: boolean;
@@ -61,6 +68,9 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
   const [splitMode, setSplitMode] = useState("none");
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [customSplitPercent, setCustomSplitPercent] = useState([50]);
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentCount, setInstallmentCount] = useState("2");
+  const [installments, setInstallments] = useState<Installment[]>([]);
 
   // Fetch user's active partnerships/groups
   const { data: groups = [] } = useQuery({
@@ -93,6 +103,26 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
     enabled: !!selectedGroupId,
   });
 
+  // Generate installments when count or amount changes
+  useEffect(() => {
+    if (!isInstallment) return;
+    const count = parseInt(installmentCount) || 2;
+    const total = parseFloat(amount) || 0;
+    const perInstallment = total > 0 ? (total / count).toFixed(2) : "0";
+    const baseDate = new Date(expenseDate + "T12:00:00");
+
+    const newInstallments: Installment[] = [];
+    for (let i = 0; i < count; i++) {
+      const dueDate = addMonths(baseDate, i);
+      newInstallments.push({
+        number: i + 1,
+        amount: perInstallment,
+        dueDate: format(dueDate, "yyyy-MM-dd"),
+      });
+    }
+    setInstallments(newInstallments);
+  }, [installmentCount, amount, expenseDate, isInstallment]);
+
   useEffect(() => {
     if (editingExpense) {
       setCategoryType(editingExpense.category_type);
@@ -105,6 +135,8 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
       setSplitMode(editingExpense.split_mode);
       setSelectedGroupId(editingExpense.group_id || "");
       setCustomSplitPercent([editingExpense.custom_split_percent || 50]);
+      setIsInstallment(editingExpense.is_installment || false);
+      setInstallmentCount(String(editingExpense.installment_count || 2));
     } else {
       resetForm();
     }
@@ -122,12 +154,23 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
     setSplitMode("none");
     setSelectedGroupId("");
     setCustomSplitPercent([50]);
+    setIsInstallment(false);
+    setInstallmentCount("2");
+    setInstallments([]);
+  };
+
+  const updateInstallmentAmount = (index: number, value: string) => {
+    setInstallments(prev => prev.map((inst, i) => i === index ? { ...inst, amount: value } : inst));
+  };
+
+  const updateInstallmentDate = (index: number, value: string) => {
+    setInstallments(prev => prev.map((inst, i) => i === index ? { ...inst, dueDate: value } : inst));
   };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const finalCategory = category === "__custom" ? customCategory : category;
-      const expenseData = {
+      const expenseData: any = {
         owner_id: user!.id,
         amount: parseFloat(amount),
         category: finalCategory,
@@ -139,6 +182,8 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
         group_id: splitMode !== "none" && selectedGroupId ? selectedGroupId : null,
         split_mode: splitMode,
         custom_split_percent: splitMode === "custom" ? customSplitPercent[0] : null,
+        is_installment: isInstallment,
+        installment_count: isInstallment ? parseInt(installmentCount) : null,
       };
 
       let expenseId: string;
@@ -151,8 +196,9 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
         if (error) throw error;
         expenseId = editingExpense.id;
 
-        // Delete old splits to recreate
+        // Delete old splits and installments to recreate
         await supabase.from("expense_splits").delete().eq("expense_id", expenseId);
+        await supabase.from("expense_installments").delete().eq("expense_id", expenseId);
       } else {
         const { data, error } = await supabase
           .from("expenses")
@@ -161,6 +207,19 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
           .single();
         if (error) throw error;
         expenseId = data.id;
+      }
+
+      // Create installments if enabled
+      if (isInstallment && installments.length > 0) {
+        const installmentRows = installments.map(inst => ({
+          expense_id: expenseId,
+          installment_number: inst.number,
+          amount: parseFloat(inst.amount) || 0,
+          due_date: inst.dueDate,
+          is_paid: false,
+        }));
+        const { error: instError } = await supabase.from("expense_installments").insert(installmentRows);
+        if (instError) throw instError;
       }
 
       // Create splits if partnership mode
@@ -199,6 +258,7 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["expense-splits"] });
+      queryClient.invalidateQueries({ queryKey: ["expense-installments"] });
       toast({ title: editingExpense ? "Despesa atualizada!" : "Despesa cadastrada!" });
       onOpenChange(false);
       resetForm();
@@ -225,6 +285,11 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
   const costSplitLabel = selectedGroup
     ? `${(selectedGroup.cost_split_ratio * 100).toFixed(0)}% / ${(100 - selectedGroup.cost_split_ratio * 100).toFixed(0)}%`
     : "50% / 50%";
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+  const installmentsTotal = installments.reduce((sum, inst) => sum + (parseFloat(inst.amount) || 0), 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -270,7 +335,7 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
 
           {/* Amount */}
           <div className="space-y-2">
-            <Label>Valor (R$)</Label>
+            <Label>Valor Total (R$)</Label>
             <Input
               type="number"
               step="0.01"
@@ -301,8 +366,65 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
             />
           </div>
 
+          {/* Installment toggle */}
+          <div className="flex items-center justify-between p-3 rounded-lg border">
+            <div>
+              <Label>Pagamento parcelado</Label>
+              <p className="text-xs text-muted-foreground">Dividir em parcelas mensais</p>
+            </div>
+            <Switch checked={isInstallment} onCheckedChange={setIsInstallment} />
+          </div>
+
+          {/* Installment details */}
+          {isInstallment && (
+            <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+              <div className="space-y-2">
+                <Label>Número de parcelas</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={24}
+                  value={installmentCount}
+                  onChange={(e) => setInstallmentCount(e.target.value)}
+                />
+              </div>
+
+              {installments.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Parcelas</Label>
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {installments.map((inst, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-sm">
+                        <span className="w-8 text-muted-foreground shrink-0">{inst.number}x</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={inst.amount}
+                          onChange={(e) => updateInstallmentAmount(idx, e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          type="date"
+                          value={inst.dueDate}
+                          onChange={(e) => updateInstallmentDate(idx, e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-xs pt-1 border-t">
+                    <span className="text-muted-foreground">Soma das parcelas:</span>
+                    <span className={installmentsTotal !== parseFloat(amount || "0") ? "text-destructive font-bold" : "font-medium"}>
+                      {formatCurrency(installmentsTotal)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Recurring */}
-          {categoryType === "fixed" && (
+          {categoryType === "fixed" && !isInstallment && (
             <div className="flex items-center justify-between p-3 rounded-lg border">
               <div>
                 <Label>Custo recorrente mensal</Label>
@@ -311,7 +433,7 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
               <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
             </div>
           )}
-          {isRecurring && (
+          {isRecurring && !isInstallment && (
             <div className="space-y-2">
               <Label>Dia do vencimento</Label>
               <Input
