@@ -31,98 +31,120 @@ async function purchaseShippingMelhorEnvio(
   req: PurchaseShippingRequest,
   token: string
 ) {
-  const melhorEnvioURL = "https://api.melhorenvio.com.br/v2/shipment";
+  const baseURL = "https://melhorenvio.com.br/api/v2/me";
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "User-Agent": "VendaProfit (contato@vendaprofit.com)",
+  };
 
-  // First, create the shipment
-  const shipmentResponse = await fetch(melhorEnvioURL, {
+  // Step 1: Add to cart
+  const cartResponse = await fetch(`${baseURL}/cart`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({
-      from: {
-        name: "Vendedor",
-        phone: "11000000000",
-        email: "seller@vendaprofit.com",
-        address: "Endereço de origem",
-        number: "0",
-        complement: "",
-        city: "São Paulo",
-        state: "SP",
-        country_id: 1,
-        postal_code: req.origin_zip,
-      },
+      from: { postal_code: req.origin_zip },
       to: {
         name: req.customer_name || "Cliente",
-        phone: req.receiver_phone || req.customer_phone || "11000000000",
-        email: "cliente@example.com",
-        address: req.shipping_address || "Endereço do cliente",
-        number: "0",
-        complement: "",
-        city: "São Paulo",
-        state: "SP",
-        country_id: 1,
+        phone: req.customer_phone || "",
         postal_code: req.destination_zip,
+        address: req.shipping_address || "",
       },
-      service: 4, // Correios PAC
       products: [
         {
           name: "Produto",
           quantity: 1,
-          unitary_value: req.shipping_cost,
-          weight: req.weight_grams,
-          width: req.width_cm,
-          height: req.height_cm,
-          length: req.length_cm,
+          unitary_value: 10,
         },
       ],
+      volumes: [
+        {
+          weight: (req.weight_grams || 300) / 1000,
+          width: req.width_cm || 11,
+          height: req.height_cm || 2,
+          length: req.length_cm || 16,
+        },
+      ],
+      options: {
+        insurance_value: 0,
+        receipt: false,
+        own_hand: false,
+        non_commercial: true,
+      },
     }),
   });
 
-  if (!shipmentResponse.ok) {
-    const error = await shipmentResponse.json();
-    throw new Error(`Melhor Envio error: ${JSON.stringify(error)}`);
+  if (!cartResponse.ok) {
+    const error = await cartResponse.text();
+    console.error("Cart error:", error);
+    throw new Error(`Erro ao adicionar ao carrinho: ${error}`);
   }
 
-  const shipmentData = await shipmentResponse.json();
+  const cartData = await cartResponse.json();
+  const orderId = cartData.id;
 
-  // Purchase the shipment
-  const purchaseResponse = await fetch(
-    `${melhorEnvioURL}/${shipmentData.id}/buy`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
+  // Step 2: Checkout (purchase)
+  const checkoutResponse = await fetch(`${baseURL}/shipment/checkout`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [orderId] }),
+  });
 
-  if (!purchaseResponse.ok) {
-    const error = await purchaseResponse.json();
-    throw new Error(`Melhor Envio purchase error: ${JSON.stringify(error)}`);
+  if (!checkoutResponse.ok) {
+    const error = await checkoutResponse.text();
+    console.error("Checkout error:", error);
+    throw new Error(`Erro no checkout: ${error}`);
   }
 
-  const purchaseData = await purchaseResponse.json();
+  await checkoutResponse.json();
 
-  // Get tracking label
-  const labelResponse = await fetch(
-    `${melhorEnvioURL}/${purchaseData.id}/label`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
+  // Step 3: Generate label
+  const generateResponse = await fetch(`${baseURL}/shipment/generate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [orderId] }),
+  });
 
-  if (!labelResponse.ok) {
-    throw new Error("Failed to get label from Melhor Envio");
+  if (!generateResponse.ok) {
+    const error = await generateResponse.text();
+    console.error("Generate error:", error);
+    throw new Error(`Erro ao gerar etiqueta: ${error}`);
   }
 
-  const labelUrl = labelResponse.url;
-  const tracking = purchaseData.tracking;
+  await generateResponse.json();
+
+  // Step 4: Print label (get PDF URL)
+  const printResponse = await fetch(`${baseURL}/shipment/print`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [orderId], mode: "public" }),
+  });
+
+  if (!printResponse.ok) {
+    const error = await printResponse.text();
+    console.error("Print error:", error);
+    throw new Error(`Erro ao imprimir etiqueta: ${error}`);
+  }
+
+  const printData = await printResponse.json();
+  const labelUrl = printData.url || "";
+
+  // Step 5: Get tracking
+  const trackingResponse = await fetch(`${baseURL}/shipment/tracking`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [orderId] }),
+  });
+
+  let tracking = "";
+  if (trackingResponse.ok) {
+    const trackingData = await trackingResponse.json();
+    const firstOrder = Object.values(trackingData)?.[0] as any;
+    tracking = firstOrder?.tracking || orderId;
+  } else {
+    tracking = orderId;
+  }
 
   return { labelUrl, tracking };
 }
