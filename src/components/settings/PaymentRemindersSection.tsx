@@ -48,14 +48,34 @@ export function PaymentRemindersSection({ userId }: PaymentRemindersSectionProps
   // Mark as paid mutation
   const markAsPaidMutation = useMutation({
     mutationFn: async (id: string) => {
+      // First get the reminder to find the sale_id
+      const { data: reminder, error: fetchError } = await supabase
+        .from("payment_reminders")
+        .select("sale_id")
+        .eq("id", id)
+        .single();
+      if (fetchError) throw fetchError;
+
+      // Mark reminder as paid
       const { error } = await supabase
         .from("payment_reminders")
         .update({ is_paid: true, paid_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
+
+      // Update sale status to completed
+      if (reminder?.sale_id) {
+        const { error: saleError } = await supabase
+          .from("sales")
+          .update({ status: "completed" })
+          .eq("id", reminder.sale_id);
+        if (saleError) throw saleError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payment-reminders", userId] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["financial-splits"] });
       toast({ title: "Pagamento marcado como recebido!" });
     },
     onError: (error: any) => {
