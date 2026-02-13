@@ -246,7 +246,7 @@ async function purchaseShippingSuperFrete(
 
   console.log("SuperFrete tag body:", JSON.stringify(tagBody));
 
-  const tagResponse = await fetch(`${baseURL}/tag`, {
+  const tagResponse = await fetch(`${baseURL}/cart`, {
     method: "POST",
     headers,
     body: JSON.stringify(tagBody),
@@ -270,7 +270,7 @@ async function purchaseShippingSuperFrete(
   console.log("SuperFrete tag created:", tagId);
 
   // Step 2: Checkout (pay the label using account balance)
-  const checkoutResponse = await fetch(`https://api.superfrete.com/api/integration/v1/checkout`, {
+  const checkoutResponse = await fetch(`${baseURL}/checkout`, {
     method: "POST",
     headers,
     body: JSON.stringify({ orders: [tagId] }),
