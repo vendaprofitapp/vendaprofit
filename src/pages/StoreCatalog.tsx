@@ -17,6 +17,7 @@ import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
 import { useAuth } from "@/hooks/useAuth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WaitlistDialog } from "@/components/catalog/WaitlistDialog";
+import { InstallmentInfo, CartProgressBar, getNextTierMessage, getUnlockedTierMessage, type PurchaseIncentivesConfig, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -207,6 +208,7 @@ interface StoreSettings {
   secret_area_active: boolean;
   secret_area_name: string | null;
   secret_area_password: string | null;
+  purchase_incentives_config: PurchaseIncentivesConfig | null;
 }
 
 export default function StoreCatalog() {
@@ -270,6 +272,8 @@ export default function StoreCatalog() {
 
   // Cart functions
   const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
+    const prevTotal = cartTotal;
+    
     setCart(prev => {
       const existingIndex = prev.findIndex(
         c => c.displayItem.id === item.id && c.selectedSize === size
@@ -286,7 +290,31 @@ export default function StoreCatalog() {
       
       return [...prev, { displayItem: item, selectedSize: size, quantity: 1, effectivePrice }];
     });
-    toast.success(`${item.name} adicionado à sacola`);
+    
+    // Calculate new total after adding
+    const newTotal = prevTotal + effectivePrice;
+    
+    // Check for unlocked tier (celebratory toast)
+    const unlockedMsg = getUnlockedTierMessage(prevTotal, newTotal, incentivesConfig);
+    if (unlockedMsg) {
+      toast.success(unlockedMsg, { icon: "🎉", duration: 4000 });
+    } else {
+      // Show contextual incentive message
+      const tierMsg = getNextTierMessage(newTotal, incentivesConfig);
+      if (tierMsg) {
+        toast.success(`${item.name} adicionado à sacola`, {
+          description: tierMsg,
+          duration: 3000,
+        });
+      } else if (incentivesConfig.enabled && incentivesConfig.messages.on_add) {
+        toast.success(`${item.name} adicionado à sacola`, {
+          description: incentivesConfig.messages.on_add,
+          duration: 3000,
+        });
+      } else {
+        toast.success(`${item.name} adicionado à sacola`);
+      }
+    }
   };
 
   const updateCartQuantity = (index: number, delta: number) => {
@@ -310,6 +338,7 @@ export default function StoreCatalog() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.effectivePrice * item.quantity, 0);
+
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Fetch store settings
@@ -325,15 +354,19 @@ export default function StoreCatalog() {
       
       if (error) throw error;
       
-      // Parse filter_buttons_config
+      // Parse configs
       const result = {
         ...data,
-        filter_buttons_config: (data.filter_buttons_config as unknown as FilterButtonsConfig) || defaultFilterButtonsConfig
+        filter_buttons_config: (data.filter_buttons_config as unknown as FilterButtonsConfig) || defaultFilterButtonsConfig,
+        purchase_incentives_config: (data.purchase_incentives_config as unknown as PurchaseIncentivesConfig) || defaultIncentivesConfig,
       };
       return result as StoreSettings;
     },
     enabled: !!slug,
   });
+
+  // Incentives config - after store query
+  const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
 
   // Fetch system categories (main_categories + subcategories)
   const { data: systemMainCategories = [] } = useQuery({
@@ -1261,6 +1294,13 @@ export default function StoreCatalog() {
                   </div>
                 ) : (
                   <>
+                    {/* Purchase Incentives Progress Bar */}
+                    <CartProgressBar
+                      cartTotal={cartTotal}
+                      config={incentivesConfig}
+                      primaryColor={primaryColor}
+                    />
+                    
                     <ScrollArea className="flex-1 -mx-6 px-6">
                       <div className="space-y-4 py-4">
                         {cart.map((item, index) => (
@@ -1680,6 +1720,7 @@ export default function StoreCatalog() {
                 cardBackgroundColor={cardBackgroundColor}
                 onAddToCart={addToCart}
                 isStoreOwner={isStoreOwner}
+                incentivesConfig={incentivesConfig}
               />
             ))}
           </div>
@@ -1846,9 +1887,10 @@ interface BoutiqueProductCardProps {
   cardBackgroundColor: string;
   onAddToCart: (item: CatalogDisplayItem, size: string, effectivePrice: number) => void;
   isStoreOwner: boolean;
+  incentivesConfig: PurchaseIncentivesConfig;
 }
 
-function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart, isStoreOwner }: BoutiqueProductCardProps) {
+function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart, isStoreOwner, incentivesConfig }: BoutiqueProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [isHovering, setIsHovering] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
@@ -2118,18 +2160,23 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             const sizePrices = selectedSize ? item.sizeMarketingPrices?.[selectedSize] : item.marketingPrices;
             const displayMarketingPrice = activeStatus && sizePrices ? sizePrices[activeStatus] : null;
             const hasSpecialPrice = displayMarketingPrice && displayMarketingPrice !== item.price;
+            const displayPrice = hasSpecialPrice ? displayMarketingPrice : item.price;
             
             return (
-              <div className="flex items-baseline gap-2">
-                {hasSpecialPrice ? (
-                  <>
-                    <span className="text-base font-bold text-orange-600">{formatPrice(displayMarketingPrice)}</span>
-                    <span className="text-xs text-gray-400 line-through">{formatPrice(item.price)}</span>
-                  </>
-                ) : (
-                  <span className="text-base font-bold text-gray-900">{formatPrice(item.price)}</span>
-                )}
-              </div>
+              <>
+                <div className="flex items-baseline gap-2">
+                  {hasSpecialPrice ? (
+                    <>
+                      <span className="text-base font-bold text-orange-600">{formatPrice(displayMarketingPrice)}</span>
+                      <span className="text-xs text-gray-400 line-through">{formatPrice(item.price)}</span>
+                    </>
+                  ) : (
+                    <span className="text-base font-bold text-gray-900">{formatPrice(item.price)}</span>
+                  )}
+                </div>
+                {/* Installment & PIX info */}
+                <InstallmentInfo price={displayPrice} config={incentivesConfig} />
+              </>
             );
           })()}
           
