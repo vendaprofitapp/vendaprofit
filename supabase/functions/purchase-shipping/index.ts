@@ -229,8 +229,9 @@ async function purchaseShippingSuperFrete(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`SuperFrete error: ${JSON.stringify(error)}`);
+    const errorText = await response.text();
+    console.error("SuperFrete error:", response.status, errorText);
+    throw new Error(`SuperFrete error (${response.status}): ${errorText.substring(0, 200)}`);
   }
 
   const data = await response.json();
