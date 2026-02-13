@@ -1,64 +1,55 @@
 
-# Vendas a Prazo: Status "Pendente" ate Confirmacao do Pagamento
 
-## Problema
+# Melhorar Visualizacao da Descricao no Lightbox
 
-Quando uma venda e feita com forma de pagamento "a prazo" (como PIX a Prazo), o sistema:
-- Retira o produto do estoque (correto)
-- Marca a venda como "concluida" imediatamente (errado)
-- A venda aparece nos relatorios como receita concluida (errado)
+## Problema Atual
 
-## Comportamento Desejado
+A descricao do produto esta sendo exibida como texto branco semi-transparente (`text-white/70`) diretamente sobre a imagem, com `line-clamp-2` sem opcao de expandir. Isso causa:
+- Dificuldade de leitura quando a imagem tem cores claras
+- Texto cortado sem possibilidade de ver o restante
+- Visual "solto" sem delimitacao clara
 
-1. O produto sai do estoque imediatamente (ja funciona)
-2. A venda e criada com status **"pending"** (pendente) em vez de "completed"
-3. A venda so aparece nos relatorios de vendas concluidas apos a vendedora confirmar o recebimento
-4. Quando a vendedora marca o pagamento como "recebido" nos lembretes de pagamento, o status da venda muda automaticamente para "completed"
+## Solucao Proposta: Card com fundo e "Ver mais"
 
-## Mudancas Necessarias
+Manter a descricao na mesma posicao (abaixo do nome, sobre a imagem), mas:
 
-### 1. `src/pages/Sales.tsx` - Criacao da venda
-- Na mutacao `createSaleMutation` (linha 562-576), alterar o `status` de `"completed"` para `"pending"` quando o metodo de pagamento for `is_deferred`.
-- Logica: `status: isDeferred ? "pending" : "completed"`
+1. Envolver nome + descricao em um card com fundo escuro semi-transparente e blur
+2. Adicionar botao "Ver mais / Ver menos" para descricoes longas (mais de 100 caracteres)
+3. Melhorar o contraste e espaçamento
 
-### 2. `src/components/settings/PaymentRemindersSection.tsx` - Marcar como recebido
-- Na mutacao `markAsPaidMutation` (linha 49-56), alem de marcar o lembrete como pago, tambem atualizar o status da venda associada para `"completed"`.
-- Apos o `update` do `payment_reminders`, fazer um `update` na tabela `sales` onde `id = sale_id`, mudando `status` para `"completed"`.
-- Invalidar tambem as queries de `sales`, `financial-splits` e `reports` para que os relatorios reflitam a mudanca.
+### Mudanca em `src/pages/StoreCatalog.tsx`
 
-### 3. Nenhuma mudanca nos relatorios
-- Os relatorios (`Reports.tsx` e `AccountSettlement.tsx`) ja filtram por `status = "completed"`, entao automaticamente vao excluir vendas pendentes. Nenhuma alteracao necessaria nesses arquivos.
+**De (linhas 2260-2275):**
+- Texto solto sobre a imagem sem fundo
+- `line-clamp-2` sem expansao
 
-### 4. Experiencia visual na pagina de Vendas
-- As vendas "pending" ja possuem um badge "Pendente" na listagem (ja existe no codigo). A vendedora consegue visualizar que a venda esta aguardando pagamento.
+**Para:**
+- Container com `bg-black/50 backdrop-blur-sm rounded-xl p-4 mx-4 mb-4`
+- Descricao com `line-clamp-3` por padrao
+- Botao "Ver mais" que remove o clamp e mostra texto completo
+- Botao "Ver menos" para recolher
+- Estado `descriptionExpanded` controlando a expansao (resetado ao trocar de produto)
 
-## Resumo do fluxo
+### Detalhes tecnicos
 
 ```text
-Venda a Prazo criada
-  |
-  v
-status = "pending" + estoque reduzido + lembrete criado
-  |
-  v
-Vendedora recebe o pagamento na data combinada
-  |
-  v
-Marca como "recebido" nos Lembretes de Pagamento
-  |
-  v
-Sistema atualiza: lembrete is_paid=true + venda status="completed"
-  |
-  v
-Venda aparece nos relatorios como concluida
+<div className="absolute bottom-4 left-0 right-0 px-4">
+  <div className="bg-black/50 backdrop-blur-sm rounded-xl p-4 max-w-lg mx-auto">
+    <p>Nome do produto + cor + contador</p>
+    {description && (
+      <>
+        <p className={descriptionExpanded ? "" : "line-clamp-3"}>
+          {item.description}
+        </p>
+        {item.description.length > 100 && (
+          <button onClick={toggle}>Ver mais / Ver menos</button>
+        )}
+      </>
+    )}
+  </div>
+</div>
 ```
 
-## Detalhes tecnicos
-
-**Sales.tsx** - Linha 575:
-- De: `status: "completed"`
-- Para: `status: isDeferred ? "pending" : "completed"`
-
-**PaymentRemindersSection.tsx** - Mutacao markAsPaid (linha 50-56):
-- Adicionar: buscar o `sale_id` do lembrete e atualizar `sales.status` para `"completed"`
-- Invalidar queries: `["sales"]`, `["financial-splits"]`, `["payment-reminders"]`
+- Adicionar estado `descriptionExpanded` (useState boolean)
+- Resetar para `false` quando `selectedItem` mudar (useEffect existente ou novo)
+- Estilo do botao: `text-white/60 text-xs mt-1 hover:text-white/90`
