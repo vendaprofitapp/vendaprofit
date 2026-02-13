@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { VideoSalesBubble } from "@/components/marketing/VideoSalesBubble";
 import { useAuth } from "@/hooks/useAuth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { WaitlistDialog } from "@/components/catalog/WaitlistDialog";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -127,6 +128,8 @@ interface CatalogDisplayItem {
   sizeMarketingPrices: Record<string, MarketingPrices>; // marketing prices per size (per status)
   sizeMarketingDeliveryDays: Record<string, number | null>; // delivery days per size
   sizeIsPartner: Record<string, boolean>; // track which sizes are from partner stock
+  sizeConsignedCount: Record<string, number>; // count of consigned units per size
+  sizePhysicalStock: Record<string, number>; // physical stock per size
   marketingStatus: MarketingStatus; // highest priority marketing status for the card
   image_url: string | null;
   image_url_2: string | null;
@@ -460,11 +463,31 @@ export default function StoreCatalog() {
       if (allProducts.length === 0) return [];
 
       // Fetch variants for all products (including marketing fields and video)
-      const { data: variants } = await supabase
-        .from("product_variants")
-        .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
-        .in("product_id", allProducts.map(p => p.id))
-        .gt("stock_quantity", 0);
+      const productIds = allProducts.map(p => p.id);
+      const [{ data: variants }, { data: consignmentItems }] = await Promise.all([
+        supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
+          .in("product_id", productIds)
+          .gt("stock_quantity", 0),
+        supabase
+          .from("consignment_items")
+          .select("product_id, variant_id, status, consignments!inner(status)")
+          .in("product_id", productIds)
+          .in("status", ["pending", "active"])
+      ]);
+
+      // Build consigned count map: key = "productId_variantId" or "productId_null"
+      const consignedCountMap = new Map<string, number>();
+      if (consignmentItems) {
+        consignmentItems.forEach((ci: any) => {
+          // Filter by consignment status on the client side to avoid deep type issues
+          const consignmentStatus = ci.consignments?.status;
+          if (consignmentStatus !== 'active' && consignmentStatus !== 'awaiting_approval') return;
+          const key = `${ci.product_id}_${ci.variant_id || 'null'}`;
+          consignedCountMap.set(key, (consignedCountMap.get(key) || 0) + 1);
+        });
+      }
 
       // Helper to determine the highest priority marketing status (for public display)
       // Note: 'secret' is handled separately and not prioritized here
@@ -501,6 +524,7 @@ export default function StoreCatalog() {
         marketingPrices: MarketingPrices;
         marketingDeliveryDays: number | null;
         stock: number;
+        variantId?: string;
       }
       
       interface CardData {
@@ -564,6 +588,7 @@ export default function StoreCatalog() {
               marketingPrices: v.marketing_prices,
               marketingDeliveryDays: v.marketing_delivery_days,
               stock: v.stock_quantity,
+              variantId: v.id,
             }));
 
           cardDataMap.set(cardKey, {
@@ -715,12 +740,20 @@ export default function StoreCatalog() {
         const sizeMarketingPrices: Record<string, MarketingPrices> = {};
         const sizeMarketingDeliveryDays: Record<string, number | null> = {};
         const sizeIsPartner: Record<string, boolean> = {};
+        const sizeConsignedCount: Record<string, number> = {};
+        const sizePhysicalStock: Record<string, number> = {};
         
         cardData.sizes.forEach(s => {
           sizeMarketingStatus[s.size] = s.marketingStatus;
           sizeMarketingPrices[s.size] = s.marketingPrices;
           sizeMarketingDeliveryDays[s.size] = s.marketingDeliveryDays;
           sizeIsPartner[s.size] = s.isPartner;
+          sizePhysicalStock[s.size] = s.stock;
+          // Look up consigned count by variant_id
+          const consignedKey = s.variantId 
+            ? `${cardData.productId}_${s.variantId}` 
+            : `${cardData.productId}_null`;
+          sizeConsignedCount[s.size] = consignedCountMap.get(consignedKey) || 0;
         });
         
         // Determine marketing status for the card
@@ -759,6 +792,8 @@ export default function StoreCatalog() {
           sizeMarketingPrices,
           sizeMarketingDeliveryDays,
           sizeIsPartner,
+          sizeConsignedCount,
+          sizePhysicalStock,
           marketingStatus,
           image_url: cardData.image_url,
           image_url_2: cardData.image_url_2,
@@ -1819,8 +1854,20 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
   const [imageOpen, setImageOpen] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check if a size is fully consigned (available stock = 0 but physical > 0)
+  const isSizeConsigned = (size: string) => {
+    const physical = item.sizePhysicalStock?.[size] || 0;
+    const consigned = item.sizeConsignedCount?.[size] || 0;
+    return physical > 0 && consigned >= physical;
+  };
+
+  // Check if ALL sizes are consigned
+  const allSizesConsigned = item.sizes.length > 0 && item.sizes.every(s => isSizeConsigned(s));
+  const someSizesConsigned = item.sizes.some(s => isSizeConsigned(s));
 
   // Build media array: all images + video (if exists)
   const mediaItems = useMemo(() => {
@@ -1929,8 +1976,18 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </TooltipProvider>
           )}
 
-          {/* Marketing Status Badge - Top Right */}
-          {item.marketingStatus && item.marketingStatus.length > 0 && (
+          {/* Consignment "Em Provação" Badge - when all sizes are consigned */}
+          {allSizesConsigned && (
+            <Badge 
+              className="absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1 shadow-sm bg-yellow-500 text-white"
+            >
+              <Clock className="h-3 w-3" />
+              Em Provação
+            </Badge>
+          )}
+
+          {/* Marketing Status Badge - Top Right (only if not showing consignment badge) */}
+          {!allSizesConsigned && item.marketingStatus && item.marketingStatus.length > 0 && (
             <Badge 
               className={cn(
                 "absolute right-2 top-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1 shadow-sm",
@@ -2096,41 +2153,54 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             return null;
           })()}
 
-          {/* Size Selector - Clean Pills with marketing status and partner indicators */}
+          {/* Size Selector - Clean Pills with marketing status, partner, and consignment indicators */}
           {item.sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {sortSizes(item.sizes).map(size => {
                 const sizeStatus = item.sizeMarketingStatus[size];
                 const isSizeFromPartner = item.sizeIsPartner?.[size] || false;
+                const isConsigned = isSizeConsigned(size);
                 return (
                   <TooltipProvider key={size} delayDuration={300}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          onClick={() => setSelectedSize(size === selectedSize ? "" : size)}
+                          onClick={() => {
+                            if (isConsigned) {
+                              setWaitlistOpen(true);
+                              return;
+                            }
+                            setSelectedSize(size === selectedSize ? "" : size);
+                          }}
                           className={cn(
                             "min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium border transition-all touch-manipulation relative",
-                            selectedSize === size
-                              ? "border-gray-900 bg-gray-900 text-white"
-                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
-                            // Marketing status ring indicator
-                            hasStatus(sizeStatus, "opportunity") && selectedSize !== size && "ring-1 ring-orange-400",
-                            hasStatus(sizeStatus, "presale") && selectedSize !== size && "ring-1 ring-purple-400",
-                            hasStatus(sizeStatus, "launch") && selectedSize !== size && "ring-1 ring-green-400"
+                            isConsigned
+                              ? "border-yellow-300 bg-yellow-50 text-yellow-600 line-through opacity-70 cursor-pointer"
+                              : selectedSize === size
+                                ? "border-gray-900 bg-gray-900 text-white"
+                                : "border-gray-200 bg-white text-gray-600 hover:border-gray-400",
+                            // Marketing status ring indicator (not for consigned)
+                            !isConsigned && hasStatus(sizeStatus, "opportunity") && selectedSize !== size && "ring-1 ring-orange-400",
+                            !isConsigned && hasStatus(sizeStatus, "presale") && selectedSize !== size && "ring-1 ring-purple-400",
+                            !isConsigned && hasStatus(sizeStatus, "launch") && selectedSize !== size && "ring-1 ring-green-400"
                           )}
                         >
                           <span className="flex items-center gap-0.5">
                             {size}
-                            {isSizeFromPartner && (
+                            {isSizeFromPartner && !isConsigned && (
                               <Link2 className={cn(
                                 "h-2.5 w-2.5 ml-0.5",
                                 selectedSize === size ? "text-white/70" : "text-primary/70"
                               )} />
                             )}
                           </span>
+                          {/* Consignment dot indicator (yellow) */}
+                          {isConsigned && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-yellow-500" />
+                          )}
                           {/* Small dot indicator for marketing status */}
-                          {sizeStatus && sizeStatus.length > 0 && selectedSize !== size && (
+                          {!isConsigned && sizeStatus && sizeStatus.length > 0 && selectedSize !== size && (
                             <span className={cn(
                               "absolute -top-1 -right-1 w-2 h-2 rounded-full",
                               hasStatus(sizeStatus, "opportunity") && "bg-orange-500",
@@ -2140,11 +2210,9 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                           )}
                         </button>
                       </TooltipTrigger>
-                      {isSizeFromPartner && (
-                        <TooltipContent side="top" className="text-xs">
-                          Estoque de parceira
-                        </TooltipContent>
-                      )}
+                      <TooltipContent side="top" className="text-xs">
+                        {isConsigned ? "Em Provação - Clique para entrar na fila" : isSizeFromPartner ? "Estoque de parceira" : null}
+                      </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 );
@@ -2152,8 +2220,22 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </div>
           )}
 
-          {/* Add to Cart Button - Changes text for presale */}
+          {/* Add to Cart / Waitlist Button */}
           {(() => {
+            // If all sizes are consigned, show "Entrar na Fila" button
+            if (allSizesConsigned) {
+              return (
+                <Button
+                  className="w-full h-10 rounded-xl font-semibold text-xs sm:text-sm transition-all hover:shadow-lg whitespace-nowrap overflow-hidden px-2 bg-yellow-500 hover:bg-yellow-600"
+                  style={{ color: 'white' }}
+                  onClick={() => setWaitlistOpen(true)}
+                >
+                  <Bell className="h-4 w-4 mr-1 flex-shrink-0" />
+                  <span className="truncate">Entrar na Fila</span>
+                </Button>
+              );
+            }
+
             // Determine if selected size is presale or if product has presale marketing
             const selectedSizeStatus = selectedSize ? item.sizeMarketingStatus[selectedSize] : null;
             const isPresale = hasStatus(selectedSizeStatus, "presale") || 
@@ -2291,6 +2373,15 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Waitlist Dialog for consigned products */}
+      <WaitlistDialog
+        productId={item.productId}
+        productName={item.name}
+        open={waitlistOpen}
+        onOpenChange={setWaitlistOpen}
+        primaryColor={primaryColor}
+      />
     </>
   );
 }

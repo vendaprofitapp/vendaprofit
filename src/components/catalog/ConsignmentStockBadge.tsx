@@ -1,52 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { Bell, Clock } from "lucide-react";
 import { WaitlistDialog } from "./WaitlistDialog";
 
 interface ConsignmentStockBadgeProps {
   productId: string;
   productName: string;
-  physicalStock: number;
+  isConsigned: boolean; // Pre-calculated: true if all sizes are consigned
   primaryColor?: string;
 }
 
 export function ConsignmentStockBadge({ 
   productId, 
   productName,
-  physicalStock,
+  isConsigned,
   primaryColor = "#000000"
 }: ConsignmentStockBadgeProps) {
-  const [hasConsignedItems, setHasConsignedItems] = useState(false);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    checkConsignedItems();
-  }, [productId]);
-
-  const checkConsignedItems = async () => {
-    try {
-      // Check if product has items in active/awaiting_approval consignments
-      const { count, error } = await supabase
-        .from("consignment_items")
-        .select("id, consignments!inner(status)", { count: "exact", head: true })
-        .eq("product_id", productId)
-        .in("consignments.status", ["active", "awaiting_approval"])
-        .in("status", ["pending", "active"]);
-
-      if (error) throw error;
-      setHasConsignedItems((count || 0) > 0);
-    } catch (error) {
-      console.error("Error checking consigned items:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Only show if physical stock is 0 but there are consigned items
-  if (isLoading || physicalStock > 0 || !hasConsignedItems) {
+  if (!isConsigned) {
     return null;
   }
 
