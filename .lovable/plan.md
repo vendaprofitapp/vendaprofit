@@ -1,143 +1,104 @@
 
 
-# Estrategia de Incentivos de Compra Personalizaveis por Vendedora
+# Corrigir Relatorios de Vendas com Parcerias
 
-## Resumo
+## Problemas Identificados
 
-Criar um sistema completo de incentivos de compra com 3 pontos de contato (card do produto, ao adicionar ao carrinho, dentro do carrinho), totalmente configuravel por cada vendedora atraves das Configuracoes da Loja.
+### 1. Contas nao batem (splits != total da venda)
+Vendas com desconto geram splits calculados sobre o preco cheio, nao sobre o valor liquido apos desconto:
+- Venda R$451,25 tem splits somando R$475 (diferenca de R$23,75 = desconto aplicado)
+- Venda R$280 tem splits somando R$267 (diferenca de R$12,85)
 
-## Parte 1 - Banco de Dados: Tabela de Configuracao de Incentivos
+**Causa**: O `profitEngine` recebe o preco bruto, mas a venda tem desconto que nao esta sendo repassado para o calculo dos splits. Os splits deveriam ser calculados sobre `sale.total` (pos-desconto), nao sobre a soma dos `sale_items.total`.
 
-Adicionar novos campos na tabela `store_settings` para armazenar as configuracoes de incentivos de cada vendedora:
+### 2. Relatorio de Vendas (Reports.tsx) ignora parceria
+O relatorio principal calcula lucro como `preco_venda - custo`, mostrando 100% do lucro como se fosse da vendedora, quando na verdade 30% pertence a socia. Nao consulta `financial_splits`.
 
-**Novo campo JSONB: `purchase_incentives_config`**
+**Correcao**: Para vendas que possuem `financial_splits`, usar o valor do split do usuario como "Meu Lucro Real" em vez do calculo simples.
 
-Estrutura do JSON:
+### 3. Nomenclaturas genericas nos splits
+As descricoes dizem "sócia" e "vendedora" sem identificar QUEM:
+- "Lucro 30% socia (parceria)" deveria ser "Lucro 30% Isabelle Santos (parceria)"
+- "Lucro 70% vendedora (parceria)" deveria ser "Lucro 70% Camila Nogueira (parceria)"
 
-```text
-{
-  "enabled": true,
-  
-  "installments": {
-    "enabled": true,
-    "max_installments": 3,
-    "min_amount_per_installment": 30,
-    "no_interest": true
-  },
-  
-  "pix_discount": {
-    "enabled": true,
-    "discount_percent": 5
-  },
-  
-  "tiers": [
-    { "min_value": 250, "benefit": "Frete gratis SP", "emoji": "truck" },
-    { "min_value": 350, "benefit": "Frete gratis + mimo", "emoji": "gift" },
-    { "min_value": 500, "benefit": "Brinde premium", "emoji": "star" },
-    { "min_value": 700, "benefit": "Cliente VIP (cupom proximo pedido)", "emoji": "crown" }
-  ],
-  
-  "messages": {
-    "on_add": "Falta so mais uma peca para parcelar em 4x ;)",
-    "near_free_shipping": "Voce esta a R${remaining} do frete gratis!",
-    "unlocked_free_shipping": "Parabens! Voce ganhou frete gratis!",
-    "unlocked_gift": "Seu pedido ganhou um presente!"
-  }
-}
-```
+### 4. PartnerReports.tsx com labels confusos
+- Cards dizem "Devo as Parceiras" sem mostrar o nome
+- Tabelas dizem "Meu Ganho" / "Devo" sem contexto claro
+- A coluna "Ganho Dela" nao mostra o nome da parceira
 
-**Migration SQL:**
-- `ALTER TABLE store_settings ADD COLUMN purchase_incentives_config jsonb DEFAULT '{...}'`
-- Valores padrao ja vem preenchidos para facilitar a ativacao
+## Plano de Correcao
 
-## Parte 2 - Ponto A: Info de Parcelamento no Card do Produto
+### Parte 1 - Corrigir calculo dos splits na criacao da venda
 
-Abaixo do preco em cada `BoutiqueProductCard`, exibir:
+**Arquivo**: `src/pages/Sales.tsx` (onde a venda e criada e os splits sao gerados)
 
-- "3x de R$33 sem juros" (calculado automaticamente com base no preco e config de parcelamento)
-- "ou R$94 no PIX (5% OFF)" (se desconto PIX estiver ativo)
+- Ao chamar `calculateSaleSplits`, passar o `salePrice` como o valor TOTAL da venda (pos-desconto), nao a soma dos itens
+- Isso garante que os splits somem exatamente ao total da venda
+- Para vendas com multiplos itens de parceria, distribuir o desconto proporcionalmente
 
-Essa informacao e calculada no frontend usando o `purchase_incentives_config` da loja.
+### Parte 2 - Incluir nomes reais nas descricoes dos splits
 
-**Arquivo modificado:** `src/pages/StoreCatalog.tsx` (componente `BoutiqueProductCard`)
+**Arquivo**: `src/pages/Sales.tsx` (onde os splits sao inseridos no `financial_splits`)
 
-## Parte 3 - Ponto B: Toast/Pop-up ao Adicionar ao Carrinho
+- Ao criar os registros em `financial_splits`, substituir "socia" e "vendedora" pelos nomes reais das parceiras
+- Buscar o perfil da parceira antes de gerar as descricoes
+- Exemplo: "Lucro 30% Isabelle Santos (parceria)" em vez de "Lucro 30% socia (parceria)"
 
-Ao chamar `addToCart`, alem do toast "adicionado a sacola", exibir uma mensagem contextual baseada no valor atual do carrinho:
+### Parte 3 - Reports.tsx: Usar financial_splits para lucro real
 
-- Se esta perto do proximo tier: "Voce esta a R$X do frete gratis!"
-- Se pode parcelar mais adicionando: "Com mais R$Y voce parcela em 5x sem juros"
-- Mensagem customizada pela vendedora (campo `messages.on_add`)
+**Arquivo**: `src/pages/Reports.tsx`
 
-**Implementacao:** Modificar a funcao `addToCart` no `StoreCatalog.tsx` para calcular e exibir o toast contextual usando `sonner`.
+- Adicionar query para buscar `financial_splits` do usuario no periodo
+- Na tabela detalhada, adicionar coluna "Meu Lucro (Parceria)" que mostra apenas a parte do usuario
+- Nas estatisticas totais, subtrair a parte que pertence a socia do "Lucro Real"
+- Adicionar indicador visual (badge) quando uma venda envolve parceria
 
-## Parte 4 - Ponto C: Barra de Progresso e Incentivos no Carrinho
+### Parte 4 - PartnerReports.tsx: Nomenclatura clara com nomes
 
-Dentro do `SheetContent` do carrinho (ja existente), adicionar ACIMA da lista de itens:
+**Arquivo**: `src/pages/PartnerReports.tsx`
 
-1. **Barra de progresso visual** mostrando o progresso ate o proximo tier
-2. **Mensagem dinamica** do tier atual e proximo
-3. **Lista de beneficios** desbloqueados (com check verde) e pendentes (com valor restante)
+Substituir labels genericos por nomes:
+- "Devo as Parceiras" -> "Devo a [Nome da Parceira]" (quando ha apenas 1 parceira)
+- Card de resumo: mostrar foto/nome da parceira
+- Tabelas: trocar "Parceira" por nome real, "Meu Ganho" por "[Seu nome] recebe", "Devo" por "Pagar a [Nome]"
+- Coluna "Ganho Dela" -> "Ganho de [Nome]"
+- Adicionar subtitulo nos cards com o nome da parceria ativa
 
-Componente visual:
+### Parte 5 - AccountSettlement.tsx: Nomes nos resumos
 
-```text
-[====------] Falta R$151 para Frete gratis SP
-[==--------] Falta R$401 para Brinde premium
+**Arquivo**: `src/components/reports/AccountSettlement.tsx`
 
- check  R$250 - Frete gratis SP (desbloqueado!)
- lock   R$350 - Frete gratis + mimo
- lock   R$500 - Brinde premium  
- lock   R$700 - Cliente VIP
-```
+- No card "A Pagar", mostrar "A Pagar para [Nome]" quando ha apenas 1 parceira
+- Nos itens do acerto, incluir nome do produto e da parceira na descricao
+- No texto do WhatsApp, usar nomes reais
 
-**Arquivo modificado:** `src/pages/StoreCatalog.tsx` (secao do cart Sheet)
+### Parte 6 - Corrigir splits existentes (dados historicos)
 
-## Parte 5 - Painel de Configuracao para a Vendedora
+- Criar uma query SQL de correcao para atualizar as descricoes dos splits existentes, trocando "socia" e "vendedora" pelos nomes reais
+- Recalcular splits de vendas com desconto que estao com valores incorretos
 
-Na pagina `StoreSettings.tsx`, adicionar uma nova secao/card "Incentivos de Compra" onde a vendedora pode:
+## Detalhes Tecnicos
 
-1. **Ativar/desativar** o sistema de incentivos (switch)
-2. **Configurar parcelamento**: max parcelas, valor minimo por parcela, com/sem juros
-3. **Configurar desconto PIX**: ativo/inativo, percentual
-4. **Configurar tiers de beneficios**: adicionar/remover/reordenar faixas de valor com beneficio e emoji
-5. **Personalizar mensagens**: editar cada mensagem dinamica com preview
+### Arquivos Modificados
 
-**Arquivo modificado:** `src/pages/StoreSettings.tsx` (novo card de configuracao)
+1. **`src/pages/Sales.tsx`** - Corrigir o calculo passando valor pos-desconto e incluir nomes reais
+2. **`src/pages/Reports.tsx`** - Integrar `financial_splits` no calculo de lucro
+3. **`src/pages/PartnerReports.tsx`** - Trocar labels genericos por nomes das parceiras
+4. **`src/components/reports/AccountSettlement.tsx`** - Nomes nos cards e resumos
+5. **Migration SQL** - Corrigir splits historicos com valores e descricoes erradas
 
-## Parte 6 - Componente Reutilizavel de Incentivos
+### Logica de Correcao dos Splits Existentes (SQL)
 
-Criar um novo componente `src/components/catalog/PurchaseIncentives.tsx` que encapsula:
+Para cada venda com desconto onde splits != total:
+1. Calcular a diferenca (splits_total - sale_total)
+2. Redistribuir proporcionalmente entre os splits de profit_share
+3. Atualizar descricoes com nomes reais das parceiras
 
-- `InstallmentInfo` - exibe parcelamento abaixo do preco
-- `CartProgressBar` - barra de progresso com tiers
-- `CartIncentiveMessage` - mensagens contextuais
-- `getNextTierMessage()` - logica de calculo do proximo tier
+### Impacto nos Numeros
 
-Isso mantem o `StoreCatalog.tsx` limpo e a logica reutilizavel.
-
-## Arquivos Modificados/Criados
-
-1. **Migration SQL** - Adicionar `purchase_incentives_config` em `store_settings`
-2. **`src/components/catalog/PurchaseIncentives.tsx`** (novo) - Componentes de incentivo
-3. **`src/pages/StoreCatalog.tsx`** - Integrar incentivos no card, addToCart e carrinho
-4. **`src/pages/StoreSettings.tsx`** - Painel de configuracao de incentivos
-
-## Fluxo do Cliente
-
-```text
-1. Cliente ve produto
-   -> Abaixo do preco: "3x de R$33 | PIX R$94 (5% OFF)"
-
-2. Cliente adiciona ao carrinho
-   -> Toast: "Adicionado! Voce esta a R$151 do frete gratis"
-
-3. Cliente abre o carrinho
-   -> Barra de progresso com tiers
-   -> Mensagens de incentivo
-   -> Beneficios desbloqueados marcados com check
-
-4. Cliente desbloqueia tier
-   -> Toast celebratorio: "Parabens! Voce ganhou frete gratis!"
-```
+Apos a correcao:
+- **Camila** vera seus ganhos REAIS (70% do lucro), nao 100%
+- **Isabelle** vera seus ganhos REAIS (30% do lucro quando Camila vende, 70% quando ela vende)
+- O "Acerto de Contas" tera valores que batem entre as duas
+- Ambas verao o nome da parceira em vez de "socia/vendedora"
 
