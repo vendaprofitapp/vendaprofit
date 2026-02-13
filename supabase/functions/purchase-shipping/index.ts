@@ -13,6 +13,7 @@ if (Deno.env.get("DENO_ENVIRONMENT") === "test") {
 interface PurchaseShippingRequest {
   sale_id?: string;
   shipping_company: string;
+  shipping_source?: string;
   shipping_cost: number;
   destination_zip: string;
   origin_zip: string;
@@ -193,6 +194,7 @@ Deno.serve(async (req) => {
     const {
       sale_id,
       shipping_company,
+      shipping_source,
       destination_zip,
       origin_zip,
       weight_grams,
@@ -250,16 +252,18 @@ Deno.serve(async (req) => {
     let labelUrl: string;
     let tracking: string;
 
-    // Choose the appropriate service
+    const source = (shipping_source || "").toLowerCase();
+
     if (
-      shipping_company.toLowerCase().includes("melhor envio") &&
+      (source.includes("melhor envio") || source === "melhor envio") &&
       profile.melhor_envio_token
     ) {
       const result = await purchaseShippingMelhorEnvio(
         {
           sale_id,
           shipping_company,
-          shipping_cost: 0, // Will be calculated by API
+          shipping_source,
+          shipping_cost: 0,
           destination_zip,
           origin_zip,
           weight_grams,
@@ -276,13 +280,60 @@ Deno.serve(async (req) => {
       labelUrl = result.labelUrl;
       tracking = result.tracking;
     } else if (
-      shipping_company.toLowerCase().includes("superfrete") &&
+      (source.includes("superfrete") || source === "superfrete") &&
       profile.superfrete_token
     ) {
       const result = await purchaseShippingSuperFrete(
         {
           sale_id,
           shipping_company,
+          shipping_source,
+          shipping_cost: 0,
+          destination_zip,
+          origin_zip,
+          weight_grams,
+          width_cm,
+          height_cm,
+          length_cm,
+          customer_name,
+          customer_phone,
+          shipping_address,
+          receiver_phone,
+        },
+        profile.superfrete_token
+      );
+      labelUrl = result.labelUrl;
+      tracking = result.tracking;
+    } else if (profile.melhor_envio_token) {
+      // Fallback: if source not specified but user has Melhor Envio token, use it
+      const result = await purchaseShippingMelhorEnvio(
+        {
+          sale_id,
+          shipping_company,
+          shipping_source,
+          shipping_cost: 0,
+          destination_zip,
+          origin_zip,
+          weight_grams,
+          width_cm,
+          height_cm,
+          length_cm,
+          customer_name,
+          customer_phone,
+          shipping_address,
+          receiver_phone,
+        },
+        profile.melhor_envio_token
+      );
+      labelUrl = result.labelUrl;
+      tracking = result.tracking;
+    } else if (profile.superfrete_token) {
+      // Fallback: use SuperFrete token
+      const result = await purchaseShippingSuperFrete(
+        {
+          sale_id,
+          shipping_company,
+          shipping_source,
           shipping_cost: 0,
           destination_zip,
           origin_zip,

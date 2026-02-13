@@ -183,14 +183,16 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   };
 
   const handlePurchaseShipping = async () => {
-    if (!value.company || !value.cost) return;
+    if (!value.company || !value.cost || selectedQuoteIndex === null) return;
 
     setPurchasing(true);
     setPurchaseError(null);
 
     try {
+      const selectedOption = quoteOptions[selectedQuoteIndex];
       const body: any = {
         shipping_company: value.company,
+        shipping_source: selectedOption?.source || "",
         destination_zip: customerAddress?.address_zip?.replace(/\D/g, ""),
         origin_zip: shippingConfig?.origin_zip?.replace(/\D/g, ""),
         weight_grams: quoteProducts?.[0]?.weight_grams || manualWeight,
