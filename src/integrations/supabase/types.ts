@@ -653,6 +653,100 @@ export type Database = {
           },
         ]
       }
+      expense_splits: {
+        Row: {
+          amount: number
+          created_at: string
+          expense_id: string
+          id: string
+          is_paid: boolean
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          expense_id: string
+          id?: string
+          is_paid?: boolean
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          expense_id?: string
+          id?: string
+          is_paid?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_splits_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          category_type: string
+          created_at: string
+          custom_split_percent: number | null
+          description: string | null
+          expense_date: string
+          group_id: string | null
+          id: string
+          is_recurring: boolean
+          owner_id: string
+          recurring_day: number | null
+          split_mode: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          category_type?: string
+          created_at?: string
+          custom_split_percent?: number | null
+          description?: string | null
+          expense_date?: string
+          group_id?: string | null
+          id?: string
+          is_recurring?: boolean
+          owner_id: string
+          recurring_day?: number | null
+          split_mode?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          category_type?: string
+          created_at?: string
+          custom_split_percent?: number | null
+          description?: string | null
+          expense_date?: string
+          group_id?: string | null
+          id?: string
+          is_recurring?: boolean
+          owner_id?: string
+          recurring_day?: number | null
+          split_mode?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_splits: {
         Row: {
           amount: number
