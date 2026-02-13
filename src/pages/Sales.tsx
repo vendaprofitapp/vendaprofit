@@ -164,6 +164,7 @@ export default function Sales() {
   });
   const [shippingLabelUrl, setShippingLabelUrl] = useState<string | null>(null);
   const [saleIdForShipping, setSaleIdForShipping] = useState<string>("");
+  const [shippingTracking, setShippingTracking] = useState<string | null>(null);
 
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
@@ -631,6 +632,8 @@ export default function Sales() {
           shipping_payer: shippingData.method !== "presencial" ? shippingData.payer : null,
           shipping_address: shippingData.address || null,
           shipping_notes: shippingData.notes || null,
+          shipping_tracking: shippingTracking || null,
+          shipping_label_url: shippingLabelUrl || null,
         } as any)
         .select()
         .single();
@@ -1030,6 +1033,7 @@ export default function Sales() {
       notes: "",
     });
     setShippingLabelUrl(null);
+    setShippingTracking(null);
     setSaleIdForShipping("");
     setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
   };
@@ -2166,6 +2170,10 @@ export default function Sales() {
                 customerPhone={customerPhone}
                 shippingLabelUrl={shippingLabelUrl}
                 onLabelGenerated={(url) => setShippingLabelUrl(url)}
+                onTrackingGenerated={(tracking, labelUrl) => {
+                  setShippingTracking(tracking);
+                  if (labelUrl) setShippingLabelUrl(labelUrl);
+                }}
               />
 
               {/* Totals */}

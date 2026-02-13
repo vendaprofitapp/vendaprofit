@@ -11,7 +11,7 @@ if (Deno.env.get("DENO_ENVIRONMENT") === "test") {
 }
 
 interface PurchaseShippingRequest {
-  sale_id: string;
+  sale_id?: string;
   shipping_company: string;
   shipping_cost: number;
   destination_zip: string;
@@ -308,18 +308,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update sale with label URL and tracking
-    const { error: updateError } = await supabase
-      .from("sales")
-      .update({
-        shipping_label_url: labelUrl,
-        shipping_tracking: tracking,
-      })
-      .eq("id", sale_id)
-      .eq("owner_id", userId);
+    // Update sale with label URL and tracking (only if sale_id provided)
+    if (sale_id) {
+      const { error: updateError } = await supabase
+        .from("sales")
+        .update({
+          shipping_label_url: labelUrl,
+          shipping_tracking: tracking,
+        })
+        .eq("id", sale_id)
+        .eq("owner_id", userId);
 
-    if (updateError) {
-      throw updateError;
+      if (updateError) {
+        throw updateError;
+      }
     }
 
     return new Response(
