@@ -98,20 +98,25 @@ async function quoteSuperfrete(
   products: ProductDimensions[]
 ): Promise<ShippingOption[]> {
   try {
-    // SuperFrete expects total dimensions
     const totalWeight = products.reduce((s, p) => s + (p.weight_grams * p.quantity), 0);
     const maxWidth = Math.max(...products.map((p) => p.width_cm));
     const maxLength = Math.max(...products.map((p) => p.length_cm));
     const totalHeight = products.reduce((s, p) => s + (p.height_cm * p.quantity), 0);
 
     const body = {
-      from: { postal_code: originZip },
-      to: { postal_code: destinationZip },
+      from: originZip,
+      to: destinationZip,
+      services: "1,2,17",
       package: {
         weight: totalWeight / 1000,
         width: maxWidth,
         height: Math.min(totalHeight, 100),
         length: maxLength,
+      },
+      options: {
+        own_hand: false,
+        receipt: false,
+        insurance_value: 0,
       },
     };
 
@@ -136,7 +141,6 @@ async function quoteSuperfrete(
 
     const data = await response.json();
 
-    // SuperFrete returns an array or an object with results
     const results = Array.isArray(data) ? data : data?.dispatchers || data?.results || [];
     if (!Array.isArray(results)) return [];
 
