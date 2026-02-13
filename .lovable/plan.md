@@ -1,64 +1,48 @@
 
 
-## Plano: Gerar Etiqueta Antes da Venda + Envio de Rastreio via WhatsApp
+## Plano: Corrigir SuperFrete + Salvar Rastreio na Venda + Botao WhatsApp nos Detalhes
 
-### Problema Atual
-O fluxo atual exige que a venda seja registrada primeiro para depois gerar a etiqueta. Isso faz com que o numero de rastreio nao fique vinculado a venda e nao possa ser compartilhado facilmente.
+### Problema 1: SuperFrete nao retorna cotacoes
 
-### Solucao Proposta
+A funcao `quoteSuperfrete` no edge function `quote-shipping` esta usando um formato de body incorreto para a API da SuperFrete. De acordo com a documentacao oficial, os campos `from` e `to` devem ser objetos com `postal_code`, nao strings simples. Alem disso, o campo `services` deve ser uma string de IDs de servicos validos, e a estrutura do `package` precisa de ajustes.
 
-#### 1. Alterar o fluxo da etiqueta para ser independente da venda
+**Correcao**: Ajustar o body da requisicao para seguir o formato correto da API SuperFrete (`from.postal_code`, `to.postal_code`), e melhorar o parsing da resposta.
 
-Atualmente, o botao "Gerar Etiqueta" so aparece apos selecionar uma cotacao e exige um `sale_id`. A mudanca sera:
-- Remover a dependencia de `sale_id` da funcao de gerar etiqueta
-- Permitir gerar a etiqueta ANTES de registrar a venda
-- Armazenar o `tracking` e `label_url` no estado local
-- Quando a venda for registrada, salvar esses dados junto com a venda
+### Problema 2: Rastreio nao aparece nos detalhes da venda
 
-#### 2. Atualizar a Edge Function `purchase-shipping`
+O campo `shipping_tracking` ja eh salvo na criacao da venda (linha 635 de Sales.tsx), porem no dialog de "Detalhes da Venda" (linhas 2438-2458) o rastreio nao eh exibido. Alem disso, nao ha botao para enviar o rastreio via WhatsApp a partir dos detalhes de uma venda ja registrada.
 
-- Tornar o campo `sale_id` opcional
-- Se `sale_id` for fornecido, atualizar a venda com tracking/label
-- Se nao for fornecido, apenas retornar o tracking e label_url sem atualizar nenhuma venda
+### Alteracoes Planejadas
 
-#### 3. Atualizar `ShippingSection.tsx`
+#### 1. Edge Function `quote-shipping` - Corrigir formato SuperFrete
 
-- Permitir gerar etiqueta sem `saleId` (chamar a edge function sem esse campo)
-- Armazenar o `tracking` retornado no estado e exibi-lo na interface
-- Adicionar callback `onTrackingGenerated` para passar o tracking de volta ao componente pai
-- Exibir o numero de rastreio apos gerar a etiqueta
-- Adicionar botao "Enviar Rastreio via WhatsApp" que abre o WhatsApp com mensagem pre-formatada contendo o codigo de rastreio
+- Alterar os campos `from` e `to` de strings para objetos `{ postal_code: "CEP" }`
+- Ajustar o campo `services` para o formato correto
+- Melhorar o parsing da resposta para cobrir diferentes formatos retornados pela API
 
-#### 4. Atualizar `Sales.tsx`
+#### 2. Dialog "Detalhes da Venda" em `Sales.tsx`
 
-- Adicionar estado para `shippingTracking`
-- Ao registrar a venda, incluir `shipping_tracking` e `shipping_label_url` ja preenchidos
-- Passar `customerPhone` e `customerName` para a secao de frete para montar a mensagem do WhatsApp
+Na secao de informacoes de envio do dialog de visualizacao (linhas 2438-2458), adicionar:
 
-#### 5. Botao WhatsApp com mensagem de rastreio
+- Exibicao do codigo de rastreio (`shipping_tracking`) quando disponivel
+- Botao "Enviar Rastreio via WhatsApp" que abre o WhatsApp com mensagem pre-formatada contendo o codigo de rastreio e nome do cliente
+- Botao para copiar o codigo de rastreio
 
-Apos gerar a etiqueta, aparecera um botao para enviar o rastreio via WhatsApp com mensagem como:
+#### 3. Garantir que `shipping_label_url` esteja na interface Sale
 
-```
-Ola [nome]! Seu pedido foi enviado!
-Codigo de rastreio: [tracking]
-Acompanhe em: https://www.linkcorreios.com.br/?id=[tracking]
-```
+A interface `Sale` (linhas 86-106) nao inclui `shipping_label_url`. Adicionar esse campo para poder exibir o link da etiqueta nos detalhes.
 
 ### Detalhes Tecnicos
 
-**Edge Function `purchase-shipping`:**
-- `sale_id` passa a ser opcional
-- Se presente, faz o UPDATE na tabela sales
-- Se ausente, apenas retorna `{ label_url, tracking }`
+**`supabase/functions/quote-shipping/index.ts` - funcao `quoteSuperfrete`:**
+- Mudar `from: originZip` para `from: { postal_code: originZip }`
+- Mudar `to: destinationZip` para `to: { postal_code: destinationZip }`
 
-**`ShippingSection.tsx`:**
-- Nova prop `onTrackingGenerated?: (tracking: string, labelUrl: string) => void`
-- O botao "Gerar Etiqueta" funciona sem `saleId`
-- Apos gerar, exibe tracking + botao WhatsApp + botao baixar etiqueta
+**`src/pages/Sales.tsx` - Interface Sale:**
+- Adicionar `shipping_label_url: string | null`
 
-**`Sales.tsx`:**
-- Novos estados: `shippingTracking`
-- No `mutationFn` do `createSaleMutation`, incluir `shipping_tracking` e `shipping_label_url` no INSERT da venda
-- Passar o callback `onTrackingGenerated` para o `ShippingSection`
+**`src/pages/Sales.tsx` - Dialog de detalhes (apos linha 2457):**
+- Exibir `selectedSale.shipping_tracking` com icone de copia
+- Botao WhatsApp que abre `wa.me` com mensagem formatada
+- Link para baixar etiqueta se `shipping_label_url` estiver disponivel
 
