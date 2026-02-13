@@ -752,28 +752,32 @@ export default function Sales() {
                 user_id: user.id,
                 amount: splitResult.seller.costRecovery,
                 type: 'cost_recovery',
-                description: `Recuperação de custo ${((partnershipGroup?.cost_split_ratio ?? 0.5) * 100).toFixed(0)}% (parceria) - ${item.product.name}`,
+                description: `Recuperação de custo ${((partnershipGroup?.cost_split_ratio ?? 0.5) * 100).toFixed(0)}% ${profiles.find(p => p.id === user.id)?.full_name || 'Vendedora'} (parceria) - ${item.product.name}`,
               });
             }
             if (splitResult.seller.profitShare > 0) {
+              const sellerProfile = profiles.find(p => p.id === user.id);
+              const sellerName = sellerProfile?.full_name || 'Vendedora';
               financialSplitsToInsert.push({
                 sale_id: sale.id,
                 user_id: user.id,
                 amount: splitResult.seller.profitShare,
                 type: 'profit_share',
-                description: `Lucro ${((partnershipGroup?.profit_share_seller ?? 0.7) * 100).toFixed(0)}% vendedora (parceria) - ${item.product.name}`,
+                description: `Lucro ${((partnershipGroup?.profit_share_seller ?? 0.7) * 100).toFixed(0)}% ${sellerName} (parceria) - ${item.product.name}`,
               });
             }
 
             // Add partner split
             if (partnerUserId && splitResult.partner.total > 0) {
+              const partnerProfile = profiles.find(p => p.id === partnerUserId);
+              const partnerName = partnerProfile?.full_name || 'Sócia';
               if (splitResult.partner.costRecovery > 0) {
                 financialSplitsToInsert.push({
                   sale_id: sale.id,
                   user_id: partnerUserId,
                   amount: splitResult.partner.costRecovery,
                   type: 'cost_recovery',
-                  description: `Recuperação de custo ${((1 - (partnershipGroup?.cost_split_ratio ?? 0.5)) * 100).toFixed(0)}% (parceria) - ${item.product.name}`,
+                  description: `Recuperação de custo ${((1 - (partnershipGroup?.cost_split_ratio ?? 0.5)) * 100).toFixed(0)}% ${partnerName} (parceria) - ${item.product.name}`,
                 });
               }
               if (splitResult.partner.profitShare > 0) {
@@ -782,7 +786,7 @@ export default function Sales() {
                   user_id: partnerUserId,
                   amount: splitResult.partner.profitShare,
                   type: 'profit_share',
-                  description: `Lucro ${((partnershipGroup?.profit_share_partner ?? 0.3) * 100).toFixed(0)}% sócia (parceria) - ${item.product.name}`,
+                  description: `Lucro ${((partnershipGroup?.profit_share_partner ?? 0.3) * 100).toFixed(0)}% ${partnerName} (parceria) - ${item.product.name}`,
                 });
               }
             }

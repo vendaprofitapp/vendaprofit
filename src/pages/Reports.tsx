@@ -234,6 +234,37 @@ export default function Reports() {
     enabled: !!user,
   });
 
+  // Fetch financial_splits for the period to calculate real profit considering partnerships
+  const { data: financialSplitsData = [] } = useQuery({
+    queryKey: ["financial-splits-report", dateRange.start, dateRange.end],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("financial_splits")
+        .select("id, sale_id, user_id, amount, type, description")
+        .gte("created_at", dateRange.start.toISOString())
+        .lte("created_at", dateRange.end.toISOString());
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Create map: sale_id -> user's splits total, and whether sale has partnership splits
+  const splitsBySale = useMemo(() => {
+    const map = new Map<string, { myTotal: number; hasPartnership: boolean; partnerAmount: number }>();
+    for (const split of financialSplitsData) {
+      const existing = map.get(split.sale_id) || { myTotal: 0, hasPartnership: false, partnerAmount: 0 };
+      if (split.user_id === user?.id) {
+        existing.myTotal += split.amount;
+      } else {
+        existing.partnerAmount += split.amount;
+        existing.hasPartnership = true;
+      }
+      map.set(split.sale_id, existing);
+    }
+    return map;
+  }, [financialSplitsData, user?.id]);
+
   // Create product map for quick lookup
   const productMap = useMemo(() => {
     const map = new Map<string, Product>();
@@ -332,6 +363,8 @@ export default function Reports() {
       const feePercent = feesMap.get(sale.payment_method) || 0;
       const saleDiscount = Number(sale.discount_amount) || 0;
       const saleSubtotal = Number(sale.subtotal) || 0;
+      const saleInfo = splitsBySale.get(sale.id);
+      const hasPartnership = saleInfo?.hasPartnership ?? false;
       
       return sale.sale_items.map(item => {
         const product = productMap.get(item.product_id);
@@ -348,6 +381,15 @@ export default function Reports() {
         const feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
         const realProfit = grossProfit - feeAmount;
 
+        // If this sale has partnership splits, calculate real profit from splits
+        let myRealProfit = realProfit;
+        if (hasPartnership && saleInfo) {
+          // Distribute my split total proportionally across items
+          const saleItemsCount = sale.sale_items.length;
+          const myProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 1 / saleItemsCount;
+          myRealProfit = saleInfo.myTotal * myProportion;
+        }
+
         return {
           saleId: sale.id,
           date: sale.created_at,
@@ -362,11 +404,14 @@ export default function Reports() {
           feePercent,
           feeAmount,
           realProfit,
+          myRealProfit,
+          hasPartnership,
+          partnerAmount: hasPartnership ? (saleInfo?.partnerAmount ?? 0) * (saleSubtotal > 0 ? itemTotal / saleSubtotal : 0) : 0,
           paymentMethod: sale.payment_method,
         };
       });
     });
-  }, [filteredSales, productMap, feesMap]);
+  }, [filteredSales, productMap, feesMap, splitsBySale]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -384,8 +429,11 @@ export default function Reports() {
     const totalGrossProfit = detailedSalesData.reduce((sum, d) => sum + d.grossProfit, 0);
     const totalFees = detailedSalesData.reduce((sum, d) => sum + d.feeAmount, 0);
     const totalRealProfit = detailedSalesData.reduce((sum, d) => sum + d.realProfit, 0);
+    const totalMyRealProfit = detailedSalesData.reduce((sum, d) => sum + d.myRealProfit, 0);
+    const totalPartnerAmount = detailedSalesData.reduce((sum, d) => sum + d.partnerAmount, 0);
+    const hasAnyPartnership = detailedSalesData.some(d => d.hasPartnership);
 
-    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalRealProfit };
+    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalRealProfit, totalMyRealProfit, totalPartnerAmount, hasAnyPartnership };
   }, [filteredSales, detailedSalesData]);
 
   // Chart data: Sales over time
@@ -763,11 +811,23 @@ export default function Reports() {
           </p>
         </div>
         <div className="rounded-xl bg-card p-5 shadow-soft border-2 border-green-500/30">
-          <p className="text-sm text-muted-foreground font-medium">Lucro Real</p>
-          <p className="text-2xl font-bold text-green-600">
-            R$ {stats.totalRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          <p className="text-sm text-muted-foreground font-medium">
+            {stats.hasAnyPartnership ? "Meu Lucro Real" : "Lucro Real"}
           </p>
-          <p className="text-xs text-muted-foreground">(Descontos + Taxas abatidos)</p>
+          <p className="text-2xl font-bold text-green-600">
+            R$ {(stats.hasAnyPartnership ? stats.totalMyRealProfit : stats.totalRealProfit).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {stats.hasAnyPartnership 
+              ? "(Sua parte, após parceria + taxas)" 
+              : "(Descontos + Taxas abatidos)"}
+          </p>
+          {stats.hasAnyPartnership && stats.totalPartnerAmount > 0 && (
+            <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              R$ {stats.totalPartnerAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} para parceira(s)
+            </p>
+          )}
         </div>
       </div>
 
@@ -812,18 +872,19 @@ export default function Reports() {
                 <TableHead className="text-right">Lucro Bruto</TableHead>
                 <TableHead className="text-right">Taxa</TableHead>
                 <TableHead className="text-right">Lucro Real</TableHead>
+                <TableHead className="text-right">Meu Lucro</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {salesLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                   <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : detailedSalesData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                     Nenhuma venda encontrada no período
                   </TableCell>
                 </TableRow>
@@ -834,7 +895,17 @@ export default function Reports() {
                       {format(parseISO(item.date), "dd/MM/yyyy HH:mm")}
                     </TableCell>
                     <TableCell className="max-w-[120px] truncate">{item.customer}</TableCell>
-                    <TableCell className="max-w-[150px] truncate">{item.productName}</TableCell>
+                    <TableCell className="max-w-[150px] truncate">
+                      <span className="flex items-center gap-1">
+                        {item.productName}
+                        {item.hasPartnership && (
+                          <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
+                            <Users className="h-2.5 w-2.5 mr-0.5" />
+                            Parceria
+                          </Badge>
+                        )}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -853,6 +924,17 @@ export default function Reports() {
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap font-medium text-green-600">
                       R$ {item.realProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap font-medium">
+                      {item.hasPartnership ? (
+                        <span className="text-primary">
+                          R$ {item.myRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      ) : (
+                        <span className="text-green-600">
+                          R$ {item.myRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

@@ -432,7 +432,9 @@ export function AccountSettlement() {
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-1">
                 <ArrowDownLeft className="h-4 w-4 text-rose-600" />
-                <span className="text-xs font-medium text-rose-700">A Pagar</span>
+                <span className="text-xs font-medium text-rose-700">
+                  {settlements.length === 1 ? `A Pagar para ${settlements[0].partnerName}` : "A Pagar"}
+                </span>
               </div>
               <p className="text-lg sm:text-xl font-bold text-rose-600">
                 {formatCurrency(totalOwedToPartners)}
@@ -477,7 +479,9 @@ export function AccountSettlement() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <Users className="h-5 w-5 text-rose-600" />
-              <span className="font-medium text-rose-700">Total a Pagar aos Sócios</span>
+              <span className="font-medium text-rose-700">
+                {settlements.length === 1 ? `Total a Pagar para ${settlements[0].partnerName}` : "Total a Pagar aos Sócios"}
+              </span>
             </div>
             <p className="text-2xl font-bold text-rose-600">
               {formatCurrency(totalOwedToPartners)}
