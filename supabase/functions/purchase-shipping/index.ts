@@ -35,6 +35,8 @@ interface PurchaseShippingRequest {
   destination_neighborhood?: string;
   seller_name?: string;
   seller_phone?: string;
+  seller_document?: string;
+  customer_document?: string;
 }
 
 async function purchaseShippingMelhorEnvio(
@@ -56,6 +58,7 @@ async function purchaseShippingMelhorEnvio(
       name: req.seller_name || "Vendedor",
       phone: req.seller_phone || "00000000000",
       email: "contato@vendaprofit.com",
+      document: req.seller_document || "00000000000",
       postal_code: req.origin_zip,
       address: "Endereço do remetente",
       number: "0",
@@ -66,6 +69,7 @@ async function purchaseShippingMelhorEnvio(
       name: req.customer_name || "Cliente",
       phone: req.customer_phone || "00000000000",
       email: "cliente@email.com",
+      document: req.customer_document || "00000000000",
       postal_code: req.destination_zip,
       address: req.destination_street || "Endereço do destinatário",
       number: req.destination_number || "0",
