@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.quote-shipping]
 verify_jwt = false
+
+[functions.purchase-shipping]
+verify_jwt = false

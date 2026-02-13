@@ -162,6 +162,8 @@ export default function Sales() {
     address: "",
     notes: "",
   });
+  const [shippingLabelUrl, setShippingLabelUrl] = useState<string | null>(null);
+  const [saleIdForShipping, setSaleIdForShipping] = useState<string>("");
 
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
@@ -972,6 +974,9 @@ export default function Sales() {
         if (expenseError) console.error("Error creating shipping expense:", expenseError);
       }
 
+      // Set sale ID for shipping label generation
+      setSaleIdForShipping(sale.id);
+
       return sale;
     },
     onSuccess: () => {
@@ -1016,6 +1021,16 @@ export default function Sales() {
     setProductSearch("");
     setSelectedCustomerId("");
     setDueDate("");
+    setShippingData({
+      method: "presencial",
+      company: "",
+      cost: 0,
+      payer: "seller",
+      address: "",
+      notes: "",
+    });
+    setShippingLabelUrl(null);
+    setSaleIdForShipping("");
     setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
   };
 
@@ -2146,6 +2161,11 @@ export default function Sales() {
                 customerAddress={selectedCustomerId ? registeredCustomers.find(c => c.id === selectedCustomerId) : null}
                 shippingConfig={shippingProfile}
                 quoteProducts={quoteProducts}
+                saleId={saleIdForShipping}
+                customerName={customerName}
+                customerPhone={customerPhone}
+                shippingLabelUrl={shippingLabelUrl}
+                onLabelGenerated={(url) => setShippingLabelUrl(url)}
               />
 
               {/* Totals */}
