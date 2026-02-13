@@ -1795,6 +1795,7 @@ export type Database = {
           opportunities_button_text: string | null
           owner_id: string
           primary_color: string | null
+          purchase_incentives_config: Json | null
           secret_area_active: boolean | null
           secret_area_name: string | null
           secret_area_password: string | null
@@ -1835,6 +1836,7 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id: string
           primary_color?: string | null
+          purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
           secret_area_name?: string | null
           secret_area_password?: string | null
@@ -1875,6 +1877,7 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id?: string
           primary_color?: string | null
+          purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
           secret_area_name?: string | null
           secret_area_password?: string | null
