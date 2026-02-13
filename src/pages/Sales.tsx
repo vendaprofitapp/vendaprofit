@@ -572,7 +572,7 @@ export default function Sales() {
           discount_amount: discountAmount,
           total,
           notes: saleNotes || null,
-          status: "completed",
+          status: isDeferred ? "pending" : "completed",
         })
         .select()
         .single();
