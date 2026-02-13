@@ -1,89 +1,125 @@
+# Formas de Envio no Lancamento de Vendas
 
-# Faturamento na Visao Geral + Despesas Parceladas
+## Resumo
 
-## Parte 1: Adicionar "Faturamento" ao Financeiro
+Adicionar uma secao "Forma de Envio" no formulario de nova venda, com 4 opcoes: Presencial, Postagem, Aplicativos (Uber/99) e Outros. Inclui cadastro de endereco nos clientes, integracao futura com APIs de transportadoras, e logica financeira que trata o frete como despesa e/ou receita dependendo de quem paga.
 
-Atualmente a aba "Visao Geral" mostra apenas Lucro de Vendas, Total Despesas, Lucro Liquido Real, Contas a Pagar e Estoque Externo. Falta o **Faturamento** (valor total recebido em vendas).
+## Parte 1: Adicionar Endereco ao Cadastro de Clientes
 
-### Mudanca em `Financial.tsx`
-- Buscar o total de vendas (soma de `sales.total`) no periodo filtrado
-- Adicionar um card "Faturamento" (cor azul) como primeiro card, mostrando o valor total de vendas realizadas
-- Reorganizar os cards: Faturamento | Lucro de Vendas | Total Despesas | Lucro Liquido Real | Contas a Pagar
+### Novas colunas na tabela `customers`
 
-### Mudanca em `DREReport.tsx`
-- O DRE ja mostra "Receita Bruta de Vendas" que e o faturamento. Nao precisa alteracao aqui.
-
-## Parte 2: Despesas Parceladas
-
-Permitir que ao cadastrar uma despesa, a usuaria possa informar que sera paga em parcelas, definindo quantidade, valor e vencimento de cada parcela.
-
-### Nova tabela: `expense_installments`
-
-```
-expense_installments
-  id (uuid, PK)
-  expense_id (uuid)         -- referencia a expenses
-  installment_number (int)  -- 1, 2, 3...
-  amount (numeric)          -- valor da parcela
-  due_date (date)           -- data de vencimento
-  is_paid (boolean)         -- se ja foi paga
-  paid_at (timestamptz)     -- quando foi paga
-  created_at (timestamptz)
+```text
+address_street    (text, nullable) - Rua/Logradouro
+address_number    (text, nullable) - Numero
+address_complement (text, nullable) - Complemento
+address_neighborhood (text, nullable) - Bairro
+address_city      (text, nullable) - Cidade
+address_state     (text, nullable) - Estado (UF)
+address_zip       (text, nullable) - CEP
 ```
 
-RLS: acesso baseado no owner_id da expense pai.
+### Mudanca em `Customers.tsx`
 
-### Novas colunas em `expenses`
+- Adicionar campos de endereco no formulario de cadastro/edicao de cliente
+- Secao colapsavel "Endereco de Entrega" com os campos acima
 
-- `is_installment` (boolean, default false) -- se a despesa e parcelada
-- `installment_count` (integer, nullable) -- numero de parcelas
+## Parte 2: Novas colunas na tabela `sales`
 
-### Mudancas no `ExpenseFormDialog.tsx`
+```text
+shipping_method     (text, nullable)  - "presencial" | "postagem" | "app" | "outros"
+shipping_company    (text, nullable)  - Nome da empresa (Correios, Uber, etc)
+shipping_cost       (numeric, default 0) - Valor do frete
+shipping_payer      (text, nullable)  - "seller" | "buyer"
+shipping_address    (text, nullable)  - Endereco completo de entrega (texto formatado)
+shipping_notes      (text, nullable)  - Observacoes do envio / campo texto livre para "Outros"
+shipping_tracking   (text, nullable)  - Codigo de rastreio (preenchido depois, se aplicavel)
+```
 
-1. Adicionar toggle "Pagamento parcelado"
-2. Quando ativo, mostrar:
-   - Input "Numero de parcelas" (2 a 24)
-   - Ao definir, gerar automaticamente a lista de parcelas com:
-     - Valor dividido igualmente (editavel por parcela)
-     - Data de vencimento mensal a partir da data da despesa (editavel por parcela)
-3. Exibir lista editavel das parcelas com campos de valor e data
-4. Ao salvar, criar os registros em `expense_installments`
+## Parte 3: Interface no Formulario de Venda
 
-### Mudancas no `ExpensesList.tsx`
+Adicionar uma secao **"Forma de Envio"** entre as observacoes e os totais, no lado direito do formulario de nova venda (`Sales.tsx`).
 
-- Mostrar badge "Parcelado 3x" quando a despesa for parcelada
-- Mostrar indicador de quantas parcelas ja foram pagas (ex: "2/4 pagas")
-- Ao clicar na despesa parcelada, permitir visualizar e marcar parcelas como pagas
+### Opcao 1: Presencial
 
-### Mudancas no `ExpenseSummaryCards.tsx` e `useExpenseTotals`
+- Seleciona e pronto, sem campos adicionais
+- Nenhum custo de frete adicionado
 
-- Para despesas parceladas, considerar apenas as parcelas com vencimento dentro do periodo filtrado (nao o valor total da despesa)
-- Isso garante que o DRE e os cards reflitam corretamente o custo do periodo
+### Opcao 2: Postagem
 
-### Mudancas no `DREReport.tsx`
+1. **Endereco**: Se um cliente cadastrado esta selecionado e tem endereco, preenche automaticamente. Senao, abre campos para digitar
+2. **Empresa de postagem**: Campo de texto livre para informar (Correios, Jadlog, etc). Futuramente conectaremos APIs de cotacao
+3. **Valor do frete**: Input numerico
+4. **Quem paga**: Radio com "Vendedora" ou "Compradora"
+  - Se **Vendedora**: valor do frete entra APENAS como despesa da venda (reduz lucro)
+  - Se **Compradora**: valor do frete e somado ao total da venda (entra nos recebidos) E tambem registrado como despesa (pois a vendedora paga a transportadora)
 
-- Ajustar para usar a mesma logica: despesas parceladas contam apenas as parcelas do periodo
+### Opcao 3: Aplicativos (Uber, 99, etc)
+
+1. Mesmos campos da Postagem (endereco, empresa, valor, quem paga)
+2. **Aviso adicional exibido**: "Responsabilidade do Cliente: A partir do momento em que a encomenda e entregue ao prestador de servico, a responsabilidade e do cliente."
+3. Mesma logica financeira de quem paga
+
+### Opcao 4: Outros
+
+1. **Descricao**: Campo de texto livre para descrever a forma de envio
+2. **Valor**: Input numerico
+3. **Quem paga**: Mesmo radio (Vendedora/Compradora), mesma logica
+
+### Logica Financeira do Frete
+
+Quando `shipping_payer = "buyer"` (compradora paga):
+
+- O valor do frete e SOMADO ao total da venda (`sale.total += shipping_cost`)
+- Uma despesa automatica e criada na tabela `expenses` com:
+  - `category = "frete"`
+  - `category_type = "variable"`
+  - `amount = shipping_cost`
+  - Vinculo ao sale_id via campo description
+
+Quando `shipping_payer = "seller"` (vendedora paga):
+
+- O total da venda NAO muda
+- Uma despesa automatica e criada na tabela `expenses` com mesma logica acima
+
+Resultado: o frete sempre aparece como despesa operacional no DRE, e quando o comprador paga, tambem aparece como receita.
+
+## Parte 4: Exibicao nas Vendas Existentes
+
+- Na visualizacao de detalhes da venda (dialog de "Ver Venda"), mostrar a secao de envio com todos os dados preenchidos
+- No `EditSaleDialog`, permitir editar os dados de envio
+- Na listagem de vendas, mostrar icone indicativo do tipo de envio
 
 ## Detalhes Tecnicos
 
+### Migration SQL
+
+1. Adicionar colunas de endereco na tabela `customers`
+2. Adicionar colunas de shipping na tabela `sales`
+
 ### Arquivos a Criar
-1. Migration SQL para tabela `expense_installments` e colunas `is_installment`/`installment_count` em `expenses`
+
+1. `**src/components/sales/ShippingSection.tsx**` - Componente da secao "Forma de Envio" com toda a logica condicional dos 4 tipos
 
 ### Arquivos a Modificar
-1. `src/pages/Financial.tsx` -- adicionar card de Faturamento com query de vendas
-2. `src/components/financial/ExpenseFormDialog.tsx` -- adicionar secao de parcelamento com lista editavel
-3. `src/components/financial/ExpensesList.tsx` -- exibir info de parcelas e permitir marcar como paga
-4. `src/components/financial/ExpenseSummaryCards.tsx` -- ajustar calculo para considerar parcelas do periodo
-5. `src/components/financial/DREReport.tsx` -- mesma logica de parcelas no periodo
+
+1. `**src/pages/Sales.tsx**` - Integrar ShippingSection no formulario de nova venda, ajustar calculo de total para incluir frete quando comprador paga, criar despesa automatica ao finalizar venda
+2. `**src/pages/Customers.tsx**` - Adicionar campos de endereco no formulario de cliente
+3. `**src/components/sales/EditSaleDialog.tsx**` - Exibir e permitir editar dados de envio
 
 ### Fluxo do Usuario
 
-1. Clica em "+ Nova Despesa"
-2. Preenche: "Stand Feira Fitness - R$600 - Evento"
-3. Ativa "Pagamento parcelado" -> define 3x
-4. Sistema gera: Parcela 1: R$200 (venc 10/02), Parcela 2: R$200 (venc 10/03), Parcela 3: R$200 (venc 10/04)
-5. Pode editar valores (ex: Parcela 1: R$250, Parcela 2: R$200, Parcela 3: R$150)
-6. Pode editar datas de vencimento individualmente
-7. Salva a despesa
-8. Na listagem, ve "Stand Feira Fitness - R$600 - 3x (1/3 pagas)"
-9. No DRE de fevereiro, aparece apenas R$200 (parcela do mes)
+1. Abre "Nova Venda" e adiciona produtos ao carrinho
+2. Seleciona cliente cadastrado (endereco puxa automaticamente)
+3. Em "Forma de Envio", escolhe "Postagem"
+4. Sistema preenche endereco do cliente automaticamente
+5. Digita "Correios" como empresa, R$25,00 como valor
+6. Seleciona "Compradora paga"
+7. O total da venda atualiza: Subtotal + R$25,00 de frete
+8. Finaliza a venda e sistema abre a opção de enviar as informações do envio em caso de Postagem, aplicativos ou outros para o whatsapp do cliente (cadastrado no sistema)  
+
+9. Sistema cria automaticamente uma despesa de R$25,00 (frete) na tabela expenses
+10. No DRE: os R$25,00 aparecem tanto em Receita (recebido do cliente) quanto em Despesas (pagamento do frete)
+
+### Sobre APIs de Transportadoras
+
+A integracao com APIs de cotacao de frete (Correios, Jadlog, Uber, 99) sera implementada em uma fase futura. Por ora, o usuario informa manualmente a empresa e o valor. A estrutura ja esta preparada para receber dados automaticos quando as APIs forem conectadas.
