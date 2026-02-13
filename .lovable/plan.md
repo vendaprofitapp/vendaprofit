@@ -1,104 +1,137 @@
 
-# Corrigir Lógica de Parcelamento para Mostrar Sempre
 
-## Análise do Problema Atual
+# Controle Financeiro Completo - Com Divisao de Despesas em Parcerias
 
-A função `getInstallmentInfo()` em `PurchaseIncentives.tsx` (linhas 70-90) retorna `null` quando `installments < 2`, impedindo a exibição de parcelamento para produtos com valores baixos.
+## Resumo
 
-**Exemplo atual (quebrado):**
-- Produto R$145 com mínimo R$120 por parcela
-- Cálculo: `Math.floor(145 / 120) = 1` → retorna `null` → nada aparece no card
+Criar uma aba completa de controle financeiro dentro da pagina Financeiro, permitindo cadastrar custos fixos, variaveis e de eventos. Alem disso, despesas podem ser vinculadas a uma parceria e divididas automaticamente seguindo as regras ja configuradas (cost_split_ratio) ou com divisao personalizada.
 
-**Resultado esperado:**
-- Produto R$145 deve mostrar: "4x de R$36,25" (máximo configurado pelo vendedor)
-- No carrinho, avisar: "⚠️ Valor mínimo por parcela não atingido. Adicione mais itens."
+## Estrutura da Tabela `expenses`
 
-## Estratégia de Solução
-
-### Parte 1: Modificar a Lógica de Cálculo (`PurchaseIncentives.tsx`)
-
-**Mudança na função `getInstallmentInfo()`:**
-
-1. **Sempre calcular e retornar dados**, mesmo que `installments < 2`
-2. Adicionar um flag `minNotReached: boolean` ao retorno para indicar quando o mínimo não foi atingido
-3. Quando `installments < 2`, retornar com `installments = max_installments` (ex: 4x)
-4. Adicionar `amountPerInstallment` no retorno para comparação com mínimo
-
-**Exemplo de retorno:**
-```typescript
-{
-  installments: 4,          // máximo do vendedor
-  perInstallment: 36.25,    // R$145 ÷ 4
-  minNotReached: true,      // R$36,25 < R$120 (mínimo)
-  noInterest: true
-}
+```text
+expenses
+  id (uuid, PK)
+  owner_id (uuid)              -- quem cadastrou a despesa
+  amount (numeric)             -- valor total da despesa
+  category (text)              -- ex: "frete", "gasolina", "embalagem"
+  category_type (text)         -- "fixed" | "variable" | "event" | "other"
+  description (text)           -- descricao livre
+  expense_date (date)          -- data da despesa
+  is_recurring (boolean)       -- custo fixo recorrente mensal
+  recurring_day (integer)      -- dia do mes para recorrencia
+  
+  -- Campos de parceria
+  group_id (uuid, nullable)    -- se vinculada a uma parceria/grupo
+  split_mode (text)            -- "none" | "partnership_rules" | "custom"
+  custom_split_percent (numeric, nullable) -- ex: 60 = eu pago 60%, parceiro 40%
+  
+  created_at, updated_at
 ```
 
-### Parte 2: Atualizar Exibição no Card (`PurchaseIncentives.tsx` - componente `InstallmentInfo`)
+### Logica de Divisao
 
-O componente já exibe corretamente quando há dados. Não precisa modificação (linha 2178 em `StoreCatalog.tsx` já integra corretamente).
+- **`split_mode = 'none'`**: Despesa 100% minha, sem divisao
+- **`split_mode = 'partnership_rules'`**: Usa o `cost_split_ratio` ja configurado na parceria (ex: 50/50)
+- **`split_mode = 'custom'`**: Percentual personalizado definido na hora (ex: eu pago 70%, parceiro 30%)
 
-### Parte 3: Avisar no Carrinho (`StoreCatalog.tsx`)
+### Tabela auxiliar `expense_splits`
 
-Adicionar lógica no carrinho (Sheet) para:
-
-1. **Verificar se algum item tem `minNotReached = true`**
-2. **Exibir aviso claro** (antes ou depois da barra de progresso)
-3. **Indicar quanto falta** para atingir o mínimo por parcela
-
-Exemplo de mensagem:
+```text
+expense_splits
+  id (uuid, PK)
+  expense_id (uuid)            -- referencia a expenses
+  user_id (uuid)               -- quem deve essa parte
+  amount (numeric)             -- valor da parte
+  is_paid (boolean)            -- se ja foi acertado
+  created_at
 ```
-⚠️ Atenção: Para parcelar em 4x, o valor por parcela precisa ser mínimo R$120.
-Seu carrinho: R$87,50 por parcela. Adicione mais R$52,50 para desbloquear.
+
+Quando uma despesa e vinculada a parceria, o sistema cria automaticamente os splits (um para cada parceiro) usando as regras selecionadas.
+
+## Categorias Pre-definidas
+
+**Custos Fixos**: Aluguel, Internet, Assinaturas, Contador
+
+**Custos Variaveis (por venda)**: Frete, Embalagens, Impressoes, Sacolas/caixas
+
+**Custos de Eventos**: Gasolina, Alimentacao, Stand/espaco, Material divulgacao, Insumos (arara, cabides)
+
+**Outros**: Categoria livre
+
+## Interface - 3 Abas na pagina Financeiro
+
+### Aba 1: Visao Geral (atualizada)
+- Cards existentes MAIS novo card "Total Despesas" (vermelho)
+- Card "Lucro Liquido Real" = Receitas - Despesas
+
+### Aba 2: Despesas
+- Botao "+ Nova Despesa" abre formulario com:
+  - Tipo (Fixo / Variavel / Evento / Outro)
+  - Categoria (dropdown pre-definido + campo livre)
+  - Valor, Data, Descricao
+  - Toggle "Recorrente" (para custos fixos)
+  - **Secao "Dividir com Parceria"** (aparece se usuario tem parcerias ativas):
+    - Dropdown: selecionar parceria
+    - Radio: "Seguir regras da parceria (50/50)" | "Divisao personalizada"
+    - Se personalizada: slider ou input de porcentagem
+- Tabela listando despesas com badge indicando se e dividida
+- Filtro por tipo e por parceria
+- Totais por categoria
+
+### Aba 3: DRE Simplificado
+Demonstrativo de resultado:
+
+```text
+(+) Receita Bruta de Vendas
+(-) Taxas de Pagamento
+(=) Receita Liquida
+(-) Custo das Mercadorias (CMV)
+(=) Lucro Bruto
+(-) Custos Fixos (minha parte)
+(-) Custos Variaveis (minha parte)
+(-) Custos de Eventos (minha parte)
+(-) Outras Despesas
+(=) LUCRO LIQUIDO REAL
 ```
 
-### Parte 4: Verificar Salvamento do PIX (`StoreSettings.tsx`)
+Nota: quando uma despesa e dividida com parceiro, apenas a parte da usuaria entra no DRE.
 
-Investigar por que `pix_discount.enabled` está como `false` apesar de ter sido configurado.
+## Integracao com Acerto de Contas
 
-**Possíveis causas:**
-- Switch não está sendo capturado corretamente no estado do formulário
-- A mutation não está enviando o valor corretamente
-- JSON está sendo salvo com estrutura diferente
+As despesas divididas com parceiros aparecerao no relatorio de acerto (PartnerReports / AccountSettlement) como itens a mais no calculo do saldo:
 
-**Solução:**
-- Verificar se o switch está vinculado ao estado correto (linhas 1599-1609 em `StoreSettings.tsx`)
-- Adicionar `console.log()` para debug durante o salvamento
-- Validar que o objeto `purchase_incentives_config` está sendo stringificado/parseado corretamente
+- Se eu paguei uma despesa dividida -> parceiro me deve sua parte
+- Se parceiro pagou -> eu devo minha parte
+
+Isso sera feito consultando `expense_splits` onde `is_paid = false`.
+
+## Arquivos a Criar
+
+1. **Migration SQL** - tabelas `expenses` e `expense_splits` com RLS
+2. **`src/components/financial/ExpenseFormDialog.tsx`** - formulario de cadastro com opcao de divisao
+3. **`src/components/financial/ExpensesList.tsx`** - tabela de despesas com filtros
+4. **`src/components/financial/DREReport.tsx`** - demonstrativo de resultado
+5. **`src/components/financial/ExpenseSummaryCards.tsx`** - cards resumo
 
 ## Arquivos a Modificar
 
-1. **`src/components/catalog/PurchaseIncentives.tsx`**
-   - Modificar `getInstallmentInfo()`: sempre retornar dados com flag `minNotReached`
-   - Atualizar interface de retorno
+1. **`src/pages/Financial.tsx`** - reorganizar com Tabs, integrar novos componentes
+2. **`src/components/reports/AccountSettlement.tsx`** - incluir despesas divididas no calculo de saldo
 
-2. **`src/pages/StoreCatalog.tsx`**
-   - Adicionar lógica no Sheet do carrinho para detectar `minNotReached`
-   - Exibir aviso claro sobre o mínimo não atingido
-   - Calcular quanto falta para atingir
+## Seguranca (RLS)
 
-3. **`src/pages/StoreSettings.tsx`**
-   - Verificar/corrigir o salvamento do `pix_discount.enabled`
-   - Adicionar validação ou debug se necessário
+- `expenses`: SELECT/INSERT/UPDATE/DELETE restrito a `owner_id = auth.uid()`
+- `expense_splits`: SELECT onde `user_id = auth.uid()` OU onde o expense pertence ao usuario
+- UPDATE de `is_paid` permitido para ambos os parceiros envolvidos
 
-## Fluxo Esperado Após Correção
+## Fluxo do Usuario
 
-```
-1. Vendedora configura: 4x, mínimo R$120 por parcela, PIX 5% OFF
-2. Produto R$145 no card mostra:
-   - "💳 4x de R$36,25 sem juros"
-   - "ou R$137,75 no PIX (5% OFF)"
-3. Cliente adiciona ao carrinho
-4. No carrinho, se mínimo não atingido:
-   ⚠️ Aviso: "Para parcelar em 4x, precisa ser R$120 por parcela. 
-                 Seu carrinho: R$87,50/parcela. Faltam R$52,50"
-5. Cliente adiciona mais itens
-6. Aviso desaparece quando `minReached = true`
-```
-
-## Considerações Técnicas
-
-- A mudança é **backward compatible**: produtos com preços altos continuarão funcionando igual
-- O `minNotReached` flag é apenas informativo, não bloqueia a compra
-- A avaliação do mínimo deve considerar o **valor total do carrinho**, não por item
+1. Acessa Financeiro -> aba "Despesas"
+2. Clica "+ Nova Despesa"
+3. Preenche: "Gasolina - Feira Fitness - R$120 - 10/02/2026"
+4. Ativa "Dividir com Parceria" -> seleciona "Parceria com Isabelle"
+5. Escolhe "Seguir regras da parceria (50/50)"
+6. Sistema cria: R$60 para cada parceira
+7. No Acerto de Contas, Isabelle ve que deve R$60 dessa despesa
+8. Na aba DRE, apenas R$60 (minha parte) e descontado do lucro
 
