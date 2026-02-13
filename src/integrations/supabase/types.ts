@@ -1810,6 +1810,7 @@ export type Database = {
           shipping_address: string | null
           shipping_company: string | null
           shipping_cost: number | null
+          shipping_label_url: string | null
           shipping_method: string | null
           shipping_notes: string | null
           shipping_payer: string | null
@@ -1834,6 +1835,7 @@ export type Database = {
           shipping_address?: string | null
           shipping_company?: string | null
           shipping_cost?: number | null
+          shipping_label_url?: string | null
           shipping_method?: string | null
           shipping_notes?: string | null
           shipping_payer?: string | null
@@ -1858,6 +1860,7 @@ export type Database = {
           shipping_address?: string | null
           shipping_company?: string | null
           shipping_cost?: number | null
+          shipping_label_url?: string | null
           shipping_method?: string | null
           shipping_notes?: string | null
           shipping_payer?: string | null

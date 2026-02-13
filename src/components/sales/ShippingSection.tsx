@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Package, Truck, Car, FileText, AlertTriangle, MapPin, Search, Loader2, Settings } from "lucide-react";
+import { Package, Truck, Car, FileText, AlertTriangle, MapPin, Search, Loader2, Settings, Download, FileCheck } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +55,11 @@ interface ShippingSectionProps {
   customerAddress?: CustomerAddress | null;
   shippingConfig?: ShippingConfig | null;
   quoteProducts?: ShippingQuoteProduct[];
+  saleId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  shippingLabelUrl?: string | null;
+  onLabelGenerated?: (labelUrl: string) => void;
 }
 
 const methodOptions = [
@@ -86,7 +91,7 @@ function hasAddress(addr?: CustomerAddress | null): boolean {
   return !!(addr.address_street || addr.address_city || addr.address_zip);
 }
 
-export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts }: ShippingSectionProps) {
+export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, customerName, customerPhone, shippingLabelUrl, onLabelGenerated }: ShippingSectionProps) {
   const [addressOpen, setAddressOpen] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
@@ -96,6 +101,8 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
   const [manualWidth, setManualWidth] = useState<number>(0);
   const [manualHeight, setManualHeight] = useState<number>(0);
   const [manualLength, setManualLength] = useState<number>(0);
+  const [purchasing, setPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
   // Auto-fill address when customer has one
   useEffect(() => {
@@ -170,6 +177,47 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
       company: `${option.carrier} - ${option.service}`,
       cost: option.price,
     });
+  };
+
+  const handlePurchaseShipping = async () => {
+    if (!saleId || !value.company || !value.cost) return;
+
+    setPurchasing(true);
+    setPurchaseError(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "purchase-shipping",
+        {
+          body: {
+            sale_id: saleId,
+            shipping_company: value.company,
+            destination_zip: customerAddress?.address_zip?.replace(/\D/g, ""),
+            origin_zip: shippingConfig?.origin_zip?.replace(/\D/g, ""),
+            weight_grams: quoteProducts?.[0]?.weight_grams || manualWeight,
+            width_cm: quoteProducts?.[0]?.width_cm || manualWidth,
+            height_cm: quoteProducts?.[0]?.height_cm || manualHeight,
+            length_cm: quoteProducts?.[0]?.length_cm || manualLength,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            shipping_address: value.address,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      if (data?.label_url) {
+        onLabelGenerated?.(data.label_url);
+      }
+    } catch (err: any) {
+      console.error("Purchase error:", err);
+      setPurchaseError(
+        "Erro ao gerar etiqueta. Verifique se há saldo na sua conta."
+      );
+    } finally {
+      setPurchasing(false);
+    }
   };
 
   return (
@@ -370,13 +418,72 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
                         </span>
                       </div>
                     </button>
-                  ))}
+               ))}
+                </div>
+              )}
+
+              {/* Purchase Label Section */}
+              {quoteOptions.length > 0 && selectedQuoteIndex !== null && value.company && value.cost > 0 && (
+                <div className="space-y-2 p-3 bg-muted rounded-lg border border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Gerar Etiqueta</p>
+                      <p className="text-xs text-muted-foreground">
+                        {value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")
+                          ? "Comprar frete e gerar etiqueta automática"
+                          : "Etiqueta será gerada após confirmar a venda"}
+                      </p>
+                    </div>
+                    {shippingLabelUrl && (
+                      <FileCheck className="h-5 w-5 text-green-600" />
+                    )}
+                  </div>
+
+                  {!shippingLabelUrl && (value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handlePurchaseShipping}
+                      disabled={purchasing}
+                      className="w-full gap-2"
+                    >
+                      {purchasing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileCheck className="h-4 w-4" />
+                      )}
+                      {purchasing ? "Gerando..." : "Gerar Etiqueta"}
+                    </Button>
+                  )}
+
+                  {purchaseError && (
+                    <p className="text-xs text-destructive">{purchaseError}</p>
+                  )}
+
+                  {shippingLabelUrl && (
+                    <a
+                      href={shippingLabelUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full block"
+                    >
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Baixar Etiqueta
+                      </Button>
+                    </a>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Company */}
+              {/* Company */}
           <div>
             <Label className="text-sm">
               {value.method === "app" ? "Aplicativo" : "Empresa de Postagem"}
