@@ -2257,7 +2257,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
             </div>
           )}
           
-          <div className="absolute bottom-4 left-0 right-0 text-center">
+          <div className="absolute bottom-4 left-0 right-0 text-center px-6">
             <p className="text-white font-medium text-lg drop-shadow-lg">
               {item.name}
               {item.color && <span className="text-white/80"> - {item.color}</span>}
@@ -2267,6 +2267,11 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                 </span>
               )}
             </p>
+            {item.description && (
+              <p className="text-white/70 text-sm mt-1 drop-shadow-lg line-clamp-2 max-w-lg mx-auto">
+                {item.description}
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
