@@ -152,7 +152,11 @@ export function ProductFormDialog({
     video_url: "" as string | null,
     model: "",
     color_label: "",
-    custom_detail: ""
+    custom_detail: "",
+    weight_grams: "",
+    width_cm: "",
+    height_cm: "",
+    length_cm: "",
   });
 
   useEffect(() => {
@@ -176,7 +180,11 @@ export function ProductFormDialog({
         video_url: editingProduct.video_url || null,
         model: editingProduct.model || "",
         color_label: editingProduct.color_label || "",
-        custom_detail: editingProduct.custom_detail || ""
+        custom_detail: editingProduct.custom_detail || "",
+        weight_grams: (editingProduct as any).weight_grams?.toString() || "",
+        width_cm: (editingProduct as any).width_cm?.toString() || "",
+        height_cm: (editingProduct as any).height_cm?.toString() || "",
+        length_cm: (editingProduct as any).length_cm?.toString() || "",
       });
       
       // Load existing images
@@ -201,7 +209,11 @@ export function ProductFormDialog({
         video_url: null,
         model: duplicatingProduct.model || "",
         color_label: duplicatingProduct.color_label || "",
-        custom_detail: duplicatingProduct.custom_detail || ""
+        custom_detail: duplicatingProduct.custom_detail || "",
+        weight_grams: "",
+        width_cm: "",
+        height_cm: "",
+        length_cm: "",
       });
       
       setProductVariants(createDefaultVariants());
@@ -262,7 +274,11 @@ export function ProductFormDialog({
       video_url: null,
       model: "",
       color_label: "",
-      custom_detail: ""
+      custom_detail: "",
+      weight_grams: "",
+      width_cm: "",
+      height_cm: "",
+      length_cm: "",
     });
     newImagePreviews.forEach(url => URL.revokeObjectURL(url));
     setExistingImageUrls([]);
@@ -432,7 +448,11 @@ export function ProductFormDialog({
         image_url: imageUrls[0] || null,
         image_url_2: imageUrls[1] || null,
         image_url_3: imageUrls[2] || null,
-      };
+        weight_grams: form.weight_grams ? parseInt(form.weight_grams) : null,
+        width_cm: form.width_cm ? parseInt(form.width_cm) : null,
+        height_cm: form.height_cm ? parseInt(form.height_cm) : null,
+        length_cm: form.length_cm ? parseInt(form.length_cm) : null,
+      } as any;
 
       if (editingProduct) {
         productId = editingProduct.id;
@@ -764,6 +784,58 @@ export function ProductFormDialog({
           onChange={(url) => setForm({ ...form, video_url: url })}
         />
       </div>
+
+      {/* Peso e Dimensões (para cálculo de frete) */}
+      <details className="pt-2 border-t">
+        <summary className="text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+          📦 Peso e Dimensões (para cálculo de frete)
+        </summary>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Peso (g)</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={form.weight_grams}
+              onChange={(e) => setForm({ ...form, weight_grams: e.target.value })}
+              placeholder="300"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Largura (cm)</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={form.width_cm}
+              onChange={(e) => setForm({ ...form, width_cm: e.target.value })}
+              placeholder="15"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Altura (cm)</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={form.height_cm}
+              onChange={(e) => setForm({ ...form, height_cm: e.target.value })}
+              placeholder="10"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Comprimento (cm)</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={form.length_cm}
+              onChange={(e) => setForm({ ...form, length_cm: e.target.value })}
+              placeholder="20"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Necessário para cotação automática de frete via Melhor Envio / SuperFrete.
+        </p>
+      </details>
       
       {/* Seção de Variantes (Tamanhos) */}
       <div className="space-y-3 pt-2 border-t">

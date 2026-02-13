@@ -1584,12 +1584,14 @@ export type Database = {
           custom_detail: string | null
           description: string | null
           group_id: string | null
+          height_cm: number | null
           id: string
           image_url: string | null
           image_url_2: string | null
           image_url_3: string | null
           is_active: boolean
           is_new_release: boolean
+          length_cm: number | null
           main_category: string | null
           marketing_status: string[] | null
           min_stock_level: number
@@ -1604,6 +1606,8 @@ export type Database = {
           supplier_id: string | null
           updated_at: string
           video_url: string | null
+          weight_grams: number | null
+          width_cm: number | null
         }
         Insert: {
           category: string
@@ -1616,12 +1620,14 @@ export type Database = {
           custom_detail?: string | null
           description?: string | null
           group_id?: string | null
+          height_cm?: number | null
           id?: string
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
           is_new_release?: boolean
+          length_cm?: number | null
           main_category?: string | null
           marketing_status?: string[] | null
           min_stock_level?: number
@@ -1636,6 +1642,8 @@ export type Database = {
           supplier_id?: string | null
           updated_at?: string
           video_url?: string | null
+          weight_grams?: number | null
+          width_cm?: number | null
         }
         Update: {
           category?: string
@@ -1648,12 +1656,14 @@ export type Database = {
           custom_detail?: string | null
           description?: string | null
           group_id?: string | null
+          height_cm?: number | null
           id?: string
           image_url?: string | null
           image_url_2?: string | null
           image_url_3?: string | null
           is_active?: boolean
           is_new_release?: boolean
+          length_cm?: number | null
           main_category?: string | null
           marketing_status?: string[] | null
           min_stock_level?: number
@@ -1668,6 +1678,8 @@ export type Database = {
           supplier_id?: string | null
           updated_at?: string
           video_url?: string | null
+          weight_grams?: number | null
+          width_cm?: number | null
         }
         Relationships: [
           {
@@ -1693,10 +1705,13 @@ export type Database = {
           full_name: string
           gemini_api_key: string | null
           id: string
+          melhor_envio_token: string | null
           openai_api_key: string | null
+          origin_zip: string | null
           phone: string | null
           preferred_ai_provider: string | null
           store_name: string | null
+          superfrete_token: string | null
           updated_at: string
         }
         Insert: {
@@ -1705,10 +1720,13 @@ export type Database = {
           full_name: string
           gemini_api_key?: string | null
           id: string
+          melhor_envio_token?: string | null
           openai_api_key?: string | null
+          origin_zip?: string | null
           phone?: string | null
           preferred_ai_provider?: string | null
           store_name?: string | null
+          superfrete_token?: string | null
           updated_at?: string
         }
         Update: {
@@ -1717,10 +1735,13 @@ export type Database = {
           full_name?: string
           gemini_api_key?: string | null
           id?: string
+          melhor_envio_token?: string | null
           openai_api_key?: string | null
+          origin_zip?: string | null
           phone?: string | null
           preferred_ai_provider?: string | null
           store_name?: string | null
+          superfrete_token?: string | null
           updated_at?: string
         }
         Relationships: []

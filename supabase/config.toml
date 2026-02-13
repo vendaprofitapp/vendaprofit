@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.scrape-product-data]
 verify_jwt = false
+
+[functions.quote-shipping]
+verify_jwt = false

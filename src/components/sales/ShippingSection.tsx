@@ -1,15 +1,12 @@
 import { useState, useEffect } from "react";
-import { Package, Truck, Car, FileText, AlertTriangle, MapPin } from "lucide-react";
+import { Package, Truck, Car, FileText, AlertTriangle, MapPin, Search, Loader2, Settings } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface ShippingData {
   method: string; // "presencial" | "postagem" | "app" | "outros"
@@ -30,10 +27,34 @@ interface CustomerAddress {
   address_zip?: string | null;
 }
 
+export interface ShippingQuoteProduct {
+  weight_grams: number;
+  width_cm: number;
+  height_cm: number;
+  length_cm: number;
+  quantity: number;
+}
+
+export interface ShippingConfig {
+  origin_zip?: string | null;
+  melhor_envio_token?: string | null;
+  superfrete_token?: string | null;
+}
+
+interface ShippingOption {
+  carrier: string;
+  service: string;
+  price: number;
+  delivery_days: number;
+  source: string;
+}
+
 interface ShippingSectionProps {
   value: ShippingData;
   onChange: (data: ShippingData) => void;
   customerAddress?: CustomerAddress | null;
+  shippingConfig?: ShippingConfig | null;
+  quoteProducts?: ShippingQuoteProduct[];
 }
 
 const methodOptions = [
@@ -65,8 +86,12 @@ function hasAddress(addr?: CustomerAddress | null): boolean {
   return !!(addr.address_street || addr.address_city || addr.address_zip);
 }
 
-export function ShippingSection({ value, onChange, customerAddress }: ShippingSectionProps) {
+export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts }: ShippingSectionProps) {
   const [addressOpen, setAddressOpen] = useState(false);
+  const [quoting, setQuoting] = useState(false);
+  const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [selectedQuoteIndex, setSelectedQuoteIndex] = useState<number | null>(null);
 
   // Auto-fill address when customer has one
   useEffect(() => {
@@ -75,8 +100,63 @@ export function ShippingSection({ value, onChange, customerAddress }: ShippingSe
     }
   }, [customerAddress, value.method]);
 
+  // Reset quote when method changes
+  useEffect(() => {
+    setQuoteOptions([]);
+    setQuoteError(null);
+    setSelectedQuoteIndex(null);
+  }, [value.method]);
+
   const showDetails = value.method === "postagem" || value.method === "app";
   const showOtherDetails = value.method === "outros";
+
+  const hasTokens = !!(shippingConfig?.melhor_envio_token || shippingConfig?.superfrete_token);
+  const hasOriginZip = !!shippingConfig?.origin_zip;
+  const destinationZip = customerAddress?.address_zip?.replace(/\D/g, "");
+  const canQuote = value.method === "postagem" && hasTokens && hasOriginZip && !!destinationZip && quoteProducts && quoteProducts.length > 0;
+
+  const handleQuote = async () => {
+    if (!canQuote) return;
+    setQuoting(true);
+    setQuoteError(null);
+    setQuoteOptions([]);
+    setSelectedQuoteIndex(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("quote-shipping", {
+        body: {
+          origin_zip: shippingConfig!.origin_zip!.replace(/\D/g, ""),
+          destination_zip: destinationZip,
+          products: quoteProducts,
+          melhor_envio_token: shippingConfig!.melhor_envio_token || null,
+          superfrete_token: shippingConfig!.superfrete_token || null,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.options && data.options.length > 0) {
+        setQuoteOptions(data.options);
+      } else {
+        setQuoteError(data?.error || "Não foi possível obter cotações. Insira o valor manualmente.");
+      }
+    } catch (err: any) {
+      console.error("Quote error:", err);
+      setQuoteError("Erro ao cotar frete. Tente novamente ou insira o valor manualmente.");
+    } finally {
+      setQuoting(false);
+    }
+  };
+
+  const selectQuoteOption = (index: number) => {
+    const option = quoteOptions[index];
+    setSelectedQuoteIndex(index);
+    onChange({
+      ...value,
+      company: `${option.carrier} - ${option.service}`,
+      cost: option.price,
+    });
+  };
 
   return (
     <div className="space-y-3">
@@ -134,6 +214,112 @@ export function ShippingSection({ value, onChange, customerAddress }: ShippingSe
             />
           </div>
 
+          {/* Shipping Quote Section - only for "postagem" */}
+          {value.method === "postagem" && (
+            <div className="space-y-2">
+              {!hasTokens && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Settings className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Configure seus tokens de frete em{" "}
+                      <a href="/settings" className="text-primary underline">
+                        Configurações
+                      </a>{" "}
+                      para usar a cotação automática.
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {hasTokens && !hasOriginZip && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Settings className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Configure seu CEP de origem em{" "}
+                      <a href="/settings" className="text-primary underline">
+                        Configurações
+                      </a>{" "}
+                      para cotar frete.
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {hasTokens && hasOriginZip && !destinationZip && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">
+                    O cliente precisa ter CEP cadastrado para cotação automática.
+                  </p>
+                </div>
+              )}
+
+              {hasTokens && hasOriginZip && destinationZip && (!quoteProducts || quoteProducts.length === 0) && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground">
+                    Informe peso e dimensões dos produtos para cotar o frete.
+                  </p>
+                </div>
+              )}
+
+              {canQuote && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleQuote}
+                  disabled={quoting}
+                  className="w-full"
+                >
+                  {quoting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4 mr-2" />
+                  )}
+                  {quoting ? "Cotando..." : "Cotar Frete"}
+                </Button>
+              )}
+
+              {quoteError && (
+                <p className="text-xs text-destructive">{quoteError}</p>
+              )}
+
+              {/* Quote Results */}
+              {quoteOptions.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Selecione uma opção:</Label>
+                  {quoteOptions.map((opt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => selectQuoteOption(idx)}
+                      className={`w-full p-2.5 rounded-lg border text-left transition-all text-sm ${
+                        selectedQuoteIndex === idx
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium truncate block">
+                            {opt.carrier} - {opt.service}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.delivery_days > 0 ? `${opt.delivery_days} dias úteis` : "Prazo a consultar"} • via {opt.source}
+                          </span>
+                        </div>
+                        <span className="font-semibold text-primary ml-2 whitespace-nowrap">
+                          R$ {opt.price.toFixed(2).replace(".", ",")}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Company */}
           <div>
             <Label className="text-sm">
@@ -142,7 +328,7 @@ export function ShippingSection({ value, onChange, customerAddress }: ShippingSe
             <Input
               placeholder={value.method === "app" ? "Uber, 99, InDriver..." : "Correios, Jadlog, Azul Cargo..."}
               value={value.company}
-              onChange={(e) => onChange({ ...value, company: e.target.value })}
+              onChange={(e) => { onChange({ ...value, company: e.target.value }); setSelectedQuoteIndex(null); }}
             />
           </div>
 
@@ -155,7 +341,7 @@ export function ShippingSection({ value, onChange, customerAddress }: ShippingSe
               step="0.01"
               placeholder="0,00"
               value={value.cost || ""}
-              onChange={(e) => onChange({ ...value, cost: Number(e.target.value) || 0 })}
+              onChange={(e) => { onChange({ ...value, cost: Number(e.target.value) || 0 }); setSelectedQuoteIndex(null); }}
             />
           </div>
 

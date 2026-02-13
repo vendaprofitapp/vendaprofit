@@ -51,7 +51,7 @@ import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialo
 import { VoiceSaleDialog } from "@/components/sales/VoiceSaleDialog";
 import { ProfitBreakdownCard } from "@/components/sales/ProfitBreakdownCard";
 import { EditSaleDialog } from "@/components/sales/EditSaleDialog";
-import { ShippingSection, ShippingData } from "@/components/sales/ShippingSection";
+import { ShippingSection, ShippingData, ShippingConfig, ShippingQuoteProduct } from "@/components/sales/ShippingSection";
 
 interface Product {
   id: string;
@@ -222,7 +222,7 @@ export default function Sales() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm")
         .eq("is_active", true)
         .eq("owner_id", user?.id)
         .gt("stock_quantity", 0)
@@ -261,7 +261,40 @@ export default function Sales() {
     enabled: !!user,
   });
 
-  // Fetch custom payment methods
+  // Fetch user's shipping config from profile
+  const { data: shippingProfile } = useQuery({
+    queryKey: ["shipping-profile", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("origin_zip, melhor_envio_token, superfrete_token")
+        .eq("id", user?.id)
+        .single();
+      if (error) throw error;
+      return data as any as ShippingConfig;
+    },
+    enabled: !!user,
+  });
+
+  // Build quote products from cart (only items with weight/dimensions)
+  const quoteProducts: ShippingQuoteProduct[] = useMemo(() => {
+    return cart
+      .filter((item) => {
+        const p = item.product as any;
+        return p.weight_grams && p.width_cm && p.height_cm && p.length_cm;
+      })
+      .map((item) => {
+        const p = item.product as any;
+        return {
+          weight_grams: p.weight_grams,
+          width_cm: p.width_cm,
+          height_cm: p.height_cm,
+          length_cm: p.length_cm,
+          quantity: item.quantity,
+        };
+      });
+  }, [cart]);
+
   const { data: customPaymentMethods = [] } = useQuery({
     queryKey: ["custom-payment-methods", user?.id],
     queryFn: async () => {
@@ -2111,6 +2144,8 @@ export default function Sales() {
                 value={shippingData}
                 onChange={setShippingData}
                 customerAddress={selectedCustomerId ? registeredCustomers.find(c => c.id === selectedCustomerId) : null}
+                shippingConfig={shippingProfile}
+                quoteProducts={quoteProducts}
               />
 
               {/* Totals */}
