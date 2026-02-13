@@ -105,8 +105,8 @@ async function quoteSuperfrete(
     const totalHeight = products.reduce((s, p) => s + (p.height_cm * p.quantity), 0);
 
     const body = {
-      from: originZip,
-      to: destinationZip,
+      from: { postal_code: originZip },
+      to: { postal_code: destinationZip },
       services: "1,2,17",
       package: {
         weight: totalWeight / 1000,

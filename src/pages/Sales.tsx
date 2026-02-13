@@ -103,6 +103,7 @@ interface Sale {
   shipping_address: string | null;
   shipping_notes: string | null;
   shipping_tracking: string | null;
+  shipping_label_url: string | null;
 }
 
 interface SaleItem {
@@ -2454,6 +2455,48 @@ export default function Sales() {
                   )}
                   {selectedSale.shipping_notes && (
                     <p className="text-xs text-muted-foreground">{selectedSale.shipping_notes}</p>
+                  )}
+                  {selectedSale.shipping_tracking && (
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                      <p className="text-xs font-medium">Rastreio: {selectedSale.shipping_tracking}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedSale.shipping_tracking!);
+                          toast({ title: "Código copiado!" });
+                        }}
+                      >
+                        Copiar
+                      </Button>
+                    </div>
+                  )}
+                  {selectedSale.shipping_label_url && (
+                    <a
+                      href={selectedSale.shipping_label_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary underline mt-1 inline-block"
+                    >
+                      📄 Ver etiqueta
+                    </a>
+                  )}
+                  {selectedSale.shipping_tracking && selectedSale.customer_phone && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 text-xs"
+                      onClick={() => {
+                        const msg = encodeURIComponent(
+                          `Olá ${selectedSale.customer_name || ""}! 📦\n\nSeu pedido foi enviado!\n\n🔎 Código de rastreio: *${selectedSale.shipping_tracking}*\n\nVocê pode acompanhar pelo site dos Correios ou pelo app da transportadora.\n\nQualquer dúvida, estou à disposição! 😊`
+                        );
+                        const phone = selectedSale.customer_phone!.replace(/\D/g, "");
+                        window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
+                      }}
+                    >
+                      📱 Enviar Rastreio via WhatsApp
+                    </Button>
                   )}
                 </div>
               )}
