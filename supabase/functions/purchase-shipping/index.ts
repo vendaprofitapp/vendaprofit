@@ -187,44 +187,60 @@ async function purchaseShippingSuperFrete(
   req: PurchaseShippingRequest,
   token: string
 ) {
-  const superFreteURL = "https://api.superfrete.com/shipment";
+  const superFreteURL = "https://api.superfrete.com/api/v0/checkout";
 
   const response = await fetch(superFreteURL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": token,
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "User-Agent": "VendaProfit (contato@vendaprofit.com)",
     },
     body: JSON.stringify({
       from: {
-        name: "Vendedor",
-        phone: "11000000000",
-        address: "Endereço",
-        number: "0",
-        city: "São Paulo",
-        state: "SP",
+        name: req.seller_name || "Vendedor",
+        phone: req.seller_phone || "00000000000",
+        document: req.seller_document || "00000000000",
         postal_code: req.origin_zip,
+        address: "Endereço do remetente",
+        number: "0",
+        city: "Cidade",
+        state_abbr: "MG",
       },
       to: {
         name: req.customer_name || "Cliente",
-        phone: req.receiver_phone || req.customer_phone,
-        address: req.shipping_address || "Endereço do cliente",
-        city: "São Paulo",
-        state: "SP",
+        phone: req.receiver_phone || req.customer_phone || "00000000000",
+        document: req.customer_document || "00000000000",
         postal_code: req.destination_zip,
+        address: req.destination_street || "Endereço do cliente",
+        number: req.destination_number || "0",
+        complement: req.destination_complement || "",
+        district: req.destination_neighborhood || "Centro",
+        city: req.destination_city || "Cidade",
+        state_abbr: req.destination_state || "MG",
       },
+      services: [req.shipping_service_id || 1],
       products: [
         {
           name: "Produto",
           quantity: 1,
-          value: req.shipping_cost,
-          weight: req.weight_grams,
-          width: req.width_cm,
-          height: req.height_cm,
-          depth: req.length_cm,
+          unitary_value: Math.max(req.shipping_cost || 1, 1),
         },
       ],
-      service: "04065", // PAC
+      volumes: [
+        {
+          weight: (req.weight_grams || 300) / 1000,
+          width: req.width_cm || 11,
+          height: req.height_cm || 2,
+          length: req.length_cm || 16,
+        },
+      ],
+      options: {
+        insurance_value: Math.max(req.shipping_cost || 1, 1),
+        receipt: false,
+        own_hand: false,
+      },
     }),
   });
 
@@ -237,8 +253,8 @@ async function purchaseShippingSuperFrete(
   const data = await response.json();
 
   return {
-    labelUrl: data.label_url,
-    tracking: data.tracking_number,
+    labelUrl: data.label_url || data.print_url || "",
+    tracking: data.tracking || data.tracking_number || data.id || "",
   };
 }
 
