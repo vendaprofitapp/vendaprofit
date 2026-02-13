@@ -451,7 +451,7 @@ export default function PartnerReports() {
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     if (summaries.mySales.length > 0) {
-      text += `📤 *${isPartnership ? 'Devo às Parceiras' : 'Devo aos Donos'}:*\n`;
+      text += `📤 *${isPartnership ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : 'Devo às Parceiras') : 'Devo aos Donos'}:*\n`;
       summaries.mySales.forEach(s => {
         text += `  • ${s.partnerName}: ${formatCurrency(s.partnerEarnings)}\n`;
       });
@@ -532,7 +532,9 @@ export default function PartnerReports() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              {isPartnership ? "Devo às Parceiras" : "Devo aos Donos"}
+              {isPartnership 
+                ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : "Devo às Parceiras")
+                : "Devo aos Donos"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -540,7 +542,9 @@ export default function PartnerReports() {
               {formatCurrency(totals.iOwePartners)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {isPartnership ? "Parte das parceiras" : "Custo + comissão dos donos"}
+              {isPartnership 
+                ? (partners.length === 1 ? `Parte de ${partners[0].full_name}` : "Parte das parceiras")
+                : "Custo + comissão dos donos"}
             </p>
           </CardContent>
         </Card>
@@ -631,8 +635,8 @@ export default function PartnerReports() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>{isPartnership ? "Parceira" : "Dono"}</TableHead>
                 <TableHead className="text-right">Vendas</TableHead>
-                <TableHead className="text-right">Meu Ganho</TableHead>
-                <TableHead className="text-right">Devo</TableHead>
+                <TableHead className="text-right">{profiles.find(p => p.id === user?.id)?.full_name || "Meu Ganho"}</TableHead>
+                <TableHead className="text-right">{isPartnership && partners.length === 1 ? `Pagar a ${partners[0].full_name}` : "Devo"}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -694,8 +698,8 @@ export default function PartnerReports() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>{isPartnership ? "Parceira" : "Vendedor"}</TableHead>
                 <TableHead className="text-right">Vendas</TableHead>
-                <TableHead className="text-right">Meu Ganho</TableHead>
-                <TableHead className="text-right">{isPartnership ? "Ganho Dela" : "Ganho Dele"}</TableHead>
+                <TableHead className="text-right">{profiles.find(p => p.id === user?.id)?.full_name || "Meu Ganho"}</TableHead>
+                <TableHead className="text-right">{isPartnership && partners.length === 1 ? `Ganho de ${partners[0].full_name}` : (isPartnership ? "Ganho Dela" : "Ganho Dele")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
