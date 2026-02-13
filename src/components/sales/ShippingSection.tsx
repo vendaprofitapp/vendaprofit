@@ -453,9 +453,7 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
                      <div>
                        <p className="text-sm font-medium">Gerar Etiqueta</p>
                        <p className="text-xs text-muted-foreground">
-                         {value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")
-                           ? "Comprar frete e gerar etiqueta automática"
-                           : "Etiqueta será gerada após confirmar a venda"}
+                         Comprar frete e gerar etiqueta automática
                        </p>
                      </div>
                      {currentLabelUrl && (
@@ -463,7 +461,7 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
                      )}
                    </div>
 
-                   {!currentLabelUrl && (value.company.includes("Melhor Envio") || value.company.includes("SuperFrete")) && (
+                   {!currentLabelUrl && (
                      <Button
                        type="button"
                        size="sm"
