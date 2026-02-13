@@ -195,8 +195,8 @@ async function purchaseShippingSuperFrete(
     "User-Agent": "VendaProfit (contato@vendaprofit.com)",
   };
 
-  // Step 1: Create the order
-  const orderBody = {
+  // Step 1: Create the tag (label)
+  const tagBody = {
     from: {
       name: req.seller_name || "Vendedor",
       phone: req.seller_phone || "00000000000",
@@ -204,6 +204,7 @@ async function purchaseShippingSuperFrete(
       postal_code: req.origin_zip,
       address: "Endereço do remetente",
       number: "0",
+      district: "Centro",
       city: "Cidade",
       state_abbr: "MG",
     },
@@ -213,13 +214,13 @@ async function purchaseShippingSuperFrete(
       document: req.customer_document || "00000000000",
       postal_code: req.destination_zip,
       address: req.destination_street || "Endereço do cliente",
-      number: req.destination_number || "0",
+      number: req.destination_number || "",
       complement: req.destination_complement || "",
-      district: req.destination_neighborhood || "Centro",
+      district: req.destination_neighborhood || "NA",
       city: req.destination_city || "Cidade",
-      state_abbr: req.destination_state || "MG",
+      state_abbr: (req.destination_state || "MG").toUpperCase(),
     },
-    services: String(req.shipping_service_id || 1),
+    service: req.shipping_service_id || 1,
     products: [
       {
         name: "Produto",
@@ -239,46 +240,60 @@ async function purchaseShippingSuperFrete(
       insurance_value: Math.max(req.shipping_cost || 1, 1),
       receipt: false,
       own_hand: false,
+      non_commercial: true,
     },
   };
 
-  console.log("SuperFrete order body:", JSON.stringify(orderBody));
+  console.log("SuperFrete tag body:", JSON.stringify(tagBody));
 
-  const orderResponse = await fetch(`${baseURL}/order`, {
+  const tagResponse = await fetch(`${baseURL}/tag`, {
     method: "POST",
     headers,
-    body: JSON.stringify(orderBody),
+    body: JSON.stringify(tagBody),
   });
 
-  if (!orderResponse.ok) {
-    const errorText = await orderResponse.text();
-    console.error("SuperFrete order error:", orderResponse.status, errorText);
-    throw new Error(`SuperFrete order error (${orderResponse.status}): ${errorText.substring(0, 300)}`);
+  const tagResponseText = await tagResponse.text();
+
+  if (!tagResponse.ok) {
+    console.error("SuperFrete tag error:", tagResponse.status, tagResponseText);
+    throw new Error(`SuperFrete tag error (${tagResponse.status}): ${tagResponseText.substring(0, 300)}`);
   }
 
-  const orderData = await orderResponse.json();
-  const orderId = orderData.id;
-  console.log("SuperFrete order created:", orderId);
+  let tagData: any;
+  try {
+    tagData = JSON.parse(tagResponseText);
+  } catch {
+    throw new Error(`SuperFrete returned invalid JSON: ${tagResponseText.substring(0, 200)}`);
+  }
 
-  // Step 2: Checkout (purchase the label)
-  const checkoutResponse = await fetch(`${baseURL}/checkout`, {
+  const tagId = tagData.id;
+  console.log("SuperFrete tag created:", tagId);
+
+  // Step 2: Checkout (pay the label using account balance)
+  const checkoutResponse = await fetch(`https://api.superfrete.com/api/integration/v1/checkout`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ orders: [orderId] }),
+    body: JSON.stringify({ orders: [tagId] }),
   });
+
+  const checkoutText = await checkoutResponse.text();
 
   if (!checkoutResponse.ok) {
-    const errorText = await checkoutResponse.text();
-    console.error("SuperFrete checkout error:", checkoutResponse.status, errorText);
-    throw new Error(`SuperFrete checkout error (${checkoutResponse.status}): ${errorText.substring(0, 300)}`);
+    console.error("SuperFrete checkout error:", checkoutResponse.status, checkoutText);
+    throw new Error(`SuperFrete checkout error (${checkoutResponse.status}): ${checkoutText.substring(0, 300)}`);
   }
 
-  const checkoutData = await checkoutResponse.json();
+  let checkoutData: any = {};
+  try {
+    checkoutData = JSON.parse(checkoutText);
+  } catch {
+    console.warn("SuperFrete checkout response not JSON:", checkoutText.substring(0, 200));
+  }
   console.log("SuperFrete checkout response:", JSON.stringify(checkoutData));
 
-  // Extract label and tracking from checkout or order data
-  const labelUrl = checkoutData.label_url || checkoutData.print_url || orderData.label_url || "";
-  const tracking = checkoutData.tracking || checkoutData.tracking_number || orderData.tracking || orderId || "";
+  // Extract label and tracking from checkout or tag data
+  const labelUrl = checkoutData.label_url || checkoutData.print_url || tagData.label_url || "";
+  const tracking = checkoutData.tracking || checkoutData.tracking_number || tagData.tracking || tagId || "";
 
   return { labelUrl, tracking };
 }
