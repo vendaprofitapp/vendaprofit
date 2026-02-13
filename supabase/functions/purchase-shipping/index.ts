@@ -271,6 +271,8 @@ Deno.serve(async (req) => {
       destination_neighborhood,
       seller_name,
       seller_phone,
+      seller_document,
+      customer_document,
     } = requestBody;
 
     // Get auth token from header
@@ -304,7 +306,7 @@ Deno.serve(async (req) => {
     // Get user's shipping tokens
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("melhor_envio_token, superfrete_token, full_name, phone")
+      .select("melhor_envio_token, superfrete_token, full_name, phone, cpf")
       .eq("id", userId)
       .single();
 
@@ -344,6 +346,8 @@ Deno.serve(async (req) => {
       destination_neighborhood,
       seller_name: seller_name || profile.full_name || "Vendedor",
       seller_phone: seller_phone || profile.phone || "00000000000",
+      seller_document: seller_document || profile.cpf || "00000000000",
+      customer_document: customer_document || "00000000000",
     };
 
     if (
