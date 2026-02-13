@@ -78,7 +78,7 @@ async function purchaseShippingMelhorEnvio(
       {
         name: "Produto",
         quantity: 1,
-        unitary_value: 10,
+        unitary_value: Math.max(req.shipping_cost || 1, 1),
       },
     ],
     volumes: [
@@ -90,7 +90,7 @@ async function purchaseShippingMelhorEnvio(
       },
     ],
     options: {
-      insurance_value: 1,
+      insurance_value: Math.max(req.shipping_cost || 1, 1),
       receipt: false,
       own_hand: false,
       non_commercial: true,

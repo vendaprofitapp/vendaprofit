@@ -57,6 +57,7 @@ interface ShippingSectionProps {
   shippingConfig?: ShippingConfig | null;
   quoteProducts?: ShippingQuoteProduct[];
   saleId?: string;
+  saleTotal?: number;
   customerName?: string;
   customerPhone?: string;
   shippingLabelUrl?: string | null;
@@ -93,7 +94,7 @@ function hasAddress(addr?: CustomerAddress | null): boolean {
   return !!(addr.address_street || addr.address_city || addr.address_zip);
 }
 
-export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, customerName, customerPhone, shippingLabelUrl, onLabelGenerated, onTrackingGenerated }: ShippingSectionProps) {
+export function ShippingSection({ value, onChange, customerAddress, shippingConfig, quoteProducts, saleId, saleTotal, customerName, customerPhone, shippingLabelUrl, onLabelGenerated, onTrackingGenerated }: ShippingSectionProps) {
   const [addressOpen, setAddressOpen] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quoteOptions, setQuoteOptions] = useState<ShippingOption[]>([]);
@@ -192,6 +193,7 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
     try {
       const selectedOption = quoteOptions[selectedQuoteIndex];
       const body: any = {
+        shipping_cost: saleTotal || 0,
         shipping_company: value.company,
         shipping_source: selectedOption?.source || "",
         shipping_service_id: selectedOption?.service_id || null,

@@ -2166,6 +2166,7 @@ export default function Sales() {
                 shippingConfig={shippingProfile}
                 quoteProducts={quoteProducts}
                 saleId={saleIdForShipping}
+                saleTotal={subtotal}
                 customerName={customerName}
                 customerPhone={customerPhone}
                 shippingLabelUrl={shippingLabelUrl}
