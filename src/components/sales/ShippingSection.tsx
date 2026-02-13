@@ -369,6 +369,40 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
             </p>
           </div>
 
+          {/* App quick links */}
+          {value.method === "app" && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Solicitar via app:</Label>
+              <div className="flex gap-2">
+                <a
+                  href="https://m.uber.com/ul/?action=setPickup"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1"
+                >
+                  <Button type="button" variant="outline" size="sm" className="w-full gap-2">
+                    <Car className="h-4 w-4" />
+                    Uber Flash
+                  </Button>
+                </a>
+                <a
+                  href="https://deep.99app.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1"
+                >
+                  <Button type="button" variant="outline" size="sm" className="w-full gap-2">
+                    <Car className="h-4 w-4" />
+                    99 Entrega
+                  </Button>
+                </a>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Solicite a corrida no app e insira o valor abaixo.
+              </p>
+            </div>
+          )}
+
           {/* App disclaimer */}
           {value.method === "app" && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
