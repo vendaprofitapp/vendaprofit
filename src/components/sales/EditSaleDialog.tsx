@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Trash2, Edit2, AlertTriangle, Package, ArrowLeft } from "lucide-react";
+import { Trash2, Edit2, AlertTriangle, Package, ArrowLeft, Truck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,6 +47,13 @@ interface Sale {
   status: string;
   notes: string | null;
   created_at: string;
+  shipping_method?: string | null;
+  shipping_company?: string | null;
+  shipping_cost?: number | null;
+  shipping_payer?: string | null;
+  shipping_address?: string | null;
+  shipping_notes?: string | null;
+  shipping_tracking?: string | null;
 }
 
 interface SaleItem {
@@ -495,6 +502,28 @@ export function EditSaleDialog({
                 placeholder="Observações sobre a venda..."
               />
             </div>
+
+            {/* Shipping Info (read-only) */}
+            {sale.shipping_method && sale.shipping_method !== "presencial" && (
+              <div className="p-3 bg-muted/50 rounded-lg space-y-1">
+                <p className="text-sm font-medium flex items-center gap-1">
+                  <Truck className="h-3.5 w-3.5" />
+                  Envio: {sale.shipping_method === "postagem" ? "Postagem" : sale.shipping_method === "app" ? "Aplicativo" : "Outros"}
+                  {sale.shipping_company && ` - ${sale.shipping_company}`}
+                </p>
+                {sale.shipping_address && (
+                  <p className="text-xs text-muted-foreground">{sale.shipping_address}</p>
+                )}
+                {Number(sale.shipping_cost) > 0 && (
+                  <p className="text-xs">
+                    Frete: R$ {Number(sale.shipping_cost).toFixed(2).replace(".", ",")} ({sale.shipping_payer === "buyer" ? "compradora" : "vendedora"})
+                  </p>
+                )}
+                {sale.shipping_notes && (
+                  <p className="text-xs text-muted-foreground">{sale.shipping_notes}</p>
+                )}
+              </div>
+            )}
 
             {/* Totals */}
             <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
