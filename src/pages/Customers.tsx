@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { MapPin, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,6 +57,13 @@ interface Customer {
   birth_date: string | null;
   size: string | null;
   created_at: string;
+  address_street: string | null;
+  address_number: string | null;
+  address_complement: string | null;
+  address_neighborhood: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_zip: string | null;
 }
 
 interface SaleData {
@@ -100,6 +108,13 @@ export default function Customers() {
     photo_url: "",
     birth_date: "",
     size: "",
+    address_street: "",
+    address_number: "",
+    address_complement: "",
+    address_neighborhood: "",
+    address_city: "",
+    address_state: "",
+    address_zip: "",
   });
 
   // Fetch customers from database
@@ -213,7 +228,14 @@ export default function Customers() {
             photo_url: formData.photo_url || null,
             birth_date: formData.birth_date || null,
             size: formData.size || null,
-          })
+            address_street: formData.address_street || null,
+            address_number: formData.address_number || null,
+            address_complement: formData.address_complement || null,
+            address_neighborhood: formData.address_neighborhood || null,
+            address_city: formData.address_city || null,
+            address_state: formData.address_state || null,
+            address_zip: formData.address_zip || null,
+          } as any)
           .eq("id", editingCustomer.id);
         if (error) throw error;
       } else {
@@ -226,7 +248,14 @@ export default function Customers() {
           photo_url: formData.photo_url || null,
           birth_date: formData.birth_date || null,
           size: formData.size || null,
-        });
+          address_street: formData.address_street || null,
+          address_number: formData.address_number || null,
+          address_complement: formData.address_complement || null,
+          address_neighborhood: formData.address_neighborhood || null,
+          address_city: formData.address_city || null,
+          address_state: formData.address_state || null,
+          address_zip: formData.address_zip || null,
+        } as any);
         if (error) throw error;
       }
     },
@@ -282,9 +311,11 @@ export default function Customers() {
     }
   };
 
+  const defaultFormData = { name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "", address_street: "", address_number: "", address_complement: "", address_neighborhood: "", address_city: "", address_state: "", address_zip: "" };
+
   const openNewForm = () => {
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "" });
+    setFormData({ ...defaultFormData });
     setIsFormOpen(true);
   };
 
@@ -298,6 +329,13 @@ export default function Customers() {
       photo_url: customer.photo_url || "",
       birth_date: customer.birth_date || "",
       size: customer.size || "",
+      address_street: customer.address_street || "",
+      address_number: customer.address_number || "",
+      address_complement: customer.address_complement || "",
+      address_neighborhood: customer.address_neighborhood || "",
+      address_city: customer.address_city || "",
+      address_state: customer.address_state || "",
+      address_zip: customer.address_zip || "",
     });
     setIsFormOpen(true);
   };
@@ -305,7 +343,7 @@ export default function Customers() {
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", instagram: "", notes: "", photo_url: "", birth_date: "", size: "" });
+    setFormData({ ...defaultFormData });
   };
 
   // Check if today is the customer's birthday (same month and day) - iOS safe
@@ -758,6 +796,90 @@ export default function Customers() {
                   placeholder="Observações sobre o cliente..."
                   rows={3}
                 />
+              </div>
+
+              {/* Address Section - Collapsible */}
+              <div className="border rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById("address-section");
+                    if (el) el.classList.toggle("hidden");
+                  }}
+                  className="w-full p-3 flex items-center justify-between text-left hover:bg-muted/50 rounded-lg transition-colors"
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <MapPin className="h-4 w-4" />
+                    Endereço de Entrega
+                    {formData.address_street && (
+                      <span className="text-xs text-muted-foreground">(preenchido)</span>
+                    )}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <div id="address-section" className={formData.address_street ? "p-3 pt-0 space-y-3" : "hidden p-3 pt-0 space-y-3"}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <Label className="text-xs">Rua</Label>
+                      <Input
+                        value={formData.address_street}
+                        onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
+                        placeholder="Rua/Logradouro"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Nº</Label>
+                      <Input
+                        value={formData.address_number}
+                        onChange={(e) => setFormData({ ...formData, address_number: e.target.value })}
+                        placeholder="Nº"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Complemento</Label>
+                    <Input
+                      value={formData.address_complement}
+                      onChange={(e) => setFormData({ ...formData, address_complement: e.target.value })}
+                      placeholder="Apto, Bloco, etc"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Bairro</Label>
+                    <Input
+                      value={formData.address_neighborhood}
+                      onChange={(e) => setFormData({ ...formData, address_neighborhood: e.target.value })}
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <Label className="text-xs">Cidade</Label>
+                      <Input
+                        value={formData.address_city}
+                        onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">UF</Label>
+                      <Input
+                        value={formData.address_state}
+                        onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
+                        placeholder="SP"
+                        maxLength={2}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">CEP</Label>
+                    <Input
+                      value={formData.address_zip}
+                      onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
+                      placeholder="00000-000"
+                    />
+                  </div>
+                </div>
               </div>
 
               <Button

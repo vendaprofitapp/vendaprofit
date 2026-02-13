@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2 } from "lucide-react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2, Truck } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
@@ -51,6 +51,7 @@ import { VariantSelectionDialog } from "@/components/sales/VariantSelectionDialo
 import { VoiceSaleDialog } from "@/components/sales/VoiceSaleDialog";
 import { ProfitBreakdownCard } from "@/components/sales/ProfitBreakdownCard";
 import { EditSaleDialog } from "@/components/sales/EditSaleDialog";
+import { ShippingSection, ShippingData } from "@/components/sales/ShippingSection";
 
 interface Product {
   id: string;
@@ -95,6 +96,13 @@ interface Sale {
   status: string;
   notes: string | null;
   created_at: string;
+  shipping_method: string | null;
+  shipping_company: string | null;
+  shipping_cost: number | null;
+  shipping_payer: string | null;
+  shipping_address: string | null;
+  shipping_notes: string | null;
+  shipping_tracking: string | null;
 }
 
 interface SaleItem {
@@ -146,6 +154,14 @@ export default function Sales() {
   const [productSearch, setProductSearch] = useState("");
   const [dueDate, setDueDate] = useState<string>("");
   const [installments, setInstallments] = useState(1);
+  const [shippingData, setShippingData] = useState<ShippingData>({
+    method: "presencial",
+    company: "",
+    cost: 0,
+    payer: "seller",
+    address: "",
+    notes: "",
+  });
 
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
@@ -217,13 +233,13 @@ export default function Sales() {
     enabled: !!user,
   });
 
-  // Fetch registered customers for selection
+  // Fetch registered customers for selection (including address)
   const { data: registeredCustomers = [] } = useQuery({
     queryKey: ["registered-customers-for-sale"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone, instagram, photo_url")
+        .select("id, name, phone, instagram, photo_url, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip")
         .eq("owner_id", user?.id)
         .order("name");
       if (error) throw error;
@@ -512,7 +528,8 @@ export default function Sales() {
       const discountAmount = discountType === "percentage" 
         ? (subtotal * discountValue) / 100 
         : discountValue;
-      const total = Math.max(0, subtotal - discountAmount);
+      const shippingForBuyer = shippingData.payer === "buyer" && shippingData.method !== "presencial" ? shippingData.cost : 0;
+      const total = Math.max(0, subtotal - discountAmount + shippingForBuyer);
 
       // If customer name is provided but not from registered customers, create new customer
       if (customerName && !selectedCustomerId) {
@@ -573,7 +590,13 @@ export default function Sales() {
           total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-        })
+          shipping_method: shippingData.method || null,
+          shipping_company: shippingData.company || null,
+          shipping_cost: shippingData.cost || 0,
+          shipping_payer: shippingData.method !== "presencial" ? shippingData.payer : null,
+          shipping_address: shippingData.address || null,
+          shipping_notes: shippingData.notes || null,
+        } as any)
         .select()
         .single();
 
@@ -899,6 +922,23 @@ export default function Sales() {
         if (splitsError) console.error("Error creating financial splits:", splitsError);
       }
 
+      // Create automatic shipping expense if shipping cost > 0
+      if (shippingData.method !== "presencial" && shippingData.cost > 0) {
+        const shippingDescription = `Frete ${shippingData.company || shippingData.method} - Venda ${sale.id.slice(0, 8)}${customerName ? ` (${customerName})` : ""}`;
+        const { error: expenseError } = await supabase
+          .from("expenses")
+          .insert({
+            owner_id: user.id,
+            category: "Frete",
+            category_type: "variable",
+            amount: shippingData.cost,
+            description: shippingDescription,
+            expense_date: new Date().toISOString().split("T")[0],
+            split_mode: "none",
+          });
+        if (expenseError) console.error("Error creating shipping expense:", expenseError);
+      }
+
       return sale;
     },
     onSuccess: () => {
@@ -906,6 +946,7 @@ export default function Sales() {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
 
       // Reports / settlements (keep base keys so date-range variants are also refreshed)
       queryClient.invalidateQueries({ queryKey: ["partner-sales"] });
@@ -942,6 +983,7 @@ export default function Sales() {
     setProductSearch("");
     setSelectedCustomerId("");
     setDueDate("");
+    setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
   };
 
   const handleCustomerSelect = (customerId: string) => {
@@ -1241,9 +1283,8 @@ export default function Sales() {
   };
 
   // Calculate subtotal for ALL items (own + partner) using useMemo for real-time updates
-  const { subtotal, discountAmount, total } = useMemo(() => {
+  const { subtotal, discountAmount, shippingCostForBuyer, total } = useMemo(() => {
     const calculatedSubtotal = cart.reduce((sum, item) => {
-      // Ensure price is available - use sale_price or price from product
       const itemPrice = item.product.price || 0;
       return sum + itemPrice * item.quantity;
     }, 0);
@@ -1252,14 +1293,17 @@ export default function Sales() {
       ? (calculatedSubtotal * discountValue) / 100 
       : discountValue;
     
-    const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount);
+    const shippingForBuyer = shippingData.payer === "buyer" && shippingData.method !== "presencial" ? shippingData.cost : 0;
+    
+    const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount + shippingForBuyer);
     
     return {
       subtotal: calculatedSubtotal,
       discountAmount: calculatedDiscount,
+      shippingCostForBuyer: shippingForBuyer,
       total: calculatedTotal,
     };
-  }, [cart, discountType, discountValue]);
+  }, [cart, discountType, discountValue, shippingData]);
 
   const filteredOwnProducts = ownProducts.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
@@ -2062,6 +2106,13 @@ export default function Sales() {
                 />
               </div>
 
+              {/* Shipping Section */}
+              <ShippingSection
+                value={shippingData}
+                onChange={setShippingData}
+                customerAddress={selectedCustomerId ? registeredCustomers.find(c => c.id === selectedCustomerId) : null}
+              />
+
               {/* Totals */}
               <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between text-sm">
@@ -2072,6 +2123,18 @@ export default function Sales() {
                   <div className="flex justify-between text-sm text-destructive">
                     <span>Desconto</span>
                     <span>- R$ {discountAmount.toFixed(2).replace(".", ",")}</span>
+                  </div>
+                )}
+                {shippingCostForBuyer > 0 && (
+                  <div className="flex justify-between text-sm text-blue-600">
+                    <span>Frete (compradora)</span>
+                    <span>+ R$ {shippingCostForBuyer.toFixed(2).replace(".", ",")}</span>
+                  </div>
+                )}
+                {shippingData.method !== "presencial" && shippingData.cost > 0 && shippingData.payer === "seller" && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Frete (despesa vendedora)</span>
+                    <span>R$ {shippingData.cost.toFixed(2).replace(".", ",")}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -2306,6 +2369,29 @@ export default function Sales() {
                   </Badge>
                 </div>
               </div>
+
+              {/* Shipping Info */}
+              {selectedSale.shipping_method && selectedSale.shipping_method !== "presencial" && (
+                <div className="p-3 bg-muted/50 rounded-lg space-y-1">
+                  <p className="text-sm font-medium flex items-center gap-1">
+                    <Truck className="h-3.5 w-3.5" />
+                    Envio: {selectedSale.shipping_method === "postagem" ? "Postagem" : selectedSale.shipping_method === "app" ? "Aplicativo" : "Outros"}
+                    {selectedSale.shipping_company && ` - ${selectedSale.shipping_company}`}
+                  </p>
+                  {selectedSale.shipping_address && (
+                    <p className="text-xs text-muted-foreground">{selectedSale.shipping_address}</p>
+                  )}
+                  {Number(selectedSale.shipping_cost) > 0 && (
+                    <p className="text-xs">
+                      Frete: R$ {Number(selectedSale.shipping_cost).toFixed(2).replace(".", ",")} 
+                      ({selectedSale.shipping_payer === "buyer" ? "compradora" : "vendedora"})
+                    </p>
+                  )}
+                  {selectedSale.shipping_notes && (
+                    <p className="text-xs text-muted-foreground">{selectedSale.shipping_notes}</p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <p className="text-muted-foreground mb-2">Itens</p>

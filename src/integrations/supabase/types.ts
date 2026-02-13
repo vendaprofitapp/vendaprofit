@@ -560,6 +560,13 @@ export type Database = {
       }
       customers: {
         Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_number: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
           birth_date: string | null
           created_at: string
           id: string
@@ -573,6 +580,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           birth_date?: string | null
           created_at?: string
           id?: string
@@ -586,6 +600,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           birth_date?: string | null
           created_at?: string
           id?: string
@@ -1765,6 +1786,13 @@ export type Database = {
           owner_id: string
           payment_method: string
           sale_source: string
+          shipping_address: string | null
+          shipping_company: string | null
+          shipping_cost: number | null
+          shipping_method: string | null
+          shipping_notes: string | null
+          shipping_payer: string | null
+          shipping_tracking: string | null
           status: string
           subtotal: number
           total: number
@@ -1782,6 +1810,13 @@ export type Database = {
           owner_id: string
           payment_method?: string
           sale_source?: string
+          shipping_address?: string | null
+          shipping_company?: string | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          shipping_notes?: string | null
+          shipping_payer?: string | null
+          shipping_tracking?: string | null
           status?: string
           subtotal?: number
           total?: number
@@ -1799,6 +1834,13 @@ export type Database = {
           owner_id?: string
           payment_method?: string
           sale_source?: string
+          shipping_address?: string | null
+          shipping_company?: string | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          shipping_notes?: string | null
+          shipping_payer?: string | null
+          shipping_tracking?: string | null
           status?: string
           subtotal?: number
           total?: number
