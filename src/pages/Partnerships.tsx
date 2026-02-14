@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Users, Settings2, Package, Trash2, Edit, Check, X, UserPlus, Copy, User } from "lucide-react";
 import { ProductPartnershipDialog } from "@/components/partnerships/ProductPartnershipDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -103,6 +104,7 @@ interface Profile {
 export default function Partnerships() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
@@ -110,6 +112,19 @@ export default function Partnerships() {
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "direct");
+
+  // Auto-open create dialog from query params
+  useEffect(() => {
+    if (searchParams.get("action") === "create" && searchParams.get("tab") === "groups") {
+      setActiveTab("groups");
+      setIsCreateOpen(true);
+      // Clean up query params
+      searchParams.delete("action");
+      searchParams.delete("tab");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   
   // Form states
   const [newGroupName, setNewGroupName] = useState("");
@@ -488,7 +503,7 @@ export default function Partnerships() {
       </div>
 
       {/* Tabs for Direct vs Group Partnerships */}
-      <Tabs defaultValue="direct" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="direct" className="flex items-center gap-2">
             <User className="h-4 w-4" />
