@@ -94,15 +94,17 @@ export function LeadCaptureSheet({ open, onOpenChange, onSubmit, primaryColor }:
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Reservar suas peças 🛍️</DrawerTitle>
-            <DrawerDescription className="sr-only">Preencha seus dados para reservar</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-2">
-            <LeadForm onSubmit={onSubmit} primaryColor={primaryColor} />
+        <DrawerContent className="max-h-[85dvh]">
+          <div className="overflow-y-auto flex-1">
+            <DrawerHeader className="shrink-0">
+              <DrawerTitle>Reservar suas peças 🛍️</DrawerTitle>
+              <DrawerDescription className="sr-only">Preencha seus dados para reservar</DrawerDescription>
+            </DrawerHeader>
+            <div className="px-4 pb-4">
+              <LeadForm onSubmit={onSubmit} primaryColor={primaryColor} />
+            </div>
           </div>
-          <DrawerFooter>
+          <DrawerFooter className="shrink-0 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} className="text-sm text-muted-foreground">
               Continuar sem reservar
             </Button>
