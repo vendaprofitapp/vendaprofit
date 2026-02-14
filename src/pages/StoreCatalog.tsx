@@ -496,33 +496,82 @@ export default function StoreCatalog() {
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
 
-  // Dynamic title and favicon
+  // Dynamic title, favicon, apple-touch-icon & PWA manifest
   useEffect(() => {
     if (!store) return;
     const originalTitle = document.title;
-    document.title = (store as any).page_title || store.store_name || "Venda PROFIT";
+    document.title = store.page_title || store.store_name || "Venda PROFIT";
 
-    const faviconUrl = (store as any).favicon_url;
+    const faviconUrl = store.favicon_url;
     let oldFaviconHref: string | null = null;
+    let oldAppleIconHref: string | null = null;
+    let manifestBlobUrl: string | null = null;
+    let oldManifestHref: string | null = null;
+
     if (faviconUrl) {
-      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+      const bustUrl = faviconUrl + (faviconUrl.includes('?') ? '&' : '?') + 'v=' + Date.now();
+
+      // Update favicon
+      let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
       if (link) {
         oldFaviconHref = link.href;
-        link.href = faviconUrl;
+        link.href = bustUrl;
       } else {
         link = document.createElement("link");
         link.rel = "icon";
-        link.href = faviconUrl;
+        link.href = bustUrl;
         document.head.appendChild(link);
       }
+
+      // Update apple-touch-icon
+      const appleIcon = document.querySelector<HTMLLinkElement>("link[rel='apple-touch-icon']");
+      if (appleIcon) {
+        oldAppleIconHref = appleIcon.href;
+        appleIcon.href = bustUrl;
+      }
+    }
+
+    // Dynamic PWA manifest
+    const manifestLink = document.querySelector<HTMLLinkElement>("link[rel='manifest']");
+    if (manifestLink) {
+      oldManifestHref = manifestLink.href;
+      const dynamicManifest = {
+        name: store.page_title || store.store_name || "Venda PROFIT",
+        short_name: store.store_name || "Loja",
+        start_url: "/" + store.store_slug,
+        display: "standalone",
+        background_color: store.background_color || "#ffffff",
+        theme_color: store.primary_color || "#DA2576",
+        icons: faviconUrl
+          ? [
+              { src: faviconUrl, type: "image/png", sizes: "192x192" },
+              { src: faviconUrl, type: "image/png", sizes: "512x512" },
+            ]
+          : [
+              { src: "/icon-192.png", type: "image/png", sizes: "192x192" },
+              { src: "/icon-512.png", type: "image/png", sizes: "512x512" },
+            ],
+      };
+      const blob = new Blob([JSON.stringify(dynamicManifest)], { type: "application/json" });
+      manifestBlobUrl = URL.createObjectURL(blob);
+      manifestLink.href = manifestBlobUrl;
     }
 
     return () => {
       document.title = originalTitle;
       if (oldFaviconHref) {
-        const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+        const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
         if (link) link.href = oldFaviconHref;
       }
+      if (oldAppleIconHref) {
+        const appleIcon = document.querySelector<HTMLLinkElement>("link[rel='apple-touch-icon']");
+        if (appleIcon) appleIcon.href = oldAppleIconHref;
+      }
+      if (oldManifestHref) {
+        const ml = document.querySelector<HTMLLinkElement>("link[rel='manifest']");
+        if (ml) ml.href = oldManifestHref;
+      }
+      if (manifestBlobUrl) URL.revokeObjectURL(manifestBlobUrl);
     };
   }, [store]);
 
