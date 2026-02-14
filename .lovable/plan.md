@@ -1,204 +1,135 @@
 
-# Integracoes de Trafego Pago (Google Ads, Meta Ads, TikTok Ads)
+# Epico 13-14: Feeds de Produtos + Painel de Vitrines Externas
 
 ## Resumo
 
-Criar toda a infraestrutura para que o utilizador conecte contas de anuncios (Google, Meta, TikTok) e lance campanhas com "1 clique" diretamente da aba Marketing, com trava de seguranca que pausa anuncios automaticamente quando o stock chega a zero.
+Criar Edge Functions publicas que geram feeds XML (Google Shopping) e CSV (Meta Commerce) em tempo real a partir dos produtos do usuario, com regra "Always Profit" (estoque zero = fora do feed). Adicionar um painel simples na aba Marketing para copiar o link do feed e ver instrucoes de configuracao.
 
 ---
 
-## Epico 10: Conexao de Contas
+## Epico 13: Edge Functions de Feed
 
 ### Migracao de Banco de Dados
 
-Nova tabela `user_ad_integrations`:
+Adicionar coluna `feed_token` (text, DEFAULT `substring(md5(random()::text), 1, 24)`) na tabela `store_settings` para autenticar o acesso publico ao feed sem expor dados do usuario.
 
-| Coluna | Tipo | Descricao |
-|---|---|---|
-| id | uuid PK | |
-| owner_id | uuid NOT NULL | Vinculo ao utilizador |
-| platform | text NOT NULL | 'google_ads', 'meta_ads', 'tiktok_ads' |
-| access_token | text | Token de acesso (encriptado logicamente) |
-| refresh_token | text | Token de refresh |
-| account_id | text | ID da conta de anuncios na plataforma |
-| account_name | text | Nome amigavel da conta |
-| is_active | boolean DEFAULT true | Conexao ativa |
-| token_expires_at | timestamptz | Expiracao do access_token |
-| created_at | timestamptz DEFAULT now() | |
-| updated_at | timestamptz DEFAULT now() | |
+### Edge Function: `product-feed`
 
-Restricao UNIQUE em (owner_id, platform).
+Rota unica `supabase/functions/product-feed/index.ts` que aceita query params:
+- `store_id` (uuid da store_settings)
+- `token` (feed_token para autenticacao)
+- `format` (opcional: `google` ou `meta`, default `google`)
 
-RLS: owner_id = auth.uid() para todas as operacoes (SELECT, INSERT, UPDATE, DELETE).
+Logica:
+1. Valida `store_id` + `token` contra `store_settings`
+2. Busca `store_settings` para obter `store_slug`, `store_name`
+3. Busca todos os `products` onde `owner_id = store_settings.owner_id` AND `is_active = true` AND `stock_quantity > 0` (regra Always Profit)
+4. Para cada produto, tambem busca `product_variants` para calcular disponibilidade real (soma de variantes com stock > 0)
+5. Gera XML ou CSV conforme o formato solicitado
+6. Paginacao interna: busca em blocos de 500 produtos para nao sobrecarregar
 
-Nova tabela `ad_campaigns`:
+**Formato Google Shopping (XML)**:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <title>{store_name}</title>
+    <link>{origin}/{store_slug}</link>
+    <item>
+      <g:id>{product.id}</g:id>
+      <g:title>{product.name}</g:title>
+      <g:description>{product.description || product.name}</g:description>
+      <g:link>{origin}/{store_slug}?product={product.id}</g:link>
+      <g:image_link>{product.image_url}</g:image_link>
+      <g:price>{product.price} BRL</g:price>
+      <g:availability>in_stock</g:availability>
+      <g:condition>new</g:condition>
+      <g:brand>{store_name}</g:brand>
+    </item>
+  </channel>
+</rss>
+```
 
-| Coluna | Tipo | Descricao |
-|---|---|---|
-| id | uuid PK | |
-| owner_id | uuid NOT NULL | |
-| integration_id | uuid NOT NULL | FK para user_ad_integrations |
-| product_id | uuid | Produto vinculado |
-| platform | text NOT NULL | 'google_ads', 'meta_ads', 'tiktok_ads' |
-| platform_campaign_id | text | ID da campanha na plataforma |
-| campaign_name | text | Nome gerado automaticamente |
-| daily_budget | numeric NOT NULL | Orcamento diario em BRL |
-| status | text DEFAULT 'pending' | 'pending', 'active', 'paused', 'paused_no_stock', 'completed', 'error' |
-| campaign_type | text | 'boost', 'performance_max', 'search' |
-| target_url | text | URL de destino do anuncio |
-| error_message | text | Mensagem de erro se houver |
-| created_at | timestamptz DEFAULT now() | |
-| updated_at | timestamptz DEFAULT now() | |
+**Formato Meta (CSV)**:
+Headers: `id,title,description,availability,condition,price,link,image_link,brand`
+Mesmos dados em formato tabulado.
 
-RLS: owner_id = auth.uid() para todas as operacoes.
+**Headers de resposta**: `Content-Type: application/xml` (ou `text/csv`), sem CORS restritivo pois e um feed publico consumido por crawlers.
 
-### UI: Seccao "Integracoes de Trafego" na pagina Settings
+**Cache**: Header `Cache-Control: public, max-age=3600` para que plataformas nao sobrecarreguem a funcao.
 
-Novo componente `src/components/settings/AdIntegrationsSection.tsx`:
-- Card com titulo "Integracoes de Trafego Pago"
-- 3 linhas, uma para cada plataforma (Google Ads, Meta/Instagram Ads, TikTok Ads)
-- Cada linha mostra: icone da plataforma, nome, status (Conectado/Desconectado), botao "Conectar" ou "Desconectar"
-- Quando conectado, mostra o nome da conta e badge verde "Ativo"
-- Botao "Conectar" abre um Dialog explicando que o fluxo OAuth sera ativado quando as credenciais estiverem configuradas. Por enquanto, permite inserir manualmente um token de teste
+### Entrada no `supabase/config.toml`
 
-O componente busca dados de `user_ad_integrations` filtrado pelo owner_id.
-
-### Edge Function: `ad-oauth-callback`
-
-Esqueleto da Edge Function `supabase/functions/ad-oauth-callback/index.ts`:
-- Recebe `platform`, `code` e `state` como parametros
-- Comentarios documentando o fluxo OAuth para cada plataforma:
-  - Google: exchange code via `https://oauth2.googleapis.com/token`
-  - Meta: exchange code via `https://graph.facebook.com/v19.0/oauth/access_token`
-  - TikTok: exchange code via `https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/`
-- Guarda access_token e refresh_token em `user_ad_integrations`
-- Retorna sucesso com redirect para `/settings`
-
-### Edge Function: `ad-refresh-token`
-
-Esqueleto da Edge Function `supabase/functions/ad-refresh-token/index.ts`:
-- Recebe `integration_id`
-- Verifica `token_expires_at` e faz refresh se necessario
-- Atualiza `access_token` e `token_expires_at` na tabela
-- Comentarios documentando endpoints de refresh para cada plataforma
+```toml
+[functions.product-feed]
+verify_jwt = false
+```
 
 ---
 
-## Epico 11: Cards de Acao para Anuncios (1 Clique)
+## Epico 14: Painel de Vitrines Externas
 
-### Nova aba "Anuncios" na pagina Marketing
+### Novo componente: `src/components/marketing/ExternalShowcasesSection.tsx`
 
-Adicionar 7a aba "Anuncios" com icone `Megaphone` (ou `Zap`) no `TabsList`:
-- Busca `ad_campaigns` do utilizador para mostrar campanhas ativas
-- Busca `marketing_tasks` com novos task_types para mostrar recomendacoes
+Dois cards lado a lado (ou empilhados no mobile):
 
-### Novos task_types no generate-marketing-tasks
+**Card Google Shopping**:
+- Icone Google + titulo "Google Shopping"
+- Subtitulo: "Apareca de graca nas buscas de produtos do Google"
+- Campo com o link do feed XML (read-only) + botao "Copiar Link"
+- Botao "Como configurar" que abre Dialog com 3 passos:
+  1. Acesse merchant.google.com e crie uma conta
+  2. Va em Produtos > Feeds > Adicionar feed
+  3. Selecione "Feed agendado (URL)" e cole o link copiado
 
-Expandir a Edge Function existente com 2 novos cenarios:
+**Card Meta/Instagram Shop**:
+- Icone Instagram + titulo "Instagram & Facebook Shop"
+- Subtitulo: "Habilite a sacolinha no seu perfil do Instagram"
+- Campo com o link do feed CSV (read-only) + botao "Copiar Link"
+- Botao "Como configurar" que abre Dialog com 3 passos:
+  1. Acesse business.facebook.com > Gerenciador de Comercio
+  2. Adicione um Catalogo > Feed de dados
+  3. Cole o link copiado e agende atualizacoes diarias
 
-1. **`ad_boost_meta`**: Produto com alto stock (>10 unidades) E alta conversao organica (>5% taxa de conversao nas views). Card: "Multiplique suas Vendas! Tem [Qtd] unidades de [Produto]. Vamos mostrar a mais pessoas?"
+Ambos os links sao gerados automaticamente: `{SUPABASE_URL}/functions/v1/product-feed?store_id={storeSettings.id}&token={storeSettings.feed_token}&format=google|meta`
 
-2. **`ad_google_pmax`**: Produto com stock parado (>15 dias sem venda, >5 unidades). Card: "Ativar Maquina de Vendas no Google para [Produto]."
+Se o `feed_token` nao existir, o componente gera um ao montar (mutation que faz UPDATE no store_settings com um token aleatorio).
 
-Ambos incluem `product_id` e `metric_value` (quantidade em stock).
+### Integracao na pagina Marketing
 
-### Novo componente `src/components/marketing/AdBoostCard.tsx`
-
-Card de acao para anuncios com:
-- Titulo e descricao do cenario
-- Badge da plataforma (Meta/Google/TikTok)
-- **Slider de orcamento**: Range de R$15 a R$100/dia usando o componente Slider existente
-- Valor selecionado exibido em tempo real (ex: "R$ 30/dia")
-- Estimativa simples: "Alcance estimado: ~{budget * 100} pessoas/dia"
-- Botao "Criar Anuncio Agora" com icone de foguete
-- Se a plataforma nao estiver conectada, mostra aviso com link para Settings
-
-### Novo componente `src/components/marketing/ActiveCampaignsList.tsx`
-
-Lista de campanhas ativas/recentes:
-- Status com badge colorido (Ativo=verde, Pausado=amarelo, Pausado por Stock=vermelho, Erro=vermelho)
-- Orcamento diario
-- Botoes de Pausar/Retomar
-- Indicador "Pausado automaticamente - stock esgotado" quando aplicavel
-
-### Edge Function: `create-ad-campaign`
-
-`supabase/functions/create-ad-campaign/index.ts`:
-- Recebe: `product_id`, `platform`, `daily_budget`, `campaign_type`
-- Verifica se a integracao esta ativa em `user_ad_integrations`
-- Monta o payload da campanha baseado na plataforma:
-  - **Meta**: Comentarios documentando chamada a `POST /act_{ad_account_id}/campaigns` com objetivo OUTCOME_TRAFFIC ou OUTCOME_SALES
-  - **Google**: Comentarios documentando criacao de campanha Performance Max via Google Ads API
-  - **TikTok**: Comentarios documentando `POST /campaign/create/` via TikTok Marketing API
-- Gera a `target_url` automaticamente: `{origin}/{store_slug}?utm_source={platform}&utm_campaign=vp_boost&product={product_id}`
-- Insere registro em `ad_campaigns` com status 'active' (ou 'pending' em producao)
-- Retorna o ID da campanha criada
-
-### Edge Function: `manage-ad-campaign`
-
-`supabase/functions/manage-ad-campaign/index.ts`:
-- Acoes: 'pause', 'resume', 'delete'
-- Recebe `campaign_id` e `action`
-- Atualiza status em `ad_campaigns`
-- Comentarios documentando chamadas de pause/enable para cada plataforma
+Nova aba **"Vitrines"** (8a aba) com icone `Store` entre "Anuncios" e "Contatados":
+- Renderiza `ExternalShowcasesSection`
+- Inclui badge "Novo" para chamar atencao
 
 ---
 
-## Epico 12: Trava de Seguranca "Always Profit"
+## Detalhes Tecnicos
 
-### Trigger de banco de dados
+### Arquivos criados
 
-Criar funcao e trigger `check_stock_and_pause_ads`:
-- Dispara em UPDATE da tabela `products` quando `stock_quantity` muda para 0
-- Busca campanhas ativas em `ad_campaigns` com o `product_id` afetado
-- Atualiza status para `'paused_no_stock'`
-- Insere um `marketing_task` com task_type `'ad_stock_paused'` e titulo "Anuncios pausados automaticamente - [Produto] esgotou!"
+1. `supabase/functions/product-feed/index.ts` -- Edge Function principal
+2. `src/components/marketing/ExternalShowcasesSection.tsx` -- UI dos cards
 
-Trigger tambem em `product_variants`:
-- Quando todas as variantes de um produto chegam a stock 0, verificar se o produto pai tem campanhas ativas
+### Arquivos alterados
 
-### Novo task_type para avisos
+1. `supabase/config.toml` -- adicionar entrada product-feed
+2. `src/pages/Marketing.tsx` -- adicionar aba "Vitrines" com o componente
+3. Nova migracao SQL para adicionar `feed_token` ao `store_settings`
 
-`ad_stock_paused`: Card de aviso vermelho no Marketing mostrando:
-- "Os anuncios de [Produto] foram pausados automaticamente porque o stock acabou. Dinheiro salvo!"
-- Badge "Always Profit" em destaque
-- Botao "Reativar quando repor stock" (marca como concluido)
+### URLs dos Feeds (resumo)
 
-### Componente `src/components/marketing/AdStockPausedCard.tsx`
+| Feed | URL |
+|------|-----|
+| Google Shopping (XML) | `{SUPABASE_URL}/functions/v1/product-feed?store_id={id}&token={token}&format=google` |
+| Meta Commerce (CSV) | `{SUPABASE_URL}/functions/v1/product-feed?store_id={id}&token={token}&format=meta` |
 
-Card de alerta com visual diferenciado (borda vermelha, icone de escudo):
-- Mensagem clara sobre a pausa automatica
-- Valor estimado que foi "salvo" (orcamento diario da campanha)
-- Checkbox para marcar como visto/concluido
+### Regra Always Profit
 
----
+Produtos com `stock_quantity = 0` sao automaticamente excluidos do feed. Se o produto tem variantes, o sistema verifica se a soma total das variantes e > 0. O feed reflete o estado em tempo real do banco.
 
-## Alteracoes em Arquivos Existentes
+### Sequencia de implementacao
 
-### `src/pages/Marketing.tsx`
-- Adicionar nova aba "Anuncios" (7a aba) com icone Zap entre "Analytics" e "Contatados"
-- Importar `AdBoostCard`, `ActiveCampaignsList`, `AdStockPausedCard`
-- Buscar tasks com task_types: `ad_boost_meta`, `ad_google_pmax`, `ad_stock_paused`
-- Buscar campanhas ativas de `ad_campaigns`
-- Buscar integracoes de `user_ad_integrations` para saber quais plataformas estao conectadas
-
-### `src/pages/Settings.tsx`
-- Importar e renderizar `AdIntegrationsSection` entre ShippingSettings e AISettings
-
-### `supabase/functions/generate-marketing-tasks/index.ts`
-- Adicionar logica para gerar tasks `ad_boost_meta` e `ad_google_pmax`
-- Verificar se o utilizador tem integracoes ativas antes de gerar os cards
-
-### `supabase/config.toml`
-- Adicionar entradas para as novas Edge Functions com `verify_jwt = false`
-
----
-
-## Sequencia de Implementacao
-
-1. Migracao: criar tabelas `user_ad_integrations` e `ad_campaigns` com RLS + trigger de stock
-2. Criar Edge Functions esqueleto: `ad-oauth-callback`, `ad-refresh-token`, `create-ad-campaign`, `manage-ad-campaign`
-3. Criar componente `AdIntegrationsSection` e adicionar a Settings
-4. Criar componentes `AdBoostCard`, `ActiveCampaignsList`, `AdStockPausedCard`
-5. Expandir `generate-marketing-tasks` com novos cenarios de anuncios
-6. Atualizar `Marketing.tsx` com nova aba "Anuncios"
+1. Migracao: adicionar `feed_token` a `store_settings`
+2. Criar Edge Function `product-feed` com geracao XML e CSV
+3. Criar componente `ExternalShowcasesSection`
+4. Atualizar `Marketing.tsx` com nova aba "Vitrines"
