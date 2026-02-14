@@ -29,6 +29,7 @@ import Suppliers from "./pages/Suppliers";
 import Categories from "./pages/Categories";
 import Orders from "./pages/Orders";
 import Tutorial from "./pages/Tutorial";
+import Marketing from "./pages/Marketing";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,7 @@ const AppRoutes = () => (
     <Route path="/admin/landing-page" element={<ProtectedRoute><LandingPageAdmin /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
     <Route path="/tutorial" element={<ProtectedRoute><Tutorial /></ProtectedRoute>} />
+    <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />

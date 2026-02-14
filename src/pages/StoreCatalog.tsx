@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WaitlistDialog } from "@/components/catalog/WaitlistDialog";
 import { InstallmentInfo, CartProgressBar, CartInstallmentWarning, getNextTierMessage, getUnlockedTierMessage, type PurchaseIncentivesConfig, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
+import { LeadCaptureSheet } from "@/components/catalog/LeadCaptureSheet";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -236,6 +237,10 @@ export default function StoreCatalog() {
   const [secretPassword, setSecretPassword] = useState("");
   const [viewingSecretArea, setViewingSecretArea] = useState(false);
 
+  // Lead capture state
+  const [showLeadCapture, setShowLeadCapture] = useState(false);
+  const [pendingCartAdd, setPendingCartAdd] = useState<{ item: CatalogDisplayItem; size: string; effectivePrice: number } | null>(null);
+
   // Session persistence for secret area
   useEffect(() => {
     if (slug) {
@@ -247,7 +252,18 @@ export default function StoreCatalog() {
     }
   }, [slug]);
 
-  // Save to session when unlocked
+  // Save abandoned cart snapshot when cart changes
+  useEffect(() => {
+    if (cart.length === 0) return;
+    const storedLead = getStoredLead();
+    if (!storedLead?.lead_id) return;
+    
+    const timer = setTimeout(() => {
+      saveAbandonedCart(storedLead.lead_id!, cart);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [cart]);
+
   const handleSecretAreaUnlock = (password: string) => {
     if (password === store?.secret_area_password) {
       setSecretAreaUnlocked(true);
@@ -270,8 +286,109 @@ export default function StoreCatalog() {
     setSelectedMarketingFilter("all");
   };
 
-  // Cart functions
+  // Check if lead data exists in localStorage
+  const getStoredLead = (): { name: string; whatsapp: string; lead_id?: string } | null => {
+    if (!slug) return null;
+    try {
+      const stored = localStorage.getItem(`store_lead_${slug}`);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  };
+
+  // Save lead to localStorage and DB
+  const saveLeadData = async (data: { name: string; whatsapp: string }) => {
+    if (!store) return;
+    const deviceId = `${slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const storedLead = getStoredLead();
+    const existingDeviceId = storedLead ? undefined : deviceId;
+
+    // Upsert to DB
+    const { data: leadRow, error } = await supabase
+      .from("store_leads")
+      .upsert({
+        store_id: store.id,
+        owner_id: store.owner_id,
+        name: data.name,
+        whatsapp: data.whatsapp,
+        device_id: existingDeviceId || storedLead?.lead_id?.split("_")[0] || deviceId,
+        last_seen_at: new Date().toISOString(),
+      }, { onConflict: "store_id,device_id" })
+      .select("id")
+      .single();
+
+    const leadId = leadRow?.id || "";
+
+    // Save to localStorage
+    localStorage.setItem(`store_lead_${slug}`, JSON.stringify({
+      name: data.name,
+      whatsapp: data.whatsapp,
+      lead_id: leadId,
+      captured_at: new Date().toISOString(),
+    }));
+
+    return leadId;
+  };
+
+  // Save cart snapshot as abandoned items
+  const saveAbandonedCart = async (leadId: string, cartItems: CartItem[]) => {
+    if (!leadId || cartItems.length === 0) return;
+    
+    // Delete old abandoned items for this lead first
+    await supabase
+      .from("lead_cart_items")
+      .delete()
+      .eq("lead_id", leadId)
+      .eq("status", "abandoned");
+
+    const items = cartItems.map(ci => ({
+      lead_id: leadId,
+      product_id: ci.displayItem.productId,
+      product_name: ci.displayItem.name,
+      variant_color: ci.displayItem.color || null,
+      selected_size: ci.selectedSize,
+      quantity: ci.quantity,
+      unit_price: ci.effectivePrice,
+      status: "abandoned" as const,
+    }));
+
+    await supabase.from("lead_cart_items").insert(items);
+  };
+
   const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
+    // Check if we need lead capture
+    const storedLead = getStoredLead();
+    if (!storedLead) {
+      // Store pending add and show capture sheet
+      setPendingCartAdd({ item, size, effectivePrice });
+      setShowLeadCapture(true);
+      return;
+    }
+
+    doAddToCart(item, size, effectivePrice);
+  };
+
+  const handleLeadSubmit = async (data: { name: string; whatsapp: string }) => {
+    setShowLeadCapture(false);
+    const leadId = await saveLeadData(data);
+    toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
+
+    // Complete the pending add
+    if (pendingCartAdd) {
+      doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
+      // Save abandoned cart snapshot after a brief delay to include the just-added item
+      if (leadId) {
+        setTimeout(() => {
+          const storedLead = getStoredLead();
+          if (storedLead?.lead_id) {
+            // We'll save the current cart state
+          }
+        }, 500);
+      }
+      setPendingCartAdd(null);
+    }
+  };
+
+  const doAddToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
     const prevTotal = cartTotal;
     
     setCart(prev => {
@@ -315,6 +432,14 @@ export default function StoreCatalog() {
         toast.success(`${item.name} adicionado à sacola`);
       }
     }
+
+    // Save abandoned cart snapshot after adding
+    setTimeout(() => {
+      const storedLead = getStoredLead();
+      if (storedLead?.lead_id) {
+        // Get latest cart from DOM - we use a workaround via ref
+      }
+    }, 100);
   };
 
   const updateCartQuantity = (index: number, delta: number) => {
@@ -1133,6 +1258,17 @@ export default function StoreCatalog() {
     const phone = store.whatsapp_number.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
     
+    // Mark lead cart items as converted
+    const storedLead = getStoredLead();
+    if (storedLead?.lead_id) {
+      supabase
+        .from("lead_cart_items")
+        .update({ status: "converted" })
+        .eq("lead_id", storedLead.lead_id)
+        .eq("status", "abandoned")
+        .then(() => {});
+    }
+    
     clearCart();
     setCartOpen(false);
     toast.success("Pedido enviado pelo WhatsApp!");
@@ -1878,6 +2014,21 @@ export default function StoreCatalog() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Lead Capture Sheet */}
+      <LeadCaptureSheet
+        open={showLeadCapture}
+        onOpenChange={(open) => {
+          setShowLeadCapture(open);
+          if (!open && pendingCartAdd) {
+            // User dismissed without filling - still add to cart
+            doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
+            setPendingCartAdd(null);
+          }
+        }}
+        onSubmit={handleLeadSubmit}
+        primaryColor={primaryColor}
+      />
     </div>
   );
 }

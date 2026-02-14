@@ -1234,6 +1234,53 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_cart_items: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          selected_size: string | null
+          status: string
+          unit_price: number
+          variant_color: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          selected_size?: string | null
+          status?: string
+          unit_price?: number
+          variant_color?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          selected_size?: string | null
+          status?: string
+          unit_price?: number
+          variant_color?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_cart_items_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "store_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       main_categories: {
         Row: {
           created_at: string
@@ -1940,6 +1987,47 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_leads: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          id: string
+          last_seen_at: string | null
+          name: string
+          owner_id: string
+          store_id: string
+          whatsapp: string
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          last_seen_at?: string | null
+          name: string
+          owner_id: string
+          store_id: string
+          whatsapp: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          last_seen_at?: string | null
+          name?: string
+          owner_id?: string
+          store_id?: string
+          whatsapp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_leads_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "store_settings"
             referencedColumns: ["id"]
           },
         ]
