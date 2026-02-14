@@ -6,10 +6,12 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package } from "lucide-react";
+import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
+import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
 
 interface LeadWithCart {
   id: string;
@@ -35,13 +37,12 @@ export default function Marketing() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("pending");
 
-  // Get store settings for message template
   const { data: storeSettings } = useQuery({
     queryKey: ["my-store-settings", user?.id],
     queryFn: async () => {
       const { data } = await supabase
         .from("store_settings")
-        .select("store_name")
+        .select("store_name, store_slug")
         .eq("owner_id", user!.id)
         .maybeSingle();
       return data;
@@ -49,53 +50,87 @@ export default function Marketing() {
     enabled: !!user?.id,
   });
 
+  // Fetch leads for pending/contacted tabs
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["marketing-leads", user?.id, activeTab],
     queryFn: async () => {
       const targetStatus = activeTab === "pending" ? "abandoned" : "contacted";
-
-      // Fetch leads that have cart items with the target status
-      const { data: cartItems, error: itemsError } = await supabase
+      const { data: cartItems, error } = await supabase
         .from("lead_cart_items")
         .select("*, store_leads!inner(id, name, whatsapp, created_at, last_seen_at, owner_id, store_id)")
         .eq("status", targetStatus)
         .eq("store_leads.owner_id", user!.id)
         .order("created_at", { ascending: false });
 
-      if (itemsError) throw itemsError;
+      if (error) throw error;
 
-      // Group items by lead
       const leadMap = new Map<string, LeadWithCart>();
       (cartItems || []).forEach((item: any) => {
         const lead = item.store_leads;
         if (!leadMap.has(lead.id)) {
           leadMap.set(lead.id, {
-            id: lead.id,
-            name: lead.name,
-            whatsapp: lead.whatsapp,
-            created_at: lead.created_at,
-            last_seen_at: lead.last_seen_at,
+            id: lead.id, name: lead.name, whatsapp: lead.whatsapp,
+            created_at: lead.created_at, last_seen_at: lead.last_seen_at,
             store_name: storeSettings?.store_name || "nossa loja",
-            items: [],
-            cart_total: 0,
+            items: [], cart_total: 0,
           });
         }
         const entry = leadMap.get(lead.id)!;
         entry.items.push({
-          id: item.id,
-          product_name: item.product_name,
-          variant_color: item.variant_color,
-          selected_size: item.selected_size,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          status: item.status,
+          id: item.id, product_name: item.product_name, variant_color: item.variant_color,
+          selected_size: item.selected_size, quantity: item.quantity,
+          unit_price: item.unit_price, status: item.status,
         });
         entry.cart_total += item.unit_price * item.quantity;
       });
 
       return Array.from(leadMap.values());
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && (activeTab === "pending" || activeTab === "contacted"),
+  });
+
+  // Fetch marketing tasks
+  const { data: marketingTasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ["marketing-tasks", user?.id, activeTab],
+    queryFn: async () => {
+      const isCompleted = activeTab === "completed";
+      const taskTypes = activeTab === "seo" ? ["search_demand"] : ["high_objection", "hidden_gold", "capital_freeze"];
+      
+      let query = supabase
+        .from("marketing_tasks")
+        .select("*")
+        .eq("owner_id", user!.id)
+        .in("task_type", taskTypes)
+        .order("created_at", { ascending: false });
+
+      if (activeTab === "content" || activeTab === "seo") {
+        query = query.eq("is_completed", false);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id && (activeTab === "content" || activeTab === "seo"),
+  });
+
+  // Generate insights mutation
+  const generateInsights = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Não autenticado");
+
+      const res = await supabase.functions.invoke("generate-marketing-tasks", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.error) throw res.error;
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["marketing-tasks"] });
+      toast.success(`${data.tasks_generated} insights gerados!`);
+    },
+    onError: (err: any) => toast.error(err.message || "Erro ao gerar insights"),
   });
 
   const markContacted = useMutation({
@@ -127,89 +162,113 @@ export default function Marketing() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Megaphone className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Megaphone className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Marketing</h1>
+              <p className="text-sm text-muted-foreground">Recupere vendas e otimize seu catálogo</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">Marketing</h1>
-            <p className="text-sm text-muted-foreground">Recupere vendas e gerencie seus leads</p>
-          </div>
+          {(activeTab === "content" || activeTab === "seo") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => generateInsights.mutate()}
+              disabled={generateInsights.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${generateInsights.isPending ? "animate-spin" : ""}`} />
+              Atualizar Insights
+            </Button>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-sm grid-cols-2">
-            <TabsTrigger value="pending" className="gap-2">
-              <ShoppingCart className="h-4 w-4" />
+          <TabsList className="grid w-full max-w-lg grid-cols-4">
+            <TabsTrigger value="pending" className="gap-1.5 text-xs">
+              <ShoppingCart className="h-3.5 w-3.5" />
               Pendentes
             </TabsTrigger>
-            <TabsTrigger value="contacted" className="gap-2">
-              <Users className="h-4 w-4" />
+            <TabsTrigger value="content" className="gap-1.5 text-xs">
+              <Sparkles className="h-3.5 w-3.5" />
+              Conteúdo
+            </TabsTrigger>
+            <TabsTrigger value="seo" className="gap-1.5 text-xs">
+              <Search className="h-3.5 w-3.5" />
+              SEO
+            </TabsTrigger>
+            <TabsTrigger value="contacted" className="gap-1.5 text-xs">
+              <Users className="h-3.5 w-3.5" />
               Contatados
             </TabsTrigger>
           </TabsList>
 
+          {/* Pending Tab */}
           <TabsContent value="pending" className="mt-4">
             {isLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="animate-pulse rounded-xl border p-4 space-y-3">
-                    <div className="h-5 bg-muted rounded w-1/3" />
-                    <div className="h-4 bg-muted rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
+              <LoadingSkeleton />
             ) : leads.length === 0 ? (
-              <div className="text-center py-16">
-                <ShoppingCart className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="text-lg font-medium">Nenhum carrinho abandonado</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Quando visitantes deixarem itens no carrinho sem finalizar, eles aparecerão aqui.
-                </p>
-              </div>
+              <EmptyState icon={ShoppingCart} title="Nenhum carrinho abandonado" description="Quando visitantes deixarem itens no carrinho sem finalizar, eles aparecerão aqui." />
             ) : (
               <div className="space-y-4">
                 {leads.map(lead => (
-                  <AbandonedCartCard
-                    key={lead.id}
-                    lead={lead}
-                    onSendWhatsApp={() => sendWhatsApp(lead)}
-                    formatPrice={formatPrice}
-                    isPending
-                  />
+                  <AbandonedCartCard key={lead.id} lead={lead} onSendWhatsApp={() => sendWhatsApp(lead)} formatPrice={formatPrice} isPending />
                 ))}
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="contacted" className="mt-4">
-            {isLoading ? (
+          {/* Content Tab */}
+          <TabsContent value="content" className="mt-4">
+            {tasksLoading ? (
+              <LoadingSkeleton />
+            ) : marketingTasks.length === 0 ? (
+              <EmptyState
+                icon={Sparkles}
+                title="Nenhum insight de conteúdo"
+                description='Clique em "Atualizar Insights" para gerar cards de ação baseados nas métricas da sua loja.'
+              />
+            ) : (
               <div className="space-y-4">
-                {[1, 2].map(i => (
-                  <div key={i} className="animate-pulse rounded-xl border p-4 space-y-3">
-                    <div className="h-5 bg-muted rounded w-1/3" />
-                    <div className="h-4 bg-muted rounded w-1/2" />
-                  </div>
+                {marketingTasks.map((task: any) => (
+                  <ContentTaskCard key={task.id} task={task} />
                 ))}
               </div>
-            ) : leads.length === 0 ? (
-              <div className="text-center py-16">
-                <Users className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="text-lg font-medium">Nenhum lead contatado ainda</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Leads contatados aparecerão aqui após você enviar o WhatsApp.
-                </p>
+            )}
+          </TabsContent>
+
+          {/* SEO Tab */}
+          <TabsContent value="seo" className="mt-4">
+            {tasksLoading ? (
+              <LoadingSkeleton />
+            ) : marketingTasks.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title="Nenhuma demanda de pesquisa"
+                description='Clique em "Atualizar Insights" para analisar o que seus visitantes estão pesquisando na loja.'
+              />
+            ) : (
+              <div className="space-y-4">
+                {marketingTasks.map((task: any) => (
+                  <SearchDemandCard key={task.id} task={task} />
+                ))}
               </div>
+            )}
+          </TabsContent>
+
+          {/* Contacted Tab */}
+          <TabsContent value="contacted" className="mt-4">
+            {isLoading ? (
+              <LoadingSkeleton />
+            ) : leads.length === 0 ? (
+              <EmptyState icon={Users} title="Nenhum lead contatado ainda" description="Leads contatados aparecerão aqui após você enviar o WhatsApp." />
             ) : (
               <div className="space-y-4">
                 {leads.map(lead => (
-                  <AbandonedCartCard
-                    key={lead.id}
-                    lead={lead}
-                    onSendWhatsApp={() => sendWhatsApp(lead)}
-                    formatPrice={formatPrice}
-                    isPending={false}
-                  />
+                  <AbandonedCartCard key={lead.id} lead={lead} onSendWhatsApp={() => sendWhatsApp(lead)} formatPrice={formatPrice} isPending={false} />
                 ))}
               </div>
             )}
@@ -220,21 +279,36 @@ export default function Marketing() {
   );
 }
 
-function AbandonedCartCard({
-  lead,
-  onSendWhatsApp,
-  formatPrice,
-  isPending,
-}: {
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="animate-pulse rounded-xl border p-4 space-y-3">
+          <div className="h-5 bg-muted rounded w-1/3" />
+          <div className="h-4 bg-muted rounded w-1/2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
+  return (
+    <div className="text-center py-16">
+      <Icon className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
+      <h3 className="text-lg font-medium">{title}</h3>
+      <p className="text-sm text-muted-foreground mt-1">{description}</p>
+    </div>
+  );
+}
+
+function AbandonedCartCard({ lead, onSendWhatsApp, formatPrice, isPending }: {
   lead: LeadWithCart;
   onSendWhatsApp: () => void;
   formatPrice: (p: number) => string;
   isPending: boolean;
 }) {
-  const timeAgo = formatDistanceToNow(new Date(lead.created_at), {
-    addSuffix: true,
-    locale: ptBR,
-  });
+  const timeAgo = formatDistanceToNow(new Date(lead.created_at), { addSuffix: true, locale: ptBR });
 
   return (
     <div className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
@@ -242,26 +316,15 @@ function AbandonedCartCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-base truncate">{lead.name}</h3>
-            {isPending && (
-              <Badge variant="destructive" className="text-[10px] shrink-0">
-                Recuperar
-              </Badge>
-            )}
-            {!isPending && (
-              <Badge variant="secondary" className="text-[10px] shrink-0">
-                Contatado
-              </Badge>
+            {isPending ? (
+              <Badge variant="destructive" className="text-[10px] shrink-0">Recuperar</Badge>
+            ) : (
+              <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
             )}
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" />
-              {timeAgo}
-            </span>
-            <span className="flex items-center gap-1">
-              <Package className="h-3.5 w-3.5" />
-              {lead.items.length} {lead.items.length === 1 ? "item" : "itens"}
-            </span>
+            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{timeAgo}</span>
+            <span className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />{lead.items.length} {lead.items.length === 1 ? "item" : "itens"}</span>
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -269,7 +332,6 @@ function AbandonedCartCard({
         </div>
       </div>
 
-      {/* Item list */}
       <div className="space-y-1.5 text-sm">
         {lead.items.slice(0, 3).map(item => (
           <div key={item.id} className="flex justify-between text-muted-foreground">
@@ -288,11 +350,7 @@ function AbandonedCartCard({
       </div>
 
       {isPending && (
-        <Button
-          onClick={onSendWhatsApp}
-          className="w-full gap-2 font-semibold"
-          style={{ backgroundColor: "#25D366" }}
-        >
+        <Button onClick={onSendWhatsApp} className="w-full gap-2 font-semibold" style={{ backgroundColor: "#25D366" }}>
           <MessageCircle className="h-4 w-4" />
           Enviar WhatsApp
         </Button>

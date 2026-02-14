@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.purchase-shipping]
 verify_jwt = false
+
+[functions.generate-marketing-tasks]
+verify_jwt = false
