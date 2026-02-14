@@ -62,7 +62,34 @@ interface Product {
   name: string;
   price: number;
   category: string;
+  category_2?: string | null;
+  category_3?: string | null;
+  main_category?: string | null;
+  subcategory?: string | null;
   stock_quantity: number;
+  supplier_id?: string | null;
+  color_label?: string | null;
+  model?: string | null;
+  is_new_release?: boolean | null;
+  marketing_status?: string[] | null;
+  min_stock_level?: number | null;
+  product_variants?: { size: string; stock_quantity: number; marketing_status: string[] | null }[];
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface MainCategory {
+  id: string;
+  name: string;
+}
+
+interface Subcategory {
+  id: string;
+  name: string;
+  main_category_id: string;
 }
 
 interface ProductPartnership {
@@ -227,18 +254,62 @@ export function DirectPartnerships() {
     enabled: directGroups.length > 0,
   });
 
-  // Fetch user's products
+  // Fetch user's products (expanded for filters)
   const { data: products = [] } = useQuery({
     queryKey: ["user-products"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, category, stock_quantity")
+        .select("id, name, price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)")
         .eq("owner_id", user?.id)
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
       return data as Product[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch suppliers for filter
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .select("id, name")
+        .order("name");
+      if (error) throw error;
+      return data as Supplier[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch main categories for filter
+  const { data: mainCategories = [] } = useQuery({
+    queryKey: ["main-categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("main_categories")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("display_order");
+      if (error) throw error;
+      return data as MainCategory[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch subcategories for filter
+  const { data: subcategories = [] } = useQuery({
+    queryKey: ["subcategories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subcategories")
+        .select("id, name, main_category_id")
+        .eq("is_active", true)
+        .order("display_order");
+      if (error) throw error;
+      return data as Subcategory[];
     },
     enabled: !!user,
   });
@@ -1059,6 +1130,9 @@ export function DirectPartnerships() {
           groupName={selectedPartner.partnerName}
           products={products}
           productPartnerships={productPartnerships}
+          suppliers={suppliers}
+          mainCategories={mainCategories}
+          subcategories={subcategories}
           showAutoShare={false}
         />
       )}
