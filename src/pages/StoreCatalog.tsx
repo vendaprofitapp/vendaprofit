@@ -210,6 +210,8 @@ interface StoreSettings {
   secret_area_name: string | null;
   secret_area_password: string | null;
   purchase_incentives_config: PurchaseIncentivesConfig | null;
+  favicon_url: string | null;
+  page_title: string | null;
 }
 
 export default function StoreCatalog() {
@@ -493,6 +495,36 @@ export default function StoreCatalog() {
 
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
+
+  // Dynamic title and favicon
+  useEffect(() => {
+    if (!store) return;
+    const originalTitle = document.title;
+    document.title = (store as any).page_title || store.store_name || "Venda PROFIT";
+
+    const faviconUrl = (store as any).favicon_url;
+    let oldFaviconHref: string | null = null;
+    if (faviconUrl) {
+      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+      if (link) {
+        oldFaviconHref = link.href;
+        link.href = faviconUrl;
+      } else {
+        link = document.createElement("link");
+        link.rel = "icon";
+        link.href = faviconUrl;
+        document.head.appendChild(link);
+      }
+    }
+
+    return () => {
+      document.title = originalTitle;
+      if (oldFaviconHref) {
+        const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+        if (link) link.href = oldFaviconHref;
+      }
+    };
+  }, [store]);
 
   // --- Analytics Tracking ---
   const viewBatchRef = useRef<{ product_id: string; store_id: string; owner_id: string; device_id: string }[]>([]);

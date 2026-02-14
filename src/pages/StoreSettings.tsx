@@ -76,6 +76,8 @@ interface StoreSettings {
   secret_area_name: string | null;
   secret_area_password: string | null;
   purchase_incentives_config: PurchaseIncentivesConfig | null;
+  favicon_url: string | null;
+  page_title: string | null;
 }
 
 interface Group {
@@ -125,6 +127,8 @@ export default function StoreSettings() {
     secret_area_name: "Área VIP",
     secret_area_password: "",
     purchase_incentives_config: defaultIncentivesConfig,
+    page_title: "",
+    favicon_url: "",
   });
   const [draggedButton, setDraggedButton] = useState<string | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -139,8 +143,11 @@ export default function StoreSettings() {
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [uploadingBannerMobile, setUploadingBannerMobile] = useState(false);
   const [uploadingFont, setUploadingFont] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
   const bannerMobileInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
 
   // Available Google Fonts
   const availableFonts = [
@@ -258,8 +265,11 @@ export default function StoreSettings() {
         secret_area_name: storeSettings.secret_area_name || "Área VIP",
         secret_area_password: storeSettings.secret_area_password || "",
         purchase_incentives_config: (storeSettings.purchase_incentives_config as unknown as PurchaseIncentivesConfig) || defaultIncentivesConfig,
+        page_title: (storeSettings as any).page_title || "",
+        favicon_url: (storeSettings as any).favicon_url || "",
       });
       setLogoUrl(storeSettings.logo_url);
+      setFaviconUrl((storeSettings as any).favicon_url || null);
       setBannerUrl(storeSettings.banner_url);
       setBannerUrlMobile(storeSettings.banner_url_mobile);
       setCustomFontUrl(storeSettings.custom_font_url);
@@ -565,6 +575,8 @@ export default function StoreSettings() {
             secret_area_name: formData.secret_area_name || null,
             secret_area_password: formData.secret_area_password || null,
             purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
+            page_title: formData.page_title || null,
+            favicon_url: faviconUrl || null,
             ...fontData,
           })
           .eq("id", storeSettings.id);
@@ -605,6 +617,8 @@ export default function StoreSettings() {
             secret_area_name: formData.secret_area_name || null,
             secret_area_password: formData.secret_area_password || null,
             purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
+            page_title: formData.page_title || null,
+            favicon_url: faviconUrl || null,
             ...fontData,
           })
           .select("id")
@@ -732,6 +746,139 @@ export default function StoreSettings() {
             </CardContent>
           </Card>
         )}
+
+        {/* Identidade do Navegador */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Type className="h-5 w-5" />
+              Identidade do Navegador
+            </CardTitle>
+            <CardDescription>
+              Personalize o título e o ícone que aparecem na aba do navegador dos seus clientes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="page_title">Título da Página</Label>
+              <Input
+                id="page_title"
+                value={formData.page_title}
+                onChange={(e) => setFormData(prev => ({ ...prev, page_title: e.target.value }))}
+                placeholder="Ex: Loja da Maria"
+              />
+              <p className="text-xs text-muted-foreground">
+                Aparece na aba do navegador. Se vazio, usa o nome da loja.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Favicon</Label>
+              <p className="text-xs text-muted-foreground">
+                O favicon é o ícone que aparece na aba do navegador quando seus clientes acessam sua loja
+              </p>
+              <div className="flex items-center gap-4">
+                {faviconUrl ? (
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={faviconUrl}
+                      alt="Favicon"
+                      className="w-10 h-10 object-contain border rounded bg-muted"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full"
+                      onClick={async () => {
+                        setFaviconUrl(null);
+                        if (storeSettings?.id) {
+                          await supabase
+                            .from("store_settings")
+                            .update({ favicon_url: null })
+                            .eq("id", storeSettings.id);
+                          queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+                        }
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 border-2 border-dashed rounded flex items-center justify-center bg-muted/50">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+                <div>
+                  <input
+                    ref={faviconInputRef}
+                    type="file"
+                    accept=".ico,.png,.svg,.jpg,.jpeg,.webp"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 256 * 1024) {
+                        toast.error("O favicon deve ter no máximo 256KB");
+                        return;
+                      }
+                      setUploadingFavicon(true);
+                      try {
+                        const fileExt = file.name.split(".").pop();
+                        const fileName = `${user!.id}/favicon-${Date.now()}.${fileExt}`;
+                        const { error: uploadError } = await supabase.storage
+                          .from("store-banners")
+                          .upload(fileName, file, { upsert: true });
+                        if (uploadError) throw uploadError;
+                        const { data: publicUrl } = supabase.storage
+                          .from("store-banners")
+                          .getPublicUrl(fileName);
+                        setFaviconUrl(publicUrl.publicUrl);
+                        if (storeSettings?.id) {
+                          await supabase
+                            .from("store_settings")
+                            .update({ favicon_url: publicUrl.publicUrl })
+                            .eq("id", storeSettings.id);
+                          queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
+                        }
+                        toast.success("Favicon enviado com sucesso!");
+                      } catch (error) {
+                        console.error("Error uploading favicon:", error);
+                        toast.error("Erro ao enviar favicon");
+                      } finally {
+                        setUploadingFavicon(false);
+                        if (faviconInputRef.current) faviconInputRef.current.value = "";
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => faviconInputRef.current?.click()}
+                    disabled={uploadingFavicon}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingFavicon ? "Enviando..." : "Enviar Favicon"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ICO, PNG, SVG ou JPG. Máximo 256KB.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {formData.custom_domain && (
+              <div className="p-3 bg-muted/50 rounded-lg border">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Domínio Próprio
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Para conectar um domínio próprio (ex: minhaloja.com.br), entre em contato com o suporte para configuração DNS.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* 2 - Informações Básicas (URL + WhatsApp) */}
         <Card>
