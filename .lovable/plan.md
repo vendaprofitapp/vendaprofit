@@ -1,82 +1,87 @@
 
-# Filtros Avancados no Dialog de Produtos Liberados
+
+# Favicon, Título da Página e Domínio Próprio por Usuário
 
 ## Resumo
 
-Adicionar ao `ProductPartnershipDialog` o mesmo conjunto de filtros disponivel no Controle de Estoque (categoria principal, subcategoria, fornecedor, cor, tamanho, status de estoque, status de marketing, lancamentos, faixa de preco e faixa de estoque), com busca por texto. Os filtros funcionarao tanto nas parcerias 1-1 quanto nos grupos. Adicionalmente, um filtro exclusivo "Status de Liberacao" (Liberados / Nao Liberados / Todos) para facilitar a gestao.
+Permitir que cada lojista personalize o favicon e o título que aparecem no navegador quando clientes visitam sua loja pública, além de documentar claramente como funciona o domínio personalizado (já parcialmente implementado).
 
 ---
 
-## Alteracoes
+## O que já existe
 
-### 1. Expandir a query de produtos (ambos os locais)
-
-**Arquivos**: `src/pages/Partnerships.tsx` e `src/components/partnerships/DirectPartnerships.tsx`
-
-Alterar o SELECT de:
-```
-id, name, price, category, stock_quantity
-```
-Para:
-```
-id, name, price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)
-```
-
-Atualizar a interface `Product` em ambos os ficheiros para incluir os novos campos.
-
-Tambem buscar `suppliers` e `main_categories`/`subcategories` para popular os selects de filtro.
-
-### 2. Reformular o `ProductPartnershipDialog`
-
-**Arquivo**: `src/components/partnerships/ProductPartnershipDialog.tsx`
-
-- Atualizar a interface `Product` com todos os novos campos
-- Adicionar props para `suppliers`, `mainCategories`, `subcategories` (listas de referencia)
-- Substituir o filtro unico de categoria por um sistema completo:
-
-**Filtros implementados** (no padrao do estoque):
-
-| Filtro | Tipo | Logica |
-|--------|------|--------|
-| Busca por texto | Input | Filtra por nome, modelo ou cor |
-| Categoria Principal | Select | Filtra por `main_category` |
-| Subcategoria | Select | Filtra por `subcategory` (visivel quando categoria principal selecionada) |
-| Fornecedor | Select | Filtra por `supplier_id` |
-| Cor | Select | Valores unicos de `color_label` |
-| Tamanho | Select | Valores unicos dos `product_variants.size` |
-| Status de Estoque | Select | Disponivel (>0), Baixo (<=min_stock_level), Esgotado (=0) |
-| Status de Marketing | Select | Oportunidade, Pre-venda, Lancamento, Area Secreta |
-| Lancamentos | Select | Sim/Nao (baseado em `is_new_release`) |
-| Faixa de Preco | 2x Input | Min e Max em R$ |
-| Faixa de Estoque | 2x Input | Min e Max |
-| **Status de Liberacao** | Select | Todos / Liberados / Nao Liberados |
-
-**Layout da UI**:
-- Barra superior: Input de busca por texto + botao "Filtros" que abre um Dialog/Popover com todos os filtros avancados (mesmo padrao do estoque)
-- Badges de filtros ativos removiveis abaixo da barra
-- Botao "Limpar Filtros" quando ha filtros ativos
-- Manter os botoes de acao "Liberar Todos" / "Liberar Categoria" adaptados ao contexto filtrado
-
-### 3. Adaptar a passagem de props
-
-**Arquivos**: `src/pages/Partnerships.tsx` e `src/components/partnerships/DirectPartnerships.tsx`
-
-Passar as novas props (`suppliers`, `mainCategories`, `subcategories`) ao `ProductPartnershipDialog`. Reutilizar as queries de `main_categories` e `subcategories` que ja existem no sistema, adicionando-as nestes componentes.
+- O campo `custom_domain` já existe na tabela `store_settings` e é usado em vários pontos do código para gerar URLs.
+- O campo `store_name` já existe e é exibido na loja pública.
+- Não existe nenhum campo para favicon personalizado por loja.
+- O `document.title` nunca é alterado dinamicamente no `StoreCatalog` -- sempre mostra "Venda PROFIT".
 
 ---
 
-## Detalhes Tecnicos
+## Alterações
 
-### Sequencia de implementacao
+### 1. Migração de Banco de Dados
 
-1. Atualizar interfaces `Product` e queries em `Partnerships.tsx` e `DirectPartnerships.tsx` (expandir SELECT + buscar suppliers/categories)
-2. Reformular `ProductPartnershipDialog.tsx` com o sistema de filtros completo
-3. Passar as novas props nos 2 pontos de uso do dialog
+Adicionar duas colunas à tabela `store_settings`:
 
-### Notas
+| Coluna | Tipo | Default | Descrição |
+|--------|------|---------|-----------|
+| `favicon_url` | text | NULL | URL do favicon personalizado da loja (armazenado no storage) |
+| `page_title` | text | NULL | Título personalizado da aba do navegador (ex: "Loja da Maria") |
 
-- Nenhuma migracao de banco necessaria -- todos os campos ja existem
-- Os filtros sao aplicados em cascata no `useMemo` do `filteredProducts`
-- O filtro de tamanho verifica se o produto possui pelo menos uma variante com aquele tamanho
-- O filtro de status de marketing verifica tanto `products.marketing_status` quanto `product_variants.marketing_status`
-- O botao "Liberar Todos" aplica-se apenas aos produtos visiveis apos todos os filtros
+### 2. Storage
+
+Usar o bucket `store-banners` (já existente e público) para uploads de favicon, ou criar um sub-path lógico (`favicons/`). Não é necessário criar um bucket novo.
+
+### 3. StoreCatalog.tsx -- Título e Favicon Dinâmicos
+
+Quando a loja pública é carregada (`StoreCatalog`):
+
+- Adicionar um `useEffect` que, quando `store` estiver carregado:
+  - Define `document.title` como `store.page_title || store.store_name || "Venda PROFIT"`
+  - Se `store.favicon_url` existir, cria/atualiza um `<link rel="icon">` no `<head>` com o href apontando para a imagem da loja
+  - No cleanup do `useEffect`, restaura o título e favicon originais do Venda PROFIT
+
+### 4. StoreSettings.tsx -- Campos de Configuração
+
+Adicionar na secção "Informações Básicas" (ou em nova secção "Identidade do Navegador"):
+
+- **Título da Página**: Input de texto para `page_title` com placeholder "Ex: Loja da Maria"
+- **Favicon**: Upload de imagem (aceitar .ico, .png, .svg até 256KB) que faz upload para `store-banners/{owner_id}/favicon.png` e salva a URL pública em `favicon_url`
+- Pré-visualização do favicon ao lado do input
+- Texto explicativo: "O favicon é o ícone que aparece na aba do navegador quando seus clientes acessam sua loja"
+
+Incluir estes campos no `formData`, no `handleSubmit` (tanto insert quanto update) e na query inicial.
+
+### 5. PublicBag.tsx -- Mesmo comportamento
+
+Aplicar a mesma lógica de título/favicon dinâmico na página de bolsa consignada (`PublicBag`), usando os dados do dono da bolsa.
+
+### 6. Domínio Próprio -- Documentação na UI
+
+O campo `custom_domain` já existe e funciona para gerar URLs. Adicionar na secção de "Link da Loja" no `StoreSettings`:
+
+- Texto explicativo: "Para conectar um domínio próprio (ex: minhaloja.com.br), entre em contato com o suporte para configuração DNS."
+- O campo já salva o domínio e é usado nos links gerados -- basta melhorar a UX com instruções claras.
+
+---
+
+## Detalhes Técnicos
+
+### Arquivos criados
+
+Nenhum arquivo novo necessário.
+
+### Arquivos alterados
+
+1. **Nova migração SQL** -- adicionar `favicon_url` e `page_title` ao `store_settings`
+2. **`src/pages/StoreCatalog.tsx`** -- useEffect para document.title + favicon dinâmico
+3. **`src/pages/StoreSettings.tsx`** -- campos de configuração na UI + lógica de upload do favicon + inclusão nos submits
+4. **`src/pages/PublicBag.tsx`** -- useEffect para title/favicon (opcional, se usar dados da loja)
+
+### Sequência de implementação
+
+1. Migração: adicionar colunas `favicon_url` e `page_title`
+2. Atualizar `StoreSettings.tsx` com os novos campos e upload
+3. Atualizar `StoreCatalog.tsx` com useEffect de título/favicon
+4. Atualizar `PublicBag.tsx` com a mesma lógica
+
