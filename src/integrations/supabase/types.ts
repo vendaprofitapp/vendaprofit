@@ -1374,6 +1374,7 @@ export type Database = {
           created_at: string
           description: string
           expires_at: string | null
+          group_id: string | null
           id: string
           is_completed: boolean
           metric_secondary: number | null
@@ -1390,6 +1391,7 @@ export type Database = {
           created_at?: string
           description: string
           expires_at?: string | null
+          group_id?: string | null
           id?: string
           is_completed?: boolean
           metric_secondary?: number | null
@@ -1406,6 +1408,7 @@ export type Database = {
           created_at?: string
           description?: string
           expires_at?: string | null
+          group_id?: string | null
           id?: string
           is_completed?: boolean
           metric_secondary?: number | null

@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user from token
     const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
     const { data: { user }, error: userError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
     if (userError || !user) {
@@ -39,7 +38,6 @@ Deno.serve(async (req) => {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const fifteenDaysAgo = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Get store slug
     const { data: storeData } = await supabase
       .from("store_settings")
       .select("store_slug")
@@ -49,7 +47,7 @@ Deno.serve(async (req) => {
     const storeSlug = storeData?.store_slug || "";
 
     // Fetch data in parallel
-    const [viewsRes, cartItemsRes, productsRes, searchLogsRes, salesRes] = await Promise.all([
+    const [viewsRes, cartItemsRes, productsRes, searchLogsRes, salesRes, recentViewsRes] = await Promise.all([
       supabase
         .from("catalog_product_views")
         .select("product_id")
@@ -62,7 +60,7 @@ Deno.serve(async (req) => {
         .gte("created_at", thirtyDaysAgo),
       supabase
         .from("products")
-        .select("id, name, stock_quantity, price")
+        .select("id, name, stock_quantity, price, category, category_2, category_3")
         .eq("owner_id", ownerId)
         .eq("is_active", true),
       supabase
@@ -75,6 +73,11 @@ Deno.serve(async (req) => {
         .select("product_id, sales!inner(owner_id, created_at)")
         .eq("sales.owner_id", ownerId)
         .gte("sales.created_at", thirtyDaysAgo),
+      supabase
+        .from("catalog_product_views")
+        .select("product_id")
+        .eq("owner_id", ownerId)
+        .gte("created_at", fifteenDaysAgo),
     ]);
 
     // Count views per product
@@ -83,29 +86,18 @@ Deno.serve(async (req) => {
       viewCounts.set(v.product_id, (viewCounts.get(v.product_id) || 0) + 1);
     });
 
-    // Count cart adds per product
     const cartCounts = new Map<string, number>();
     (cartItemsRes.data || []).forEach((c: any) => {
       if (c.product_id) cartCounts.set(c.product_id, (cartCounts.get(c.product_id) || 0) + 1);
     });
 
-    // Count sales per product
     const saleCounts = new Map<string, number>();
     (salesRes.data || []).forEach((s: any) => {
       saleCounts.set(s.product_id, (saleCounts.get(s.product_id) || 0) + 1);
     });
 
-    // Views in last 15 days
     const recentViews = new Map<string, number>();
-    const fifteenDaysAgoTime = new Date(fifteenDaysAgo).getTime();
-    // We already have all views from 30 days, filter by created_at for 15 days
-    // Since we only have product_id, we need a separate query for 15-day views
-    const { data: recentViewsData } = await supabase
-      .from("catalog_product_views")
-      .select("product_id")
-      .eq("owner_id", ownerId)
-      .gte("created_at", fifteenDaysAgo);
-    (recentViewsData || []).forEach((v: any) => {
+    (recentViewsRes.data || []).forEach((v: any) => {
       recentViews.set(v.product_id, (recentViews.get(v.product_id) || 0) + 1);
     });
 
@@ -113,13 +105,13 @@ Deno.serve(async (req) => {
     const tasks: any[] = [];
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    // --- CONTENT SCENARIOS (existing) ---
     for (const product of products) {
       const views = viewCounts.get(product.id) || 0;
       const carts = cartCounts.get(product.id) || 0;
       const sales = saleCounts.get(product.id) || 0;
       const recent = recentViews.get(product.id) || 0;
 
-      // 1. Alta Objeção: >= 10 views, 0 cart adds
       if (views >= 10 && carts === 0 && sales === 0) {
         tasks.push({
           owner_id: ownerId,
@@ -136,7 +128,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // 2. Ouro Escondido: < 5 views, >= 2 cart adds ou vendas
       if (views < 5 && (carts >= 2 || sales >= 2)) {
         const conversionRate = views > 0 ? ((carts + sales) / views * 100) : 100;
         tasks.push({
@@ -154,7 +145,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // 3. Giro de Capital: >= 5 unidades, 0 views últimos 15 dias
       if (product.stock_quantity >= 5 && recent === 0) {
         const stockValue = product.stock_quantity * (product.price || 0);
         tasks.push({
@@ -173,7 +163,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. SEO - Demanda Reprimida: termos com >= 3 pesquisas e 0 resultados
+    // --- SEO SCENARIO (existing) ---
     const searchTermMap = new Map<string, { count: number; zeroResults: number }>();
     (searchLogsRes.data || []).forEach((log: any) => {
       const term = (log.search_term || "").toLowerCase().trim();
@@ -195,6 +185,139 @@ Deno.serve(async (req) => {
           product_name: term,
           metric_value: stats.count,
           metric_secondary: 0,
+          store_slug: storeSlug,
+          expires_at: expiresAt,
+          is_completed: false,
+        });
+      }
+    }
+
+    // --- GROUP SCENARIOS (new v3) ---
+    // Fetch public groups (non-direct) and user's memberships
+    const [publicGroupsRes, userMembershipsRes] = await Promise.all([
+      supabase
+        .from("groups")
+        .select("id, name, description, profit_share_seller, profit_share_partner, invite_code")
+        .eq("is_direct", false),
+      supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", ownerId),
+    ]);
+
+    const publicGroups = publicGroupsRes.data || [];
+    const userGroupIds = new Set((userMembershipsRes.data || []).map((m: any) => m.group_id));
+
+    // Groups user is NOT a member of
+    const availableGroups = publicGroups.filter((g: any) => !userGroupIds.has(g.id));
+
+    if (availableGroups.length > 0) {
+      // Fetch products shared in these available groups
+      const availableGroupIds = availableGroups.map((g: any) => g.id);
+      const { data: sharedProducts } = await supabase
+        .from("product_partnerships")
+        .select("group_id, product_id, products!inner(name, category, category_2, category_3, price)")
+        .in("group_id", availableGroupIds);
+
+      // Build group -> categories map
+      const groupCategoryMap = new Map<string, { categories: Set<string>; productCount: number }>();
+      (sharedProducts || []).forEach((sp: any) => {
+        const entry = groupCategoryMap.get(sp.group_id) || { categories: new Set(), productCount: 0 };
+        entry.productCount++;
+        const p = sp.products;
+        if (p.category) entry.categories.add(p.category.toLowerCase());
+        if (p.category_2) entry.categories.add(p.category_2.toLowerCase());
+        if (p.category_3) entry.categories.add(p.category_3.toLowerCase());
+        groupCategoryMap.set(sp.group_id, entry);
+      });
+
+      // User's categories
+      const userCategories = new Set<string>();
+      products.forEach((p: any) => {
+        if (p.category) userCategories.add(p.category.toLowerCase());
+        if (p.category_2) userCategories.add(p.category_2.toLowerCase());
+        if (p.category_3) userCategories.add(p.category_3.toLowerCase());
+      });
+
+      // Scenario A: Cross-sell - search terms with 0 results that match a group's categories
+      const zeroResultTerms = Array.from(searchTermMap.entries())
+        .filter(([_, stats]) => stats.zeroResults >= 1)
+        .map(([term]) => term);
+
+      for (const group of availableGroups) {
+        const groupData = groupCategoryMap.get(group.id);
+        if (!groupData || groupData.productCount === 0) continue;
+
+        // Check if any zero-result search term matches a group category
+        const matchedTerm = zeroResultTerms.find(term =>
+          Array.from(groupData.categories).some(cat => cat.includes(term) || term.includes(cat))
+        );
+
+        if (matchedTerm) {
+          const profitPercent = Math.round((group.profit_share_seller || 0.7) * 100);
+          tasks.push({
+            owner_id: ownerId,
+            product_id: null,
+            group_id: group.id,
+            task_type: "group_cross_sell",
+            title: "Complete o Look das suas Clientes!",
+            description: `Notamos buscas por "${matchedTerm}" na sua loja, mas seu estoque nisso é zero. O Grupo ${group.name} tem ${groupData.productCount} produtos disponíveis para revenda imediata.`,
+            product_name: group.name,
+            metric_value: groupData.productCount,
+            metric_secondary: profitPercent,
+            store_slug: storeSlug,
+            expires_at: expiresAt,
+            is_completed: false,
+          });
+          continue; // one card per group max
+        }
+
+        // Scenario B: Opportunity - group has categories user doesn't have
+        const newCategories = Array.from(groupData.categories).filter(cat => !userCategories.has(cat));
+        if (newCategories.length > 0 && groupData.productCount >= 3) {
+          const profitPercent = Math.round((group.profit_share_seller || 0.7) * 100);
+          tasks.push({
+            owner_id: ownerId,
+            product_id: null,
+            group_id: group.id,
+            task_type: "group_opportunity",
+            title: "Aumente seu Ticket Médio!",
+            description: `Vendedoras estão lucrando com categorias que você ainda não trabalha. O Grupo ${group.name} é distribuidor com ${groupData.productCount} produtos disponíveis.`,
+            product_name: group.name,
+            metric_value: groupData.productCount,
+            metric_secondary: profitPercent,
+            store_slug: storeSlug,
+            expires_at: expiresAt,
+            is_completed: false,
+          });
+        }
+      }
+    }
+
+    // Scenario C: Create Group - high stock value, low sales, no groups created
+    const totalStockValue = products.reduce((sum, p) => sum + (p.stock_quantity * (p.price || 0)), 0);
+    const totalSales = Array.from(saleCounts.values()).reduce((sum, c) => sum + c, 0);
+
+    if (totalStockValue >= 5000 && totalSales < 10) {
+      // Check if user already owns a group
+      const { data: ownedGroups } = await supabase
+        .from("groups")
+        .select("id")
+        .eq("created_by", ownerId)
+        .eq("is_direct", false)
+        .limit(1);
+
+      if (!ownedGroups || ownedGroups.length === 0) {
+        tasks.push({
+          owner_id: ownerId,
+          product_id: null,
+          group_id: null,
+          task_type: "group_create",
+          title: "Torne-se um Fornecedor!",
+          description: `Você tem R$ ${Math.round(totalStockValue).toLocaleString("pt-BR")} em estoque mas giro lento. Que tal ter um exército de vendedoras trabalhando para você? Crie um Grupo de Estoque Compartilhado.`,
+          product_name: null,
+          metric_value: products.length,
+          metric_secondary: totalStockValue,
           store_slug: storeSlug,
           expires_at: expiresAt,
           is_completed: false,

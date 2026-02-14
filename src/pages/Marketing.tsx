@@ -12,6 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
 import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
+import { GroupRecommendationCard } from "@/components/marketing/GroupRecommendationCard";
 
 interface LeadWithCart {
   id: string;
@@ -93,25 +94,25 @@ export default function Marketing() {
   const { data: marketingTasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ["marketing-tasks", user?.id, activeTab],
     queryFn: async () => {
-      const isCompleted = activeTab === "completed";
-      const taskTypes = activeTab === "seo" ? ["search_demand"] : ["high_objection", "hidden_gold", "capital_freeze"];
+      const taskTypeMap: Record<string, string[]> = {
+        seo: ["search_demand"],
+        content: ["high_objection", "hidden_gold", "capital_freeze"],
+        groups: ["group_cross_sell", "group_opportunity", "group_create"],
+      };
+      const taskTypes = taskTypeMap[activeTab] || [];
       
-      let query = supabase
+      const { data, error } = await supabase
         .from("marketing_tasks")
         .select("*")
         .eq("owner_id", user!.id)
         .in("task_type", taskTypes)
+        .eq("is_completed", false)
         .order("created_at", { ascending: false });
 
-      if (activeTab === "content" || activeTab === "seo") {
-        query = query.eq("is_completed", false);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user?.id && (activeTab === "content" || activeTab === "seo"),
+    enabled: !!user?.id && (activeTab === "content" || activeTab === "seo" || activeTab === "groups"),
   });
 
   // Generate insights mutation
@@ -172,7 +173,7 @@ export default function Marketing() {
               <p className="text-sm text-muted-foreground">Recupere vendas e otimize seu catálogo</p>
             </div>
           </div>
-          {(activeTab === "content" || activeTab === "seo") && (
+          {(activeTab === "content" || activeTab === "seo" || activeTab === "groups") && (
             <Button
               variant="outline"
               size="sm"
@@ -187,7 +188,7 @@ export default function Marketing() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="pending" className="gap-1.5 text-xs">
               <ShoppingCart className="h-3.5 w-3.5" />
               Pendentes
@@ -200,8 +201,12 @@ export default function Marketing() {
               <Search className="h-3.5 w-3.5" />
               SEO
             </TabsTrigger>
-            <TabsTrigger value="contacted" className="gap-1.5 text-xs">
+            <TabsTrigger value="groups" className="gap-1.5 text-xs">
               <Users className="h-3.5 w-3.5" />
+              Grupos
+            </TabsTrigger>
+            <TabsTrigger value="contacted" className="gap-1.5 text-xs">
+              <CheckCircle2 className="h-3.5 w-3.5" />
               Contatados
             </TabsTrigger>
           </TabsList>
@@ -254,6 +259,25 @@ export default function Marketing() {
               <div className="space-y-4">
                 {marketingTasks.map((task: any) => (
                   <SearchDemandCard key={task.id} task={task} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Groups Tab */}
+          <TabsContent value="groups" className="mt-4">
+            {tasksLoading ? (
+              <LoadingSkeleton />
+            ) : marketingTasks.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="Nenhuma recomendação de grupo"
+                description='Clique em "Atualizar Insights" para descobrir grupos que podem expandir seu catálogo.'
+              />
+            ) : (
+              <div className="space-y-4">
+                {marketingTasks.map((task: any) => (
+                  <GroupRecommendationCard key={task.id} task={task} />
                 ))}
               </div>
             )}
