@@ -133,31 +133,46 @@ export default function PublicBag() {
   const primaryColor = storeSettings?.primary_color || "#000000";
   const backgroundColor = storeSettings?.background_color || "#fafaf9";
 
-  // Dynamic title and favicon
+  // Dynamic title, favicon & apple-touch-icon
   useEffect(() => {
     if (!storeSettings) return;
     const originalTitle = document.title;
     document.title = storeSettings.page_title || storeSettings.store_name || "Venda PROFIT";
 
+    const faviconUrl = storeSettings.favicon_url;
     let oldFaviconHref: string | null = null;
-    if (storeSettings.favicon_url) {
-      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    let oldAppleIconHref: string | null = null;
+
+    if (faviconUrl) {
+      const bustUrl = faviconUrl + (faviconUrl.includes('?') ? '&' : '?') + 'v=' + Date.now();
+
+      let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
       if (link) {
         oldFaviconHref = link.href;
-        link.href = storeSettings.favicon_url;
+        link.href = bustUrl;
       } else {
         link = document.createElement("link");
         link.rel = "icon";
-        link.href = storeSettings.favicon_url;
+        link.href = bustUrl;
         document.head.appendChild(link);
+      }
+
+      const appleIcon = document.querySelector<HTMLLinkElement>("link[rel='apple-touch-icon']");
+      if (appleIcon) {
+        oldAppleIconHref = appleIcon.href;
+        appleIcon.href = bustUrl;
       }
     }
 
     return () => {
       document.title = originalTitle;
       if (oldFaviconHref) {
-        const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+        const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
         if (link) link.href = oldFaviconHref;
+      }
+      if (oldAppleIconHref) {
+        const appleIcon = document.querySelector<HTMLLinkElement>("link[rel='apple-touch-icon']");
+        if (appleIcon) appleIcon.href = oldAppleIconHref;
       }
     };
   }, [storeSettings]);
