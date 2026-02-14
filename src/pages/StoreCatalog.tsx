@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -492,6 +492,65 @@ export default function StoreCatalog() {
 
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
+
+  // --- Analytics Tracking ---
+  const viewBatchRef = useRef<{ product_id: string; store_id: string; owner_id: string; device_id: string }[]>([]);
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getDeviceId = useCallback(() => {
+    const key = `device_id_${slug}`;
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }, [slug]);
+
+  const flushViewBatch = useCallback(() => {
+    const batch = viewBatchRef.current;
+    if (batch.length === 0) return;
+    viewBatchRef.current = [];
+    supabase.from("catalog_product_views").insert(batch as any).then(() => {});
+  }, []);
+
+  const trackProductView = useCallback((productId: string) => {
+    if (!store) return;
+    viewBatchRef.current.push({
+      product_id: productId,
+      store_id: store.id,
+      owner_id: store.owner_id,
+      device_id: getDeviceId(),
+    });
+    if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+    viewTimerRef.current = setTimeout(flushViewBatch, 5000);
+  }, [store, getDeviceId, flushViewBatch]);
+
+  useEffect(() => {
+    return () => {
+      if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+      if (viewBatchRef.current.length > 0) {
+        const batch = [...viewBatchRef.current];
+        viewBatchRef.current = [];
+        supabase.from("catalog_product_views").insert(batch as any).then(() => {});
+      }
+    };
+  }, []);
+
+  const trackSearch = useCallback((term: string, resultsCount: number) => {
+    if (!store || term.trim().length < 3) return;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      supabase.from("catalog_search_logs").insert({
+        store_id: store.id,
+        owner_id: store.owner_id,
+        search_term: term.toLowerCase().trim(),
+        results_count: resultsCount,
+        device_id: getDeviceId(),
+      } as any).then(() => {});
+    }, 1000);
+  }, [store, getDeviceId]);
 
   // Fetch system categories (main_categories + subcategories)
   const { data: systemMainCategories = [] } = useQuery({
@@ -1703,7 +1762,10 @@ export default function StoreCatalog() {
             <Input
               placeholder="Buscar produtos..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                trackSearch(e.target.value, filteredItems.length);
+              }}
               className="pl-11 h-12 rounded-full border-gray-200 bg-gray-50 focus:bg-white transition-colors"
             />
           </div>
@@ -1862,6 +1924,7 @@ export default function StoreCatalog() {
                 onAddToCart={addToCart}
                 isStoreOwner={isStoreOwner}
                 incentivesConfig={incentivesConfig}
+                onTrackView={trackProductView}
               />
             ))}
           </div>
@@ -2044,9 +2107,10 @@ interface BoutiqueProductCardProps {
   onAddToCart: (item: CatalogDisplayItem, size: string, effectivePrice: number) => void;
   isStoreOwner: boolean;
   incentivesConfig: PurchaseIncentivesConfig;
+  onTrackView?: (productId: string) => void;
 }
 
-function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart, isStoreOwner, incentivesConfig }: BoutiqueProductCardProps) {
+function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToCart, isStoreOwner, incentivesConfig, onTrackView }: BoutiqueProductCardProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [isHovering, setIsHovering] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
@@ -2156,7 +2220,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
         {/* Image Container - 3:4 Portrait */}
         <div 
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
-          onClick={() => item.image_url && setImageOpen(true)}
+          onClick={() => { if (item.image_url) { setImageOpen(true); onTrackView?.(item.productId); } }}
         >
           {/* Partner indicator - Show if card has any sizes from partner */}
           {item.hasPartnerSizes && (

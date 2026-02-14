@@ -32,6 +32,63 @@ export type Database = {
         }
         Relationships: []
       }
+      catalog_product_views: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          id: string
+          owner_id: string
+          product_id: string
+          store_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          owner_id: string
+          product_id: string
+          store_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          owner_id?: string
+          product_id?: string
+          store_id?: string
+        }
+        Relationships: []
+      }
+      catalog_search_logs: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          id: string
+          owner_id: string
+          results_count: number
+          search_term: string
+          store_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          owner_id: string
+          results_count?: number
+          search_term: string
+          store_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          owner_id?: string
+          results_count?: number
+          search_term?: string
+          store_id?: string
+        }
+        Relationships: []
+      }
       colors: {
         Row: {
           created_at: string
@@ -1308,6 +1365,57 @@ export type Database = {
           is_active?: boolean
           name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      marketing_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          description: string
+          expires_at: string | null
+          id: string
+          is_completed: boolean
+          metric_secondary: number | null
+          metric_value: number | null
+          owner_id: string
+          product_id: string | null
+          product_name: string | null
+          store_slug: string | null
+          task_type: string
+          title: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          description: string
+          expires_at?: string | null
+          id?: string
+          is_completed?: boolean
+          metric_secondary?: number | null
+          metric_value?: number | null
+          owner_id: string
+          product_id?: string | null
+          product_name?: string | null
+          store_slug?: string | null
+          task_type: string
+          title: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string
+          expires_at?: string | null
+          id?: string
+          is_completed?: boolean
+          metric_secondary?: number | null
+          metric_value?: number | null
+          owner_id?: string
+          product_id?: string | null
+          product_name?: string | null
+          store_slug?: string | null
+          task_type?: string
+          title?: string
         }
         Relationships: []
       }
