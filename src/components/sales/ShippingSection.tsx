@@ -208,7 +208,7 @@ export function ShippingSection({ value, onChange, customerAddress, shippingConf
     try {
       const selectedOption = quoteOptions[selectedQuoteIndex];
       const body: any = {
-        shipping_cost: saleTotal || 0,
+        subtotal: saleTotal || 0,
         shipping_company: value.company,
         shipping_source: selectedOption?.source || "",
         shipping_service_id: selectedOption?.service_id || null,
