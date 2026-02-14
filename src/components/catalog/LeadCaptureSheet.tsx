@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { ShoppingBag } from "lucide-react";
 
 const leadSchema = z.object({
@@ -31,6 +31,12 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
   const [name, setName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const scrollInputIntoView = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 350);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +65,7 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
           placeholder="Como podemos te chamar?"
           value={name}
           onChange={e => setName(e.target.value)}
+          onFocus={scrollInputIntoView}
           maxLength={100}
           autoFocus
         />
@@ -71,6 +78,7 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
           placeholder="(00) 00000-0000"
           value={whatsapp}
           onChange={e => setWhatsapp(formatWhatsApp(e.target.value))}
+          onFocus={scrollInputIntoView}
           inputMode="tel"
           maxLength={16}
         />
@@ -95,7 +103,7 @@ export function LeadCaptureSheet({ open, onOpenChange, onSubmit, primaryColor }:
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[85dvh]">
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto flex-1 overscroll-contain">
             <DrawerHeader className="shrink-0">
               <DrawerTitle>Reservar suas peças 🛍️</DrawerTitle>
               <DrawerDescription className="sr-only">Preencha seus dados para reservar</DrawerDescription>
@@ -103,12 +111,12 @@ export function LeadCaptureSheet({ open, onOpenChange, onSubmit, primaryColor }:
             <div className="px-4 pb-4">
               <LeadForm onSubmit={onSubmit} primaryColor={primaryColor} />
             </div>
+            <div className="px-4 pb-6">
+              <Button variant="ghost" onClick={() => onOpenChange(false)} className="w-full text-sm text-muted-foreground">
+                Continuar sem reservar
+              </Button>
+            </div>
           </div>
-          <DrawerFooter className="shrink-0 pt-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} className="text-sm text-muted-foreground">
-              Continuar sem reservar
-            </Button>
-          </DrawerFooter>
         </DrawerContent>
       </Drawer>
     );
