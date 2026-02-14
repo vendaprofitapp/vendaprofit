@@ -6,13 +6,15 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2 } from "lucide-react";
+import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, subDays, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
 import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
 import { GroupRecommendationCard } from "@/components/marketing/GroupRecommendationCard";
+import { AnalyticsDashboard } from "@/components/marketing/AnalyticsDashboard";
+import { LeadsCRM } from "@/components/marketing/LeadsCRM";
 
 interface LeadWithCart {
   id: string;
@@ -37,6 +39,10 @@ export default function Marketing() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("pending");
+  const [analyticsDateRange, setAnalyticsDateRange] = useState({
+    start: startOfDay(subDays(new Date(), 6)),
+    end: new Date(),
+  });
 
   const { data: storeSettings } = useQuery({
     queryKey: ["my-store-settings", user?.id],
@@ -188,7 +194,7 @@ export default function Marketing() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-2xl grid-cols-5">
+          <TabsList className="grid w-full max-w-3xl grid-cols-6">
             <TabsTrigger value="pending" className="gap-1.5 text-xs">
               <ShoppingCart className="h-3.5 w-3.5" />
               Pendentes
@@ -204,6 +210,10 @@ export default function Marketing() {
             <TabsTrigger value="groups" className="gap-1.5 text-xs">
               <Users className="h-3.5 w-3.5" />
               Grupos
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-1.5 text-xs">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Analytics
             </TabsTrigger>
             <TabsTrigger value="contacted" className="gap-1.5 text-xs">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -279,6 +289,20 @@ export default function Marketing() {
                 {marketingTasks.map((task: any) => (
                   <GroupRecommendationCard key={task.id} task={task} />
                 ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="mt-4">
+            {user?.id && (
+              <div className="space-y-8">
+                <AnalyticsDashboard
+                  ownerId={user.id}
+                  dateRange={analyticsDateRange}
+                  onDateRangeChange={setAnalyticsDateRange}
+                />
+                <LeadsCRM ownerId={user.id} dateRange={analyticsDateRange} />
               </div>
             )}
           </TabsContent>
