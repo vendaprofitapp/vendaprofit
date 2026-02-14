@@ -1,0 +1,1 @@
+ALTER TABLE public.store_settings ADD COLUMN lead_capture_enabled boolean DEFAULT true;

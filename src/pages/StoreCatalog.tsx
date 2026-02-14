@@ -355,9 +355,10 @@ export default function StoreCatalog() {
   };
 
   const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
-    // Check if we need lead capture
+    // Check if lead capture is enabled and we need it
+    const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
     const storedLead = getStoredLead();
-    if (!storedLead) {
+    if (leadCaptureEnabled && !storedLead) {
       // Store pending add and show capture sheet
       setPendingCartAdd({ item, size, effectivePrice });
       setShowLeadCapture(true);
