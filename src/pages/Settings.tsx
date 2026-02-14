@@ -6,7 +6,7 @@ import { AISettingsSection } from "@/components/settings/AISettingsSection";
 import { CustomPaymentMethodsSection } from "@/components/settings/CustomPaymentMethodsSection";
 import { SecuritySection } from "@/components/settings/SecuritySection";
 import { ShippingSettingsSection } from "@/components/settings/ShippingSettingsSection";
-
+import { AdIntegrationsSection } from "@/components/settings/AdIntegrationsSection";
 export default function Settings() {
   const { user } = useAuth();
 
@@ -41,6 +41,7 @@ export default function Settings() {
         {user?.id && (
           <ShippingSettingsSection userId={user.id} profile={profile} onUpdate={refetchProfile} />
         )}
+        {user?.id && <AdIntegrationsSection userId={user.id} />}
         {user?.id && (
           <AISettingsSection userId={user.id} profile={profile} onUpdate={refetchProfile} />
         )}
