@@ -2260,6 +2260,7 @@ export type Database = {
           custom_domain: string | null
           custom_font_name: string | null
           custom_font_url: string | null
+          feed_token: string | null
           filter_buttons_config: Json | null
           font_body: string | null
           font_heading: string | null
@@ -2302,6 +2303,7 @@ export type Database = {
           custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
+          feed_token?: string | null
           filter_buttons_config?: Json | null
           font_body?: string | null
           font_heading?: string | null
@@ -2344,6 +2346,7 @@ export type Database = {
           custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
+          feed_token?: string | null
           filter_buttons_config?: Json | null
           font_body?: string | null
           font_heading?: string | null

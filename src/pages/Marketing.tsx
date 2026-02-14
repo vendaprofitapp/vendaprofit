@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3, UserPlus, Zap } from "lucide-react";
+import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3, UserPlus, Zap, Store } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow, subDays, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -21,6 +21,7 @@ import { LeadsCRM } from "@/components/marketing/LeadsCRM";
 import { AdBoostCard } from "@/components/marketing/AdBoostCard";
 import { ActiveCampaignsList } from "@/components/marketing/ActiveCampaignsList";
 import { AdStockPausedCard } from "@/components/marketing/AdStockPausedCard";
+import { ExternalShowcasesSection } from "@/components/marketing/ExternalShowcasesSection";
 
 interface LeadWithCart {
   id: string;
@@ -283,7 +284,7 @@ export default function Marketing() {
         </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-4xl grid-cols-7">
+          <TabsList className="grid w-full max-w-4xl grid-cols-8">
             <TabsTrigger value="pending" className="gap-1.5 text-xs">
               <ShoppingCart className="h-3.5 w-3.5" />
               Pendentes
@@ -307,6 +308,10 @@ export default function Marketing() {
             <TabsTrigger value="ads" className="gap-1.5 text-xs">
               <Zap className="h-3.5 w-3.5" />
               Anúncios
+            </TabsTrigger>
+            <TabsTrigger value="showcases" className="gap-1.5 text-xs">
+              <Store className="h-3.5 w-3.5" />
+              Vitrines
             </TabsTrigger>
             <TabsTrigger value="contacted" className="gap-1.5 text-xs">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -427,6 +432,11 @@ export default function Marketing() {
                 />
               )}
             </div>
+          </TabsContent>
+
+          {/* Showcases Tab */}
+          <TabsContent value="showcases" className="mt-4">
+            <ExternalShowcasesSection />
           </TabsContent>
 
           {/* Contacted Tab */}
