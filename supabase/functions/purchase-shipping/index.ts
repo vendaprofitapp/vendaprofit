@@ -292,9 +292,10 @@ async function purchaseShippingSuperFrete(
   }
   console.log("SuperFrete checkout response:", JSON.stringify(checkoutData));
 
-  // Extract label and tracking from checkout or tag data
-  const labelUrl = checkoutData.label_url || checkoutData.print_url || tagData.label_url || "";
-  const tracking = checkoutData.tracking || checkoutData.tracking_number || tagData.tracking || tagId || "";
+  // Extract label and tracking from checkout response
+  const firstOrder = checkoutData?.purchase?.orders?.[0] || {};
+  const labelUrl = firstOrder?.print?.url || checkoutData.label_url || checkoutData.print_url || tagData.label_url || "";
+  const tracking = firstOrder?.tracking || firstOrder?.self_tracking || checkoutData.tracking || tagData.tracking || tagId || "";
 
   return { labelUrl, tracking };
 }
