@@ -1,160 +1,106 @@
 
-
-# Diretor de Conteudo e Inteligencia de Pesquisa (Marketing v2)
+# Ecossistema de Grupos e Matchmaking de Estoque (Marketing v3)
 
 ## Resumo
 
-Expandir a pagina de Marketing com dois novos modulos: (1) Cards de Acao inteligentes baseados em visualizacoes, conversoes e estoque, e (2) Inteligencia de Pesquisa que rastreia buscas dos visitantes na loja e sugere otimizacoes de catalogo.
+Expandir o Motor de Marketing com recomendacoes inteligentes de Grupos. O sistema cruzara dados de pesquisas dos clientes, categorias de produtos do vendedor e catalogos dos grupos existentes para gerar Cards de Acao que incentivem a adesao a Grupos de Estoque Compartilhado.
 
 ---
 
-## Epico 3: Motor de Conteudo para Redes Sociais
+## Cenarios de Cards
 
-### Dados necessarios (novas tabelas)
+### Cenario A: Expansao de Categoria (Cross-Selling)
+- **Gatilho**: Pesquisas dos visitantes por categorias que o vendedor nao possui + grupos com produtos nessa categoria
+- **Card**: "Complete o Look das suas Clientes! Notamos buscas por [Categoria] na sua loja, mas seu estoque nisso e zero. O Grupo [Nome] tem [Qtd] produtos disponiveis."
+- **Acao**: Botao "Solicitar Entrada no Grupo" + badge com margem de lucro do grupo
 
-**`catalog_product_views`** - Registra cada visualizacao de produto na loja publica
+### Cenario B: Oportunidade de Marca
+- **Gatilho**: Grupos com alto volume de vendas globais em categorias populares que o vendedor nao trabalha
+- **Card**: "Aumente seu Ticket Medio! Vendedoras estao lucrando com esta categoria. O Grupo [Nome] e distribuidor."
+- **Acao**: Botao "Ver Produtos do Grupo" que abre um preview do catalogo
 
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | uuid PK | |
-| store_id | uuid | Loja onde ocorreu |
-| owner_id | uuid | Dono da loja (RLS) |
-| product_id | uuid | Produto visualizado |
-| device_id | text | Fingerprint do visitante (localStorage) |
-| created_at | timestamptz | Momento da visualizacao |
-
-**`marketing_tasks`** - Cards de acao gerados pelo sistema
-
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | uuid PK | |
-| owner_id | uuid | Dono da loja (RLS) |
-| product_id | uuid | Produto relacionado |
-| task_type | text | 'high_objection' / 'hidden_gold' / 'capital_freeze' / 'search_demand' |
-| title | text | Titulo do card |
-| description | text | Texto instrucional |
-| product_name | text | Nome do produto (snapshot) |
-| metric_value | integer | Numero principal (views, pesquisas, unidades) |
-| metric_secondary | numeric | Metrica secundaria (taxa conversao, valor stock) |
-| is_completed | boolean DEFAULT false | Se o vendedor marcou como concluido |
-| completed_at | timestamptz | Quando foi concluido |
-| expires_at | timestamptz | Para nao mostrar tasks velhos |
-| store_slug | text | Para gerar o link UTM |
-| created_at | timestamptz | |
-
-RLS: `owner_id = auth.uid()` para todas as operacoes.
-
-### Rastreamento de visualizacoes (frontend)
-
-- No `StoreCatalog.tsx`, quando o visitante clica na imagem do produto (abre o lightbox), registrar uma visualizacao na tabela `catalog_product_views`
-- Usar debounce: acumular views em memoria e enviar em batch a cada 5 segundos via `setTimeout`, para nao impactar performance
-- Identificar visitante por `device_id` gerado no localStorage (reutilizar o mesmo do lead capture)
-
-### Rastreamento de adicoes ao carrinho (ja existe)
-
-- A tabela `lead_cart_items` ja registra quando um produto e adicionado ao carrinho
-- Podemos usar essa tabela para calcular a taxa de conversao view -> cart
-
-### Geracao dos Cards de Acao
-
-Sera implementada como uma **Edge Function** chamada `generate-marketing-tasks` que o vendedor pode invocar manualmente (botao "Atualizar Insights") na pagina de Marketing. A funcao:
-
-1. Busca as metricas do vendedor dos ultimos 30 dias (views, cart adds, sales, stock)
-2. Aplica as 3 regras de negocio:
-   - **Alta Objecao**: produto com >= 10 views e 0 cart adds
-   - **Ouro Escondido**: produto com < 5 views mas >= 2 cart adds ou vendas
-   - **Giro de Capital**: produto com >= 5 unidades em stock e 0 views nos ultimos 15 dias
-3. Gera/atualiza registros na tabela `marketing_tasks`
-4. Retorna os tasks gerados
-
-### UI dos Cards de Conteudo
-
-Na pagina de Marketing, adicionar uma nova aba "Conteudo" com os cards gamificados:
-
-- Cada card mostra icone tematico, titulo, descricao com instrucao, metricas
-- Botao "Copiar Link do Produto" que copia a URL da loja com `?utm_source=instagram_task`
-- Checkbox "Tarefa Concluida" que marca o card como completo e o remove do feed
-- Cards concluidos ficam numa sub-aba "Concluidos"
-
----
-
-## Epico 4: Inteligencia de Pesquisa Interna (SEO)
-
-### Nova tabela
-
-**`catalog_search_logs`** - Registra cada pesquisa na loja
-
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | uuid PK | |
-| store_id | uuid | Loja |
-| owner_id | uuid | Dono da loja (RLS) |
-| search_term | text | Termo pesquisado (lowercase, trimmed) |
-| results_count | integer | Quantos resultados retornaram |
-| device_id | text | Identificador do visitante |
-| created_at | timestamptz | |
-
-RLS: `owner_id = auth.uid()` para SELECT/UPDATE/DELETE. INSERT publico (visitantes nao logados).
-
-### Rastreamento de pesquisas (frontend)
-
-- No `StoreCatalog.tsx`, usar debounce de 1 segundo apos o visitante digitar na barra de busca
-- Salvar o termo e a contagem de resultados na tabela `catalog_search_logs`
-- Nao registrar termos com menos de 3 caracteres
-
-### Geracao de Cards de SEO
-
-A mesma Edge Function `generate-marketing-tasks` tambem processa pesquisas:
-
-- **Demanda Reprimida**: Agrupa termos com >= 3 pesquisas e 0 resultados
-- Gera card com o termo e sugere edicao de nomes de produtos
-- Inclui botao de "Edicao Rapida": abre um dialogo inline que permite ao vendedor selecionar um produto existente e adicionar o termo ao nome ou descricao, sem navegar para outra pagina
+### Cenario C: Criacao de Grupo (Muito Estoque)
+- **Gatilho**: Vendedor com alto valor em estoque parado e baixo giro de vendas
+- **Card**: "Torne-se um Fornecedor! Voce tem estoque poderoso mas giro lento. Crie um Grupo de Estoque Compartilhado."
+- **Acao**: Botao "Criar Meu Grupo" que redireciona para `/partnerships` na aba de Grupos
 
 ---
 
 ## Detalhes Tecnicos
 
-### Alteracoes em arquivos existentes
+### Edge Function: Expandir `generate-marketing-tasks`
 
-1. **`src/pages/StoreCatalog.tsx`**:
-   - Adicionar funcao `trackProductView()` ao abrir o lightbox de imagem - debounced, batch insert
-   - Adicionar funcao `trackSearch()` na barra de pesquisa - debounce 1s, salvar termo + results_count
-   - Gerar `device_id` unico no localStorage para visitantes anonimos
+A funcao existente sera expandida com 3 novos cenarios de `task_type`:
 
-2. **`src/pages/Marketing.tsx`**:
-   - Expandir Tabs para 4 abas: "Pendentes" (carrinhos), "Conteudo" (tasks de marketing), "SEO" (pesquisas), "Contatados"
-   - Nova secao de cards de conteudo com UI gamificada
-   - Botao "Atualizar Insights" que chama a Edge Function
-   - Componente `ContentTaskCard` com copiar link, marcar concluido
-   - Componente `SearchDemandCard` com edicao rapida de produto
-   - Dialogo `QuickProductRenameDialog` para editar nome/descricao inline
+- **`group_cross_sell`**: Cruza `catalog_search_logs` (termos com 0 resultados) com `product_partnerships` + `products` de outros owners para encontrar grupos que possuem produtos na categoria buscada
+- **`group_opportunity`**: Consulta `sale_items` globais via service role para identificar grupos com alto volume de vendas onde o vendedor nao e membro
+- **`group_create`**: Verifica se o vendedor tem mais de R$ 5.000 em estoque (stock_quantity * price) e menos de 10 vendas nos ultimos 30 dias, e nao possui nenhum grupo criado
 
-3. **`src/App.tsx`**: Sem alteracoes (rota ja existe)
+Novos campos no `marketing_tasks` (ja existentes e reutilizaveis):
+- `product_name`: usado para nome do grupo ou categoria
+- `metric_value`: quantidade de produtos no grupo ou valor do estoque
+- `metric_secondary`: margem de lucro (profit_share_seller * 100) ou valor em estoque
 
-4. **`src/components/layout/Sidebar.tsx`**: Sem alteracoes (item ja existe)
+Novo campo necessario na tabela `marketing_tasks`:
+- `group_id` (uuid, nullable): referencia ao grupo recomendado (para os cenarios A e B)
 
-### Nova Edge Function
+### Migracao de Banco de Dados
 
-**`supabase/functions/generate-marketing-tasks/index.ts`**:
-- Recebe `owner_id` via auth token
-- Consulta `catalog_product_views`, `lead_cart_items`, `products`, `catalog_search_logs`
-- Aplica as regras de negocio (3 cenarios de conteudo + 1 de SEO)
-- Upsert na tabela `marketing_tasks`
-- Retorna os tasks gerados
+Uma migracao simples:
+1. Adicionar coluna `group_id` (uuid, nullable) na tabela `marketing_tasks`
+2. Sem foreign key rígida (para evitar problemas se o grupo for deletado)
 
-### Migracao de banco de dados
+### Novos Componentes React
 
-Uma unica migracao que cria:
-1. `catalog_product_views` com RLS (INSERT publico, SELECT por owner)
-2. `catalog_search_logs` com RLS (INSERT publico, SELECT por owner)
-3. `marketing_tasks` com RLS completo por owner
-4. Indices em `product_id`, `owner_id`, `store_id` para performance
+1. **`src/components/marketing/GroupRecommendationCard.tsx`**
+   - Card com icone de grupo, titulo, descricao, metricas
+   - Badge de margem de lucro (ex: "Voce fica com 70% do lucro")
+   - Botao "Solicitar Entrada" (abre dialog de confirmacao + chama join via invite_code)
+   - Botao "Ver Produtos" (abre dialog com preview do catalogo do grupo)
 
-### Sequencia de implementacao
+2. **`src/components/marketing/GroupProductPreviewDialog.tsx`**
+   - Dialog/Drawer que mostra os produtos compartilhados de um grupo
+   - Lista simples com nome, preco, imagem (thumbnail)
+   - Componente visual de "Divisao de Lucros" com barras/badges mostrando `profit_share_seller` vs `profit_share_partner`
 
-1. Criar migracao com as 3 tabelas + RLS + indices
-2. Atualizar `StoreCatalog.tsx` com tracking de views e pesquisas (debounced)
-3. Criar Edge Function `generate-marketing-tasks`
-4. Expandir `Marketing.tsx` com abas de Conteudo e SEO
-5. Criar componentes auxiliares (ContentTaskCard, SearchDemandCard, QuickProductRenameDialog)
+3. **`src/components/marketing/ProfitSplitDisplay.tsx`**
+   - Componente reutilizavel que exibe a divisao de lucros de um grupo
+   - Usa Progress bars ou badges coloridos
+   - Texto: "Neste grupo, por cada venda na sua loja, voce fica com X% do lucro limpo sem investir em estoque fisico."
 
+### Alteracoes em Arquivos Existentes
+
+1. **`src/pages/Marketing.tsx`**:
+   - Adicionar nova aba "Grupos" (5a aba) com icone Users
+   - Buscar marketing_tasks com task_type IN ('group_cross_sell', 'group_opportunity', 'group_create')
+   - Renderizar `GroupRecommendationCard` para cada task
+   - Botao "Atualizar Insights" tambem aparece nesta aba
+
+2. **`supabase/functions/generate-marketing-tasks/index.ts`**:
+   - Adicionar busca de grupos publicos (is_direct = false) e seus produtos via product_partnerships
+   - Adicionar busca de memberships do usuario para excluir grupos onde ja e membro
+   - Implementar os 3 novos cenarios de matchmaking
+   - Incluir `group_id` nos tasks gerados para cenarios A e B
+
+### Fluxo de "Solicitar Entrada no Grupo"
+
+Quando o vendedor clica "Solicitar Entrada":
+1. O sistema busca o `invite_code` do grupo (ja existe na tabela `groups`)
+2. Insere o usuario como membro do grupo via `group_members` (role: 'member')
+3. Marca o task como concluido
+4. Invalida queries de grupos e memberships
+5. Toast de sucesso com link para a pagina de Parcerias
+
+### Fluxo de "Criar Meu Grupo"
+
+Quando o vendedor clica "Criar Meu Grupo":
+1. Redireciona para `/partnerships` com query param `?tab=groups&action=create`
+2. A pagina de Parcerias detecta o param e abre automaticamente o dialog de criacao de grupo
+
+### Sequencia de Implementacao
+
+1. Criar migracao (adicionar coluna `group_id` em `marketing_tasks`)
+2. Expandir Edge Function `generate-marketing-tasks` com os 3 novos cenarios
+3. Criar componentes `ProfitSplitDisplay`, `GroupProductPreviewDialog`, `GroupRecommendationCard`
+4. Atualizar `Marketing.tsx` com nova aba "Grupos"
+5. Ajustar `Partnerships.tsx` para aceitar query params de auto-abertura do dialog de criacao
