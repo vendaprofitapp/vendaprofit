@@ -94,7 +94,7 @@ async function purchaseShippingMelhorEnvio(
       },
     ],
     options: {
-      insurance_value: Math.max(req.shipping_cost || 1, 1),
+      insurance_value: Math.max(req.shipping_cost || 26, 26),
       receipt: false,
       own_hand: false,
       non_commercial: true,
@@ -237,7 +237,7 @@ async function purchaseShippingSuperFrete(
       },
     ],
     options: {
-      insurance_value: Math.max(req.shipping_cost || 1, 1),
+      insurance_value: Math.max(req.shipping_cost || 26, 26),
       receipt: false,
       own_hand: false,
       non_commercial: true,
