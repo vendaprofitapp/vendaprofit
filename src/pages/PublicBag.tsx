@@ -23,6 +23,8 @@ interface StoreSettings {
   primary_color: string | null;
   background_color: string | null;
   whatsapp_number: string | null;
+  favicon_url: string | null;
+  page_title: string | null;
 }
 
 interface ConsignmentItem {
@@ -118,7 +120,7 @@ export default function PublicBag() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("store_settings")
-        .select("store_name, logo_url, primary_color, background_color, whatsapp_number")
+        .select("store_name, logo_url, primary_color, background_color, whatsapp_number, favicon_url, page_title")
         .eq("owner_id", consignment!.seller_id)
         .single();
 
@@ -131,10 +133,34 @@ export default function PublicBag() {
   const primaryColor = storeSettings?.primary_color || "#000000";
   const backgroundColor = storeSettings?.background_color || "#fafaf9";
 
-  // Load Google Fonts dynamically
+  // Dynamic title and favicon
   useEffect(() => {
-    // Use default fonts for public page
-  }, []);
+    if (!storeSettings) return;
+    const originalTitle = document.title;
+    document.title = storeSettings.page_title || storeSettings.store_name || "Venda PROFIT";
+
+    let oldFaviconHref: string | null = null;
+    if (storeSettings.favicon_url) {
+      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+      if (link) {
+        oldFaviconHref = link.href;
+        link.href = storeSettings.favicon_url;
+      } else {
+        link = document.createElement("link");
+        link.rel = "icon";
+        link.href = storeSettings.favicon_url;
+        document.head.appendChild(link);
+      }
+    }
+
+    return () => {
+      document.title = originalTitle;
+      if (oldFaviconHref) {
+        const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+        if (link) link.href = oldFaviconHref;
+      }
+    };
+  }, [storeSettings]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price);

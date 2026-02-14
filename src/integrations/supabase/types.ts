@@ -2260,6 +2260,7 @@ export type Database = {
           custom_domain: string | null
           custom_font_name: string | null
           custom_font_url: string | null
+          favicon_url: string | null
           feed_token: string | null
           filter_buttons_config: Json | null
           font_body: string | null
@@ -2274,6 +2275,7 @@ export type Database = {
           opportunities_button_color: string | null
           opportunities_button_text: string | null
           owner_id: string
+          page_title: string | null
           primary_color: string | null
           purchase_incentives_config: Json | null
           secret_area_active: boolean | null
@@ -2303,6 +2305,7 @@ export type Database = {
           custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
+          favicon_url?: string | null
           feed_token?: string | null
           filter_buttons_config?: Json | null
           font_body?: string | null
@@ -2317,6 +2320,7 @@ export type Database = {
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
           owner_id: string
+          page_title?: string | null
           primary_color?: string | null
           purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
@@ -2346,6 +2350,7 @@ export type Database = {
           custom_domain?: string | null
           custom_font_name?: string | null
           custom_font_url?: string | null
+          favicon_url?: string | null
           feed_token?: string | null
           filter_buttons_config?: Json | null
           font_body?: string | null
@@ -2360,6 +2365,7 @@ export type Database = {
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
           owner_id?: string
+          page_title?: string | null
           primary_color?: string | null
           purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
