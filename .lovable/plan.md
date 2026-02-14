@@ -1,135 +1,82 @@
 
-# Epico 13-14: Feeds de Produtos + Painel de Vitrines Externas
+# Filtros Avancados no Dialog de Produtos Liberados
 
 ## Resumo
 
-Criar Edge Functions publicas que geram feeds XML (Google Shopping) e CSV (Meta Commerce) em tempo real a partir dos produtos do usuario, com regra "Always Profit" (estoque zero = fora do feed). Adicionar um painel simples na aba Marketing para copiar o link do feed e ver instrucoes de configuracao.
+Adicionar ao `ProductPartnershipDialog` o mesmo conjunto de filtros disponivel no Controle de Estoque (categoria principal, subcategoria, fornecedor, cor, tamanho, status de estoque, status de marketing, lancamentos, faixa de preco e faixa de estoque), com busca por texto. Os filtros funcionarao tanto nas parcerias 1-1 quanto nos grupos. Adicionalmente, um filtro exclusivo "Status de Liberacao" (Liberados / Nao Liberados / Todos) para facilitar a gestao.
 
 ---
 
-## Epico 13: Edge Functions de Feed
+## Alteracoes
 
-### Migracao de Banco de Dados
+### 1. Expandir a query de produtos (ambos os locais)
 
-Adicionar coluna `feed_token` (text, DEFAULT `substring(md5(random()::text), 1, 24)`) na tabela `store_settings` para autenticar o acesso publico ao feed sem expor dados do usuario.
+**Arquivos**: `src/pages/Partnerships.tsx` e `src/components/partnerships/DirectPartnerships.tsx`
 
-### Edge Function: `product-feed`
-
-Rota unica `supabase/functions/product-feed/index.ts` que aceita query params:
-- `store_id` (uuid da store_settings)
-- `token` (feed_token para autenticacao)
-- `format` (opcional: `google` ou `meta`, default `google`)
-
-Logica:
-1. Valida `store_id` + `token` contra `store_settings`
-2. Busca `store_settings` para obter `store_slug`, `store_name`
-3. Busca todos os `products` onde `owner_id = store_settings.owner_id` AND `is_active = true` AND `stock_quantity > 0` (regra Always Profit)
-4. Para cada produto, tambem busca `product_variants` para calcular disponibilidade real (soma de variantes com stock > 0)
-5. Gera XML ou CSV conforme o formato solicitado
-6. Paginacao interna: busca em blocos de 500 produtos para nao sobrecarregar
-
-**Formato Google Shopping (XML)**:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
-  <channel>
-    <title>{store_name}</title>
-    <link>{origin}/{store_slug}</link>
-    <item>
-      <g:id>{product.id}</g:id>
-      <g:title>{product.name}</g:title>
-      <g:description>{product.description || product.name}</g:description>
-      <g:link>{origin}/{store_slug}?product={product.id}</g:link>
-      <g:image_link>{product.image_url}</g:image_link>
-      <g:price>{product.price} BRL</g:price>
-      <g:availability>in_stock</g:availability>
-      <g:condition>new</g:condition>
-      <g:brand>{store_name}</g:brand>
-    </item>
-  </channel>
-</rss>
+Alterar o SELECT de:
+```
+id, name, price, category, stock_quantity
+```
+Para:
+```
+id, name, price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)
 ```
 
-**Formato Meta (CSV)**:
-Headers: `id,title,description,availability,condition,price,link,image_link,brand`
-Mesmos dados em formato tabulado.
+Atualizar a interface `Product` em ambos os ficheiros para incluir os novos campos.
 
-**Headers de resposta**: `Content-Type: application/xml` (ou `text/csv`), sem CORS restritivo pois e um feed publico consumido por crawlers.
+Tambem buscar `suppliers` e `main_categories`/`subcategories` para popular os selects de filtro.
 
-**Cache**: Header `Cache-Control: public, max-age=3600` para que plataformas nao sobrecarreguem a funcao.
+### 2. Reformular o `ProductPartnershipDialog`
 
-### Entrada no `supabase/config.toml`
+**Arquivo**: `src/components/partnerships/ProductPartnershipDialog.tsx`
 
-```toml
-[functions.product-feed]
-verify_jwt = false
-```
+- Atualizar a interface `Product` com todos os novos campos
+- Adicionar props para `suppliers`, `mainCategories`, `subcategories` (listas de referencia)
+- Substituir o filtro unico de categoria por um sistema completo:
 
----
+**Filtros implementados** (no padrao do estoque):
 
-## Epico 14: Painel de Vitrines Externas
+| Filtro | Tipo | Logica |
+|--------|------|--------|
+| Busca por texto | Input | Filtra por nome, modelo ou cor |
+| Categoria Principal | Select | Filtra por `main_category` |
+| Subcategoria | Select | Filtra por `subcategory` (visivel quando categoria principal selecionada) |
+| Fornecedor | Select | Filtra por `supplier_id` |
+| Cor | Select | Valores unicos de `color_label` |
+| Tamanho | Select | Valores unicos dos `product_variants.size` |
+| Status de Estoque | Select | Disponivel (>0), Baixo (<=min_stock_level), Esgotado (=0) |
+| Status de Marketing | Select | Oportunidade, Pre-venda, Lancamento, Area Secreta |
+| Lancamentos | Select | Sim/Nao (baseado em `is_new_release`) |
+| Faixa de Preco | 2x Input | Min e Max em R$ |
+| Faixa de Estoque | 2x Input | Min e Max |
+| **Status de Liberacao** | Select | Todos / Liberados / Nao Liberados |
 
-### Novo componente: `src/components/marketing/ExternalShowcasesSection.tsx`
+**Layout da UI**:
+- Barra superior: Input de busca por texto + botao "Filtros" que abre um Dialog/Popover com todos os filtros avancados (mesmo padrao do estoque)
+- Badges de filtros ativos removiveis abaixo da barra
+- Botao "Limpar Filtros" quando ha filtros ativos
+- Manter os botoes de acao "Liberar Todos" / "Liberar Categoria" adaptados ao contexto filtrado
 
-Dois cards lado a lado (ou empilhados no mobile):
+### 3. Adaptar a passagem de props
 
-**Card Google Shopping**:
-- Icone Google + titulo "Google Shopping"
-- Subtitulo: "Apareca de graca nas buscas de produtos do Google"
-- Campo com o link do feed XML (read-only) + botao "Copiar Link"
-- Botao "Como configurar" que abre Dialog com 3 passos:
-  1. Acesse merchant.google.com e crie uma conta
-  2. Va em Produtos > Feeds > Adicionar feed
-  3. Selecione "Feed agendado (URL)" e cole o link copiado
+**Arquivos**: `src/pages/Partnerships.tsx` e `src/components/partnerships/DirectPartnerships.tsx`
 
-**Card Meta/Instagram Shop**:
-- Icone Instagram + titulo "Instagram & Facebook Shop"
-- Subtitulo: "Habilite a sacolinha no seu perfil do Instagram"
-- Campo com o link do feed CSV (read-only) + botao "Copiar Link"
-- Botao "Como configurar" que abre Dialog com 3 passos:
-  1. Acesse business.facebook.com > Gerenciador de Comercio
-  2. Adicione um Catalogo > Feed de dados
-  3. Cole o link copiado e agende atualizacoes diarias
-
-Ambos os links sao gerados automaticamente: `{SUPABASE_URL}/functions/v1/product-feed?store_id={storeSettings.id}&token={storeSettings.feed_token}&format=google|meta`
-
-Se o `feed_token` nao existir, o componente gera um ao montar (mutation que faz UPDATE no store_settings com um token aleatorio).
-
-### Integracao na pagina Marketing
-
-Nova aba **"Vitrines"** (8a aba) com icone `Store` entre "Anuncios" e "Contatados":
-- Renderiza `ExternalShowcasesSection`
-- Inclui badge "Novo" para chamar atencao
+Passar as novas props (`suppliers`, `mainCategories`, `subcategories`) ao `ProductPartnershipDialog`. Reutilizar as queries de `main_categories` e `subcategories` que ja existem no sistema, adicionando-as nestes componentes.
 
 ---
 
 ## Detalhes Tecnicos
 
-### Arquivos criados
-
-1. `supabase/functions/product-feed/index.ts` -- Edge Function principal
-2. `src/components/marketing/ExternalShowcasesSection.tsx` -- UI dos cards
-
-### Arquivos alterados
-
-1. `supabase/config.toml` -- adicionar entrada product-feed
-2. `src/pages/Marketing.tsx` -- adicionar aba "Vitrines" com o componente
-3. Nova migracao SQL para adicionar `feed_token` ao `store_settings`
-
-### URLs dos Feeds (resumo)
-
-| Feed | URL |
-|------|-----|
-| Google Shopping (XML) | `{SUPABASE_URL}/functions/v1/product-feed?store_id={id}&token={token}&format=google` |
-| Meta Commerce (CSV) | `{SUPABASE_URL}/functions/v1/product-feed?store_id={id}&token={token}&format=meta` |
-
-### Regra Always Profit
-
-Produtos com `stock_quantity = 0` sao automaticamente excluidos do feed. Se o produto tem variantes, o sistema verifica se a soma total das variantes e > 0. O feed reflete o estado em tempo real do banco.
-
 ### Sequencia de implementacao
 
-1. Migracao: adicionar `feed_token` a `store_settings`
-2. Criar Edge Function `product-feed` com geracao XML e CSV
-3. Criar componente `ExternalShowcasesSection`
-4. Atualizar `Marketing.tsx` com nova aba "Vitrines"
+1. Atualizar interfaces `Product` e queries em `Partnerships.tsx` e `DirectPartnerships.tsx` (expandir SELECT + buscar suppliers/categories)
+2. Reformular `ProductPartnershipDialog.tsx` com o sistema de filtros completo
+3. Passar as novas props nos 2 pontos de uso do dialog
+
+### Notas
+
+- Nenhuma migracao de banco necessaria -- todos os campos ja existem
+- Os filtros sao aplicados em cascata no `useMemo` do `filteredProducts`
+- O filtro de tamanho verifica se o produto possui pelo menos uma variante com aquele tamanho
+- O filtro de status de marketing verifica tanto `products.marketing_status` quanto `product_variants.marketing_status`
+- O botao "Liberar Todos" aplica-se apenas aos produtos visiveis apos todos os filtros
