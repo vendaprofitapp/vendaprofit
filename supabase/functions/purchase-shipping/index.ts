@@ -16,6 +16,7 @@ interface PurchaseShippingRequest {
   shipping_source?: string;
   shipping_service_id?: number;
   shipping_cost: number;
+  subtotal?: number;
   destination_zip: string;
   origin_zip: string;
   weight_grams: number;
@@ -82,7 +83,7 @@ async function purchaseShippingMelhorEnvio(
       {
         name: "Produto",
         quantity: 1,
-        unitary_value: Math.max(req.shipping_cost || 1, 1),
+        unitary_value: Math.max(req.subtotal || 26, 26),
       },
     ],
     volumes: [
@@ -94,7 +95,7 @@ async function purchaseShippingMelhorEnvio(
       },
     ],
     options: {
-      insurance_value: Math.max(req.shipping_cost || 26, 26),
+      insurance_value: Math.max(req.subtotal || 26, 26),
       receipt: false,
       own_hand: false,
       non_commercial: true,
@@ -225,7 +226,7 @@ async function purchaseShippingSuperFrete(
       {
         name: "Produto",
         quantity: 1,
-        unitary_value: Math.max(req.shipping_cost || 1, 1),
+        unitary_value: Math.max(req.subtotal || 26, 26),
       },
     ],
     volumes: [
@@ -237,7 +238,7 @@ async function purchaseShippingSuperFrete(
       },
     ],
     options: {
-      insurance_value: Math.max(req.shipping_cost || 26, 26),
+      insurance_value: Math.max(req.subtotal || 26, 26),
       receipt: false,
       own_hand: false,
       non_commercial: true,
