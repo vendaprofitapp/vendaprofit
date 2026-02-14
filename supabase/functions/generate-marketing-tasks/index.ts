@@ -299,7 +299,6 @@ Deno.serve(async (req) => {
     const totalSales = Array.from(saleCounts.values()).reduce((sum, c) => sum + c, 0);
 
     if (totalStockValue >= 5000 && totalSales < 10) {
-      // Check if user already owns a group
       const { data: ownedGroups } = await supabase
         .from("groups")
         .select("id")
@@ -318,6 +317,59 @@ Deno.serve(async (req) => {
           product_name: null,
           metric_value: products.length,
           metric_secondary: totalStockValue,
+          store_slug: storeSlug,
+          expires_at: expiresAt,
+          is_completed: false,
+        });
+      }
+    }
+
+    // --- AD SCENARIOS (Épico 11) ---
+    // Check if user has any ad integrations
+    const { data: adIntegrations } = await supabase
+      .from("user_ad_integrations")
+      .select("platform, is_active")
+      .eq("owner_id", ownerId);
+
+    const hasActiveIntegration = (adIntegrations || []).some((i: any) => i.is_active);
+
+    for (const product of products) {
+      const views = viewCounts.get(product.id) || 0;
+      const carts = cartCounts.get(product.id) || 0;
+      const sales = saleCounts.get(product.id) || 0;
+      const recent = recentViews.get(product.id) || 0;
+
+      // ad_boost_meta: High stock (>10) AND high organic conversion (>5%)
+      if (product.stock_quantity > 10 && views > 0) {
+        const convRate = ((carts + sales) / views) * 100;
+        if (convRate >= 5) {
+          tasks.push({
+            owner_id: ownerId,
+            product_id: product.id,
+            task_type: "ad_boost_meta",
+            title: "Multiplique suas Vendas!",
+            description: `Tem ${product.stock_quantity} unidades de ${product.name} com ${Math.round(convRate)}% de conversão orgânica. Vamos mostrar a mais pessoas na sua região?`,
+            product_name: product.name,
+            metric_value: product.stock_quantity,
+            metric_secondary: Math.round(convRate * 100) / 100,
+            store_slug: storeSlug,
+            expires_at: expiresAt,
+            is_completed: false,
+          });
+        }
+      }
+
+      // ad_google_pmax: Stock parado (>15 dias sem venda, >5 unidades)
+      if (product.stock_quantity > 5 && recent === 0 && sales === 0) {
+        tasks.push({
+          owner_id: ownerId,
+          product_id: product.id,
+          task_type: "ad_google_pmax",
+          title: "Ativar Máquina de Vendas no Google",
+          description: `O ${product.name} está parado há mais de 15 dias com ${product.stock_quantity} unidades. O sistema pré-configurou um anúncio Performance Max para escoar este stock.`,
+          product_name: product.name,
+          metric_value: product.stock_quantity,
+          metric_secondary: product.stock_quantity * (product.price || 0),
           store_slug: storeSlug,
           expires_at: expiresAt,
           is_completed: false,

@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_campaigns: {
+        Row: {
+          campaign_name: string | null
+          campaign_type: string | null
+          created_at: string
+          daily_budget: number
+          error_message: string | null
+          id: string
+          integration_id: string
+          owner_id: string
+          platform: string
+          platform_campaign_id: string | null
+          product_id: string | null
+          status: string
+          target_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          campaign_name?: string | null
+          campaign_type?: string | null
+          created_at?: string
+          daily_budget: number
+          error_message?: string | null
+          id?: string
+          integration_id: string
+          owner_id: string
+          platform: string
+          platform_campaign_id?: string | null
+          product_id?: string | null
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campaign_name?: string | null
+          campaign_type?: string | null
+          created_at?: string
+          daily_budget?: number
+          error_message?: string | null
+          id?: string
+          integration_id?: string
+          owner_id?: string
+          platform?: string
+          platform_campaign_id?: string | null
+          product_id?: string | null
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_campaigns_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "user_ad_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaigns_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_fitting_room_usage: {
         Row: {
           created_at: string
@@ -2394,6 +2460,48 @@ export type Database = {
           purchase_rules?: string | null
           updated_at?: string
           website?: string | null
+        }
+        Relationships: []
+      }
+      user_ad_integrations: {
+        Row: {
+          access_token: string | null
+          account_id: string | null
+          account_name: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          owner_id: string
+          platform: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string | null
+          account_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          owner_id: string
+          platform: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string | null
+          account_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          owner_id?: string
+          platform?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3, UserPlus } from "lucide-react";
+import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3, UserPlus, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow, subDays, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -18,6 +18,9 @@ import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
 import { GroupRecommendationCard } from "@/components/marketing/GroupRecommendationCard";
 import { AnalyticsDashboard } from "@/components/marketing/AnalyticsDashboard";
 import { LeadsCRM } from "@/components/marketing/LeadsCRM";
+import { AdBoostCard } from "@/components/marketing/AdBoostCard";
+import { ActiveCampaignsList } from "@/components/marketing/ActiveCampaignsList";
+import { AdStockPausedCard } from "@/components/marketing/AdStockPausedCard";
 
 interface LeadWithCart {
   id: string;
@@ -140,6 +143,52 @@ export default function Marketing() {
     enabled: !!user?.id && (activeTab === "content" || activeTab === "seo" || activeTab === "groups"),
   });
 
+  // Fetch ad-related tasks
+  const { data: adTasks = [] } = useQuery({
+    queryKey: ["ad-tasks", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("marketing_tasks")
+        .select("*")
+        .eq("owner_id", user!.id)
+        .in("task_type", ["ad_boost_meta", "ad_google_pmax", "ad_stock_paused"])
+        .eq("is_completed", false)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id && activeTab === "ads",
+  });
+
+  // Fetch ad campaigns
+  const { data: adCampaigns = [] } = useQuery({
+    queryKey: ["ad-campaigns", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ad_campaigns")
+        .select("*")
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id && activeTab === "ads",
+  });
+
+  // Fetch integrations
+  const { data: adIntegrations = [] } = useQuery({
+    queryKey: ["ad-integrations", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_ad_integrations")
+        .select("platform, is_active")
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id && activeTab === "ads",
+  });
+
   // Generate insights mutation
   const generateInsights = useMutation({
     mutationFn: async () => {
@@ -154,6 +203,7 @@ export default function Marketing() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["marketing-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["ad-tasks"] });
       toast.success(`${data.tasks_generated} insights gerados!`);
     },
     onError: (err: any) => toast.error(err.message || "Erro ao gerar insights"),
@@ -185,6 +235,9 @@ export default function Marketing() {
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price);
 
+  const boostTasks = adTasks.filter((t: any) => t.task_type === "ad_boost_meta" || t.task_type === "ad_google_pmax");
+  const stockPausedTasks = adTasks.filter((t: any) => t.task_type === "ad_stock_paused");
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -198,7 +251,7 @@ export default function Marketing() {
               <p className="text-sm text-muted-foreground">Recupere vendas e otimize seu catálogo</p>
             </div>
           </div>
-          {(activeTab === "content" || activeTab === "seo" || activeTab === "groups") && (
+          {(activeTab === "content" || activeTab === "seo" || activeTab === "groups" || activeTab === "ads") && (
             <Button
               variant="outline"
               size="sm"
@@ -230,7 +283,7 @@ export default function Marketing() {
         </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-3xl grid-cols-6">
+          <TabsList className="grid w-full max-w-4xl grid-cols-7">
             <TabsTrigger value="pending" className="gap-1.5 text-xs">
               <ShoppingCart className="h-3.5 w-3.5" />
               Pendentes
@@ -250,6 +303,10 @@ export default function Marketing() {
             <TabsTrigger value="analytics" className="gap-1.5 text-xs">
               <BarChart3 className="h-3.5 w-3.5" />
               Analytics
+            </TabsTrigger>
+            <TabsTrigger value="ads" className="gap-1.5 text-xs">
+              <Zap className="h-3.5 w-3.5" />
+              Anúncios
             </TabsTrigger>
             <TabsTrigger value="contacted" className="gap-1.5 text-xs">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -341,6 +398,35 @@ export default function Marketing() {
                 <LeadsCRM ownerId={user.id} dateRange={analyticsDateRange} />
               </div>
             )}
+          </TabsContent>
+
+          {/* Ads Tab */}
+          <TabsContent value="ads" className="mt-4">
+            <div className="space-y-4">
+              {/* Stock-paused alerts first */}
+              {stockPausedTasks.map((task: any) => (
+                <AdStockPausedCard key={task.id} task={task} />
+              ))}
+
+              {/* Boost recommendations */}
+              {boostTasks.map((task: any) => (
+                <AdBoostCard key={task.id} task={task} integrations={adIntegrations as any} onCreated={() => {
+                  queryClient.invalidateQueries({ queryKey: ["ad-campaigns"] });
+                  queryClient.invalidateQueries({ queryKey: ["ad-tasks"] });
+                }} />
+              ))}
+
+              {/* Active campaigns */}
+              <ActiveCampaignsList campaigns={adCampaigns as any} />
+
+              {boostTasks.length === 0 && stockPausedTasks.length === 0 && (adCampaigns as any[]).length === 0 && (
+                <EmptyState
+                  icon={Zap}
+                  title="Nenhum anúncio ativo"
+                  description='Conecte suas contas em Configurações e clique "Atualizar Insights" para receber recomendações de anúncios.'
+                />
+              )}
+            </div>
           </TabsContent>
 
           {/* Contacted Tab */}

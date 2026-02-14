@@ -29,3 +29,15 @@ verify_jwt = false
 
 [functions.generate-marketing-tasks]
 verify_jwt = false
+
+[functions.ad-oauth-callback]
+verify_jwt = false
+
+[functions.ad-refresh-token]
+verify_jwt = false
+
+[functions.create-ad-campaign]
+verify_jwt = false
+
+[functions.manage-ad-campaign]
+verify_jwt = false
