@@ -1,48 +1,119 @@
+# Captura de Leads e Painel de Marketing (WhatsApp)
+
+## Resumo
+
+Implementar captura progressiva de contatos na loja publica (StoreCatalog) e criar uma pagina de Marketing no painel do vendedor com cards de acao para recuperacao de carrinhos abandonados via WhatsApp.
+
+---
+
+## Epico 1: Captura Progressiva na Loja
+
+### Fluxo do usuario
+
+1. Visitante clica "Adicionar" no primeiro produto
+2. Produto e adicionado ao carrinho normalmente
+3. Um Bottom Sheet (mobile) ou Dialog (desktop) aparece pedindo Nome e WhatsApp com a mensagem de "reserva de estoque"
+4. Apos preencher, dados sao salvos no localStorage e no banco de dados
+5. Em visitas futuras, o visitante e reconhecido pelo localStorage e nao precisa preencher novamente
+
+### Persistencia
+
+- **localStorage**: chave `store_lead_{slug}` com `{ name, whatsapp, captured_at }`
+- **Banco de dados**: tabela `store_leads` para o vendedor acessar os contatos capturados
+- **Carrinho**: ao enviar WhatsApp (checkout atual) OU apos timeout configuravel, os itens do carrinho sao registrados como `lead_cart_items` vinculados ao lead
+
+---
+
+## Epico 2: Dashboard de Marketing
+
+### Nova pagina `/marketing`
+
+- Adicionada ao Sidebar com icone de megafone
+- Rota protegida como as demais
+
+### Cards de Acao
+
+- **Card "Recuperar Carrinho"**: mostra leads que abandonaram o carrinho (tem itens mas nao finalizaram via WhatsApp)
+  - Nome do cliente, valor total do carrinho, tempo desde o abandono
+  - Botao "Enviar WhatsApp" abre `wa.me/{numero}` com mensagem pre-preenchida usando nome do cliente e nome da loja
+  - Apos clicar, card muda para status "contacted" e vai para aba "Contatados"
+- **Abas**: "Pendentes" e "Contatados" para organizar o feed
+
+---
+
+## Detalhes Tecnicos
+
+### Novas tabelas no banco de dados
+
+`**store_leads**`
 
 
-## Plano: Corrigir SuperFrete + Salvar Rastreio na Venda + Botao WhatsApp nos Detalhes
+| Coluna       | Tipo                         | Descricao                             |
+| ------------ | ---------------------------- | ------------------------------------- |
+| id           | uuid PK                      | &nbsp;                                |
+| store_id     | uuid FK -> store_settings.id | Loja onde foi capturado               |
+| owner_id     | uuid                         | Dono da loja (para RLS)               |
+| name         | text NOT NULL                | Nome do visitante                     |
+| whatsapp     | text NOT NULL                | WhatsApp com mascara                  |
+| device_id    | text                         | Identificador localStorage para dedup |
+| last_seen_at | timestamptz                  | Ultima visita                         |
+| created_at   | timestamptz                  | &nbsp;                                |
 
-### Problema 1: SuperFrete nao retorna cotacoes
 
-A funcao `quoteSuperfrete` no edge function `quote-shipping` esta usando um formato de body incorreto para a API da SuperFrete. De acordo com a documentacao oficial, os campos `from` e `to` devem ser objetos com `postal_code`, nao strings simples. Alem disso, o campo `services` deve ser uma string de IDs de servicos validos, e a estrutura do `package` precisa de ajustes.
+`**lead_cart_items**`
 
-**Correcao**: Ajustar o body da requisicao para seguir o formato correto da API SuperFrete (`from.postal_code`, `to.postal_code`), e melhorar o parsing da resposta.
 
-### Problema 2: Rastreio nao aparece nos detalhes da venda
+| Coluna        | Tipo                      | Descricao                               |
+| ------------- | ------------------------- | --------------------------------------- |
+| id            | uuid PK                   | &nbsp;                                  |
+| lead_id       | uuid FK -> store_leads.id | &nbsp;                                  |
+| product_id    | uuid                      | ID do produto                           |
+| product_name  | text                      | Nome (snapshot)                         |
+| variant_color | text                      | Cor                                     |
+| selected_size | text                      | Tamanho                                 |
+| quantity      | integer                   | &nbsp;                                  |
+| unit_price    | numeric                   | Preco no momento                        |
+| created_at    | timestamptz               | &nbsp;                                  |
+| status        | text                      | 'abandoned' / 'contacted' / 'converted' |
 
-O campo `shipping_tracking` ja eh salvo na criacao da venda (linha 635 de Sales.tsx), porem no dialog de "Detalhes da Venda" (linhas 2438-2458) o rastreio nao eh exibido. Alem disso, nao ha botao para enviar o rastreio via WhatsApp a partir dos detalhes de uma venda ja registrada.
 
-### Alteracoes Planejadas
+**RLS**: Ambas tabelas com politica `owner_id = auth.uid()` para SELECT/UPDATE/DELETE. INSERT em `store_leads` aberto ao publico (anon) pois visitantes nao estao logados. `lead_cart_items` INSERT via service role ou politica publica vinculada ao lead.
 
-#### 1. Edge Function `quote-shipping` - Corrigir formato SuperFrete
+### Alteracoes em arquivos existentes
 
-- Alterar os campos `from` e `to` de strings para objetos `{ postal_code: "CEP" }`
-- Ajustar o campo `services` para o formato correto
-- Melhorar o parsing da resposta para cobrir diferentes formatos retornados pela API
+1. `**src/pages/StoreCatalog.tsx**`:
+  - Novo state para controlar o bottom sheet de captura de lead
+  - No `addToCart`, verificar localStorage; se nao tem lead, abrir o sheet antes de adicionar
+  - Componente `LeadCaptureSheet` com campos Nome e WhatsApp (mascara)
+  - Ao submeter, salvar no localStorage e fazer upsert na tabela `store_leads`
+  - No `sendCartViaWhatsApp`, registrar os itens do carrinho em `lead_cart_items` com status 'converted'
+  - Registrar carrinho abandonado: ao capturar lead, salvar itens atuais do carrinho como snapshot periodico
+2. `**src/pages/Marketing.tsx**` (novo):
+  - Pagina com abas "Pendentes" e "Contatados"
+  - Query em `store_leads` JOIN `lead_cart_items` WHERE status = 'abandoned' e created_at > agora - X horas
+  - Cards com nome, valor total, tempo de abandono
+  - Botao WhatsApp com `wa.me` e mensagem pre-preenchida
+  - Ao clicar, UPDATE status para 'contacted'
+3. `**src/components/layout/Sidebar.tsx**`: Adicionar item "Marketing" com icone Megaphone
+4. `**src/App.tsx**`: Adicionar rota `/marketing` protegida
+5. `**src/components/catalog/LeadCaptureSheet.tsx**` (novo):
+  - Bottom Sheet (mobile via Drawer) / Dialog (desktop)
+  - Campos Nome e WhatsApp com mascara brasileira
+  - Botao "Garantir Minhas Pecas"
+  - Validacao com zod
 
-#### 2. Dialog "Detalhes da Venda" em `Sales.tsx`
+### Logica de deteccao de abandono
 
-Na secao de informacoes de envio do dialog de visualizacao (linhas 2438-2458), adicionar:
+- Quando o lead e capturado e ha itens no carrinho, salvar snapshot dos itens em `lead_cart_items` com status 'abandoned'
+- Quando o vendedor abre a pagina Marketing, a query busca leads com itens 'abandoned' criados ha mais de 2 horas
+- Quando o checkout via WhatsApp e concluido, atualizar status dos itens para 'converted'
+- Quando o vendedor clica "Enviar WhatsApp" no card, atualizar para 'contacted'
 
-- Exibicao do codigo de rastreio (`shipping_tracking`) quando disponivel
-- Botao "Enviar Rastreio via WhatsApp" que abre o WhatsApp com mensagem pre-formatada contendo o codigo de rastreio e nome do cliente
-- Botao para copiar o codigo de rastreio
+### Sequencia de implementacao
 
-#### 3. Garantir que `shipping_label_url` esteja na interface Sale
-
-A interface `Sale` (linhas 86-106) nao inclui `shipping_label_url`. Adicionar esse campo para poder exibir o link da etiqueta nos detalhes.
-
-### Detalhes Tecnicos
-
-**`supabase/functions/quote-shipping/index.ts` - funcao `quoteSuperfrete`:**
-- Mudar `from: originZip` para `from: { postal_code: originZip }`
-- Mudar `to: destinationZip` para `to: { postal_code: destinationZip }`
-
-**`src/pages/Sales.tsx` - Interface Sale:**
-- Adicionar `shipping_label_url: string | null`
-
-**`src/pages/Sales.tsx` - Dialog de detalhes (apos linha 2457):**
-- Exibir `selectedSale.shipping_tracking` com icone de copia
-- Botao WhatsApp que abre `wa.me` com mensagem formatada
-- Link para baixar etiqueta se `shipping_label_url` estiver disponivel
-
+1. Criar migracao com as duas tabelas + RLS
+2. Criar componente `LeadCaptureSheet`
+3. Integrar no `StoreCatalog` (addToCart + sendCartViaWhatsApp)
+4. Criar pagina `Marketing.tsx`
+5. Adicionar rota e item no Sidebar
+6. O usuário pode escolher se vai ativar a função de inserção de dados pelo usuário após inserir produtos no carrinho.
