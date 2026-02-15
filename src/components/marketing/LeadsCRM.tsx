@@ -18,6 +18,7 @@ interface LeadsCRMProps {
 }
 
 type FunnelStatus = "all" | "new" | "abandoned" | "contacted" | "converted";
+type CartFilter = "all" | "waiting" | "abandoned" | "converted" | "cancelled";
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   new: { label: "Novo Lead", variant: "secondary" },
@@ -31,6 +32,7 @@ const PAGE_SIZE = 20;
 export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<FunnelStatus>("all");
+  const [cartFilter, setCartFilter] = useState<CartFilter>("all");
   const [page, setPage] = useState(0);
   const [expandedLeads, setExpandedLeads] = useState<Set<string>>(new Set());
 
@@ -43,7 +45,7 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("store_leads")
-        .select("id, name, whatsapp, created_at, lead_cart_items(id, status, product_name, unit_price, quantity, variant_color, selected_size)")
+        .select("id, name, whatsapp, created_at, lead_cart_items(id, status, product_name, unit_price, quantity, variant_color, selected_size, source)")
         .eq("owner_id", ownerId)
         .gte("created_at", startISO)
         .lte("created_at", endISO)
@@ -61,6 +63,32 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
     },
   });
 
+  // Fetch saved carts for these leads
+  const { data: savedCartsMap = {} } = useQuery({
+    queryKey: ["crm-saved-carts", ownerId, startISO, endISO],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saved_carts")
+        .select("id, short_code, lead_id, total, status, created_at")
+        .eq("owner_id", ownerId)
+        .gte("created_at", startISO)
+        .lte("created_at", endISO)
+        .order("created_at", { ascending: false }) as any;
+      if (error) throw error;
+      const map: Record<string, any[]> = {};
+      for (const cart of (data || [])) {
+        if (!cart.lead_id) continue;
+        if (!map[cart.lead_id]) map[cart.lead_id] = [];
+        // Auto-detect abandoned
+        const hoursOld = (Date.now() - new Date(cart.created_at).getTime()) / 3600000;
+        const displayStatus = cart.status === "waiting" && hoursOld > 24 ? "abandoned" : cart.status;
+        map[cart.lead_id].push({ ...cart, display_status: displayStatus });
+      }
+      return map;
+    },
+    enabled: !!ownerId,
+  });
+
   // Filter leads
   const filteredLeads = useMemo(() => {
     let result = rawLeads;
@@ -71,8 +99,14 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
     if (statusFilter !== "all") {
       result = result.filter((l: any) => l.funnel_status === statusFilter);
     }
+    if (cartFilter !== "all") {
+      result = result.filter((l: any) => {
+        const carts = savedCartsMap[l.id] || [];
+        return carts.some((c: any) => c.display_status === cartFilter);
+      });
+    }
     return result;
-  }, [rawLeads, searchTerm, statusFilter]);
+  }, [rawLeads, searchTerm, statusFilter, cartFilter, savedCartsMap]);
 
   // Pagination
   const totalPages = Math.ceil(filteredLeads.length / PAGE_SIZE);
@@ -149,6 +183,18 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
             <SelectItem value="converted">Venda Concluída</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={cartFilter} onValueChange={(v) => { setCartFilter(v as CartFilter); setPage(0); }}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filtrar carrinho" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos Carrinhos</SelectItem>
+            <SelectItem value="waiting">⏳ Aguardando</SelectItem>
+            <SelectItem value="abandoned">🔴 Abandonado</SelectItem>
+            <SelectItem value="converted">✅ Convertido</SelectItem>
+            <SelectItem value="cancelled">❌ Cancelado</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Leads List */}
@@ -171,6 +217,7 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
           {paginatedLeads.map((lead: any) => {
             const isExpanded = expandedLeads.has(lead.id);
             const statusCfg = STATUS_CONFIG[lead.funnel_status] || STATUS_CONFIG.new;
+            const leadCarts = savedCartsMap[lead.id] || [];
             return (
               <Collapsible key={lead.id} open={isExpanded} onOpenChange={() => toggleExpand(lead.id)}>
                 <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -179,6 +226,14 @@ export function LeadsCRM({ ownerId, dateRange }: LeadsCRMProps) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold truncate">{lead.name}</span>
                         <Badge variant={statusCfg.variant} className="text-[10px]">{statusCfg.label}</Badge>
+                        {leadCarts.map((c: any) => (
+                          <Badge key={c.id} variant="outline" className="text-[9px] font-mono gap-1">
+                            🧾 {c.short_code}
+                            {c.display_status === "waiting" && " ⏳"}
+                            {c.display_status === "abandoned" && " 🔴"}
+                            {c.display_status === "converted" && " ✅"}
+                          </Badge>
+                        ))}
                       </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
                         <span>{format(parseISO(lead.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
