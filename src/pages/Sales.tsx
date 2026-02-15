@@ -1377,10 +1377,10 @@ export default function Sales() {
 
   // Combined list: own products first, then partner products (excluding duplicates by name)
   const combinedProductsList = useMemo(() => {
-    const ownNames = new Set(filteredOwnProducts.map(p => p.name.toLowerCase().trim()));
-    // Filter out partner products that the user already has with the same name
+    const ownIds = new Set(filteredOwnProducts.map(p => p.id));
+    // Filter out partner products that are the exact same record (same ID), but allow same-name different products
     const uniquePartnerProducts = filteredPartnerProducts.filter(
-      pp => !ownNames.has(pp.name.toLowerCase().trim())
+      pp => !ownIds.has(pp.id)
     );
     return {
       ownProducts: filteredOwnProducts,
