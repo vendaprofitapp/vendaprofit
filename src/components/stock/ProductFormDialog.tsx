@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Globe, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,6 +133,8 @@ export function ProductFormDialog({
   const [saving, setSaving] = useState(false);
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
   const [originalVariantCount, setOriginalVariantCount] = useState(0);
+  const [testingB2b, setTestingB2b] = useState(false);
+  const [b2bStatus, setB2bStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
   // Product-level images
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
@@ -748,16 +750,71 @@ export function ProductFormDialog({
       {/* URL do Produto B2B - visível quando fornecedor selecionado */}
       {form.supplier_id && form.supplier_id !== "none" && (
         <div className="space-y-2">
-          <Label className="text-xs flex items-center gap-1">🔗 URL do Produto B2B</Label>
-          <Input
-            type="url"
-            value={form.b2b_product_url}
-            onChange={(e) => setForm({ ...form, b2b_product_url: e.target.value })}
-            placeholder="https://portal.fornecedor.com/produto/123"
-          />
+          <Label className="text-xs flex items-center gap-1">
+            <Globe className="h-3 w-3 text-primary" /> URL do Produto B2B (Dropshipping)
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              type="url"
+              value={form.b2b_product_url}
+              onChange={(e) => { setForm({ ...form, b2b_product_url: e.target.value }); setB2bStatus('idle'); }}
+              placeholder="https://portal.fornecedor.com/produto/123"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant={b2bStatus === 'success' ? 'default' : b2bStatus === 'error' ? 'destructive' : 'outline'}
+              size="sm"
+              onClick={async () => {
+                if (!form.b2b_product_url?.trim()) {
+                  toast.error("Preencha a URL do produto B2B primeiro");
+                  return;
+                }
+                setTestingB2b(true);
+                setB2bStatus('idle');
+                try {
+                  const { data, error } = await supabase.functions.invoke('firecrawl-scrape', {
+                    body: { url: form.b2b_product_url.trim(), options: { formats: ['markdown'] } }
+                  });
+                  if (error) throw error;
+                  const markdown = data?.data?.markdown || data?.markdown;
+                  if (markdown && markdown.length > 50) {
+                    setB2bStatus('success');
+                    toast.success("URL do produto acessível! Página encontrada.");
+                  } else {
+                    setB2bStatus('error');
+                    toast.error("Página acessada mas sem conteúdo suficiente.");
+                  }
+                } catch {
+                  setB2bStatus('error');
+                  toast.error("Não foi possível acessar a URL do produto.");
+                } finally {
+                  setTestingB2b(false);
+                }
+              }}
+              disabled={testingB2b || !form.b2b_product_url?.trim()}
+              className="shrink-0"
+            >
+              {testingB2b ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Testando...</>
+              ) : b2bStatus === 'success' ? (
+                <><CheckCircle2 className="h-4 w-4 mr-1" /> OK</>
+              ) : b2bStatus === 'error' ? (
+                <><XCircle className="h-4 w-4 mr-1" /> Falhou</>
+              ) : (
+                <>Testar URL</>
+              )}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             Link direto do produto no portal B2B do fornecedor (para venda sob encomenda)
           </p>
+          {b2bStatus === 'success' && (
+            <p className="text-xs text-green-600">✅ Produto acessível no fornecedor!</p>
+          )}
+          {b2bStatus === 'error' && (
+            <p className="text-xs text-destructive">❌ Verifique a URL e tente novamente.</p>
+          )}
         </div>
       )}
       
