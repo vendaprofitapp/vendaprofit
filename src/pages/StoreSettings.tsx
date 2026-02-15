@@ -125,6 +125,7 @@ export default function StoreSettings() {
     filter_buttons_config: defaultFilterButtonsConfig,
     secret_area_active: false,
     secret_area_name: "Área VIP",
+    loyalty_enabled: false,
     secret_area_password: "",
     purchase_incentives_config: defaultIncentivesConfig,
     page_title: "",
@@ -263,6 +264,7 @@ export default function StoreSettings() {
         filter_buttons_config: storeSettings.filter_buttons_config || defaultFilterButtonsConfig,
         secret_area_active: storeSettings.secret_area_active ?? false,
         secret_area_name: storeSettings.secret_area_name || "Área VIP",
+        loyalty_enabled: (storeSettings as any).loyalty_enabled ?? false,
         secret_area_password: storeSettings.secret_area_password || "",
         purchase_incentives_config: (storeSettings.purchase_incentives_config as unknown as PurchaseIncentivesConfig) || defaultIncentivesConfig,
         page_title: (storeSettings as any).page_title || "",
@@ -574,6 +576,7 @@ export default function StoreSettings() {
             secret_area_active: formData.secret_area_active,
             secret_area_name: formData.secret_area_name || null,
             secret_area_password: formData.secret_area_password || null,
+            loyalty_enabled: formData.loyalty_enabled,
             purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
             page_title: formData.page_title || null,
             favicon_url: faviconUrl || null,
@@ -616,6 +619,7 @@ export default function StoreSettings() {
             secret_area_active: formData.secret_area_active,
             secret_area_name: formData.secret_area_name || null,
             secret_area_password: formData.secret_area_password || null,
+            loyalty_enabled: formData.loyalty_enabled,
             purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
             page_title: formData.page_title || null,
             favicon_url: faviconUrl || null,
@@ -1552,6 +1556,23 @@ export default function StoreSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Loyalty toggle */}
+            <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+              <div className="space-y-0.5">
+                <Label className="font-medium flex items-center gap-2">
+                  <Star className="h-4 w-4 text-amber-500" />
+                  Programa de Fidelidade
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Exibe o nível de fidelidade do cliente na sua loja
+                </p>
+              </div>
+              <Switch
+                checked={formData.loyalty_enabled}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, loyalty_enabled: checked }))}
+              />
+            </div>
+
             <div className="flex items-center justify-between p-4 bg-rose-50 dark:bg-rose-950/20 rounded-lg">
               <div className="space-y-0.5">
                 <Label className="font-medium flex items-center gap-2">

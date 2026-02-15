@@ -515,10 +515,11 @@ export default function StoreCatalog() {
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
 
-  // Loyalty: get stored lead phone for this store
+  // Loyalty: only load if loyalty_enabled on store
+  const loyaltyEnabled = (store as any)?.loyalty_enabled === true;
   const storedLeadForLoyalty = slug ? (() => { try { const s = localStorage.getItem(`store_lead_${slug}`); return s ? JSON.parse(s) : null; } catch { return null; } })() : null;
-  const loyaltyPhone = storedLeadForLoyalty?.whatsapp || undefined;
-  const loyalty = useCatalogLoyalty(store?.owner_id, loyaltyPhone);
+  const loyaltyPhone = loyaltyEnabled ? (storedLeadForLoyalty?.whatsapp || undefined) : undefined;
+  const loyalty = useCatalogLoyalty(loyaltyEnabled ? store?.owner_id : undefined, loyaltyPhone);
 
   // Dynamic title, favicon, apple-touch-icon & PWA manifest
   useEffect(() => {
@@ -1891,17 +1892,19 @@ export default function StoreCatalog() {
       </header>
 
       {/* Loyalty Header */}
-      <LoyaltyHeader
-        isIdentified={!!loyaltyPhone}
-        currentLevel={loyalty.currentLevel}
-        nextLevel={loyalty.nextLevel}
-        progress={loyalty.progress}
-        amountToNext={loyalty.amountToNext}
-        totalSpent={loyalty.totalSpent}
-        isLoading={loyalty.isLoading}
-        onIdentify={() => setShowLoyaltyCapture(true)}
-        primaryColor={primaryColor}
-      />
+      {loyaltyEnabled && (
+        <LoyaltyHeader
+          isIdentified={!!loyaltyPhone}
+          currentLevel={loyalty.currentLevel}
+          nextLevel={loyalty.nextLevel}
+          progress={loyalty.progress}
+          amountToNext={loyalty.amountToNext}
+          totalSpent={loyalty.totalSpent}
+          isLoading={loyalty.isLoading}
+          onIdentify={() => setShowLoyaltyCapture(true)}
+          primaryColor={primaryColor}
+        />
+      )}
 
       {/* Promotional Banner - Below header */}
       <PromotionalBanner />
@@ -2353,20 +2356,22 @@ export default function StoreCatalog() {
       />
 
       {/* VIP Area Drawer */}
-      <VipAreaDrawer
-        unlockedFeatures={loyalty.unlockedFeatures}
-        currentLevel={loyalty.currentLevel}
-        nextLevel={loyalty.nextLevel}
-        progress={loyalty.progress}
-        amountToNext={loyalty.amountToNext}
-        primaryColor={primaryColor}
-        isIdentified={!!loyaltyPhone}
-        onIdentify={() => setShowLoyaltyCapture(true)}
-        ownerId={store?.owner_id}
-        sellerPhone={loyaltyPhone}
-        sellerName={storedLeadForLoyalty?.name}
-        storeSlug={slug}
-      />
+      {loyaltyEnabled && (
+        <VipAreaDrawer
+          unlockedFeatures={loyalty.unlockedFeatures}
+          currentLevel={loyalty.currentLevel}
+          nextLevel={loyalty.nextLevel}
+          progress={loyalty.progress}
+          amountToNext={loyalty.amountToNext}
+          primaryColor={primaryColor}
+          isIdentified={!!loyaltyPhone}
+          onIdentify={() => setShowLoyaltyCapture(true)}
+          ownerId={store?.owner_id}
+          sellerPhone={loyaltyPhone}
+          sellerName={storedLeadForLoyalty?.name}
+          storeSlug={slug}
+        />
+      )}
     </div>
   );
 }
