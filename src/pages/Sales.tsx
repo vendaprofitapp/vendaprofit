@@ -673,6 +673,18 @@ export default function Sales() {
         if (item.isPartnerStock && item.ownerName) {
           productName += ` [Parceiro: ${item.ownerName}]`;
         }
+        // Determine source: if partner stock -> 'partner', if product has no local stock 
+        // and was likely from B2B dropshipping (stock_quantity <= 0 on own product) -> 'b2b'
+        let itemSource: string | null = null;
+        let itemB2bStatus: string | null = null;
+        if (item.isPartnerStock) {
+          itemSource = 'partner';
+        } else if (item.product.owner_id === user.id && item.product.stock_quantity <= 0) {
+          // Own product with zero stock = came from B2B dropshipping
+          itemSource = 'b2b';
+          itemB2bStatus = 'pending';
+        }
+
         return {
           sale_id: sale.id,
           product_id: item.product.id,
@@ -680,6 +692,8 @@ export default function Sales() {
           quantity: item.quantity,
           unit_price: item.product.price,
           total: item.product.price * item.quantity,
+          source: itemSource,
+          b2b_status: itemB2bStatus,
         };
       });
 
