@@ -302,28 +302,46 @@ export default function StoreCatalog() {
     } catch { return null; }
   };
 
-  // Save lead to localStorage and DB
-  const saveLeadData = async (data: { name: string; whatsapp: string }) => {
-    if (!store) return;
-    const deviceId = `${slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const storedLead = getStoredLead();
-    const existingDeviceId = storedLead ? undefined : deviceId;
+  // Save lead to localStorage and DB — detects returning customers by WhatsApp
+  const saveLeadData = async (data: { name: string; whatsapp: string }): Promise<{ leadId: string; isReturning: boolean }> => {
+    if (!store) return { leadId: "", isReturning: false };
 
-    // Upsert to DB
-    const { data: leadRow, error } = await supabase
+    // 1. Check if a lead already exists for this WhatsApp + store
+    const { data: existingLead } = await supabase
       .from("store_leads")
-      .upsert({
-        store_id: store.id,
-        owner_id: store.owner_id,
-        name: data.name,
-        whatsapp: data.whatsapp,
-        device_id: existingDeviceId || storedLead?.lead_id?.split("_")[0] || deviceId,
-        last_seen_at: new Date().toISOString(),
-      }, { onConflict: "store_id,device_id" })
-      .select("id")
-      .single();
+      .select("id, name")
+      .eq("store_id", store.id)
+      .eq("whatsapp", data.whatsapp)
+      .maybeSingle();
 
-    const leadId = leadRow?.id || "";
+    let leadId = "";
+    let isReturning = false;
+
+    if (existingLead) {
+      // Returning customer — reuse existing lead, update last_seen
+      leadId = existingLead.id;
+      isReturning = true;
+      await supabase
+        .from("store_leads")
+        .update({ last_seen_at: new Date().toISOString(), name: data.name })
+        .eq("id", existingLead.id);
+    } else {
+      // New customer — insert new lead
+      const deviceId = `${slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { data: leadRow } = await supabase
+        .from("store_leads")
+        .insert({
+          store_id: store.id,
+          owner_id: store.owner_id,
+          name: data.name,
+          whatsapp: data.whatsapp,
+          device_id: deviceId,
+          last_seen_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      leadId = leadRow?.id || "";
+    }
 
     // Save to localStorage
     localStorage.setItem(`store_lead_${slug}`, JSON.stringify({
@@ -333,7 +351,7 @@ export default function StoreCatalog() {
       captured_at: new Date().toISOString(),
     }));
 
-    return leadId;
+    return { leadId, isReturning };
   };
 
   // Save cart snapshot as abandoned items
@@ -377,21 +395,17 @@ export default function StoreCatalog() {
 
   const handleLeadSubmit = async (data: { name: string; whatsapp: string }) => {
     setShowLeadCapture(false);
-    const leadId = await saveLeadData(data);
-    toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
+    const { leadId, isReturning } = await saveLeadData(data);
+
+    if (isReturning) {
+      toast.success(`Bem-vindo(a) de volta, ${data.name}! 🎉`);
+    } else {
+      toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
+    }
 
     // Complete the pending add
     if (pendingCartAdd) {
       doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
-      // Save abandoned cart snapshot after a brief delay to include the just-added item
-      if (leadId) {
-        setTimeout(() => {
-          const storedLead = getStoredLead();
-          if (storedLead?.lead_id) {
-            // We'll save the current cart state
-          }
-        }, 500);
-      }
       setPendingCartAdd(null);
     }
   };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { z } from "zod";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,32 @@ function formatWhatsApp(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
+/**
+ * Hook that listens to visualViewport resize events to detect
+ * virtual keyboard open/close and returns the available height.
+ */
+function useVisualViewportHeight(enabled: boolean) {
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined" || !window.visualViewport) return;
+
+    const vv = window.visualViewport;
+    const onResize = () => {
+      // When keyboard opens, visualViewport.height shrinks
+      setViewportHeight(vv.height);
+    };
+
+    vv.addEventListener("resize", onResize);
+    // Set initial value
+    setViewportHeight(vv.height);
+
+    return () => vv.removeEventListener("resize", onResize);
+  }, [enabled]);
+
+  return viewportHeight;
+}
+
 function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string; whatsapp: string }) => void; primaryColor: string }) {
   const [name, setName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -34,7 +60,7 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
 
   const scrollInputIntoView = (e: React.FocusEvent<HTMLInputElement>) => {
     setTimeout(() => {
-      e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+      e.target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, 350);
   };
 
@@ -66,8 +92,8 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
           value={name}
           onChange={e => setName(e.target.value)}
           onFocus={scrollInputIntoView}
+          inputMode="text"
           maxLength={100}
-          autoFocus
         />
         {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
       </div>
@@ -98,11 +124,29 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
 
 export function LeadCaptureSheet({ open, onOpenChange, onSubmit, primaryColor }: LeadCaptureSheetProps) {
   const isMobile = useIsMobile();
+  const viewportHeight = useVisualViewportHeight(isMobile && open);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Dynamically adjust drawer max-height when keyboard opens
+  useEffect(() => {
+    if (!isMobile || !open || !contentRef.current) return;
+    
+    if (viewportHeight !== null) {
+      // Apply viewport height as max-height so drawer fits above keyboard
+      contentRef.current.style.maxHeight = `${viewportHeight}px`;
+    }
+    
+    return () => {
+      if (contentRef.current) {
+        contentRef.current.style.maxHeight = "";
+      }
+    };
+  }, [viewportHeight, isMobile, open]);
 
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="max-h-[85dvh]">
+        <DrawerContent ref={contentRef} className="max-h-[85dvh]">
           <div className="overflow-y-auto flex-1 overscroll-contain">
             <DrawerHeader className="shrink-0">
               <DrawerTitle>Reservar suas peças 🛍️</DrawerTitle>
