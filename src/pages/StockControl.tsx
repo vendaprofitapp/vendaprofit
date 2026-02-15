@@ -1019,7 +1019,7 @@ export default function StockControl() {
 
         {/* B2B Stock Tab */}
         <TabsContent value="b2b-stock">
-          {user && <B2BStockTab userId={user.id} />}
+          {user && <B2BStockTab userId={user.id} searchTerm={searchTerm} filters={filters} suppliers={suppliers} />}
         </TabsContent>
       </Tabs>
 
