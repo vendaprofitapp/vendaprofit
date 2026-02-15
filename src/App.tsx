@@ -32,6 +32,7 @@ import Tutorial from "./pages/Tutorial";
 import Marketing from "./pages/Marketing";
 import LoyaltyAdmin from "./pages/LoyaltyAdmin";
 import BazarAdmin from "./pages/BazarAdmin";
+import B2BOrders from "./pages/B2BOrders";
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,7 @@ const AppRoutes = () => (
     <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
     <Route path="/admin/fidelidade" element={<ProtectedRoute><LoyaltyAdmin /></ProtectedRoute>} />
     <Route path="/admin/bazar" element={<ProtectedRoute><BazarAdmin /></ProtectedRoute>} />
+    <Route path="/b2b-orders" element={<ProtectedRoute><B2BOrders /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />

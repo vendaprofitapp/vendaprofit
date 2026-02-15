@@ -31,7 +31,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Search, Building2, Phone, User } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Building2, Phone, User, Globe } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -48,6 +49,10 @@ interface Supplier {
   attendant_phone: string | null;
   purchase_rules: string | null;
   website: string | null;
+  b2b_url: string | null;
+  b2b_login: string | null;
+  b2b_password: string | null;
+  b2b_enabled: boolean;
   created_at: string;
 }
 
@@ -62,6 +67,9 @@ const emptySupplier = {
   attendant_phone: "",
   purchase_rules: "",
   website: "",
+  b2b_url: "",
+  b2b_login: "",
+  b2b_password: "",
 };
 
 export default function Suppliers() {
@@ -110,6 +118,9 @@ export default function Suppliers() {
         attendant_phone: supplier.attendant_phone || "",
         purchase_rules: supplier.purchase_rules || "",
         website: supplier.website || "",
+        b2b_url: supplier.b2b_url || "",
+        b2b_login: supplier.b2b_login || "",
+        b2b_password: supplier.b2b_password || "",
       });
     } else {
       setEditingSupplier(null);
@@ -136,8 +147,11 @@ export default function Suppliers() {
       attendant_phone: formData.attendant_phone.trim() || null,
       purchase_rules: formData.purchase_rules.trim() || null,
       website: formData.website.trim() || null,
+      b2b_url: formData.b2b_url.trim() || null,
+      b2b_login: formData.b2b_login.trim() || null,
+      b2b_password: formData.b2b_password.trim() || null,
       owner_id: user.id,
-    };
+    } as any;
 
     if (editingSupplier) {
       const { error } = await supabase
@@ -245,6 +259,7 @@ export default function Suppliers() {
                       <TableHead>Telefone Geral</TableHead>
                       <TableHead>Atendente</TableHead>
                       <TableHead>Tel. Atendente</TableHead>
+                      <TableHead>B2B Ativo</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -258,6 +273,23 @@ export default function Suppliers() {
                         <TableCell>{supplier.phone || "-"}</TableCell>
                         <TableCell>{supplier.attendant_name || "-"}</TableCell>
                         <TableCell>{supplier.attendant_phone || "-"}</TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={supplier.b2b_enabled}
+                            onCheckedChange={async (checked) => {
+                              const { error } = await supabase
+                                .from("suppliers")
+                                .update({ b2b_enabled: checked } as any)
+                                .eq("id", supplier.id);
+                              if (error) {
+                                toast.error("Erro ao atualizar toggle B2B");
+                              } else {
+                                setSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, b2b_enabled: checked } : s));
+                                toast.success(checked ? "Dropshipping ativado" : "Dropshipping desativado");
+                              }
+                            }}
+                          />
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
@@ -403,6 +435,51 @@ export default function Suppliers() {
                   placeholder="Observações gerais sobre o fornecedor"
                   rows={2}
                 />
+              </div>
+
+              {/* Seção B2B / Dropshipping */}
+              <div className="sm:col-span-2 pt-4 border-t space-y-4">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Dados B2B / Dropshipping</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label>URL do Portal B2B</Label>
+                    <Input
+                      type="url"
+                      value={formData.b2b_url}
+                      onChange={(e) =>
+                        setFormData({ ...formData, b2b_url: e.target.value })
+                      }
+                      placeholder="https://portal.fornecedor.com.br"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Usuário B2B</Label>
+                    <Input
+                      value={formData.b2b_login}
+                      onChange={(e) =>
+                        setFormData({ ...formData, b2b_login: e.target.value })
+                      }
+                      placeholder="usuario@email.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Senha B2B</Label>
+                    <Input
+                      type="password"
+                      value={formData.b2b_password}
+                      onChange={(e) =>
+                        setFormData({ ...formData, b2b_password: e.target.value })
+                      }
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ative o toggle "B2B Ativo" na listagem para exibir produtos deste fornecedor como "Sob Encomenda" no catálogo.
+                </p>
               </div>
             </div>
             <DialogFooter>

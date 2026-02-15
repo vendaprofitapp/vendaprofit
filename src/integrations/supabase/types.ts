@@ -1990,6 +1990,7 @@ export type Database = {
       }
       products: {
         Row: {
+          b2b_product_url: string | null
           category: string
           category_2: string | null
           category_3: string | null
@@ -2026,6 +2027,7 @@ export type Database = {
           width_cm: number | null
         }
         Insert: {
+          b2b_product_url?: string | null
           category: string
           category_2?: string | null
           category_3?: string | null
@@ -2062,6 +2064,7 @@ export type Database = {
           width_cm?: number | null
         }
         Update: {
+          b2b_product_url?: string | null
           category?: string
           category_2?: string | null
           category_3?: string | null
@@ -2188,32 +2191,38 @@ export type Database = {
       }
       sale_items: {
         Row: {
+          b2b_status: string | null
           created_at: string
           id: string
           product_id: string
           product_name: string
           quantity: number
           sale_id: string
+          source: string | null
           total: number
           unit_price: number
         }
         Insert: {
+          b2b_status?: string | null
           created_at?: string
           id?: string
           product_id: string
           product_name: string
           quantity?: number
           sale_id: string
+          source?: string | null
           total: number
           unit_price: number
         }
         Update: {
+          b2b_status?: string | null
           created_at?: string
           id?: string
           product_id?: string
           product_name?: string
           quantity?: number
           sale_id?: string
+          source?: string | null
           total?: number
           unit_price?: number
         }
@@ -2642,6 +2651,10 @@ export type Database = {
           address: string | null
           attendant_name: string | null
           attendant_phone: string | null
+          b2b_enabled: boolean
+          b2b_login: string | null
+          b2b_password: string | null
+          b2b_url: string | null
           cnpj: string | null
           created_at: string
           email: string | null
@@ -2658,6 +2671,10 @@ export type Database = {
           address?: string | null
           attendant_name?: string | null
           attendant_phone?: string | null
+          b2b_enabled?: boolean
+          b2b_login?: string | null
+          b2b_password?: string | null
+          b2b_url?: string | null
           cnpj?: string | null
           created_at?: string
           email?: string | null
@@ -2674,6 +2691,10 @@ export type Database = {
           address?: string | null
           attendant_name?: string | null
           attendant_phone?: string | null
+          b2b_enabled?: boolean
+          b2b_login?: string | null
+          b2b_password?: string | null
+          b2b_url?: string | null
           cnpj?: string | null
           created_at?: string
           email?: string | null

@@ -149,6 +149,7 @@ export function ProductFormDialog({
     cost_price: "",
     min_stock_level: "5",
     supplier_id: "",
+    b2b_product_url: "",
     video_url: "" as string | null,
     model: "",
     color_label: "",
@@ -177,6 +178,7 @@ export function ProductFormDialog({
         cost_price: editingProduct.cost_price?.toString() || "",
         min_stock_level: editingProduct.min_stock_level.toString(),
         supplier_id: editingProduct.supplier_id || "",
+        b2b_product_url: (editingProduct as any).b2b_product_url || "",
         video_url: editingProduct.video_url || null,
         model: editingProduct.model || "",
         color_label: editingProduct.color_label || "",
@@ -206,6 +208,7 @@ export function ProductFormDialog({
         cost_price: duplicatingProduct.cost_price?.toString() || "",
         min_stock_level: duplicatingProduct.min_stock_level.toString(),
         supplier_id: duplicatingProduct.supplier_id || "",
+        b2b_product_url: (duplicatingProduct as any).b2b_product_url || "",
         video_url: null,
         model: duplicatingProduct.model || "",
         color_label: duplicatingProduct.color_label || "",
@@ -271,6 +274,7 @@ export function ProductFormDialog({
       cost_price: "",
       min_stock_level: "5",
       supplier_id: "",
+      b2b_product_url: "",
       video_url: null,
       model: "",
       color_label: "",
@@ -439,6 +443,7 @@ export function ProductFormDialog({
         stock_quantity: totalStock,
         min_stock_level: parseInt(form.min_stock_level) || 5,
         supplier_id: form.supplier_id && form.supplier_id !== "none" ? form.supplier_id : null,
+        b2b_product_url: form.b2b_product_url?.trim() || null,
         owner_id: user.id,
         group_id: null,
         video_url: form.video_url || null,
@@ -739,6 +744,22 @@ export function ProductFormDialog({
           </Select>
         </div>
       </div>
+
+      {/* URL do Produto B2B - visível quando fornecedor selecionado */}
+      {form.supplier_id && form.supplier_id !== "none" && (
+        <div className="space-y-2">
+          <Label className="text-xs flex items-center gap-1">🔗 URL do Produto B2B</Label>
+          <Input
+            type="url"
+            value={form.b2b_product_url}
+            onChange={(e) => setForm({ ...form, b2b_product_url: e.target.value })}
+            placeholder="https://portal.fornecedor.com/produto/123"
+          />
+          <p className="text-xs text-muted-foreground">
+            Link direto do produto no portal B2B do fornecedor (para venda sob encomenda)
+          </p>
+        </div>
+      )}
       
       {/* Seção de Mídia */}
       <div className="space-y-4 pt-2 border-t">

@@ -61,10 +61,8 @@ const navItems: NavItem[] = [{
   path: "/admin/bazar"
 }, {
   icon: Package,
-  label: "Dropshipping",
-  path: "/dropshipping",
-  disabled: true,
-  comingSoon: true
+  label: "Pedidos B2B",
+  path: "/b2b-orders"
 }, {
   icon: Clock,
   label: "Solicitações",
