@@ -23,6 +23,7 @@ const pageTitles: Record<string, string> = {
   "/partner-reports": "Rel. Sociedades",
   "/settings": "Configurações",
   "/admin/users": "Admin Usuários",
+  "/b2b-orders": "Pedidos B2B",
 };
 
 export function MainLayout({ children }: MainLayoutProps) {

@@ -144,6 +144,7 @@ interface CatalogDisplayItem {
   owner_id: string;
   isPartner: boolean; // true if ALL sizes are from partner (for icon display)
   hasPartnerSizes: boolean; // true if ANY size is from partner
+  isB2B: boolean; // true if product is from B2B dropshipping (zero local stock, from supplier)
 }
 
 
@@ -724,14 +725,14 @@ export default function StoreCatalog() {
     queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, allPartnershipGroupIds],
     queryFn: async () => {
       const ownProductIds = new Set<string>();
-      const ownProducts: (Product & { isPartner: boolean })[] = [];
-      const partnerProducts: (Product & { isPartner: boolean })[] = [];
+      const ownProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
+      const partnerProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
 
       // Get own products if enabled
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
-          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
+          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release, b2b_product_url, supplier_id")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
           .gt("stock_quantity", 0);
@@ -740,6 +741,36 @@ export default function StoreCatalog() {
           products.forEach(p => {
             ownProductIds.add(p.id);
             ownProducts.push({ ...p, isPartner: false });
+          });
+        }
+
+        // Also fetch zero-stock products that have b2b_product_url (for B2B dropshipping display)
+        const { data: b2bProducts, error: b2bError } = await supabase
+          .from("products")
+          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release, b2b_product_url, supplier_id")
+          .eq("owner_id", store.owner_id)
+          .eq("is_active", true)
+          .eq("stock_quantity", 0)
+          .not("b2b_product_url", "is", null);
+
+        if (!b2bError && b2bProducts) {
+          // Check which suppliers are b2b_enabled
+          const supplierIds = [...new Set(b2bProducts.filter(p => p.supplier_id).map(p => p.supplier_id!))];
+          let enabledSupplierIds = new Set<string>();
+          if (supplierIds.length > 0) {
+            const { data: suppliers } = await supabase
+              .from("suppliers")
+              .select("id")
+              .in("id", supplierIds)
+              .eq("b2b_enabled", true);
+            enabledSupplierIds = new Set((suppliers || []).map(s => s.id));
+          }
+
+          b2bProducts.forEach(p => {
+            if (p.supplier_id && enabledSupplierIds.has(p.supplier_id) && !ownProductIds.has(p.id)) {
+              ownProductIds.add(p.id);
+              ownProducts.push({ ...p, isPartner: false, isB2B: true });
+            }
           });
         }
       }
@@ -856,6 +887,7 @@ export default function StoreCatalog() {
         video_url: string | null;
         owner_id: string;
         sizes: SizeInfo[];
+        isB2B: boolean;
       }
 
       const cardDataMap = new Map<string, CardData>();
@@ -920,6 +952,7 @@ export default function StoreCatalog() {
               video_url: variantVideoUrl,
               owner_id: product.owner_id,
               sizes: sizeInfos,
+              isB2B: !!(product as any).isB2B,
             });
         } else {
           // Product without variants
@@ -955,6 +988,7 @@ export default function StoreCatalog() {
             video_url: product.video_url,
             owner_id: product.owner_id,
             sizes: sizeInfos,
+            isB2B: !!(product as any).isB2B,
           });
         }
       }
@@ -1033,6 +1067,7 @@ export default function StoreCatalog() {
               video_url: variantVideoUrl,
               owner_id: product.owner_id,
               sizes: sizeInfos,
+              isB2B: false,
             });
           }
         }
@@ -1111,6 +1146,7 @@ export default function StoreCatalog() {
           owner_id: cardData.owner_id,
           isPartner: allSizesArePartner,
           hasPartnerSizes,
+          isB2B: cardData.isB2B,
         });
       }
 
@@ -2367,7 +2403,16 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
                   {item.isPartner ? "Produto de parceira" : "Alguns tamanhos de parceira"}
                 </TooltipContent>
               </Tooltip>
-            </TooltipProvider>
+           </TooltipProvider>
+          )}
+
+          {/* B2B "Sob Encomenda" Badge */}
+          {item.isB2B && (
+            <Badge 
+              className="absolute left-2 bottom-2 z-20 text-[10px] font-semibold border-0 flex items-center gap-1 shadow-sm bg-orange-500 text-white"
+            >
+              📦 Sob Encomenda
+            </Badge>
           )}
 
           {/* Consignment "Em Provação" Badge - when all sizes are consigned */}
