@@ -435,20 +435,32 @@ export default function StoreCatalog() {
     
     // Check for unlocked tier (celebratory toast)
     const unlockedMsg = getUnlockedTierMessage(prevTotal, newTotal, incentivesConfig);
+    const incentiveToastClass = "!text-base !font-semibold !p-4 !shadow-lg";
+    const incentiveDescClass = "!text-sm";
     if (unlockedMsg) {
-      toast.success(unlockedMsg, { icon: "🎉", duration: 4000 });
+      toast.success(unlockedMsg, {
+        icon: "🎉",
+        duration: 8000,
+        className: incentiveToastClass,
+        descriptionClassName: incentiveDescClass,
+        description: "Aproveite seu benefício! 🎁",
+      });
     } else {
       // Show contextual incentive message
       const tierMsg = getNextTierMessage(newTotal, incentivesConfig);
       if (tierMsg) {
         toast.success(`${item.name} adicionado à sacola`, {
           description: tierMsg,
-          duration: 3000,
+          duration: 6000,
+          className: incentiveToastClass,
+          descriptionClassName: incentiveDescClass,
         });
       } else if (incentivesConfig.enabled && incentivesConfig.messages.on_add) {
         toast.success(`${item.name} adicionado à sacola`, {
           description: incentivesConfig.messages.on_add,
-          duration: 3000,
+          duration: 5000,
+          className: incentiveToastClass,
+          descriptionClassName: incentiveDescClass,
         });
       } else {
         toast.success(`${item.name} adicionado à sacola`);
