@@ -1,9 +1,10 @@
-import { Crown, ShoppingBag, MessageCircle, Shirt, Lock, Award } from "lucide-react";
+import { Crown, ShoppingBag, MessageCircle, Shirt, Lock, Award, Store } from "lucide-react";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { BazarSubmissionDialog } from "./BazarSubmissionDialog";
+import { BazarShowcaseDialog } from "./BazarShowcaseDialog";
 
 const FEATURE_MAP: Record<string, { label: string; icon: React.ElementType; description: string }> = {
   bazar_vip: { label: "Bazar VIP", icon: ShoppingBag, description: "Acesso a ofertas exclusivas" },
@@ -42,6 +43,7 @@ export function VipAreaDrawer({
 }: VipAreaDrawerProps) {
   const [open, setOpen] = useState(false);
   const [bazarOpen, setBazarOpen] = useState(false);
+  const [showcaseOpen, setShowcaseOpen] = useState(false);
 
   const hasFeatures = unlockedFeatures.length > 0;
 
@@ -86,6 +88,25 @@ export function VipAreaDrawer({
               </div>
             ) : hasFeatures ? (
               <div className="grid gap-3">
+                {/* Buy from Bazar button */}
+                {unlockedFeatures.includes("bazar_vip") && ownerId && (
+                  <button
+                    className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left w-full"
+                    onClick={() => { setOpen(false); setShowcaseOpen(true); }}
+                  >
+                    <div
+                      className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${currentLevel?.color || primaryColor}15` }}
+                    >
+                      <Store className="h-5 w-5" style={{ color: currentLevel?.color || primaryColor }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Comprar no Bazar</p>
+                      <p className="text-xs text-muted-foreground">Peças exclusivas com preços incríveis</p>
+                    </div>
+                  </button>
+                )}
+
                 {unlockedFeatures.map((featureKey) => {
                   const feature = FEATURE_MAP[featureKey];
                   if (!feature) return null;
@@ -154,6 +175,15 @@ export function VipAreaDrawer({
           sellerPhone={sellerPhone}
           sellerName={sellerName}
           storeSlug={storeSlug}
+        />
+      )}
+
+      {ownerId && (
+        <BazarShowcaseDialog
+          open={showcaseOpen}
+          onOpenChange={setShowcaseOpen}
+          ownerId={ownerId}
+          primaryColor={primaryColor}
         />
       )}
     </>
