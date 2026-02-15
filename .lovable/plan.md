@@ -1,67 +1,77 @@
 
-# Conexao B2B e URL de Produto para Dropshipping
+# Correcao do Dropshipping B2B: Extracao de Tamanhos do Fornecedor
 
-## Diagnostico
+## Problemas Identificados
 
-O sistema B2B ja esta implementado no codigo, porem:
-1. Nenhum fornecedor tem `b2b_enabled = true` nem `b2b_url` preenchida no banco
-2. Nenhum produto tem `b2b_product_url` preenchida
-3. Falta um botao para testar se a conexao com o site do fornecedor funciona antes de ativar
+1. **Falso "Esgotado"**: A Edge Function `check-b2b-stock` encontra a palavra "Esgotado" na secao de "Produtos similares" do HTML e marca o produto como indisponivel. Na verdade, o produto TEM estoque (221 unidades, conforme metadata `nuvemshop:stock`).
 
-## O que sera feito
+2. **Tamanhos errados**: O produto local tem variantes PP, P, M, G, GG, XG, mas o fornecedor oferece tamanhos 2, 4, 6, 8, 10, 12, 14. O catalogo precisa mostrar os tamanhos do fornecedor.
 
-### 1. Botao "Testar Conexao" no cadastro de fornecedor
+3. **Falta extracao de tamanhos**: A Edge Function nao extrai os tamanhos disponiveis do fornecedor -- ela so verifica se esta "esgotado" ou nao.
 
-No formulario de fornecedor (Suppliers.tsx), ao lado da URL do Portal B2B, sera adicionado um botao **"Testar Conexao"** que:
-- Usa o Firecrawl (ja configurado) para acessar a URL informada
-- Se conseguir acessar e extrair conteudo, mostra mensagem de sucesso verde
-- Se falhar, mostra mensagem de erro vermelha com orientacao
-- Isso da confianca ao usuario de que a URL esta correta antes de ativar o toggle
+---
 
-### 2. Campo "URL do Produto B2B" mais visivel no cadastro de produto
+## Solucao
 
-O campo ja existe em ProductFormDialog.tsx (linha 748-761), mas so aparece quando um fornecedor esta selecionado. Sera melhorado:
-- Adicionar icone visual mais chamativo
-- Adicionar botao "Testar URL" ao lado do campo, que chama a Edge Function `check-b2b-stock` para verificar se o produto esta disponivel no fornecedor
-- Mostrar feedback visual do resultado do teste
+### 1. Atualizar Edge Function `check-b2b-stock`
 
-### 3. Verificacao na listagem de fornecedores
+Melhorar a logica para:
+- **Usar metadata** (`nuvemshop:stock`) como indicador primario de disponibilidade quando disponivel
+- **Limitar a analise de "esgotado"** ao conteudo principal do produto (antes da secao "Produtos similares")
+- **Extrair tamanhos** do markdown usando regex (ex: "Tamanho\n\n2468101214" -> ["2","4","6","8","10","12","14"])
+- Retornar `{ available: true, sizes: ["2","4","6","8","10","12","14"] }` 
 
-Na tabela de fornecedores, ao lado do toggle B2B, mostrar um indicador visual (icone verde/vermelho) de se o fornecedor tem URL B2B configurada, para lembrar o usuario de preencher.
+Arquivo: `supabase/functions/check-b2b-stock/index.ts`
 
-## Arquivos a modificar
+### 2. Atualizar Catalogo para buscar tamanhos B2B
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/pages/Suppliers.tsx` | Botao "Testar Conexao" no formulario B2B + indicador na listagem |
-| `src/components/stock/ProductFormDialog.tsx` | Botao "Testar URL" no campo b2b_product_url |
+No `StoreCatalog.tsx`, para produtos B2B:
+- Chamar `check-b2b-stock` durante o carregamento do catalogo (com cache de 5 min)
+- Se retornar `available: true` com `sizes`, usar esses tamanhos no lugar das variantes locais
+- Se nao retornar tamanhos, mostrar o produto sem selecao de tamanho (apenas "Sob Encomenda")
+
+Arquivo: `src/pages/StoreCatalog.tsx`
+
+### 3. Atualizar VariantSelectionDialog para B2B
+
+Quando o produto e B2B, o dialog de selecao de tamanho deve mostrar os tamanhos do fornecedor (sem verificar estoque local).
+
+Arquivo: `src/components/sales/VariantSelectionDialog.tsx`
+
+---
 
 ## Detalhes Tecnicos
 
-### Botao "Testar Conexao" (Suppliers.tsx)
+### Edge Function - Nova logica de extracao
+
 ```text
-// Ao clicar no botao, chama a Edge Function firecrawl-scrape com a URL do portal B2B
-// Se retornar sucesso (pagina acessivel), mostra toast de sucesso
-// Se falhar, mostra toast de erro
-const testConnection = async () => {
-  const response = await supabase.functions.invoke('firecrawl-scrape', {
-    body: { url: formData.b2b_url, options: { formats: ['markdown'] } }
-  });
-  // Verifica se retornou conteudo
-};
+// 1. Verificar metadata primeiro
+if (metadata['nuvemshop:stock'] && parseInt(metadata['nuvemshop:stock']) > 0) {
+  available = true;
+}
+
+// 2. Extrair tamanhos da secao principal (antes de "Produtos similares")
+const mainContent = markdown.split(/##\s*produtos?\s*similares/i)[0];
+// Regex para "Tamanho\n\n2468101214" -> split em numeros/letras de tamanho
+const sizeMatch = mainContent.match(/tamanho[:\s]*\n+\n*([^\n]+)/i);
+// Parse: "2468101214" ou "P M G GG"
+
+// 3. Verificar esgotado APENAS no conteudo principal
+const isOutOfStock = outOfStockPatterns.some(p => mainContent.includes(p));
 ```
 
-### Botao "Testar URL" (ProductFormDialog.tsx)
+### Catalogo - Cache de verificacao B2B
+
 ```text
-// Chama a Edge Function check-b2b-stock com o product_id (se editando)
-// Ou faz um scrape direto da URL informada (se produto novo)
-const testB2bUrl = async () => {
-  const response = await supabase.functions.invoke('firecrawl-scrape', {
-    body: { url: form.b2b_product_url, options: { formats: ['markdown'] } }
-  });
-  // Mostra se a pagina do produto esta acessivel
-};
+// Para cada produto B2B, chamar check-b2b-stock uma vez
+// Armazenar resultado em Map com TTL de 5 minutos
+// Usar tamanhos retornados como sizeInfos do card
 ```
 
-### Indicador na listagem
-Na coluna "B2B Ativo", alem do Switch, mostrar um icone de alerta se `b2b_url` estiver vazia (lembrete para configurar).
+## Arquivos a Modificar
+
+| Arquivo | Mudanca |
+|---------|---------|
+| `supabase/functions/check-b2b-stock/index.ts` | Extrair tamanhos + corrigir deteccao de "esgotado" + usar metadata |
+| `src/pages/StoreCatalog.tsx` | Chamar check-b2b-stock para produtos B2B e usar tamanhos retornados |
+| `src/components/sales/VariantSelectionDialog.tsx` | Suportar tamanhos B2B (sem estoque local) |
