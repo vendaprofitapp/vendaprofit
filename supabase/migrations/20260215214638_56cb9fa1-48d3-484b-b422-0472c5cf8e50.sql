@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN b2b_visible_in_store boolean NOT NULL DEFAULT true;

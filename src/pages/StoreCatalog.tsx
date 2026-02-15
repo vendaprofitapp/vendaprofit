@@ -754,10 +754,23 @@ export default function StoreCatalog() {
           .not("b2b_source_product_id", "is", null);
 
         if (!b2bError && b2bClones) {
-          // Only show B2B clone if the original product has zero stock (not in ownProductIds means it was filtered by stock > 0)
+          // Fetch visibility flags for source products
+          const sourceIds = b2bClones.map(p => (p as any).b2b_source_product_id).filter(Boolean);
+          const hiddenSourceIds = new Set<string>();
+          if (sourceIds.length > 0) {
+            const { data: sourceProducts } = await supabase
+              .from("products")
+              .select("id, b2b_visible_in_store")
+              .in("id", sourceIds)
+              .eq("b2b_visible_in_store", false);
+            (sourceProducts || []).forEach(sp => hiddenSourceIds.add(sp.id));
+          }
+
+          // Only show B2B clone if the original product has zero stock AND is visible in store
           b2bClones.forEach(p => {
-            const originalInStock = ownProductIds.has((p as any).b2b_source_product_id);
-            if (!originalInStock && !ownProductIds.has(p.id)) {
+            const sourceId = (p as any).b2b_source_product_id;
+            const originalInStock = ownProductIds.has(sourceId);
+            if (!originalInStock && !ownProductIds.has(p.id) && !hiddenSourceIds.has(sourceId)) {
               ownProductIds.add(p.id);
               ownProducts.push({ ...p, isPartner: false, isB2B: true });
             }

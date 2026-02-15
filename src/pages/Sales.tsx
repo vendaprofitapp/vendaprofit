@@ -248,7 +248,20 @@ export default function Sales() {
         .order("name");
       
       const regularProducts = (data || []) as Product[];
-      const cloneProducts = ((b2bClones || []) as Product[]).map(p => ({ ...p, isB2B: true }));
+      const allClones = ((b2bClones || []) as Product[]).map(p => ({ ...p, isB2B: true }));
+      
+      // Filter out clones whose source product has b2b_visible_in_store = false
+      const sourceIds = allClones.map(p => p.b2b_source_product_id).filter(Boolean) as string[];
+      let hiddenSourceIds = new Set<string>();
+      if (sourceIds.length > 0) {
+        const { data: hiddenSources } = await supabase
+          .from("products")
+          .select("id")
+          .in("id", sourceIds)
+          .eq("b2b_visible_in_store", false);
+        hiddenSourceIds = new Set((hiddenSources || []).map(s => s.id));
+      }
+      const cloneProducts = allClones.filter(p => !hiddenSourceIds.has(p.b2b_source_product_id || ""));
       
       return [...regularProducts, ...cloneProducts];
     },
