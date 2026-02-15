@@ -1,91 +1,91 @@
-# Corrigir Badge B2B no Resumo de Venda + Programa de Fidelidade Completo
 
-## Parte 1 — Badge "Próprio" no resumo de venda para produtos B2B
 
-### Problema
+# Corrigir Formulario Mobile (Teclado) + Deteccao Automatica de Cliente Retornante
 
-No card "Divisão de Lucros" (ProfitBreakdownCard), o badge ao lado de cada produto mostra "Próprio" para produtos B2B. Isso acontece porque o profit engine classifica produtos B2B como cenário `OWN_STOCK` (já que o clone pertence ao usuário). A badge não considera a flag `isB2B`.
+## Problema 1 — Formulario sumindo quando teclado abre no mobile
 
-### Solução
+O Drawer (vaul) usa `max-h-[85dvh]` e posicionamento `fixed bottom-0`. Quando o teclado virtual abre no iOS/Android, o viewport visual encolhe mas o `dvh` nao se ajusta de forma confiavel em todos os navegadores. O formulario fica "preso" atras do teclado ou e empurrado para fora da tela.
 
-Alterar o `ProfitBreakdownCard` para verificar se o item do carrinho é B2B (`item.product.isB2B` ou `item.product.b2b_source_product_id`) e exibir "Sob Encomenda" ao invés de "Próprio" nesses casos.
+### Solucao
 
-### Arquivo: `src/components/sales/ProfitBreakdownCard.tsx`
+Substituir o Drawer por uma abordagem de **tela cheia fixa** no mobile que funciona com teclado em ambos iOS e Android:
 
-- Passar a informação `isB2B` nos `details` do aggregatedSplits
-- Na renderização do badge (linha ~288), verificar `isB2B` antes de chamar `getScenarioShortLabel`
-- Se `isB2B === true` e scenario é `OWN_STOCK`, exibir "Sob Encomenda" com cor diferenciada (amarelo/laranja)
+**Arquivo: `src/components/catalog/LeadCaptureSheet.tsx`**
 
-### Arquivo: `src/pages/Sales.tsx` (cart display, linha ~2089)
+1. No mobile, usar `position: fixed; inset: 0` com `overflow-y: auto` — uma tela cheia simples que nao sofre com o resize do viewport pelo teclado
+2. Usar `visualViewport` API para detectar quando o teclado abre e ajustar o padding-bottom dinamicamente, garantindo que o botao de submit fique sempre visivel
+3. Adicionar `inputMode="text"` no campo nome e manter `inputMode="tel"` no WhatsApp para evitar problemas de foco no iOS
+4. Remover `autoFocus` que causa abertura automatica do teclado (atrapalha a experiencia no mobile)
+5. No `scrollInputIntoView`, usar `scrollIntoView({ block: "nearest" })` ao inves de `"center"` para evitar saltos bruscos no iOS Safari
 
-- Adicionar badge de origem para itens B2B no resumo do carrinho (similar ao que já existe para parceiros)
-- Exibir "Origem: Sob Encomenda (B2B)" quando `item.product.isB2B || item.product.b2b_source_product_id`
+A implementacao alternativa:
+- Manter o Drawer mas adicionar CSS que responde ao `visualViewport.resize` event
+- Quando teclado abre: setar `max-height` para `visualViewport.height` ao inves de `85dvh`
+- Isso garante que o conteudo do drawer se ajuste ao espaco disponivel acima do teclado
+
+**Abordagem escolhida**: Usar o VisualViewport API dentro do proprio Drawer, pois mantem a UX nativa de "puxar para fechar" que o vaul oferece. Isso funciona tanto em iOS quanto Android.
+
+```text
+Drawer abre -> max-h-[85dvh]
+Teclado abre -> useEffect detecta visualViewport.resize
+             -> ajusta max-height para visualViewport.height
+             -> scrollIntoView do input focado
+Teclado fecha -> restaura max-h original
+```
 
 ---
 
-## Parte 2 — Programa de Fidelidade Completo
+## Problema 2 — Deteccao automatica de cliente que ja comprou
 
-### 2a. Atualizar funcionalidades disponíveis
+### Como funciona hoje
 
-O array `AVAILABLE_FEATURES` em `LoyaltyAdmin.tsx` será expandido:
+O sistema usa `localStorage` com a chave `store_lead_{slug}` para armazenar nome/whatsapp do cliente. Se essa chave existe, o formulario de captura nao aparece e o cliente adiciona direto ao carrinho.
 
+**Limitacao**: Se o cliente limpar o cache do navegador, trocar de celular, ou usar outro navegador, o `localStorage` e perdido e ele tera que se cadastrar novamente.
 
-| Chave           | Label                         |
-| --------------- | ----------------------------- |
-| `fidelidade`    | Entrar no Programa Fidelidade |
-| `area_secreta`  | Acessar Área Secreta          |
-| `bazar_comprar` | Comprar produtos no Bazar VIP |
-| `bazar_vender`  | Vender produtos no Bazar VIP  |
+### Solucao: Deteccao por WhatsApp via banco de dados
 
+Quando o cliente preenche o formulario pela segunda vez (porque perdeu o localStorage), o sistema deve:
 
-As chaves antigas (`bazar_vip`, `chat`, `provador_ia`) serão substituídas.
+1. **Ao submeter o formulario**: Antes de criar um novo lead, buscar na tabela `store_leads` se ja existe um registro com o mesmo `whatsapp` + `store_id`
+2. **Se encontrar**: Reutilizar o `lead_id` existente, atualizar `last_seen_at`, e restaurar o localStorage com os dados do lead existente
+3. **Vincular com `customers`**: Buscar na tabela `customers` se existe um cliente com o mesmo `phone` (whatsapp) e `owner_id`. Se existir, o sistema sabe que e um cliente que ja comprou
 
-### 2b. Criar níveis iniciais automaticamente
+**Arquivo: `src/pages/StoreCatalog.tsx`** — funcao `saveLeadData`
 
-Alterar a lógica de auto-criação em `fetchLevels` para inserir 5 níveis quando nenhum existir:
+Alterar o fluxo de upsert:
+- Mudar o `onConflict` de `"store_id,device_id"` para buscar primeiro por `store_id + whatsapp`
+- Se encontrar lead existente, reutilizar o `id` dele
+- Isso garante que mesmo em dispositivo novo, o whatsapp vincula ao historico anterior
 
+**Arquivo: `src/pages/StoreCatalog.tsx`** — funcao `addToCart` / `getStoredLead`
 
-| Nome    | Gasto Mínimo | Cor     | Funcionalidades                                       |
-| ------- | ------------ | ------- | ----------------------------------------------------- |
-| Inicial | R$ 0,00      | #9CA3AF | &nbsp;                                                |
-| Prata   | R$ 500,00    | #A0AEC0 | fidelidade                                            |
-| Ouro    | R$ 1.000,00  | #D69E2E | fidelidade, area_secreta                              |
-| Gold    | R$ 2.000,00  | #B7791F | fidelidade, area_secreta, bazar_comprar               |
-| VIP     | R$ 4.000,00  | #8B5CF6 | fidelidade, area_secreta, bazar_comprar, bazar_vender |
+Sem mudanca necessaria — o `getStoredLead` continuara funcionando pois o localStorage sera restaurado apos o upsert.
 
+### Fluxo completo do cliente retornante
 
-Os níveis existentes (2 "Inicial" duplicados) serão limpos via SQL antes da inserção dos novos.
-
-### 2c. Lógica automática de controle por cliente
-
-O sistema já possui:
-
-- Coluna `total_spent` na tabela `customers` (atualizada por trigger ao criar vendas)
-- Função RPC `get_catalog_customer_loyalty` que calcula o nível baseado no gasto
-
-O que falta verificar/ajustar:
-
-- Garantir que o trigger de atualização de `total_spent` está funcionando ao criar vendas
-- Atualizar o `VipAreaDrawer` e `StoreCatalog` para usar as novas chaves de features (fidelidade,`area_secreta`, `bazar_comprar`, `bazar_vender`)
-
-### 2d. Atualizar VipAreaDrawer
-
-O `FEATURE_MAP` no `VipAreaDrawer.tsx` será atualizado para refletir as novas funcionalidades:
-
-- `fidelidade` -> Programa Fidelidade (icon: Award)
-- `area_secreta` -> Área Secreta (icon: Lock)
-- `bazar_comprar` -> Comprar no Bazar VIP (icon: Store)
-- `bazar_vender` -> Vender no Bazar VIP (icon: ShoppingBag)
+```text
+Cliente volta a loja (novo dispositivo ou cache limpo)
+  -> Clica em adicionar ao carrinho
+  -> localStorage vazio -> abre formulario
+  -> Digita nome e WhatsApp
+  -> Sistema busca: SELECT * FROM store_leads WHERE store_id = X AND whatsapp = Y
+  -> Se encontrar:
+       -> Reutiliza lead_id existente
+       -> Atualiza last_seen_at
+       -> Salva no localStorage
+       -> Toast: "Bem-vindo(a) de volta, [nome]!"
+  -> Se nao encontrar:
+       -> Cria novo lead normalmente
+       -> Toast: "Bem-vindo(a), [nome]!"
+```
 
 ---
 
 ## Resumo dos arquivos modificados
 
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/components/catalog/LeadCaptureSheet.tsx` | Hook de VisualViewport para ajustar drawer ao teclado; remover autoFocus; melhorar scrollIntoView |
+| `src/pages/StoreCatalog.tsx` | Alterar `saveLeadData` para buscar lead existente por whatsapp antes de criar novo; exibir toast de "volta" |
 
-| Arquivo                                        | Alteração                                                  |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `src/components/sales/ProfitBreakdownCard.tsx` | Badge "Sob Encomenda" para itens B2B ao invés de "Próprio" |
-| `src/pages/Sales.tsx`                          | Badge de origem B2B no resumo do carrinho                  |
-| `src/pages/LoyaltyAdmin.tsx`                   | Novas funcionalidades + auto-criação de 5 níveis           |
-| `src/components/catalog/VipAreaDrawer.tsx`     | Atualizar FEATURE_MAP com novas chaves                     |
-| Limpeza de dados                               | Remover níveis duplicados existentes                       |
