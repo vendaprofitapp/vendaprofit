@@ -367,7 +367,9 @@ export default function StockControl() {
         requester_id: user.id,
         owner_id: selectedProduct.owner_id,
         quantity: parseInt(requestQuantity) || 1,
-        notes: requestNotes || null
+        notes: requestNotes || null,
+        product_name: selectedProduct.name,
+        product_price: selectedProduct.price,
       });
 
     if (error) {
