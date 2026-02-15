@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.manage-ad-campaign]
 verify_jwt = false
+
+[functions.quote-bazar-shipping]
+verify_jwt = false
+
+[functions.checkout-bazar]
+verify_jwt = false

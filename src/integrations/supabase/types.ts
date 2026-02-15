@@ -134,6 +134,9 @@ export type Database = {
       bazar_items: {
         Row: {
           admin_notes: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          buyer_zip: string | null
           created_at: string
           description: string | null
           final_price: number | null
@@ -153,6 +156,14 @@ export type Database = {
           seller_state: string | null
           seller_street: string | null
           seller_zip: string | null
+          shipping_carrier: string | null
+          shipping_cost: number | null
+          shipping_label_url: string | null
+          shipping_service: string | null
+          shipping_service_id: number | null
+          shipping_source: string | null
+          shipping_tracking: string | null
+          sold_at: string | null
           status: string
           store_commission: number | null
           title: string
@@ -162,6 +173,9 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          buyer_zip?: string | null
           created_at?: string
           description?: string | null
           final_price?: number | null
@@ -181,6 +195,14 @@ export type Database = {
           seller_state?: string | null
           seller_street?: string | null
           seller_zip?: string | null
+          shipping_carrier?: string | null
+          shipping_cost?: number | null
+          shipping_label_url?: string | null
+          shipping_service?: string | null
+          shipping_service_id?: number | null
+          shipping_source?: string | null
+          shipping_tracking?: string | null
+          sold_at?: string | null
           status?: string
           store_commission?: number | null
           title: string
@@ -190,6 +212,9 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          buyer_zip?: string | null
           created_at?: string
           description?: string | null
           final_price?: number | null
@@ -209,6 +234,14 @@ export type Database = {
           seller_state?: string | null
           seller_street?: string | null
           seller_zip?: string | null
+          shipping_carrier?: string | null
+          shipping_cost?: number | null
+          shipping_label_url?: string | null
+          shipping_service?: string | null
+          shipping_service_id?: number | null
+          shipping_source?: string | null
+          shipping_tracking?: string | null
+          sold_at?: string | null
           status?: string
           store_commission?: number | null
           title?: string
