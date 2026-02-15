@@ -237,7 +237,7 @@ Quando podemos agendar?`;
     mutationFn: async (requestId: string) => {
       const { error } = await supabase
         .from("stock_requests")
-        .update({ status: "rejected" })
+        .update({ status: "cancelled" })
         .eq("id", requestId)
         .eq("requester_id", user?.id)
         .eq("status", "pending");
