@@ -2607,6 +2607,7 @@ export type Database = {
           logo_position: string | null
           logo_size: string | null
           logo_url: string | null
+          loyalty_enabled: boolean | null
           opportunities_button_color: string | null
           opportunities_button_text: string | null
           owner_id: string
@@ -2652,6 +2653,7 @@ export type Database = {
           logo_position?: string | null
           logo_size?: string | null
           logo_url?: string | null
+          loyalty_enabled?: boolean | null
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
           owner_id: string
@@ -2697,6 +2699,7 @@ export type Database = {
           logo_position?: string | null
           logo_size?: string | null
           logo_url?: string | null
+          loyalty_enabled?: boolean | null
           opportunities_button_color?: string | null
           opportunities_button_text?: string | null
           owner_id?: string

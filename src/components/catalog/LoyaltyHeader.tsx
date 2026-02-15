@@ -84,7 +84,7 @@ export function LoyaltyHeader({
             />
             <p className="text-xs text-muted-foreground">
               Falta <span className="font-semibold" style={{ color: currentLevel.color }}>R$ {amountToNext?.toFixed(2).replace(".", ",")}</span> para{" "}
-              <span className="font-semibold" style={{ color: nextLevel.color }}>{nextLevel.name}</span>
+              <span className="font-semibold" style={{ color: nextLevel.color }}>Cliente Nível {nextLevel.name}</span>
             </p>
           </div>
         )}
