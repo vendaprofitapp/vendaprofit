@@ -91,7 +91,7 @@ interface StockRequest {
   requester_id: string;
   owner_id: string;
   quantity: number;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed';
   notes: string | null;
   response_notes: string | null;
   created_at: string;

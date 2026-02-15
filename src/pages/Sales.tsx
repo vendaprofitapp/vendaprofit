@@ -166,6 +166,7 @@ export default function Sales() {
   const [shippingLabelUrl, setShippingLabelUrl] = useState<string | null>(null);
   const [saleIdForShipping, setSaleIdForShipping] = useState<string>("");
   const [shippingTracking, setShippingTracking] = useState<string | null>(null);
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
 
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
@@ -971,7 +972,17 @@ export default function Sales() {
 
       return sale;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Mark stock request as completed if this sale came from an approved request
+      if (pendingRequestId) {
+        await supabase
+          .from("stock_requests")
+          .update({ status: "completed" as any })
+          .eq("id", pendingRequestId);
+        setPendingRequestId(null);
+        queryClient.invalidateQueries({ queryKey: ["stock-requests"] });
+      }
+
       // Core lists
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
@@ -1252,6 +1263,11 @@ export default function Sales() {
     try {
       const saleData = JSON.parse(pendingSaleData);
       sessionStorage.removeItem("pendingSaleFromRequest");
+      
+      // Save the request ID to mark as completed after sale
+      if (saleData.requestId) {
+        setPendingRequestId(saleData.requestId);
+      }
 
       // Ensure price is a valid number
       const productPrice = Number(saleData.productPrice) || 0;

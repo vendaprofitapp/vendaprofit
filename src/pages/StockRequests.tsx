@@ -40,7 +40,7 @@ interface StockRequest {
   requester_id: string;
   owner_id: string;
   quantity: number;
-  status: "pending" | "approved" | "rejected" | "cancelled";
+  status: "pending" | "approved" | "rejected" | "cancelled" | "completed";
   notes: string | null;
   response_notes: string | null;
   responded_at: string | null;
@@ -76,6 +76,7 @@ const statusConfig = {
   approved: { label: "Aprovada", variant: "default" as const, icon: CheckCircle },
   rejected: { label: "Recusada", variant: "destructive" as const, icon: XCircle },
   cancelled: { label: "Cancelada", variant: "outline" as const, icon: XCircle },
+  completed: { label: "Concluída", variant: "default" as const, icon: CheckCircle },
 };
 
 // Size ordering helper
@@ -395,6 +396,12 @@ Quando podemos agendar?`;
                   WhatsApp
                 </Button>
               </>
+            )}
+            {!isReceived && request.status === "completed" && (
+              <Badge variant="default" className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3" />
+                Venda realizada
+              </Badge>
             )}
           </div>
         </TableCell>
