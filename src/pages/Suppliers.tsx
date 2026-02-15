@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Search, Building2, Phone, User, Globe } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Building2, Phone, User, Globe, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -82,6 +82,37 @@ export default function Suppliers() {
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [formData, setFormData] = useState(emptySupplier);
   const [searchTerm, setSearchTerm] = useState("");
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const testB2bConnection = async () => {
+    if (!formData.b2b_url.trim()) {
+      toast.error("Preencha a URL do Portal B2B primeiro");
+      return;
+    }
+    setTestingConnection(true);
+    setConnectionStatus('idle');
+    try {
+      const { data, error } = await supabase.functions.invoke('firecrawl-scrape', {
+        body: { url: formData.b2b_url.trim(), options: { formats: ['markdown'] } }
+      });
+      if (error) throw error;
+      const markdown = data?.data?.markdown || data?.markdown;
+      if (markdown && markdown.length > 50) {
+        setConnectionStatus('success');
+        toast.success("Conexão OK! O portal B2B está acessível.");
+      } else {
+        setConnectionStatus('error');
+        toast.error("A página foi acessada mas não retornou conteúdo suficiente. Verifique a URL.");
+      }
+    } catch (err) {
+      console.error('B2B connection test error:', err);
+      setConnectionStatus('error');
+      toast.error("Não foi possível acessar a URL. Verifique se o endereço está correto.");
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   const fetchSuppliers = async () => {
     if (!user) return;
@@ -105,6 +136,7 @@ export default function Suppliers() {
   }, [user]);
 
   const handleOpenDialog = (supplier?: Supplier) => {
+    setConnectionStatus('idle');
     if (supplier) {
       setEditingSupplier(supplier);
       setFormData({
@@ -274,21 +306,29 @@ export default function Suppliers() {
                         <TableCell>{supplier.attendant_name || "-"}</TableCell>
                         <TableCell>{supplier.attendant_phone || "-"}</TableCell>
                         <TableCell>
-                          <Switch
-                            checked={supplier.b2b_enabled}
-                            onCheckedChange={async (checked) => {
-                              const { error } = await supabase
-                                .from("suppliers")
-                                .update({ b2b_enabled: checked } as any)
-                                .eq("id", supplier.id);
-                              if (error) {
-                                toast.error("Erro ao atualizar toggle B2B");
-                              } else {
-                                setSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, b2b_enabled: checked } : s));
-                                toast.success(checked ? "Dropshipping ativado" : "Dropshipping desativado");
-                              }
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={supplier.b2b_enabled}
+                              onCheckedChange={async (checked) => {
+                                const { error } = await supabase
+                                  .from("suppliers")
+                                  .update({ b2b_enabled: checked } as any)
+                                  .eq("id", supplier.id);
+                                if (error) {
+                                  toast.error("Erro ao atualizar toggle B2B");
+                                } else {
+                                  setSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, b2b_enabled: checked } : s));
+                                  toast.success(checked ? "Dropshipping ativado" : "Dropshipping desativado");
+                                }
+                              }}
+                            />
+                            {supplier.b2b_enabled && !supplier.b2b_url && (
+                              <span title="URL B2B não configurada"><AlertTriangle className="h-4 w-4 text-amber-500" /></span>
+                            )}
+                            {supplier.b2b_enabled && supplier.b2b_url && (
+                              <span title="URL B2B configurada"><CheckCircle2 className="h-4 w-4 text-green-500" /></span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
@@ -446,14 +486,42 @@ export default function Suppliers() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2 space-y-2">
                     <Label>URL do Portal B2B</Label>
-                    <Input
-                      type="url"
-                      value={formData.b2b_url}
-                      onChange={(e) =>
-                        setFormData({ ...formData, b2b_url: e.target.value })
-                      }
-                      placeholder="https://portal.fornecedor.com.br"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="url"
+                        value={formData.b2b_url}
+                        onChange={(e) => {
+                          setFormData({ ...formData, b2b_url: e.target.value });
+                          setConnectionStatus('idle');
+                        }}
+                        placeholder="https://portal.fornecedor.com.br"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant={connectionStatus === 'success' ? 'default' : connectionStatus === 'error' ? 'destructive' : 'outline'}
+                        size="sm"
+                        onClick={testB2bConnection}
+                        disabled={testingConnection || !formData.b2b_url.trim()}
+                        className="shrink-0"
+                      >
+                        {testingConnection ? (
+                          <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Testando...</>
+                        ) : connectionStatus === 'success' ? (
+                          <><CheckCircle2 className="h-4 w-4 mr-1" /> Conectado</>
+                        ) : connectionStatus === 'error' ? (
+                          <><XCircle className="h-4 w-4 mr-1" /> Falhou</>
+                        ) : (
+                          <><Globe className="h-4 w-4 mr-1" /> Testar Conexão</>
+                        )}
+                      </Button>
+                    </div>
+                    {connectionStatus === 'success' && (
+                      <p className="text-xs text-green-600">✅ Portal acessível! Você pode ativar o dropshipping na listagem.</p>
+                    )}
+                    {connectionStatus === 'error' && (
+                      <p className="text-xs text-destructive">❌ Verifique se a URL está correta e tente novamente.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Usuário B2B</Label>
