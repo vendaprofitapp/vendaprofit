@@ -691,26 +691,12 @@ export default function Sales() {
       // Update stock ONLY for own stock items (not partner items)
       for (const item of ownStockItems) {
         if (item.variant) {
-          // Update variant stock
+          // Update variant stock (trigger auto-syncs product stock)
           const { error: variantStockError } = await supabase
             .from("product_variants")
             .update({ stock_quantity: item.variant.stock_quantity - item.quantity })
             .eq("id", item.variant.id);
           if (variantStockError) console.error("Error updating variant stock:", variantStockError);
-          
-          // Also recalculate total product stock from all variants
-          const { data: allVariants } = await supabase
-            .from("product_variants")
-            .select("stock_quantity")
-            .eq("product_id", item.product.id);
-          
-          if (allVariants) {
-            const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0) - item.quantity;
-            await supabase
-              .from("products")
-              .update({ stock_quantity: Math.max(0, totalVariantStock) })
-              .eq("id", item.product.id);
-          }
         } else {
           // Update product stock directly
           const { error: stockError } = await supabase

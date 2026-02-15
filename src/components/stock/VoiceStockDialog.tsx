@@ -509,57 +509,7 @@ export function VoiceStockDialog({
         throw new Error(`Erro ao atualizar ${errors.length} item(s)`);
       }
 
-      // IMPORTANT: if product has variants, also sync the main product stock_quantity
-      // so lists/dashboards that read from `products.stock_quantity` reflect the change.
-      if (hasRealVariants) {
-        const productIdsToSync = Array.from(new Set(toUpdate.map(vq => vq.productId)));
-
-        const syncResults = await Promise.all(
-          productIdsToSync.map(async (productId) => {
-            const { data: allVariants, error: variantsError } = await supabase
-              .from('product_variants')
-              .select('stock_quantity')
-              .eq('product_id', productId);
-
-            if (variantsError) {
-              console.error('[VoiceStock] Erro ao buscar variants para sync do produto:', {
-                productId,
-                error: variantsError.message,
-                code: variantsError.code,
-                details: variantsError.details,
-                hint: variantsError.hint,
-              });
-              return { productId, error: variantsError };
-            }
-
-            const totalVariantStock = allVariants?.reduce((sum, v) => sum + (v.stock_quantity || 0), 0) || 0;
-
-            const { error: productUpdateError } = await supabase
-              .from('products')
-              .update({ stock_quantity: totalVariantStock })
-              .eq('id', productId);
-
-            if (productUpdateError) {
-              console.error('[VoiceStock] Erro RLS/FK ao sincronizar products.stock_quantity:', {
-                productId,
-                error: productUpdateError.message,
-                code: productUpdateError.code,
-                details: productUpdateError.details,
-                hint: productUpdateError.hint,
-              });
-              return { productId, error: productUpdateError };
-            }
-
-            console.log('[VoiceStock] products.stock_quantity sincronizado:', { productId, totalVariantStock });
-            return { productId, error: null };
-          })
-        );
-
-        const syncErrors = syncResults.filter(r => r.error);
-        if (syncErrors.length > 0) {
-          throw new Error('Erro ao sincronizar estoque do produto');
-        }
-      }
+      // Product stock sync is now handled automatically by database trigger
 
       // Only show success after database confirmation (updates + sync)
       setStep('success');
