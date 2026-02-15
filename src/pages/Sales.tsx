@@ -712,8 +712,12 @@ export default function Sales() {
         let itemB2bStatus: string | null = null;
         if (item.isPartnerStock) {
           itemSource = 'partner';
+        } else if (item.product.isB2B || !!item.product.b2b_source_product_id) {
+          // Product explicitly flagged as B2B (clone or imported from saved cart)
+          itemSource = 'b2b';
+          itemB2bStatus = 'pending';
         } else if (item.product.owner_id === user.id && item.product.stock_quantity <= 0) {
-          // Own product with zero stock = came from B2B dropshipping
+          // Own product with zero stock = likely from B2B dropshipping
           itemSource = 'b2b';
           itemB2bStatus = 'pending';
         }
@@ -1131,7 +1135,11 @@ export default function Sales() {
           matchedProduct = ownProducts.find(p => p.id === sci.product_id);
         }
 
-        const product: Product = matchedProduct || {
+        const product: Product = matchedProduct ? {
+          ...matchedProduct,
+          // Force isB2B flag when saved cart item source is b2b
+          isB2B: sci.source === "b2b" ? true : (matchedProduct.isB2B || !!matchedProduct.b2b_source_product_id),
+        } : {
           id: sci.product_id || crypto.randomUUID(),
           name: sci.product_name,
           price: sci.unit_price,
