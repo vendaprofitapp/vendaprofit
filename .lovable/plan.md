@@ -1,28 +1,35 @@
 
-
-# Editar Produto Clone B2B
+# Adicionar Novos Tamanhos ao Sistema
 
 ## O que muda
 
-Adicionar um botao "Editar" nos produtos que ja tem clone criado na aba Estoque B2B. Ao clicar, o sistema abre o mesmo formulario de produto (ProductFormDialog) ja existente, carregando os dados do clone para que o usuario possa corrigir tamanhos errados, nome, precos, etc.
+Incluir os tamanhos infantis (2, 4, 6, 8, 10, 12) e os tamanhos de peso/embalagem (Pote 400 grs, Pote 350 grs, Pote 220 grs, Pacote 500 grs, Pacote 1 kg) em todas as listas de tamanhos do sistema.
 
-## Como funciona
+## Arquivos a modificar
 
-1. O componente `B2BStockTab` recebe uma nova prop `onEditClone` que e uma callback
-2. Quando o usuario clica "Editar" em um produto com clone, o componente chama `onEditClone(cloneId)` 
-3. O `StockControl.tsx` busca o produto clone pelo ID e abre o `ProductFormDialog` com ele como `editingProduct`
-4. O usuario corrige os dados (ex: tamanhos 24 -> 2, remover tamanhos errados, adicionar corretos)
-5. Ao salvar, o callback `onSuccess` atualiza tanto a lista principal quanto a aba B2B
+| Arquivo | O que muda |
+|---------|-----------|
+| `src/components/stock/ProductFormDialog.tsx` | Adicionar novos tamanhos em `availableSizes` e `sizeOrder` |
+| `src/components/stock/StockImportDialog.tsx` | Adicionar novos tamanhos em `availableSizes` |
+| `src/components/sales/VariantSelectionDialog.tsx` | Adicionar novos tamanhos em `SIZE_ORDER` |
+| `src/components/sales/VoiceSaleDialog.tsx` | Adicionar novos tamanhos em `SIZE_ORDER` |
+| `src/pages/StockRequests.tsx` | Adicionar novos tamanhos em `SIZE_ORDER` |
+| `src/components/stock/VoiceStockDialog.tsx` | Adicionar novos tamanhos em `sizeOrder` |
+
+## Ordem dos tamanhos
+
+A ordem final sera:
+
+```text
+Infantis:  2, 4, 6, 8, 10, 12
+Letras:    PP, P, M, G, GG, XG, XXG, XXXG, EG, EGG, EGGG
+Unico:     U, UN, UNICO, UNICO
+Calcados:  33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48
+Peso:      Pote 220 grs, Pote 350 grs, Pote 400 grs, Pacote 500 grs, Pacote 1 kg
+```
 
 ## Detalhes Tecnicos
 
-### Arquivo: `src/components/stock/B2BStockTab.tsx`
-- Adicionar prop `onEditClone: (cloneId: string) => void` na interface Props
-- Adicionar botao "Editar" ao lado do botao "Atualizar" para produtos com status "ready" (que ja tem clone)
-- O botao chama `onEditClone(clone.id)`
-
-### Arquivo: `src/pages/StockControl.tsx`
-- Passar a nova prop `onEditClone` para o `B2BStockTab`
-- A callback busca o produto clone no banco, monta o objeto `Product` e abre o `ProductFormDialog` com `setEditingProduct(cloneProduct)` + `setProductDialogOpen(true)`
-- Adicionar `fetchB2BProducts` no `onSuccess` do ProductFormDialog para que a aba B2B atualize apos edicao
-
+- Nos 6 arquivos listados, as arrays de tamanhos serao atualizadas para incluir os novos valores
+- A ordenacao segue a logica: infantis primeiro, depois letras, unico, calcados, e por ultimo peso/embalagem
+- Nenhuma mudanca no banco de dados e necessaria pois tamanhos sao texto livre nas variantes
