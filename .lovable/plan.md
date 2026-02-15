@@ -1,63 +1,127 @@
 
-# Correcao: Atualizar Status da Solicitacao apos Venda Concretizada
+# Fase 3: Submissao do Bazar VIP e Coleta de Dados Logisticos
 
-## Problema Identificado
+## Resumo
 
-Quando uma reserva aprovada e convertida em venda pela pagina de Vendas, o status do `stock_request` permanece como "approved" para sempre. O `requestId` e armazenado no `sessionStorage` junto com os dados do produto, mas **nunca e utilizado** apos a venda ser criada para atualizar o registro na tabela `stock_requests`.
+Criar o fluxo completo de submissao de itens para o Bazar VIP: o cliente-vendedor envia pecas pelo catalogo (com dados logisticos obrigatorios) e o lojista faz curadoria e precificacao em uma pagina administrativa dedicada.
 
-## Solucao
+## Alteracoes no Banco de Dados
 
-### 1. Novo status "completed" na tabela `stock_requests`
+### 1. Adicionar campos de endereco na tabela `profiles`
 
-Adicionar o status "completed" como estado final para solicitacoes que se tornaram vendas.
+A tabela `profiles` nao possui campos de endereco. Precisamos adicionar para que vendedores do bazar tenham endereco de origem para calculo de frete:
 
-### 2. Modificar `src/pages/Sales.tsx`
+- `address_street` (text, nullable)
+- `address_number` (text, nullable)
+- `address_complement` (text, nullable)
+- `address_neighborhood` (text, nullable)
+- `address_city` (text, nullable)
+- `address_state` (text, nullable)
+- `address_zip` (text, nullable)
 
-- Ao ler os dados do `sessionStorage` (linha ~1253), preservar o `requestId` em um estado local (ex: `pendingRequestId`)
-- Apos a venda ser criada com sucesso na mutacao `createSaleMutation` (apos linha ~708), verificar se existe um `pendingRequestId` e atualizar o `stock_request` correspondente para status "completed"
+Nota: A tabela `customers` ja possui esses campos, mas `profiles` (usuarios autenticados) nao.
 
-### 3. Modificar `src/pages/StockRequests.tsx`
+### 2. Criar tabela `bazar_items`
 
-- Adicionar "completed" ao tipo `StockRequest.status`
-- Adicionar "completed" ao `statusConfig` com label "Concluida", variante "default" e icone `CheckCircle`
-- Nao mostrar botoes "Vender Agora" / "WhatsApp" para solicitacoes com status "completed"
+Nova tabela para itens submetidos ao bazar:
 
-### 4. Correcao retroativa dos dados existentes
+| Coluna | Tipo | Descricao |
+|--------|------|-----------|
+| id | uuid PK | ID do item |
+| owner_id | uuid NOT NULL | Lojista dono da loja |
+| seller_phone | text NOT NULL | Telefone do vendedor (lead) |
+| seller_name | text | Nome do vendedor |
+| title | text NOT NULL | Titulo do item |
+| description | text | Descricao |
+| seller_price | numeric NOT NULL | Valor que o vendedor quer receber |
+| store_commission | numeric | Comissao da loja (preenchida pelo lojista) |
+| final_price | numeric | Preco final (seller_price + commission) |
+| weight_grams | integer NOT NULL | Peso em gramas |
+| height_cm | integer NOT NULL | Altura em cm |
+| width_cm | integer NOT NULL | Largura em cm |
+| length_cm | integer NOT NULL | Comprimento em cm |
+| image_url | text | Foto 1 |
+| image_url_2 | text | Foto 2 |
+| image_url_3 | text | Foto 3 |
+| status | text NOT NULL DEFAULT 'pending' | pending, approved, rejected, sold |
+| seller_zip | text | CEP do vendedor (para frete) |
+| seller_street | text | Endereco do vendedor |
+| seller_number | text | Numero |
+| seller_neighborhood | text | Bairro |
+| seller_city | text | Cidade |
+| seller_state | text | Estado |
+| admin_notes | text | Notas do lojista |
+| created_at | timestamptz | Data de criacao |
+| updated_at | timestamptz | Data de atualizacao |
 
-Usar uma query para marcar como "completed" as solicitacoes da usuaria `teamwodbrasil@gmail.com` que ja foram convertidas em vendas (os 3 registros com status "approved" que ja viraram vendas).
+Politicas RLS:
+- SELECT: owner_id = auth.uid() (lojista ve seus itens)
+- INSERT: anon pode inserir (formulario publico do catalogo)
+- UPDATE: owner_id = auth.uid() (lojista aprova/rejeita)
 
-## Arquivos a modificar
+### 3. Criar bucket de storage `bazar-images`
 
-1. **`src/pages/Sales.tsx`** -- Adicionar estado `pendingRequestId`, salvar o ID ao ler sessionStorage, e atualizar o status apos venda criada
-2. **`src/pages/StockRequests.tsx`** -- Adicionar status "completed" ao tipo e ao mapa de configuracao visual
-3. **`src/components/dashboard/SystemAlerts.tsx`** -- Verificar se o alerta de solicitacoes pendentes desconsidera as "completed" (provavelmente ja funciona, pois filtra por "pending")
+Bucket publico para fotos dos itens do bazar, com politica de upload para anon.
 
-## Detalhes tecnicos
+## Alteracoes no Frontend
 
-### Estado no Sales.tsx
+### 4. Componente `BazarSubmissionDialog` (novo)
+
+Arquivo: `src/components/catalog/BazarSubmissionDialog.tsx`
+
+Dialog em duas etapas:
+1. **Etapa 1 - Verificacao de endereco**: Formulario com CEP, Rua, Numero, Bairro, Cidade, Estado. Se o lead ja tem endereco salvo (localStorage), pula direto para etapa 2.
+2. **Etapa 2 - Dados do item**: Upload de ate 3 fotos, Titulo, Descricao, Valor desejado (R$), e campos obrigatorios de embalagem (Peso kg, Altura cm, Largura cm, Comprimento cm).
+
+Ao submeter, salva na tabela `bazar_items` com status `pending`, vinculado ao `owner_id` da loja e `seller_phone` do lead.
+
+### 5. Atualizar `VipAreaDrawer`
+
+Modificar o botao "Bazar VIP" para abrir o `BazarSubmissionDialog` ao inves de ser apenas placeholder. Adicionar tambem um label "Vender Minha Peca" ao botao.
+
+### 6. Criar pagina `/admin/bazar` (BazarAdmin)
+
+Arquivo: `src/pages/BazarAdmin.tsx`
+
+Pagina protegida para o lojista com:
+- Lista de itens pendentes com fotos, titulo, preco desejado, dimensoes
+- Cada card mostra as fotos em miniatura e os dados de embalagem
+- Campo para inserir "Comissao da Loja" (R$)
+- Exibicao automatica do "Preco Final" (preco vendedor + comissao)
+- Botoes "Aprovar" (status -> approved) e "Rejeitar" (status -> rejected)
+- Filtros por status (Pendentes, Aprovados, Rejeitados, Vendidos)
+
+### 7. Registrar rota no App.tsx
+
+Adicionar rota protegida: `/admin/bazar` -> `BazarAdmin`
+
+### 8. Adicionar link no menu lateral (Sidebar)
+
+Adicionar item "Bazar VIP" no menu, agrupado com os itens administrativos.
+
+## Fluxo do Usuario
 
 ```text
-const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+Cliente no Catalogo
+  -> Abre Area VIP (FAB)
+  -> Clica "Vender Minha Peca"
+  -> Se nao tem endereco: preenche endereco
+  -> Preenche formulario (fotos, titulo, preco, dimensoes)
+  -> Submete -> status "pending"
 
-// No useEffect do sessionStorage:
-setPendingRequestId(saleData.requestId || null);
-
-// No onSuccess da createSaleMutation:
-if (pendingRequestId) {
-  await supabase
-    .from("stock_requests")
-    .update({ status: "completed" })
-    .eq("id", pendingRequestId);
-  setPendingRequestId(null);
-}
+Lojista em /admin/bazar
+  -> Ve itens pendentes
+  -> Analisa fotos e dimensoes
+  -> Define comissao da loja
+  -> Ve preco final calculado
+  -> Aprova ou Rejeita
 ```
 
-### statusConfig atualizado no StockRequests.tsx
+## Arquivos a criar/modificar
 
-```text
-completed: { label: "Concluída", variant: "default" as const, icon: CheckCircle }
-```
-
-### Correcao retroativa
-
-Atualizar os 3 registros aprovados da usuaria teamwodbrasil (requester_id = 98191e2a-0eb6-4c35-aa19-2f7e1a258a95) que ja foram vendidos para status "completed".
+1. **Migracao SQL** -- Campos de endereco em profiles, tabela bazar_items, bucket bazar-images
+2. **`src/components/catalog/BazarSubmissionDialog.tsx`** (novo) -- Formulario de submissao do bazar
+3. **`src/components/catalog/VipAreaDrawer.tsx`** -- Conectar botao bazar_vip ao dialog
+4. **`src/pages/BazarAdmin.tsx`** (novo) -- Pagina de curadoria do lojista
+5. **`src/App.tsx`** -- Adicionar rota /admin/bazar
+6. **`src/components/layout/Sidebar.tsx`** -- Adicionar link ao menu
