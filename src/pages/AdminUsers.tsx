@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ShieldCheck, Users, Search } from "lucide-react";
+import { BackupSection } from "@/components/admin/BackupSection";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -236,6 +237,11 @@ export default function AdminUsers() {
           )}
         </CardContent>
       </Card>
+
+      {/* Backup Section */}
+      <div className="mt-6">
+        <BackupSection />
+      </div>
     </MainLayout>
   );
 }
