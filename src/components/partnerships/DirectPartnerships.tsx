@@ -657,9 +657,9 @@ export function DirectPartnerships() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Parcerias Diretas (1-1)</h2>
+          <h2 className="text-xl font-semibold">Sociedades Diretas (1-1)</h2>
           <p className="text-sm text-muted-foreground">
-            Parcerias exclusivas entre você e outro vendedor
+            Sociedades exclusivas entre você e outro vendedor
           </p>
         </div>
         <div className="flex gap-2">
@@ -786,9 +786,9 @@ export function DirectPartnerships() {
         <Card className="text-center py-8">
           <CardContent>
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Nenhuma parceria direta</h3>
+            <h3 className="text-lg font-medium mb-2">Nenhuma sociedade direta</h3>
             <p className="text-muted-foreground mb-4">
-              Convide outro vendedor para criar uma parceria exclusiva 1-1.
+              Convide outro vendedor para criar uma sociedade exclusiva 1-1.
             </p>
             <Button onClick={() => setIsInviteOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />

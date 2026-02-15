@@ -18,9 +18,9 @@ const pageTitles: Record<string, string> = {
   "/products": "Produtos",
   "/sales": "Vendas",
   "/stock-requests": "Solicitações",
-  "/partnerships": "Parcerias",
+  "/partnerships": "Socias / Parceiras",
   "/reports": "Relatórios",
-  "/partner-reports": "Rel. Parcerias",
+  "/partner-reports": "Rel. Sociedades",
   "/settings": "Configurações",
   "/admin/users": "Admin Usuários",
 };
