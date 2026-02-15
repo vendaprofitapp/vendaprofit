@@ -1,77 +1,83 @@
 
-# Correcao do Dropshipping B2B: Extracao de Tamanhos do Fornecedor
 
-## Problemas Identificados
+# Nova Aba "Estoque B2B" com Produtos Clonados
 
-1. **Falso "Esgotado"**: A Edge Function `check-b2b-stock` encontra a palavra "Esgotado" na secao de "Produtos similares" do HTML e marca o produto como indisponivel. Na verdade, o produto TEM estoque (221 unidades, conforme metadata `nuvemshop:stock`).
+## Conceito
 
-2. **Tamanhos errados**: O produto local tem variantes PP, P, M, G, GG, XG, mas o fornecedor oferece tamanhos 2, 4, 6, 8, 10, 12, 14. O catalogo precisa mostrar os tamanhos do fornecedor.
+Em vez de modificar os produtos locais (que podem receber reestoque a qualquer momento), o sistema vai **criar produtos B2B separados** -- clones dos seus produtos locais, mas com os tamanhos do fornecedor. Assim:
 
-3. **Falta extracao de tamanhos**: A Edge Function nao extrai os tamanhos disponiveis do fornecedor -- ela so verifica se esta "esgotado" ou nao.
+- Seus produtos locais continuam intactos com tamanhos PP, P, M, G, GG, XG
+- Os clones B2B tem tamanhos 2, 4, 6, 8, 10, 12, 14 (extraidos do fornecedor)
+- O sistema de prioridade ja estabelecido decide qual usar: estoque local primeiro, B2B depois
 
----
+## Como vai funcionar
 
-## Solucao
+### Fluxo do usuario
 
-### 1. Atualizar Edge Function `check-b2b-stock`
+1. Abrir Controle de Estoque e clicar na aba **"Estoque B2B"**
+2. Ver a lista de todos os produtos do fornecedor com B2B ativo
+3. Para cada produto, poder:
+   - **Informar a URL** do produto no site do fornecedor
+   - **Clicar "Verificar"** para o sistema acessar o site e extrair tamanhos
+   - **Clicar "Criar Clone B2B"** para gerar automaticamente um produto identico com os tamanhos do fornecedor
+4. Produtos ja clonados aparecem com status "Pronto" e link para o clone
+5. Produtos com problemas (URL faltando, conexao falha, etc.) aparecem com alerta
 
-Melhorar a logica para:
-- **Usar metadata** (`nuvemshop:stock`) como indicador primario de disponibilidade quando disponivel
-- **Limitar a analise de "esgotado"** ao conteudo principal do produto (antes da secao "Produtos similares")
-- **Extrair tamanhos** do markdown usando regex (ex: "Tamanho\n\n2468101214" -> ["2","4","6","8","10","12","14"])
-- Retornar `{ available: true, sizes: ["2","4","6","8","10","12","14"] }` 
+### Status de cada produto
 
-Arquivo: `supabase/functions/check-b2b-stock/index.ts`
-
-### 2. Atualizar Catalogo para buscar tamanhos B2B
-
-No `StoreCatalog.tsx`, para produtos B2B:
-- Chamar `check-b2b-stock` durante o carregamento do catalogo (com cache de 5 min)
-- Se retornar `available: true` com `sizes`, usar esses tamanhos no lugar das variantes locais
-- Se nao retornar tamanhos, mostrar o produto sem selecao de tamanho (apenas "Sob Encomenda")
-
-Arquivo: `src/pages/StoreCatalog.tsx`
-
-### 3. Atualizar VariantSelectionDialog para B2B
-
-Quando o produto e B2B, o dialog de selecao de tamanho deve mostrar os tamanhos do fornecedor (sem verificar estoque local).
-
-Arquivo: `src/components/sales/VariantSelectionDialog.tsx`
-
----
+| Icone | Status | Significado |
+|-------|--------|------------|
+| Cinza | Sem URL | Falta preencher a URL do produto no fornecedor |
+| Amarelo | Pendente | Tem URL mas ainda nao foi verificado/clonado |
+| Vermelho | Erro | URL existe mas nao conseguiu acessar ou extrair tamanhos |
+| Verde | Pronto | Clone B2B criado e funcionando |
 
 ## Detalhes Tecnicos
 
-### Edge Function - Nova logica de extracao
+### 1. Nova coluna no banco de dados
+
+Adicionar coluna `b2b_source_product_id` na tabela `products`:
+- Quando preenchida, indica que este produto e um clone B2B
+- Aponta para o produto original (local)
+- Permite o sistema de prioridade saber: "se o original tem estoque, use ele; senao, use o clone B2B"
 
 ```text
-// 1. Verificar metadata primeiro
-if (metadata['nuvemshop:stock'] && parseInt(metadata['nuvemshop:stock']) > 0) {
-  available = true;
-}
-
-// 2. Extrair tamanhos da secao principal (antes de "Produtos similares")
-const mainContent = markdown.split(/##\s*produtos?\s*similares/i)[0];
-// Regex para "Tamanho\n\n2468101214" -> split em numeros/letras de tamanho
-const sizeMatch = mainContent.match(/tamanho[:\s]*\n+\n*([^\n]+)/i);
-// Parse: "2468101214" ou "P M G GG"
-
-// 3. Verificar esgotado APENAS no conteudo principal
-const isOutOfStock = outOfStockPatterns.some(p => mainContent.includes(p));
+ALTER TABLE products ADD COLUMN b2b_source_product_id uuid REFERENCES products(id);
 ```
 
-### Catalogo - Cache de verificacao B2B
+### 2. Nova aba "Estoque B2B" em StockControl.tsx
 
-```text
-// Para cada produto B2B, chamar check-b2b-stock uma vez
-// Armazenar resultado em Map com TTL de 5 minutos
-// Usar tamanhos retornados como sizeInfos do card
-```
+A aba vai:
+- Buscar todos os produtos cujo fornecedor tem `b2b_enabled = true`
+- Para cada um, verificar se ja existe um clone (produto com `b2b_source_product_id` apontando para ele)
+- Mostrar campo inline para editar `b2b_product_url`
+- Botao "Verificar" que chama `check-b2b-stock` e mostra tamanhos encontrados
+- Botao "Criar Clone B2B" que:
+  1. Copia nome, imagens, preco, custo, fornecedor, categorias
+  2. Adiciona sufixo " (B2B)" ao nome para diferenciar
+  3. Seta `b2b_source_product_id` apontando para o original
+  4. Copia a `b2b_product_url` do original
+  5. Cria variantes com os tamanhos do fornecedor (estoque = 0, pois e sob encomenda)
+- Botao "Atualizar Tamanhos" para clones ja existentes (re-verifica o fornecedor e sincroniza)
 
-## Arquivos a Modificar
+### 3. Atualizar StoreCatalog.tsx
+
+Na logica do catalogo:
+- Para cada produto local com estoque 0 que tenha um clone B2B, mostrar o clone B2B no lugar
+- Se o produto local tem estoque > 0, mostrar o local (prioridade)
+- O clone B2B aparece com badge "Sob Encomenda" e os tamanhos do fornecedor
+
+### 4. Atualizar VariantSelectionDialog.tsx
+
+- Se o produto selecionado tem `b2b_source_product_id` (e um clone B2B), mostrar todos os tamanhos como "Sob Encomenda"
+- Nao verificar estoque local para esses tamanhos
+
+## Arquivos a modificar
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `supabase/functions/check-b2b-stock/index.ts` | Extrair tamanhos + corrigir deteccao de "esgotado" + usar metadata |
-| `src/pages/StoreCatalog.tsx` | Chamar check-b2b-stock para produtos B2B e usar tamanhos retornados |
-| `src/components/sales/VariantSelectionDialog.tsx` | Suportar tamanhos B2B (sem estoque local) |
+| Migracao SQL | Adicionar coluna `b2b_source_product_id` em `products` |
+| `src/pages/StockControl.tsx` | Nova aba "Estoque B2B" com lista, verificacao, e criacao de clones |
+| `src/pages/StoreCatalog.tsx` | Logica de prioridade: local > clone B2B |
+| `src/components/sales/VariantSelectionDialog.tsx` | Suporte a produtos B2B clonados |
+
