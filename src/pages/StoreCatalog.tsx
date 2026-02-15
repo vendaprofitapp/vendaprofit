@@ -803,18 +803,37 @@ export default function StoreCatalog() {
 
       // Fetch variants for all products (including marketing fields and video)
       const productIds = allProducts.map(p => p.id);
-      const [{ data: variants }, { data: consignmentItems }] = await Promise.all([
-        supabase
-          .from("product_variants")
-          .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
-          .in("product_id", productIds)
-          .gt("stock_quantity", 0),
-        supabase
-          .from("consignment_items")
-          .select("product_id, variant_id, status, consignments!inner(status)")
-          .in("product_id", productIds)
-          .in("status", ["pending", "active"])
-      ]);
+      const b2bProductIds = new Set(allProducts.filter(p => (p as any).isB2B).map(p => p.id));
+      const nonB2bProductIds = productIds.filter(id => !b2bProductIds.has(id));
+      
+      // Fetch variants: stock > 0 for regular products, ALL variants for B2B products
+      const variantQueries: PromiseLike<{ data: any[] | null }>[] = [];
+      if (nonB2bProductIds.length > 0) {
+        variantQueries.push(
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
+            .in("product_id", nonB2bProductIds)
+            .gt("stock_quantity", 0)
+        );
+      }
+      if (b2bProductIds.size > 0) {
+        variantQueries.push(
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
+            .in("product_id", Array.from(b2bProductIds))
+        );
+      }
+      
+      const variantResults = await Promise.all(variantQueries.map(q => Promise.resolve(q)));
+      const variants = variantResults.flatMap(r => r.data || []);
+      
+      const { data: consignmentItems } = await supabase
+        .from("consignment_items")
+        .select("product_id, variant_id, status, consignments!inner(status)")
+        .in("product_id", productIds)
+        .in("status", ["pending", "active"]);
 
       // Build consigned count map: key = "productId_variantId" or "productId_null"
       const consignedCountMap = new Map<string, number>();
