@@ -1,87 +1,90 @@
 
-
-# Fase 1: Motor de Gamificacao e Painel Admin de Fidelidade
+# Fase 2: Hub Central do Cliente -- Gamificacao no Catalogo
 
 ## Resumo
 
-Criar um sistema de fidelidade white-label onde cada lojista configura seus proprios niveis de recompensa, e o sistema calcula automaticamente o nivel de cada cliente com base no gasto acumulado.
+Adicionar ao catalogo publico (`StoreCatalog.tsx`) um painel de fidelidade do cliente com nivel atual, barra de progresso ate o proximo nivel, e uma gaveta "Area VIP" com botoes condicionais baseados nas permissoes do nivel.
 
-## Estrutura de Dados
+## Estrutura
 
-### Tabela `loyalty_levels` (nova)
+### 1. Hook `useCatalogLoyalty` (novo arquivo)
 
-Armazena os niveis de fidelidade configurados por cada lojista.
+Criar `src/hooks/useCatalogLoyalty.tsx` que encapsula toda a logica de fidelidade para o catalogo:
 
-| Coluna | Tipo | Obs |
-|--------|------|-----|
-| id | uuid | PK |
-| owner_id | uuid | Lojista dono |
-| name | text | Ex: "Bronze", "Ouro" |
-| min_spent | numeric | Gasto minimo acumulado |
-| color | text | Cor hexadecimal |
-| features | jsonb | Array de features liberadas |
-| display_order | integer | Ordenacao |
-| created_at | timestamptz | |
+- Recebe `store_owner_id` (do store settings)
+- Busca os `loyalty_levels` do owner via query publica (precisa de policy SELECT para isso)
+- Se o usuario estiver logado, busca o `total_spent` do cliente na tabela `customers` (match por phone/owner_id) OU diretamente se houver um vinculo
+- Calcula o nivel atual e o proximo nivel
+- Retorna: `{ currentLevel, nextLevel, totalSpent, progress, unlockedFeatures, levels, isLoading }`
 
-RLS: owner_id = auth.uid() para todas as operacoes.
+Nota: Como o catalogo e publico e os clientes nao tem conta Supabase, usaremos os dados do lead capturado (localStorage) para buscar o `total_spent` via uma query anonima. Precisamos de uma policy SELECT publica limitada na tabela `customers` ou uma funcao RPC.
 
-### Coluna `total_spent` na tabela `customers` (nova)
+### 2. Funcao RPC `get_catalog_customer_loyalty` (migracao SQL)
 
-Adicionar uma coluna `total_spent numeric DEFAULT 0` na tabela `customers` para rastrear o gasto acumulado de cada cliente.
+Criar funcao SECURITY DEFINER que:
+- Recebe `_owner_id uuid` e `_phone text`
+- Busca `total_spent` do customer
+- Busca os loyalty_levels do owner
+- Retorna o nivel atual, proximo nivel, progresso percentual e features liberadas
+- Isso evita expor dados sensiveis via RLS publica
 
-### Funcao SQL `get_customer_loyalty_level`
+Tambem adicionar policy SELECT publica em `loyalty_levels` para que o catalogo possa listar os niveis (sem dados sensiveis).
 
-Funcao que recebe um `customer_id` e retorna o nivel atual do cliente, comparando `customers.total_spent` com os `loyalty_levels` do `owner_id` daquele cliente.
+### 3. Componente `LoyaltyHeader` (novo)
 
-### Trigger para acumular gasto
+Criar `src/components/catalog/LoyaltyHeader.tsx`:
 
-Como `sales` referencia clientes por `customer_name` + `customer_phone` (nao por FK), criaremos uma funcao trigger que, ao inserir uma venda com status "completed", busca o cliente correspondente na tabela `customers` pelo `owner_id` + `customer_phone` e incrementa o `total_spent`.
+- **Logado (lead com telefone salvo)**: Mostra o nivel atual com cor/nome, barra de progresso ate o proximo nivel, e texto "Falta R$ X para [ProximoNivel]"
+- **Nao logado**: Botao "Entrar para ver meu Nivel" que abre um Dialog simples pedindo telefone/WhatsApp (reutiliza o lead capture existente)
 
-## Pagina Admin `/admin/fidelidade`
+Layout: painel compacto fixo abaixo do header existente do catalogo.
 
-Interface onde o lojista configura os niveis:
+### 4. Componente `VipAreaDrawer` (novo)
 
-- Lista dos niveis existentes ordenados por `min_spent`
-- Botao para adicionar novo nivel
-- Dialogo de edicao com: Nome, Valor Minimo, Cor (input hex com preview), e checkboxes para features (Bazar VIP, Chat, Provador IA)
-- O nivel "Inicial" (min_spent = 0) e criado automaticamente e nao pode ser excluido
-- Botoes de editar e excluir para cada nivel
+Criar `src/components/catalog/VipAreaDrawer.tsx`:
 
-## Navegacao
+- Botao flutuante (FAB) no canto inferior esquerdo com icone de coroa/estrela
+- Ao clicar, abre um Drawer (bottom sheet) com titulo "Area VIP"
+- Dentro, renderiza condicionalmente os botoes de features desbloqueadas (Bazar VIP, Chat, Provador IA)
+- Se nenhuma feature desbloqueada: mostra mensagem de incentivo com barra de progresso
+- Os botoes nao fazem nada ainda (apenas placeholders visuais)
 
-- Adicionar item "Fidelidade" no Sidebar com icone `Award`
-- Adicionar rota `/admin/fidelidade` no App.tsx como rota protegida
+### 5. Integracao no `StoreCatalog.tsx`
+
+- Importar e renderizar `LoyaltyHeader` abaixo do header existente
+- Importar e renderizar `VipAreaDrawer` como FAB flutuante
+- Passar dados do store (owner_id) e do lead (phone do localStorage)
 
 ## Arquivos a criar/modificar
 
-1. **Nova migracao SQL** -- Tabela `loyalty_levels`, coluna `total_spent` em `customers`, trigger de acumulo, funcao de calculo de nivel
-2. **`src/pages/LoyaltyAdmin.tsx`** (novo) -- Pagina de configuracao dos niveis
-3. **`src/components/layout/Sidebar.tsx`** -- Adicionar link para Fidelidade
-4. **`src/App.tsx`** -- Adicionar rota `/admin/fidelidade`
+1. **Nova migracao SQL** -- Funcao RPC `get_catalog_customer_loyalty` + policy SELECT publica em `loyalty_levels`
+2. **`src/hooks/useCatalogLoyalty.tsx`** (novo) -- Hook de logica de fidelidade
+3. **`src/components/catalog/LoyaltyHeader.tsx`** (novo) -- Painel de nivel no header
+4. **`src/components/catalog/VipAreaDrawer.tsx`** (novo) -- Gaveta VIP flutuante
+5. **`src/pages/StoreCatalog.tsx`** -- Integrar os novos componentes
 
 ## Detalhes tecnicos
 
-### Trigger de acumulo de gasto
+### Funcao RPC
 
 ```text
-AFTER INSERT ON sales (quando status = 'completed')
--> Busca customer em customers WHERE owner_id = sales.owner_id AND phone = customer_phone
--> UPDATE customers SET total_spent = total_spent + sales.total
+get_catalog_customer_loyalty(_owner_id uuid, _phone text)
+RETURNS jsonb {
+  total_spent, 
+  current_level: {name, color, features, min_spent},
+  next_level: {name, color, min_spent} | null,
+  progress_percent
+}
 ```
 
-Tambem precisamos de um trigger para UPDATE (caso uma venda seja editada) e DELETE (caso seja removida), ajustando o total_spent de acordo.
+Funcao SECURITY DEFINER acessivel por anon, pois o catalogo e publico.
 
-### Funcao de calculo de nivel
+### Barra de progresso
 
-```text
-get_customer_loyalty_level(customer_id uuid)
-RETURNS jsonb {name, color, features}
--> Busca owner_id e total_spent do customer
--> Busca loyalty_levels WHERE owner_id = customer.owner_id AND min_spent <= customer.total_spent
--> ORDER BY min_spent DESC LIMIT 1
--> Retorna o nivel correspondente
-```
+Calculo: `(total_spent - current_level.min_spent) / (next_level.min_spent - current_level.min_spent) * 100`
 
-### Seed do nivel inicial
+Se nao houver proximo nivel (nivel maximo), mostra 100% com mensagem "Voce atingiu o nivel maximo!".
 
-Ao acessar a pagina pela primeira vez, se nao existir nenhum nivel, o frontend cria automaticamente o nivel "Inicial" com min_spent = 0.
+### FAB positioning
+
+O botao flutuante da Area VIP ficara no canto inferior esquerdo (`fixed bottom-20 left-4`) para nao conflitar com o carrinho/WhatsApp que ficam a direita.
