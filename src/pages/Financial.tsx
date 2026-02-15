@@ -97,7 +97,8 @@ export default function Financial() {
         .from("products")
         .select("id, name, price, cost_price, owner_id")
         .eq("owner_id", user?.id)
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .limit(5000);
       if (error) throw error;
       return data || [];
     },

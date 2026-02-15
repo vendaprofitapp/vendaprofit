@@ -35,7 +35,8 @@ export default function Dashboard() {
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('owner_id', user?.id);
+        .eq('owner_id', user?.id)
+        .limit(5000);
       if (error) throw error;
       return data;
     },

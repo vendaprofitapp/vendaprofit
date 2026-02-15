@@ -72,12 +72,22 @@ export function DREReport({ dateRange }: DREReportProps) {
     queryKey: ["dre-products", Array.from(productIds)],
     queryFn: async () => {
       if (productIds.size === 0) return [];
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, cost_price, price")
-        .in("id", Array.from(productIds));
-      if (error) throw error;
-      return data || [];
+      const ids = Array.from(productIds);
+      // Batch in chunks of 500 to avoid URI too long
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 500) {
+        chunks.push(ids.slice(i, i + 500));
+      }
+      const results: any[] = [];
+      for (const chunk of chunks) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, cost_price, price")
+          .in("id", chunk);
+        if (error) throw error;
+        if (data) results.push(...data);
+      }
+      return results;
     },
     enabled: productIds.size > 0,
   });

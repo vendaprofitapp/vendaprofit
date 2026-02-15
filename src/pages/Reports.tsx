@@ -186,34 +186,22 @@ export default function Reports() {
     enabled: !!user,
   });
 
-  // Fetch products for category/color/cost info
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-report"],
+  // Fetch own products for category/color/cost info
+  const { data: ownProducts = [] } = useQuery({
+    queryKey: ["products-report-own", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, category, color, cost_price, owner_id, group_id");
+        .select("id, name, category, category_2, category_3, color, cost_price, owner_id, group_id")
+        .eq("owner_id", user!.id)
+        .limit(5000);
       if (error) throw error;
       return data as Product[];
     },
     enabled: !!user,
   });
 
-  // Fetch custom payment methods (for fees)
-  const { data: customPaymentMethods = [] } = useQuery({
-    queryKey: ["custom-payment-methods-report", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("custom_payment_methods")
-        .select("id, name, fee_percent, is_deferred, is_active")
-        .eq("owner_id", user!.id);
-      if (error) throw error;
-      return data as CustomPaymentMethod[];
-    },
-    enabled: !!user,
-  });
-
-  // Fetch groups for partner info
+  // Fetch groups for partner info (must be before userGroupIds)
   const { data: groupMembers = [] } = useQuery({
     queryKey: ["group-members-report"],
     queryFn: async () => {
@@ -230,6 +218,72 @@ export default function Reports() {
         `);
       if (error) throw error;
       return data as GroupMember[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch user's group IDs for partner products
+  const userGroupIds = useMemo(() => {
+    return groupMembers.filter(gm => gm.user_id === user?.id).map(gm => gm.group_id);
+  }, [groupMembers, user?.id]);
+
+  // Fetch partner product IDs via product_partnerships
+  const { data: partnerProductIds = [] } = useQuery({
+    queryKey: ["partner-product-ids-report", userGroupIds],
+    queryFn: async () => {
+      if (userGroupIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("product_partnerships")
+        .select("product_id")
+        .in("group_id", userGroupIds)
+        .limit(5000);
+      if (error) throw error;
+      return (data || []).map(d => d.product_id);
+    },
+    enabled: !!user && userGroupIds.length > 0,
+  });
+
+  // Fetch partner products data
+  const { data: partnerProducts = [] } = useQuery({
+    queryKey: ["partner-products-report", partnerProductIds],
+    queryFn: async () => {
+      if (partnerProductIds.length === 0) return [];
+      const chunks: string[][] = [];
+      for (let i = 0; i < partnerProductIds.length; i += 500) {
+        chunks.push(partnerProductIds.slice(i, i + 500));
+      }
+      const results: Product[] = [];
+      for (const chunk of chunks) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, category, category_2, category_3, color, cost_price, owner_id, group_id")
+          .in("id", chunk);
+        if (error) throw error;
+        if (data) results.push(...(data as Product[]));
+      }
+      return results;
+    },
+    enabled: partnerProductIds.length > 0,
+  });
+
+  // Merge own + partner products
+  const products = useMemo(() => {
+    const map = new Map<string, Product>();
+    ownProducts.forEach(p => map.set(p.id, p));
+    partnerProducts.forEach(p => { if (!map.has(p.id)) map.set(p.id, p); });
+    return Array.from(map.values());
+  }, [ownProducts, partnerProducts]);
+
+  // Fetch custom payment methods (for fees)
+  const { data: customPaymentMethods = [] } = useQuery({
+    queryKey: ["custom-payment-methods-report", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_payment_methods")
+        .select("id, name, fee_percent, is_deferred, is_active")
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+      return data as CustomPaymentMethod[];
     },
     enabled: !!user,
   });
