@@ -64,6 +64,8 @@ interface Product {
   category: string;
   color: string | null;
   size: string | null;
+  b2b_source_product_id?: string | null;
+  isB2B?: boolean;
 }
 
 interface ProductVariant {
@@ -225,15 +227,30 @@ export default function Sales() {
   const { data: ownProducts = [] } = useQuery({
     queryKey: ["own-products-for-sale"],
     queryFn: async () => {
+      // Fetch regular products with stock > 0
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm, b2b_source_product_id")
         .eq("is_active", true)
         .eq("owner_id", user?.id)
         .gt("stock_quantity", 0)
+        .is("b2b_source_product_id", null)
         .order("name");
       if (error) throw error;
-      return data as Product[];
+      
+      // Also fetch B2B clones (stock=0 but sob encomenda)
+      const { data: b2bClones } = await supabase
+        .from("products")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm, b2b_source_product_id")
+        .eq("is_active", true)
+        .eq("owner_id", user?.id)
+        .not("b2b_source_product_id", "is", null)
+        .order("name");
+      
+      const regularProducts = (data || []) as Product[];
+      const cloneProducts = ((b2bClones || []) as Product[]).map(p => ({ ...p, isB2B: true }));
+      
+      return [...regularProducts, ...cloneProducts];
     },
     enabled: !!user,
   });
@@ -2590,6 +2607,7 @@ export default function Sales() {
         onOpenChange={setShowVariantDialog}
         product={selectedProductForVariant}
         onConfirm={handleVariantConfirm}
+        isB2B={!!selectedProductForVariant?.isB2B}
       />
 
       {/* Voice Sale Dialog - Similarity Search */}

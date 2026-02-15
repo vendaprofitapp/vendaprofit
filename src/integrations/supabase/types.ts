@@ -1991,6 +1991,7 @@ export type Database = {
       products: {
         Row: {
           b2b_product_url: string | null
+          b2b_source_product_id: string | null
           category: string
           category_2: string | null
           category_3: string | null
@@ -2028,6 +2029,7 @@ export type Database = {
         }
         Insert: {
           b2b_product_url?: string | null
+          b2b_source_product_id?: string | null
           category: string
           category_2?: string | null
           category_3?: string | null
@@ -2065,6 +2067,7 @@ export type Database = {
         }
         Update: {
           b2b_product_url?: string | null
+          b2b_source_product_id?: string | null
           category?: string
           category_2?: string | null
           category_3?: string | null
@@ -2101,6 +2104,13 @@ export type Database = {
           width_cm?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_b2b_source_product_id_fkey"
+            columns: ["b2b_source_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_group_id_fkey"
             columns: ["group_id"]
