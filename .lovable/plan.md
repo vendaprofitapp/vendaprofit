@@ -1,90 +1,63 @@
 
-# Fase 2: Hub Central do Cliente -- Gamificacao no Catalogo
+# Correcao: Atualizar Status da Solicitacao apos Venda Concretizada
 
-## Resumo
+## Problema Identificado
 
-Adicionar ao catalogo publico (`StoreCatalog.tsx`) um painel de fidelidade do cliente com nivel atual, barra de progresso ate o proximo nivel, e uma gaveta "Area VIP" com botoes condicionais baseados nas permissoes do nivel.
+Quando uma reserva aprovada e convertida em venda pela pagina de Vendas, o status do `stock_request` permanece como "approved" para sempre. O `requestId` e armazenado no `sessionStorage` junto com os dados do produto, mas **nunca e utilizado** apos a venda ser criada para atualizar o registro na tabela `stock_requests`.
 
-## Estrutura
+## Solucao
 
-### 1. Hook `useCatalogLoyalty` (novo arquivo)
+### 1. Novo status "completed" na tabela `stock_requests`
 
-Criar `src/hooks/useCatalogLoyalty.tsx` que encapsula toda a logica de fidelidade para o catalogo:
+Adicionar o status "completed" como estado final para solicitacoes que se tornaram vendas.
 
-- Recebe `store_owner_id` (do store settings)
-- Busca os `loyalty_levels` do owner via query publica (precisa de policy SELECT para isso)
-- Se o usuario estiver logado, busca o `total_spent` do cliente na tabela `customers` (match por phone/owner_id) OU diretamente se houver um vinculo
-- Calcula o nivel atual e o proximo nivel
-- Retorna: `{ currentLevel, nextLevel, totalSpent, progress, unlockedFeatures, levels, isLoading }`
+### 2. Modificar `src/pages/Sales.tsx`
 
-Nota: Como o catalogo e publico e os clientes nao tem conta Supabase, usaremos os dados do lead capturado (localStorage) para buscar o `total_spent` via uma query anonima. Precisamos de uma policy SELECT publica limitada na tabela `customers` ou uma funcao RPC.
+- Ao ler os dados do `sessionStorage` (linha ~1253), preservar o `requestId` em um estado local (ex: `pendingRequestId`)
+- Apos a venda ser criada com sucesso na mutacao `createSaleMutation` (apos linha ~708), verificar se existe um `pendingRequestId` e atualizar o `stock_request` correspondente para status "completed"
 
-### 2. Funcao RPC `get_catalog_customer_loyalty` (migracao SQL)
+### 3. Modificar `src/pages/StockRequests.tsx`
 
-Criar funcao SECURITY DEFINER que:
-- Recebe `_owner_id uuid` e `_phone text`
-- Busca `total_spent` do customer
-- Busca os loyalty_levels do owner
-- Retorna o nivel atual, proximo nivel, progresso percentual e features liberadas
-- Isso evita expor dados sensiveis via RLS publica
+- Adicionar "completed" ao tipo `StockRequest.status`
+- Adicionar "completed" ao `statusConfig` com label "Concluida", variante "default" e icone `CheckCircle`
+- Nao mostrar botoes "Vender Agora" / "WhatsApp" para solicitacoes com status "completed"
 
-Tambem adicionar policy SELECT publica em `loyalty_levels` para que o catalogo possa listar os niveis (sem dados sensiveis).
+### 4. Correcao retroativa dos dados existentes
 
-### 3. Componente `LoyaltyHeader` (novo)
+Usar uma query para marcar como "completed" as solicitacoes da usuaria `teamwodbrasil@gmail.com` que ja foram convertidas em vendas (os 3 registros com status "approved" que ja viraram vendas).
 
-Criar `src/components/catalog/LoyaltyHeader.tsx`:
+## Arquivos a modificar
 
-- **Logado (lead com telefone salvo)**: Mostra o nivel atual com cor/nome, barra de progresso ate o proximo nivel, e texto "Falta R$ X para [ProximoNivel]"
-- **Nao logado**: Botao "Entrar para ver meu Nivel" que abre um Dialog simples pedindo telefone/WhatsApp (reutiliza o lead capture existente)
-
-Layout: painel compacto fixo abaixo do header existente do catalogo.
-
-### 4. Componente `VipAreaDrawer` (novo)
-
-Criar `src/components/catalog/VipAreaDrawer.tsx`:
-
-- Botao flutuante (FAB) no canto inferior esquerdo com icone de coroa/estrela
-- Ao clicar, abre um Drawer (bottom sheet) com titulo "Area VIP"
-- Dentro, renderiza condicionalmente os botoes de features desbloqueadas (Bazar VIP, Chat, Provador IA)
-- Se nenhuma feature desbloqueada: mostra mensagem de incentivo com barra de progresso
-- Os botoes nao fazem nada ainda (apenas placeholders visuais)
-
-### 5. Integracao no `StoreCatalog.tsx`
-
-- Importar e renderizar `LoyaltyHeader` abaixo do header existente
-- Importar e renderizar `VipAreaDrawer` como FAB flutuante
-- Passar dados do store (owner_id) e do lead (phone do localStorage)
-
-## Arquivos a criar/modificar
-
-1. **Nova migracao SQL** -- Funcao RPC `get_catalog_customer_loyalty` + policy SELECT publica em `loyalty_levels`
-2. **`src/hooks/useCatalogLoyalty.tsx`** (novo) -- Hook de logica de fidelidade
-3. **`src/components/catalog/LoyaltyHeader.tsx`** (novo) -- Painel de nivel no header
-4. **`src/components/catalog/VipAreaDrawer.tsx`** (novo) -- Gaveta VIP flutuante
-5. **`src/pages/StoreCatalog.tsx`** -- Integrar os novos componentes
+1. **`src/pages/Sales.tsx`** -- Adicionar estado `pendingRequestId`, salvar o ID ao ler sessionStorage, e atualizar o status apos venda criada
+2. **`src/pages/StockRequests.tsx`** -- Adicionar status "completed" ao tipo e ao mapa de configuracao visual
+3. **`src/components/dashboard/SystemAlerts.tsx`** -- Verificar se o alerta de solicitacoes pendentes desconsidera as "completed" (provavelmente ja funciona, pois filtra por "pending")
 
 ## Detalhes tecnicos
 
-### Funcao RPC
+### Estado no Sales.tsx
 
 ```text
-get_catalog_customer_loyalty(_owner_id uuid, _phone text)
-RETURNS jsonb {
-  total_spent, 
-  current_level: {name, color, features, min_spent},
-  next_level: {name, color, min_spent} | null,
-  progress_percent
+const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+
+// No useEffect do sessionStorage:
+setPendingRequestId(saleData.requestId || null);
+
+// No onSuccess da createSaleMutation:
+if (pendingRequestId) {
+  await supabase
+    .from("stock_requests")
+    .update({ status: "completed" })
+    .eq("id", pendingRequestId);
+  setPendingRequestId(null);
 }
 ```
 
-Funcao SECURITY DEFINER acessivel por anon, pois o catalogo e publico.
+### statusConfig atualizado no StockRequests.tsx
 
-### Barra de progresso
+```text
+completed: { label: "Concluída", variant: "default" as const, icon: CheckCircle }
+```
 
-Calculo: `(total_spent - current_level.min_spent) / (next_level.min_spent - current_level.min_spent) * 100`
+### Correcao retroativa
 
-Se nao houver proximo nivel (nivel maximo), mostra 100% com mensagem "Voce atingiu o nivel maximo!".
-
-### FAB positioning
-
-O botao flutuante da Area VIP ficara no canto inferior esquerdo (`fixed bottom-20 left-4`) para nao conflitar com o carrinho/WhatsApp que ficam a direita.
+Atualizar os 3 registros aprovados da usuaria teamwodbrasil (requester_id = 98191e2a-0eb6-4c35-aa19-2f7e1a258a95) que ja foram vendidos para status "completed".
