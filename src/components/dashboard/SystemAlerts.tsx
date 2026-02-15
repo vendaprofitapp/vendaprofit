@@ -32,9 +32,7 @@ interface StockRequest {
   id: string;
   quantity: number;
   status: string;
-  product: {
-    name: string;
-  } | null;
+  product_name: string | null;
   requester_profile?: {
     full_name: string;
   } | null;
@@ -186,7 +184,7 @@ export function SystemAlerts() {
           id,
           quantity,
           status,
-          product:products(name),
+          product_name,
           requester_id
         `)
         .eq("owner_id", user?.id)
@@ -223,7 +221,7 @@ export function SystemAlerts() {
           id,
           quantity,
           status,
-          product:products(name),
+          product_name,
           owner_id
         `)
         .eq("requester_id", user?.id)
@@ -260,7 +258,7 @@ export function SystemAlerts() {
           id,
           quantity,
           status,
-          product:products(name),
+          product_name,
           owner_id
         `)
         .eq("requester_id", user?.id)
@@ -499,7 +497,7 @@ export function SystemAlerts() {
             {pendingRequests.slice(0, 3).map((request) => (
               <div key={request.id} className="text-sm truncate">
                 <span className="font-medium">{request.requester_profile?.full_name}</span>
-                <span className="text-muted-foreground"> - {request.quantity}x {request.product?.name}</span>
+                <span className="text-muted-foreground"> - {request.quantity}x {request.product_name || "Produto"}</span>
               </div>
             ))}
             {pendingRequests.length > 3 && (
@@ -527,7 +525,7 @@ export function SystemAlerts() {
           <CardContent className="space-y-2">
             {mySentPendingRequests.slice(0, 3).map((request) => (
               <div key={request.id} className="text-sm truncate">
-                <span className="text-muted-foreground">{request.quantity}x {request.product?.name}</span>
+                <span className="text-muted-foreground">{request.quantity}x {request.product_name || "Produto"}</span>
                 <span className="font-medium"> - {request.owner_profile?.full_name}</span>
               </div>
             ))}
@@ -553,7 +551,7 @@ export function SystemAlerts() {
           <CardContent className="space-y-2">
             {myApprovedRequests.slice(0, 3).map((request) => (
               <div key={request.id} className="text-sm truncate">
-                <span className="text-muted-foreground">{request.quantity}x {request.product?.name}</span>
+                <span className="text-muted-foreground">{request.quantity}x {request.product_name || "Produto"}</span>
                 <span className="font-medium"> - {request.owner_profile?.full_name}</span>
               </div>
             ))}

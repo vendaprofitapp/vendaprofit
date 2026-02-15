@@ -497,6 +497,8 @@ export default function Sales() {
           variant_id: variant?.id || null,
           variant_color: null,
           variant_size: variant?.size || null,
+          product_name: product.name,
+          product_price: product.price,
         })
         .select()
         .single();

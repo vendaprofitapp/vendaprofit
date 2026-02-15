@@ -49,6 +49,8 @@ interface StockRequest {
   variant_id: string | null;
   variant_color: string | null;
   variant_size: string | null;
+  product_name: string | null;
+  product_price: number | null;
 }
 
 interface RequestWithDetails extends StockRequest {
@@ -110,18 +112,7 @@ export default function StockRequests() {
     enabled: !!user,
   });
 
-  // Fetch products for request details
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-for-requests"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, price");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
+  // Products query removed - using denormalized product_name/product_price from stock_requests
 
   // Fetch profiles for names
   const { data: profiles = [] } = useQuery({
@@ -138,14 +129,13 @@ export default function StockRequests() {
 
   // Map requests with details
   const enrichedRequests: RequestWithDetails[] = requests.map(req => {
-    const product = products.find(p => p.id === req.product_id);
     const requester = profiles.find(p => p.id === req.requester_id);
     const owner = profiles.find(p => p.id === req.owner_id);
     
     return {
       ...req,
-      product_name: product?.name || "Produto desconhecido",
-      product_price: product?.price || 0,
+      product_name: req.product_name || "Produto desconhecido",
+      product_price: req.product_price || 0,
       requester_name: requester?.full_name || "Usuário",
       requester_email: requester?.email || "",
       owner_name: owner?.full_name || "Usuário",

@@ -2142,6 +2142,8 @@ export type Database = {
           notes: string | null
           owner_id: string
           product_id: string
+          product_name: string | null
+          product_price: number | null
           quantity: number
           requester_id: string
           responded_at: string | null
@@ -2158,6 +2160,8 @@ export type Database = {
           notes?: string | null
           owner_id: string
           product_id: string
+          product_name?: string | null
+          product_price?: number | null
           quantity?: number
           requester_id: string
           responded_at?: string | null
@@ -2174,6 +2178,8 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           product_id?: string
+          product_name?: string | null
+          product_price?: number | null
           quantity?: number
           requester_id?: string
           responded_at?: string | null
