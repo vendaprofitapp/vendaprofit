@@ -1,127 +1,145 @@
 
-# Fase 3: Submissao do Bazar VIP e Coleta de Dados Logisticos
+# Fase 4: Vitrine P2P, Calculo de Frete Dinamico e Checkout
 
 ## Resumo
 
-Criar o fluxo completo de submissao de itens para o Bazar VIP: o cliente-vendedor envia pecas pelo catalogo (com dados logisticos obrigatorios) e o lojista faz curadoria e precificacao em uma pagina administrativa dedicada.
+Adicionar ao catalogo publico uma vitrine de itens do Bazar VIP (status "approved"), com calculo de frete dinamico P2P (CEP do vendedor da peca para CEP do comprador) e checkout que separa os valores (comissao da loja, valor do vendedor, frete).
 
 ## Alteracoes no Banco de Dados
 
-### 1. Adicionar campos de endereco na tabela `profiles`
+### 1. Adicionar campos pos-venda na tabela `bazar_items`
 
-A tabela `profiles` nao possui campos de endereco. Precisamos adicionar para que vendedores do bazar tenham endereco de origem para calculo de frete:
+Novos campos para rastrear a venda:
+- `buyer_phone` (text) -- telefone do comprador
+- `buyer_name` (text) -- nome do comprador
+- `buyer_zip` (text) -- CEP do comprador (para frete)
+- `shipping_cost` (numeric) -- custo do frete selecionado
+- `shipping_carrier` (text) -- transportadora selecionada
+- `shipping_service` (text) -- servico selecionado
+- `shipping_source` (text) -- Melhor Envio ou SuperFrete
+- `shipping_service_id` (integer) -- ID do servico para compra de etiqueta
+- `shipping_label_url` (text) -- URL da etiqueta gerada
+- `shipping_tracking` (text) -- codigo de rastreio
+- `sold_at` (timestamptz) -- data da venda
 
-- `address_street` (text, nullable)
-- `address_number` (text, nullable)
-- `address_complement` (text, nullable)
-- `address_neighborhood` (text, nullable)
-- `address_city` (text, nullable)
-- `address_state` (text, nullable)
-- `address_zip` (text, nullable)
+### 2. Policy SELECT publica para `bazar_items`
 
-Nota: A tabela `customers` ja possui esses campos, mas `profiles` (usuarios autenticados) nao.
+Adicionar policy para que usuarios anonimos possam ver itens com status "approved" (necessario para a vitrine publica no catalogo).
 
-### 2. Criar tabela `bazar_items`
+### 3. Nova edge function `quote-bazar-shipping`
 
-Nova tabela para itens submetidos ao bazar:
+Funcao publica (sem auth) que recebe:
+- `owner_id` (para buscar tokens de frete do lojista no profiles)
+- `origin_zip` (CEP do vendedor da peca, ja salvo no bazar_item)
+- `destination_zip` (CEP do comprador)
+- Dimensoes do pacote (do bazar_item)
 
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | uuid PK | ID do item |
-| owner_id | uuid NOT NULL | Lojista dono da loja |
-| seller_phone | text NOT NULL | Telefone do vendedor (lead) |
-| seller_name | text | Nome do vendedor |
-| title | text NOT NULL | Titulo do item |
-| description | text | Descricao |
-| seller_price | numeric NOT NULL | Valor que o vendedor quer receber |
-| store_commission | numeric | Comissao da loja (preenchida pelo lojista) |
-| final_price | numeric | Preco final (seller_price + commission) |
-| weight_grams | integer NOT NULL | Peso em gramas |
-| height_cm | integer NOT NULL | Altura em cm |
-| width_cm | integer NOT NULL | Largura em cm |
-| length_cm | integer NOT NULL | Comprimento em cm |
-| image_url | text | Foto 1 |
-| image_url_2 | text | Foto 2 |
-| image_url_3 | text | Foto 3 |
-| status | text NOT NULL DEFAULT 'pending' | pending, approved, rejected, sold |
-| seller_zip | text | CEP do vendedor (para frete) |
-| seller_street | text | Endereco do vendedor |
-| seller_number | text | Numero |
-| seller_neighborhood | text | Bairro |
-| seller_city | text | Cidade |
-| seller_state | text | Estado |
-| admin_notes | text | Notas do lojista |
-| created_at | timestamptz | Data de criacao |
-| updated_at | timestamptz | Data de atualizacao |
+Usa o service_role_key para ler os tokens de frete do lojista e chama as mesmas APIs (Melhor Envio / SuperFrete) que a funcao `quote-shipping` ja usa.
 
-Politicas RLS:
-- SELECT: owner_id = auth.uid() (lojista ve seus itens)
-- INSERT: anon pode inserir (formulario publico do catalogo)
-- UPDATE: owner_id = auth.uid() (lojista aprova/rejeita)
+Diferenca-chave: o CEP de origem e o do vendedor da peca (seller_zip no bazar_items), nao o da loja.
 
-### 3. Criar bucket de storage `bazar-images`
+### 4. Nova edge function `checkout-bazar`
 
-Bucket publico para fotos dos itens do bazar, com politica de upload para anon.
+Funcao publica que:
+1. Recebe `bazar_item_id`, dados do comprador (nome, telefone, CEP), e a opcao de frete selecionada
+2. Valida que o item esta com status "approved"
+3. Atualiza o item para status "sold" com os dados do comprador e frete
+4. Retorna confirmacao
+
+A compra de etiqueta sera feita pelo lojista posteriormente (como ja funciona no sistema existente).
 
 ## Alteracoes no Frontend
 
-### 4. Componente `BazarSubmissionDialog` (novo)
+### 5. Componente `BazarShowcaseDialog` (novo)
 
-Arquivo: `src/components/catalog/BazarSubmissionDialog.tsx`
+Arquivo: `src/components/catalog/BazarShowcaseDialog.tsx`
 
-Dialog em duas etapas:
-1. **Etapa 1 - Verificacao de endereco**: Formulario com CEP, Rua, Numero, Bairro, Cidade, Estado. Se o lead ja tem endereco salvo (localStorage), pula direto para etapa 2.
-2. **Etapa 2 - Dados do item**: Upload de ate 3 fotos, Titulo, Descricao, Valor desejado (R$), e campos obrigatorios de embalagem (Peso kg, Altura cm, Largura cm, Comprimento cm).
+Dialog/Sheet que mostra a vitrine do bazar:
+- Lista itens com status "approved" daquela loja (owner_id)
+- Cada card mostra: foto, titulo, descricao, preco final
+- Botao "Comprar Agora" em cada item abre o fluxo de checkout
 
-Ao submeter, salva na tabela `bazar_items` com status `pending`, vinculado ao `owner_id` da loja e `seller_phone` do lead.
+### 6. Componente `BazarCheckoutDialog` (novo)
 
-### 5. Atualizar `VipAreaDrawer`
+Arquivo: `src/components/catalog/BazarCheckoutDialog.tsx`
 
-Modificar o botao "Bazar VIP" para abrir o `BazarSubmissionDialog` ao inves de ser apenas placeholder. Adicionar tambem um label "Vender Minha Peca" ao botao.
+Dialog de checkout em etapas:
+1. **Dados do comprador**: Nome, WhatsApp, CEP (pre-preenchido do lead se existir)
+2. **Selecao de frete**: Ao informar CEP, chama `quote-bazar-shipping` e exibe opcoes (transportadora, preco, prazo)
+3. **Resumo**: Preco da peca + Frete selecionado = Total. Exibe a separacao: "Valor do vendedor: R$ X | Comissao da loja: R$ Y | Frete: R$ Z"
+4. **Confirmar**: Chama `checkout-bazar`, marca item como sold, exibe mensagem de sucesso
 
-### 6. Criar pagina `/admin/bazar` (BazarAdmin)
+### 7. Atualizar `VipAreaDrawer`
 
-Arquivo: `src/pages/BazarAdmin.tsx`
+Adicionar botao "Comprar no Bazar" (alem do ja existente "Vender Minha Peca"). Ao clicar, abre o `BazarShowcaseDialog`.
 
-Pagina protegida para o lojista com:
-- Lista de itens pendentes com fotos, titulo, preco desejado, dimensoes
-- Cada card mostra as fotos em miniatura e os dados de embalagem
-- Campo para inserir "Comissao da Loja" (R$)
-- Exibicao automatica do "Preco Final" (preco vendedor + comissao)
-- Botoes "Aprovar" (status -> approved) e "Rejeitar" (status -> rejected)
-- Filtros por status (Pendentes, Aprovados, Rejeitados, Vendidos)
+### 8. Atualizar `BazarAdmin`
 
-### 7. Registrar rota no App.tsx
-
-Adicionar rota protegida: `/admin/bazar` -> `BazarAdmin`
-
-### 8. Adicionar link no menu lateral (Sidebar)
-
-Adicionar item "Bazar VIP" no menu, agrupado com os itens administrativos.
+- Na aba "Vendidos", exibir dados do comprador, frete, e link da etiqueta
+- Adicionar botao "Gerar Etiqueta" que chama a funcao `purchase-shipping` existente com os dados do bazar_item (usando o CEP do vendedor como origem)
+- Exibir separacao de valores: Comissao da loja, Valor a pagar ao vendedor, Frete
 
 ## Fluxo do Usuario
 
 ```text
-Cliente no Catalogo
+Comprador no Catalogo
   -> Abre Area VIP (FAB)
-  -> Clica "Vender Minha Peca"
-  -> Se nao tem endereco: preenche endereco
-  -> Preenche formulario (fotos, titulo, preco, dimensoes)
-  -> Submete -> status "pending"
+  -> Clica "Comprar no Bazar"
+  -> Ve vitrine com itens aprovados
+  -> Clica "Comprar Agora" em um item
+  -> Informa Nome, WhatsApp, CEP
+  -> Sistema cota frete (CEP vendedor -> CEP comprador)
+  -> Seleciona opcao de frete
+  -> Ve resumo (Peca + Frete = Total)
+  -> Confirma compra
+  -> Item muda para "sold"
 
 Lojista em /admin/bazar
-  -> Ve itens pendentes
-  -> Analisa fotos e dimensoes
-  -> Define comissao da loja
-  -> Ve preco final calculado
-  -> Aprova ou Rejeita
+  -> Ve item vendido com dados do comprador
+  -> Ve separacao: Comissao loja | Valor vendedor | Frete
+  -> Gera etiqueta (CEP vendedor -> CEP comprador)
+  -> Notifica vendedor original para enviar a peca
 ```
 
 ## Arquivos a criar/modificar
 
-1. **Migracao SQL** -- Campos de endereco em profiles, tabela bazar_items, bucket bazar-images
-2. **`src/components/catalog/BazarSubmissionDialog.tsx`** (novo) -- Formulario de submissao do bazar
-3. **`src/components/catalog/VipAreaDrawer.tsx`** -- Conectar botao bazar_vip ao dialog
-4. **`src/pages/BazarAdmin.tsx`** (novo) -- Pagina de curadoria do lojista
-5. **`src/App.tsx`** -- Adicionar rota /admin/bazar
-6. **`src/components/layout/Sidebar.tsx`** -- Adicionar link ao menu
+1. **Migracao SQL** -- Novos campos em bazar_items + policy SELECT publica
+2. **`supabase/functions/quote-bazar-shipping/index.ts`** (novo) -- Cotacao de frete P2P publica
+3. **`supabase/functions/checkout-bazar/index.ts`** (novo) -- Finalizacao de compra do bazar
+4. **`src/components/catalog/BazarShowcaseDialog.tsx`** (novo) -- Vitrine do bazar
+5. **`src/components/catalog/BazarCheckoutDialog.tsx`** (novo) -- Checkout com frete dinamico
+6. **`src/components/catalog/VipAreaDrawer.tsx`** -- Adicionar botao "Comprar no Bazar"
+7. **`src/pages/BazarAdmin.tsx`** -- Exibir dados pos-venda e botao de etiqueta
+
+## Detalhes tecnicos
+
+### Edge function `quote-bazar-shipping`
+
+Usa `SUPABASE_SERVICE_ROLE_KEY` para buscar tokens de frete do lojista (profiles.melhor_envio_token, profiles.superfrete_token). Nao requer auth do comprador. Reutiliza a mesma logica de cotacao do `quote-shipping` existente.
+
+```text
+POST /quote-bazar-shipping
+Body: { owner_id, origin_zip, destination_zip, weight_grams, width_cm, height_cm, length_cm }
+Response: { options: [{ carrier, service, service_id, price, delivery_days, source }] }
+```
+
+### Edge function `checkout-bazar`
+
+```text
+POST /checkout-bazar
+Body: { bazar_item_id, buyer_name, buyer_phone, buyer_zip, shipping_cost, shipping_carrier, shipping_service, shipping_source, shipping_service_id }
+Response: { success: true, item: {...} }
+```
+
+### Geracao de etiqueta no BazarAdmin
+
+Reutiliza a funcao `purchase-shipping` existente, passando:
+- `origin_zip`: seller_zip do bazar_item (CEP do vendedor da peca)
+- `destination_zip`: buyer_zip do bazar_item (CEP do comprador)
+- Dimensoes do bazar_item
+- Dados do vendedor (seller_name, seller_phone do bazar_item)
+- Dados do comprador (buyer_name, buyer_phone do bazar_item)
+
+### config.toml
+
+Adicionar `verify_jwt = false` para as duas novas funcoes (acesso publico).
