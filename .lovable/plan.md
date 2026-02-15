@@ -1,163 +1,68 @@
 
 
-# Backup Completo: Botao Manual + Email Diario Automatico
+# Correção: "Peça Desconhecida" nas Solicitações de Reserva
 
-## Resumo
+## Problema
 
-Criar um sistema de backup de dados com duas funcionalidades:
-1. **Botao "Baixar Backup"** na area admin para download imediato de todos os dados
-2. **Email diario automatico** enviando o backup como anexo JSON para o email do admin
+Quando um usuario faz uma solicitacao de reserva de um produto de uma parceira, a pagina de Solicitacoes de Reserva exibe "Produto desconhecido" no lugar do nome do produto.
 
-Para o envio de email, usaremos o **Resend** (servico de email gratuito ate 3.000 emails/mes). Voce precisara criar uma conta gratuita em [resend.com](https://resend.com) e copiar sua API key -- e um processo de 2 minutos, muito mais simples que o Google Cloud.
+**Causa raiz**: A pagina `StockRequests.tsx` busca os produtos separadamente (`SELECT id, name, price FROM products`) e depois tenta associar pelo `product_id`. Porem, as politicas de seguranca (RLS) da tabela `products` so permitem que o usuario veja seus proprios produtos. Quando a solicitante tenta visualizar a solicitacao, o produto pertence a parceira e nao aparece na consulta -- resultando no fallback "Produto desconhecido".
+
+## Solucao
+
+Armazenar o nome e preco do produto diretamente na tabela `stock_requests` no momento da criacao (dado desnormalizado). Isso elimina a dependencia de consultar a tabela `products` para exibir informacoes basicas.
+
+### 1. Migracao SQL
+
+Adicionar duas colunas na tabela `stock_requests`:
+
+- `product_name` (text, nullable inicialmente para nao quebrar registros existentes)
+- `product_price` (numeric, nullable)
+
+Depois, preencher os registros existentes com os dados dos produtos atuais.
+
+### 2. Atualizar pontos de criacao de solicitacoes
+
+Existem dois locais onde solicitacoes sao criadas:
+
+- **`src/pages/StockControl.tsx`** (~linha 363): Adicionar `product_name` e `product_price` no INSERT
+- **`src/pages/Sales.tsx`** (~linha 489): Adicionar `product_name` e `product_price` no INSERT
+
+### 3. Atualizar exibicao em `StockRequests.tsx`
+
+- Remover a query separada de `products` (linhas 114-124)
+- Usar `req.product_name` e `req.product_price` diretamente dos dados da solicitacao
+- Manter o fallback "Produto desconhecido" apenas como seguranca para registros muito antigos
+
+### 4. Atualizar exibicao em `SystemAlerts.tsx`
+
+- Usar `product_name` do registro de `stock_requests` ao inves de fazer join com `products`
 
 ---
 
-## Passo a passo para o Resend (antes de implementar)
+## Detalhes tecnicos
 
-1. Acesse [resend.com](https://resend.com) e crie uma conta gratuita (pode usar login com Google)
-2. No painel, va em **API Keys** e clique **Create API Key**
-3. Copie a chave gerada (comeca com `re_...`)
-4. Eu vou pedir para voce colar essa chave no sistema
+### Colunas novas na tabela `stock_requests`
 
-O plano gratuito do Resend permite 3.000 emails/mes e 100 emails/dia -- mais que suficiente para 1 backup diario.
+| Coluna | Tipo | Default |
+|--------|------|---------|
+| product_name | text | null |
+| product_price | numeric | null |
 
-Nota: Com o plano gratuito, os emails serao enviados do remetente `onboarding@resend.dev`. Para usar seu proprio dominio como remetente, basta configurar o dominio no painel do Resend (opcional).
-
----
-
-## Arquitetura
+### Migracao para dados existentes
 
 ```text
-[Admin clica "Baixar Backup"]
-        |
-        v
-[Edge Function: backup-data]
-  - Usa service_role_key
-  - Consulta todas as tabelas por usuario
-  - Retorna JSON completo
-        |
-        +--> Download direto (modo manual)
-
-[Cron diario 03:00 UTC]
-        |
-        v
-[Edge Function: backup-data?mode=email]
-  - Gera o mesmo JSON
-  - Envia por email via Resend API
-  - Para o email do admin
+UPDATE stock_requests sr
+SET product_name = p.name, product_price = p.price
+FROM products p
+WHERE sr.product_id = p.id AND sr.product_name IS NULL;
 ```
 
----
+### Arquivos alterados
 
-## Tabelas incluidas no backup (por usuario)
-
-Todos os dados operacionais, excluindo fotos/videos (apenas URLs sao salvas):
-
-- **Perfil**: profiles
-- **Produtos**: products, product_variants, colors
-- **Vendas**: sales, sale_items
-- **Clientes**: customers
-- **Financeiro**: expenses, expense_splits, expense_installments, financial_splits
-- **Fornecedores**: suppliers
-- **Encomendas**: customer_orders
-- **Consignacao**: consignments, consignment_items
-- **Consorcios**: consortiums, consortium_participants, consortium_payments, consortium_drawings, consortium_winners, consortium_items, consortium_settings
-- **Parcerias**: groups, group_members, partnership_rules, partnership_auto_share, product_partnerships
-- **Loja**: store_settings, store_leads, store_partnerships, lead_cart_items
-- **Marketing**: marketing_tasks, ad_campaigns, user_ad_integrations
-- **Pagamentos**: custom_payment_methods, payment_fees, payment_reminders
-- **Waitlist**: product_waitlist, waitlist_notifications
-- **Estoque**: stock_requests
-
----
-
-## Implementacao
-
-### 1. Secret necessaria
-
-- **RESEND_API_KEY**: Chave da API do Resend (sera solicitada antes de implementar)
-
-### 2. Edge Function: `backup-data`
-
-Funcao backend que aceita dois modos:
-
-- **`mode=download`** (padrao): Retorna o JSON completo para download direto
-- **`mode=email`**: Gera o JSON e envia como anexo por email via Resend
-
-A funcao usa `SUPABASE_SERVICE_ROLE_KEY` para acessar dados de todos os usuarios (bypassa RLS). Busca o email do admin na tabela `user_roles` + `profiles`.
-
-Estrutura do JSON gerado:
-```text
-{
-  "backup_date": "2026-02-15T03:00:00Z",
-  "total_users": 6,
-  "users": [
-    {
-      "user_id": "...",
-      "user_name": "Maria Silva",
-      "user_email": "maria@email.com",
-      "data": {
-        "products": [...],
-        "sales": [...],
-        "customers": [...],
-        ...
-      }
-    },
-    ...
-  ]
-}
-```
-
-### 3. Tabela `backup_logs` (nova)
-
-Para registrar o historico de backups:
-
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | uuid | PK |
-| backup_type | text | 'manual' ou 'scheduled' |
-| status | text | 'success' ou 'failed' |
-| file_size_kb | integer | Tamanho do backup em KB |
-| users_count | integer | Quantidade de usuarios no backup |
-| error_message | text | Mensagem de erro (se falhou) |
-| triggered_by | uuid | ID do admin que disparou (null se cron) |
-| created_at | timestamptz | Data/hora do backup |
-
-RLS: Apenas admins podem visualizar.
-
-### 4. Cron Job (agendamento diario)
-
-Usar `pg_cron` + `pg_net` para chamar a edge function diariamente as 03:00 UTC (meia-noite no horario de Brasilia):
-
-```text
-Agenda: 0 3 * * * (todo dia as 03:00 UTC)
-Acao: POST para backup-data?mode=email
-```
-
-### 5. UI na pagina AdminUsers.tsx
-
-Adicionar uma secao "Backup de Dados" com:
-
-- Botao **"Baixar Backup Agora"** que chama a edge function e inicia o download do JSON
-- Indicador de loading durante a geracao
-- Tabela com historico dos ultimos backups (data, tipo, status, tamanho)
-- Badge mostrando quando foi o ultimo backup automatico
-
----
-
-## Arquivos criados/alterados
-
-1. **`supabase/functions/backup-data/index.ts`** -- Edge function principal (nova)
-2. **Nova migracao SQL** -- Tabela `backup_logs` + extensoes `pg_cron`/`pg_net`
-3. **`supabase/config.toml`** -- Adicionar `[functions.backup-data]` com `verify_jwt = false`
-4. **`src/pages/AdminUsers.tsx`** -- Adicionar secao de backup com botao + historico
-5. **SQL (cron job)** -- Agendamento diario
-
-### Sequencia
-
-1. Solicitar a RESEND_API_KEY
-2. Criar a migracao (tabela backup_logs)
-3. Criar a edge function backup-data
-4. Configurar o cron job
-5. Atualizar a UI do admin
+1. **Nova migracao SQL** -- Adicionar colunas + preencher dados existentes
+2. **`src/pages/StockRequests.tsx`** -- Usar product_name/product_price do registro
+3. **`src/pages/StockControl.tsx`** -- Incluir product_name/product_price no INSERT
+4. **`src/pages/Sales.tsx`** -- Incluir product_name/product_price no INSERT
+5. **`src/components/dashboard/SystemAlerts.tsx`** -- Usar product_name do registro
 
