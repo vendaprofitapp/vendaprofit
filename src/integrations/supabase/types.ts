@@ -98,6 +98,39 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_logs: {
+        Row: {
+          backup_type: string
+          created_at: string
+          error_message: string | null
+          file_size_kb: number | null
+          id: string
+          status: string
+          triggered_by: string | null
+          users_count: number | null
+        }
+        Insert: {
+          backup_type?: string
+          created_at?: string
+          error_message?: string | null
+          file_size_kb?: number | null
+          id?: string
+          status?: string
+          triggered_by?: string | null
+          users_count?: number | null
+        }
+        Update: {
+          backup_type?: string
+          created_at?: string
+          error_message?: string | null
+          file_size_kb?: number | null
+          id?: string
+          status?: string
+          triggered_by?: string | null
+          users_count?: number | null
+        }
+        Relationships: []
+      }
       catalog_product_views: {
         Row: {
           created_at: string
