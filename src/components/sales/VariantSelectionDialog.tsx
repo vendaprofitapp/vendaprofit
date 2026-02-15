@@ -33,6 +33,8 @@ interface VariantSelectionDialogProps {
   onOpenChange: (open: boolean) => void;
   product: Product | null;
   onConfirm: (product: Product, variant: ProductVariant | null, quantity: number, isPartnerStock: boolean, ownerName?: string) => void;
+  b2bSizes?: string[]; // Supplier sizes for B2B products
+  isB2B?: boolean;
 }
 
 // Size ordering helper
@@ -53,24 +55,50 @@ export function VariantSelectionDialog({
   onOpenChange,
   product,
   onConfirm,
+  b2bSizes,
+  isB2B,
 }: VariantSelectionDialogProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [selectedB2BSize, setSelectedB2BSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [step, setStep] = useState<'size' | 'quantity'>('size');
 
   // Reset state when dialog opens or product changes
   useEffect(() => {
     if (open && product) {
+      setSelectedVariant(null);
+      setSelectedB2BSize(null);
+      setQuantity(1);
+      
+      // B2B mode: use supplier sizes directly, no DB fetch needed
+      if (isB2B && b2bSizes && b2bSizes.length > 0) {
+        setIsLoading(false);
+        setVariants([]);
+        if (b2bSizes.length === 1) {
+          setSelectedB2BSize(b2bSizes[0]);
+          setStep('quantity');
+        } else {
+          setStep('size');
+        }
+        return;
+      }
+      
+      if (isB2B) {
+        // B2B without sizes - go straight to quantity
+        setIsLoading(false);
+        setVariants([]);
+        setStep('quantity');
+        return;
+      }
+      
       setIsLoading(true);
       setVariants([]);
-      setSelectedVariant(null);
-      setQuantity(1);
       setStep('size');
       fetchAllVariants(product);
     }
-  }, [open, product?.id]);
+  }, [open, product?.id, isB2B, b2bSizes]);
 
   const fetchAllVariants = async (prod: Product) => {
     try {
@@ -108,18 +136,47 @@ export function VariantSelectionDialog({
 
   const handleSizeSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
+    setSelectedB2BSize(null);
+    setQuantity(1);
+    setStep('quantity');
+  };
+
+  const handleB2BSizeSelect = (size: string) => {
+    setSelectedB2BSize(size);
+    setSelectedVariant(null);
     setQuantity(1);
     setStep('quantity');
   };
 
   const handleConfirm = () => {
     if (!product) return;
+    
+    if (isB2B) {
+      // For B2B, create a virtual variant with the selected supplier size
+      const virtualVariant: ProductVariant | null = selectedB2BSize ? {
+        id: `b2b_${product.id}_${selectedB2BSize}`,
+        product_id: product.id,
+        size: selectedB2BSize,
+        stock_quantity: 999,
+        image_url: null,
+      } : null;
+      onConfirm(product, virtualVariant, quantity, false);
+      onOpenChange(false);
+      return;
+    }
+    
     // Always own stock (partner variants no longer shown here)
     onConfirm(product, selectedVariant, quantity, false);
     onOpenChange(false);
   };
 
   const canConfirm = () => {
+    if (isB2B) {
+      if (b2bSizes && b2bSizes.length > 0) {
+        return !!selectedB2BSize && quantity > 0;
+      }
+      return quantity > 0;
+    }
     if (variants.length === 0) return quantity > 0 && quantity <= (product?.stock_quantity || 0);
     return selectedVariant && quantity > 0 && quantity <= selectedVariant.stock_quantity;
   };
@@ -148,6 +205,99 @@ export function VariantSelectionDialog({
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : isB2B && b2bSizes && b2bSizes.length > 0 ? (
+          // B2B mode: show supplier sizes
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="space-y-4 py-2">
+              {(step === 'size' || selectedB2BSize) && (
+                <div>
+                  <p className="text-sm font-medium mb-3">
+                    {step === 'size' ? 'Selecione o tamanho:' : 'Tamanho selecionado:'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {b2bSizes.map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => handleB2BSizeSelect(size)}
+                        className={cn(
+                          "px-4 py-3 rounded-xl border-2 font-medium transition-all touch-manipulation min-w-[4rem] text-center relative",
+                          selectedB2BSize === size
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        <span className="block text-base">{size}</span>
+                        <span className={cn(
+                          "text-xs",
+                          selectedB2BSize === size ? "text-primary-foreground/80" : "text-muted-foreground"
+                        )}>
+                          📦 Sob Encomenda
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {step === 'quantity' && selectedB2BSize && (
+                <div>
+                  <p className="text-sm font-medium mb-3">Quantidade:</p>
+                  <div className="flex items-center justify-center gap-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-14 w-14 rounded-full touch-manipulation"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      disabled={quantity <= 1}
+                    >
+                      <Minus className="h-6 w-6" />
+                    </Button>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={99}
+                      value={quantity}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 1;
+                        setQuantity(Math.min(Math.max(1, val), 99));
+                      }}
+                      className="w-20 h-14 text-center text-2xl font-bold"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-14 w-14 rounded-full touch-manipulation"
+                      onClick={() => setQuantity(Math.min(99, quantity + 1))}
+                      disabled={quantity >= 99}
+                    >
+                      <Plus className="h-6 w-6" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    📦 Produto sob encomenda do fornecedor
+                  </p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        ) : isB2B ? (
+          // B2B without sizes - just quantity
+          <div className="flex-1 flex flex-col items-center justify-center py-6 gap-4">
+            <Badge variant="outline" className="text-sm">📦 Sob Encomenda</Badge>
+            <div className="flex items-center gap-4">
+              <Button type="button" variant="outline" size="icon" className="h-14 w-14 rounded-full touch-manipulation" onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}>
+                <Minus className="h-6 w-6" />
+              </Button>
+              <Input type="number" inputMode="numeric" min={1} max={99} value={quantity} onChange={(e) => { const val = parseInt(e.target.value) || 1; setQuantity(Math.min(Math.max(1, val), 99)); }} className="w-20 h-14 text-center text-2xl font-bold" />
+              <Button type="button" variant="outline" size="icon" className="h-14 w-14 rounded-full touch-manipulation" onClick={() => setQuantity(Math.min(99, quantity + 1))} disabled={quantity >= 99}>
+                <Plus className="h-6 w-6" />
+              </Button>
+            </div>
           </div>
         ) : variants.length === 0 ? (
           // No variants - just show quantity selector
@@ -276,8 +426,9 @@ export function VariantSelectionDialog({
           <Button
             variant="outline"
             onClick={() => {
-              if (step === 'quantity' && variants.length > 1) {
+              if (step === 'quantity' && (variants.length > 1 || (isB2B && b2bSizes && b2bSizes.length > 1))) {
                 setSelectedVariant(null);
+                setSelectedB2BSize(null);
                 setStep('size');
               } else {
                 onOpenChange(false);
@@ -285,7 +436,7 @@ export function VariantSelectionDialog({
             }}
             className="flex-1"
           >
-            {step === 'size' || variants.length === 0 ? 'Cancelar' : 'Voltar'}
+            {step === 'size' || (variants.length === 0 && !(isB2B && b2bSizes && b2bSizes.length > 1)) ? 'Cancelar' : 'Voltar'}
           </Button>
           <Button
             onClick={handleConfirm}
