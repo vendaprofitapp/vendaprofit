@@ -1,44 +1,89 @@
+# Renomear Nomenclatura e Personalizar Descricoes nos Relatorios
 
-# Correcao: Ganhos da Parceira Zerados nos Relatorios
+## Resumo
 
-## Problema
+Duas mudancas principais:
 
-A tabela `financial_splits` possui duas politicas RLS de SELECT:
-1. "Users can view splits for their sales" -- onde `sales.owner_id = auth.uid()`
-2. "Users can view their own financial splits" -- onde `user_id = auth.uid()`
+1. Renomear "Parceria 1-1" para "Sociedade 1-1" e "Grupos" para "Parcerias" em toda a interface
+2. Substituir termos genericos como "Meus Ganhos" e "Devo aos Donos" por nomes reais das parceiras (ex: "Ganhos de Camila Nogueira", "Devo a Isabelle Santos")
 
-Quando Isabelle vende pecas de Camila, Camila consegue ver a venda (politica adicionada anteriormente) e seus proprios splits, mas NAO consegue ver os splits de Isabelle naquela venda. Por isso, o codigo na linha 370 que calcula `sellerTotalInSale` filtrando por `s.user_id === sale.owner_id` retorna 0.
+## Mudanca 1: Renomear Nomenclatura
 
-## Solucao
+### Mapeamento de termos:
 
-Adicionar uma nova politica RLS na tabela `financial_splits` que permita parceiros do mesmo grupo verem os splits de vendas compartilhadas. Isso e analogo as politicas ja adicionadas em `sales` e `sale_items`.
+- "Parceria 1-1" / "Parcerias 1-1" / "Parcerias Diretas" -> "Sociedade 1-1" / "Sociedades 1-1" / "Sociedades Diretas"
+- "Grupos" / "Grupo" / "Grupos de Parceria" -> "Parcerias" / "Parceria"
+- "Parceira" (no contexto de grupos) -> "Membro" (mantem quando faz sentido no contexto 1-1)
 
-### Migracao SQL
+### Arquivos afetados:
 
-Nova policy SELECT em `financial_splits`:
+`**src/components/layout/Sidebar.tsx**`
+
+- "Parcerias" -> "Socias / Parceiras" (label do menu, pois a pagina gerencia ambos)
+- "Rel. Sócias" -> Relatórios somente das Sociedades 1-1 
+- "Rel. Parcerias -> Relatórios somente das Parcerias
+
+`**src/pages/Partnerships.tsx**`
+
+- Titulo da pagina: "Parcerias" -> "Sociedades e Parcerias"
+- Tab "Parcerias Diretas" -> "Sociedades 1-1"
+- Tab "Grupos" -> "Parcerias"
+- "Grupos de Parceria" -> "Parcerias em Grupo"
+- Dialogs e toasts com termos atualizados
+
+`**src/components/partnerships/DirectPartnerships.tsx**`
+
+- "Parcerias Diretas (1-1)" -> "Sociedades Diretas (1-1)"
+
+`**src/pages/PartnerReports.tsx**`
+
+- Titulo: "Relatorio de Parcerias e Grupos" -> "Relatorio de Sociedades e Parcerias"
+- Tab "Parcerias 1-1" -> "Sociedades 1-1"
+- Tab "Grupos" -> "Parcerias"
+- "Regra de Parceria 1-1" -> "Regra de Sociedade 1-1"
+- "Regra de Grupo" -> "Regra de Parceria"
+- groupName: "Parceria 1-1" -> "Sociedade 1-1", "Grupo" -> "Parceria"
+- WhatsApp export: "PARCERIAS 1-1" -> "SOCIEDADES 1-1", "GRUPOS" -> "PARCERIAS"
+
+`**src/components/layout/MainLayout.tsx**`
+
+- pageTitles: atualizar labels correspondentes
+
+## Mudanca 2: Personalizar Descricoes com Nomes Reais
+
+No arquivo `**src/pages/PartnerReports.tsx**`, substituir termos genericos por nomes reais do usuario logado e suas parceiras:
+
+- **"Meus Ganhos (Vendas)"** -> **"Ganhos de [Nome do Usuario]"** (ex: "Ganhos de Camila Nogueira")
+- **"Devo aos Donos"** / **"Devo as Parceiras"** -> **"Devo a [Nome da Parceira]"** (ex: "Devo a Isabelle Santos") quando ha apenas 1 parceira, senao "Devo as Socias/Parceiras"
+- **"Meus ganhos pendentes"** -> **"Ganhos pendentes de [Nome]"**
+- **"Devo aos donos (pendente)"** -> **"Devo a [Nome] (pendente)"**
+- **"Ganho Dela"/"Ganho Dele"** -> **"Ganho de [Nome]"** usando o nome real da parceira da linha
+- Colunas de tabela: usar `profiles.find(p => p.id === user?.id)?.full_name` para o nome do usuario logado
+
+O mesmo principio se aplica ao texto de exportacao WhatsApp.
+
+## Detalhes Tecnicos
+
+### Arquivos a modificar (6 arquivos):
+
+1. `**src/components/layout/Sidebar.tsx**` - Labels do menu lateral
+2. `**src/components/layout/MainLayout.tsx**` - Titulos das paginas no header mobile
+3. `**src/pages/Partnerships.tsx**` - Toda a pagina de gestao de parcerias
+4. `**src/components/partnerships/DirectPartnerships.tsx**` - Secao de sociedades diretas
+5. `**src/pages/PartnerReports.tsx**` - Relatorio completo (nomenclatura + nomes personalizados)
+6. `**src/components/reports/AccountSettlement.tsx**` - "Meus Ganhos" -> nome real
+
+### Logica para nomes personalizados (PartnerReports.tsx):
 
 ```text
-CREATE POLICY "Partners can view splits from same group sales"
-  ON public.financial_splits FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM sales s
-      JOIN group_members gm1 ON gm1.user_id = auth.uid()
-      JOIN group_members gm2 ON gm2.group_id = gm1.group_id AND gm2.user_id = s.owner_id
-      WHERE s.id = financial_splits.sale_id
-        AND gm1.user_id != gm2.user_id
-    )
-  );
+// Obter nome do usuario logado
+const currentUserName = profiles.find(p => p.id === user?.id)?.full_name || "Voce";
+
+// Nos cards de resumo:
+// "Meus Ganhos (Vendas)" -> `Ganhos de ${currentUserName}`
+// "Devo aos Donos" -> quando 1 parceira: `Devo a ${partners[0].full_name}`, senao "Devo aos Socios"
+
+// Nas colunas de tabela (Partner Sales):
+// "Ganho Dele/Dela" -> `Ganho de ${summary.partnerName}` (ja tem o nome no summary)
+// Header generico -> nome da parceira quando ha apenas uma
 ```
-
-### Nenhuma alteracao no frontend
-
-O codigo do relatorio ja possui a logica correta para calcular os ganhos da parceira (linha 370 de PartnerReports.tsx). O problema e exclusivamente de visibilidade dos dados no banco.
-
-## Arquivo a modificar
-
-1. **Migracao SQL** -- Adicionar policy RLS na tabela `financial_splits`
-
-## Impacto
-
-Com esta policy, ao abrir o relatorio de parcerias, os splits de Isabelle nas vendas dela serao visiveis para Camila (e vice-versa), fazendo com que a coluna "Ganho de Isabelle Santos" exiba os valores corretos.
