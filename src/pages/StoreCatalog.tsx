@@ -2219,6 +2219,10 @@ export default function StoreCatalog() {
         primaryColor={primaryColor}
         isIdentified={!!loyaltyPhone}
         onIdentify={() => setShowLoyaltyCapture(true)}
+        ownerId={store?.owner_id}
+        sellerPhone={loyaltyPhone}
+        sellerName={storedLeadForLoyalty?.name}
+        storeSlug={slug}
       />
     </div>
   );
