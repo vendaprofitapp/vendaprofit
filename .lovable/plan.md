@@ -1,84 +1,87 @@
-# Correcao: Dessincronizacao entre Estoque de Variantes e Produto Principal
 
-## Problema Identificado
 
-O estoque do produto principal (`products.stock_quantity`) ficou zerado enquanto a variante tamanho M tinha 1 unidade. Isso causou:
+# Fase 1: Motor de Gamificacao e Painel Admin de Fidelidade
 
-- Produto nao aparecer no PDV (Nova Venda) -- que filtra por `stock_quantity > 0`
-- Produto aparecer com estoque 0 na lista do Controle de Estoque
-- Ao editar o produto, o formulario recalculou a soma das variantes e corrigiu o valor
+## Resumo
 
-### Causa raiz: Bug de subtracao dupla no `Sales.tsx`
+Criar um sistema de fidelidade white-label onde cada lojista configura seus proprios niveis de recompensa, e o sistema calcula automaticamente o nivel de cada cliente com base no gasto acumulado.
 
-No codigo de finalizacao de venda (linha ~695-712 de `Sales.tsx`), quando um item tem variante:
+## Estrutura de Dados
 
-1. Atualiza o estoque da variante (subtrai a quantidade vendida) -- CORRETO
-2. Re-busca todas as variantes do produto (que ja inclui o valor decrementado do passo 1)
-3. Soma o estoque de todas as variantes E subtrai a quantidade vendida novamente -- BUG
+### Tabela `loyalty_levels` (nova)
 
-Resultado: o `products.stock_quantity` fica menor que a soma real das variantes. Com o tempo, fica zerado ou negativo (protegido por `Math.max(0, ...)`).
+Armazena os niveis de fidelidade configurados por cada lojista.
 
-## Solucao
+| Coluna | Tipo | Obs |
+|--------|------|-----|
+| id | uuid | PK |
+| owner_id | uuid | Lojista dono |
+| name | text | Ex: "Bronze", "Ouro" |
+| min_spent | numeric | Gasto minimo acumulado |
+| color | text | Cor hexadecimal |
+| features | jsonb | Array de features liberadas |
+| display_order | integer | Ordenacao |
+| created_at | timestamptz | |
 
-### 1. Corrigir a subtracao dupla em `Sales.tsx`
+RLS: owner_id = auth.uid() para todas as operacoes.
 
-Na linha 708, remover o `- item.quantity` pois os dados ja foram atualizados no passo anterior:
+### Coluna `total_spent` na tabela `customers` (nova)
 
-```
-// ANTES (bug):
-const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0) - item.quantity;
+Adicionar uma coluna `total_spent numeric DEFAULT 0` na tabela `customers` para rastrear o gasto acumulado de cada cliente.
 
-// DEPOIS (correto):
-const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
-```
+### Funcao SQL `get_customer_loyalty_level`
 
-### 2. Criar trigger de sincronizacao automatica (protecao definitiva)
+Funcao que recebe um `customer_id` e retorna o nivel atual do cliente, comparando `customers.total_spent` com os `loyalty_levels` do `owner_id` daquele cliente.
 
-Criar um trigger na tabela `product_variants` que, ao alterar `stock_quantity`, recalcula automaticamente o `products.stock_quantity` como a soma de todas as variantes. Isso protege contra qualquer futuro bug no codigo frontend.
+### Trigger para acumular gasto
+
+Como `sales` referencia clientes por `customer_name` + `customer_phone` (nao por FK), criaremos uma funcao trigger que, ao inserir uma venda com status "completed", busca o cliente correspondente na tabela `customers` pelo `owner_id` + `customer_phone` e incrementa o `total_spent`.
+
+## Pagina Admin `/admin/fidelidade`
+
+Interface onde o lojista configura os niveis:
+
+- Lista dos niveis existentes ordenados por `min_spent`
+- Botao para adicionar novo nivel
+- Dialogo de edicao com: Nome, Valor Minimo, Cor (input hex com preview), e checkboxes para features (Bazar VIP, Chat, Provador IA)
+- O nivel "Inicial" (min_spent = 0) e criado automaticamente e nao pode ser excluido
+- Botoes de editar e excluir para cada nivel
+
+## Navegacao
+
+- Adicionar item "Fidelidade" no Sidebar com icone `Award`
+- Adicionar rota `/admin/fidelidade` no App.tsx como rota protegida
+
+## Arquivos a criar/modificar
+
+1. **Nova migracao SQL** -- Tabela `loyalty_levels`, coluna `total_spent` em `customers`, trigger de acumulo, funcao de calculo de nivel
+2. **`src/pages/LoyaltyAdmin.tsx`** (novo) -- Pagina de configuracao dos niveis
+3. **`src/components/layout/Sidebar.tsx`** -- Adicionar link para Fidelidade
+4. **`src/App.tsx`** -- Adicionar rota `/admin/fidelidade`
+
+## Detalhes tecnicos
+
+### Trigger de acumulo de gasto
 
 ```text
-AFTER INSERT OR UPDATE OR DELETE ON product_variants
--> Recalcula products.stock_quantity = SUM(product_variants.stock_quantity)
+AFTER INSERT ON sales (quando status = 'completed')
+-> Busca customer em customers WHERE owner_id = sales.owner_id AND phone = customer_phone
+-> UPDATE customers SET total_spent = total_spent + sales.total
 ```
 
-### 3. Migracao para corrigir dados existentes
+Tambem precisamos de um trigger para UPDATE (caso uma venda seja editada) e DELETE (caso seja removida), ajustando o total_spent de acordo.
 
-Executar um UPDATE para sincronizar todos os produtos que tenham variantes:
+### Funcao de calculo de nivel
 
 ```text
-UPDATE products p
-SET stock_quantity = sub.total
-FROM (
-  SELECT product_id, COALESCE(SUM(stock_quantity), 0) as total
-  FROM product_variants
-  GROUP BY product_id
-) sub
-WHERE p.id = sub.product_id
-  AND p.stock_quantity != sub.total;
+get_customer_loyalty_level(customer_id uuid)
+RETURNS jsonb {name, color, features}
+-> Busca owner_id e total_spent do customer
+-> Busca loyalty_levels WHERE owner_id = customer.owner_id AND min_spent <= customer.total_spent
+-> ORDER BY min_spent DESC LIMIT 1
+-> Retorna o nivel correspondente
 ```
 
-### 4. Remover sincronizacoes manuais redundantes
+### Seed do nivel inicial
 
-Com o trigger automatico, os trechos de codigo que manualmente recalculam `products.stock_quantity` a partir das variantes se tornam redundantes. Simplificar:
-
-- `**Sales.tsx**` (linhas 700-712): Remover o bloco de recalculo manual -- o trigger cuida disso
-- `**VoiceStockDialog.tsx**` (linhas 530-540): Remover recalculo manual
-- `**StockImportDialog.tsx**` (linhas 1141-1155): Remover recalculo manual
-- `**approve_stock_request**` (funcao SQL): Remover o `UPDATE products SET stock_quantity` -- o trigger cuida disso
-
-A funcao `ProductFormDialog.tsx` continuara setando `stock_quantity: totalStock` no INSERT/UPDATE do produto, o que e correto para edicao manual.
-
----
-
-## Arquivos alterados
-
-1. **Nova migracao SQL** -- Trigger `sync_product_stock_from_variants` + correcao de dados existentes
-2. `**src/pages/Sales.tsx**` -- Remover subtracao dupla e recalculo manual
-3. `**src/components/stock/VoiceStockDialog.tsx**` -- Remover recalculo manual
-4. `**src/components/stock/StockImportDialog.tsx**` -- Remover recalculo manual
-
-## Impacto
-
-- Corrige o bug imediato do usuario [teamwodbrasil@gmail.com e previne que não aconteça em qualquer usuário](mailto:teamwodbrasil@gmail.com)
-- Previne qualquer dessincronizacao futura com o trigger automatico
-- Simplifica o codigo removendo logica duplicada
+Ao acessar a pagina pela primeira vez, se nao existir nenhum nivel, o frontend cria automaticamente o nivel "Inicial" com min_spent = 0.
