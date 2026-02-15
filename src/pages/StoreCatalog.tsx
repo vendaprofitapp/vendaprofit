@@ -19,6 +19,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { WaitlistDialog } from "@/components/catalog/WaitlistDialog";
 import { InstallmentInfo, CartProgressBar, CartInstallmentWarning, getNextTierMessage, getUnlockedTierMessage, type PurchaseIncentivesConfig, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
 import { LeadCaptureSheet } from "@/components/catalog/LeadCaptureSheet";
+import { LoyaltyHeader } from "@/components/catalog/LoyaltyHeader";
+import { VipAreaDrawer } from "@/components/catalog/VipAreaDrawer";
+import { useCatalogLoyalty } from "@/hooks/useCatalogLoyalty";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -241,6 +244,7 @@ export default function StoreCatalog() {
 
   // Lead capture state
   const [showLeadCapture, setShowLeadCapture] = useState(false);
+  const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
   const [pendingCartAdd, setPendingCartAdd] = useState<{ item: CatalogDisplayItem; size: string; effectivePrice: number } | null>(null);
 
   // Session persistence for secret area
@@ -495,6 +499,11 @@ export default function StoreCatalog() {
 
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
+
+  // Loyalty: get stored lead phone for this store
+  const storedLeadForLoyalty = slug ? (() => { try { const s = localStorage.getItem(`store_lead_${slug}`); return s ? JSON.parse(s) : null; } catch { return null; } })() : null;
+  const loyaltyPhone = storedLeadForLoyalty?.whatsapp || undefined;
+  const loyalty = useCatalogLoyalty(store?.owner_id, loyaltyPhone);
 
   // Dynamic title, favicon, apple-touch-icon & PWA manifest
   useEffect(() => {
@@ -1738,6 +1747,19 @@ export default function StoreCatalog() {
         </div>
       </header>
 
+      {/* Loyalty Header */}
+      <LoyaltyHeader
+        isIdentified={!!loyaltyPhone}
+        currentLevel={loyalty.currentLevel}
+        nextLevel={loyalty.nextLevel}
+        progress={loyalty.progress}
+        amountToNext={loyalty.amountToNext}
+        totalSpent={loyalty.totalSpent}
+        isLoading={loyalty.isLoading}
+        onIdentify={() => setShowLoyaltyCapture(true)}
+        primaryColor={primaryColor}
+      />
+
       {/* Promotional Banner - Below header */}
       <PromotionalBanner />
 
@@ -2173,6 +2195,30 @@ export default function StoreCatalog() {
         }}
         onSubmit={handleLeadSubmit}
         primaryColor={primaryColor}
+      />
+
+      {/* Loyalty Lead Capture Sheet */}
+      <LeadCaptureSheet
+        open={showLoyaltyCapture}
+        onOpenChange={setShowLoyaltyCapture}
+        onSubmit={async (data) => {
+          setShowLoyaltyCapture(false);
+          await saveLeadData(data);
+          toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
+        }}
+        primaryColor={primaryColor}
+      />
+
+      {/* VIP Area Drawer */}
+      <VipAreaDrawer
+        unlockedFeatures={loyalty.unlockedFeatures}
+        currentLevel={loyalty.currentLevel}
+        nextLevel={loyalty.nextLevel}
+        progress={loyalty.progress}
+        amountToNext={loyalty.amountToNext}
+        primaryColor={primaryColor}
+        isIdentified={!!loyaltyPhone}
+        onIdentify={() => setShowLoyaltyCapture(true)}
       />
     </div>
   );

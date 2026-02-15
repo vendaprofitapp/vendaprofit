@@ -2673,6 +2673,10 @@ export type Database = {
         Args: { category_name: string }
         Returns: undefined
       }
+      get_catalog_customer_loyalty: {
+        Args: { _owner_id: string; _phone: string }
+        Returns: Json
+      }
       get_customer_loyalty_level: {
         Args: { _customer_id: string }
         Returns: Json
