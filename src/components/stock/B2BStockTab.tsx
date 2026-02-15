@@ -8,6 +8,9 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package } from "lucide-react";
 
 interface B2BProduct {
@@ -90,6 +93,7 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
   const [checkResults, setCheckResults] = useState<Record<string, B2BCheckResult>>({});
   const [checkingIds, setCheckingIds] = useState<Set<string>>(new Set());
   const [creatingIds, setCreatingIds] = useState<Set<string>>(new Set());
+  const [b2bStatusFilter, setB2bStatusFilter] = useState<B2BStatus | "all">("all");
 
   useEffect(() => {
     fetchB2BProducts();
@@ -387,9 +391,15 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
       if (filters.minPrice && p.price < Number(filters.minPrice)) return false;
       if (filters.maxPrice && p.price > Number(filters.maxPrice)) return false;
 
+      // B2B status filter
+      if (b2bStatusFilter !== "all") {
+        const productStatus = getStatus(p);
+        if (productStatus !== b2bStatusFilter) return false;
+      }
+
       return true;
     });
-  }, [products, searchTerm, filters, supplierOptions]);
+  }, [products, searchTerm, filters, supplierOptions, b2bStatusFilter, checkingIds, clones, checkResults]);
 
   if (loading) {
     return (
@@ -411,10 +421,24 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {filteredProducts.length} de {products.length} produto(s) B2B · {clones.length} clone(s)
-        </p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            {filteredProducts.length} de {products.length} produto(s) B2B · {clones.length} clone(s)
+          </p>
+          <Select value={b2bStatusFilter} onValueChange={(v) => setB2bStatusFilter(v as B2BStatus | "all")}>
+            <SelectTrigger className="w-[160px] h-8 text-xs">
+              <SelectValue placeholder="Status B2B" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Status</SelectItem>
+              <SelectItem value="ready">✅ Pronto</SelectItem>
+              <SelectItem value="no_url">⬜ Sem URL</SelectItem>
+              <SelectItem value="pending">🟡 Pendente</SelectItem>
+              <SelectItem value="error">❌ Erro</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <Button variant="outline" size="sm" onClick={handleCheckAll}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Verificar Todos
