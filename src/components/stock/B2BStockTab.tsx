@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package, Pencil } from "lucide-react";
+import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package, Pencil, X } from "lucide-react";
 
 interface B2BProduct {
   id: string;
@@ -495,10 +495,33 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
                     />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{localSizes}</TableCell>
-                  <TableCell className="text-xs max-w-[120px] truncate">
-                    {supplierSizes !== "-" ? (
-                      <span className="text-primary font-medium">{supplierSizes}</span>
-                    ) : supplierSizes}
+                  <TableCell className="text-xs max-w-[180px]">
+                    {clone && clone.product_variants && clone.product_variants.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {clone.product_variants.map(v => (
+                          <Badge key={v.id} variant="secondary" className="text-[10px] gap-0.5 pr-0.5">
+                            {v.size}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const { error } = await supabase.from("product_variants").delete().eq("id", v.id);
+                                if (error) { toast.error("Erro ao remover tamanho"); return; }
+                                setClones(prev => prev.map(c => c.id === clone.id ? {
+                                  ...c,
+                                  product_variants: (c.product_variants || []).filter(pv => pv.id !== v.id)
+                                } : c));
+                                toast.success(`Tamanho ${v.size} removido`);
+                              }}
+                              className="ml-0.5 rounded-full hover:bg-destructive/20 p-0.5"
+                            >
+                              <X className="h-2.5 w-2.5 text-muted-foreground hover:text-destructive" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : result?.sizes?.length ? (
+                      <span className="text-primary font-medium">{result.sizes.join(", ")}</span>
+                    ) : "-"}
                   </TableCell>
                   <TableCell>
                     {isEditing ? (

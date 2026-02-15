@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2, Truck } from "lucide-react";
+import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2, Truck, Download } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
@@ -169,6 +169,9 @@ export default function Sales() {
   const [saleIdForShipping, setSaleIdForShipping] = useState<string>("");
   const [shippingTracking, setShippingTracking] = useState<string | null>(null);
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [importCartCode, setImportCartCode] = useState("");
+  const [importedCartId, setImportedCartId] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
@@ -1027,6 +1030,15 @@ export default function Sales() {
         queryClient.invalidateQueries({ queryKey: ["stock-requests"] });
       }
 
+      // Mark saved cart as converted if imported
+      if (importedCartId) {
+        await supabase
+          .from("saved_carts")
+          .update({ status: "converted" } as any)
+          .eq("id", importedCartId);
+        setImportedCartId(null);
+      }
+
       // Core lists
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
@@ -1079,7 +1091,77 @@ export default function Sales() {
     setShippingLabelUrl(null);
     setShippingTracking(null);
     setSaleIdForShipping("");
-    setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
+    setImportCartCode("");
+    setImportedCartId(null);
+  };
+
+  const handleImportCart = async () => {
+    if (!importCartCode.trim()) return;
+    setIsImporting(true);
+    try {
+      const { data: savedCart, error: cartError } = await supabase
+        .from("saved_carts")
+        .select("id, customer_name, customer_phone, total, status, saved_cart_items(id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source)")
+        .eq("short_code", importCartCode.trim().toUpperCase())
+        .single() as any;
+
+      if (cartError || !savedCart) {
+        toast({ title: "Carrinho não encontrado", description: "Verifique o código e tente novamente.", variant: "destructive" });
+        return;
+      }
+
+      if (savedCart.status === "converted") {
+        toast({ title: "Carrinho já convertido", description: "Este carrinho já foi importado anteriormente.", variant: "destructive" });
+        return;
+      }
+
+      // Fill customer data
+      setCustomerName(savedCart.customer_name || "");
+      setCustomerPhone(savedCart.customer_phone || "");
+
+      // Fill cart items
+      const items: CartItem[] = [];
+      for (const sci of (savedCart.saved_cart_items || [])) {
+        // Try to find matching product
+        let matchedProduct: Product | undefined;
+        
+        if (sci.source === "partner") {
+          matchedProduct = partnerProductsForList.find((p: any) => p.id === sci.product_id) as any;
+        } else {
+          matchedProduct = ownProducts.find(p => p.id === sci.product_id);
+        }
+
+        const product: Product = matchedProduct || {
+          id: sci.product_id || crypto.randomUUID(),
+          name: sci.product_name,
+          price: sci.unit_price,
+          stock_quantity: 0,
+          owner_id: user?.id || "",
+          group_id: null,
+          category: "",
+          color: sci.variant_color,
+          size: sci.selected_size,
+          isB2B: sci.source === "b2b",
+          b2b_source_product_id: sci.source === "b2b" ? "imported" : null,
+        };
+
+        items.push({
+          product,
+          quantity: sci.quantity,
+          isPartnerStock: sci.source === "partner",
+          ownerName: sci.source === "partner" ? "Parceira" : undefined,
+          variant: null,
+        });
+      }
+
+      setCart(items);
+      setImportedCartId(savedCart.id);
+      toast({ title: "Carrinho importado!", description: `${items.length} item(ns) carregados do código ${importCartCode.trim().toUpperCase()}` });
+    } catch (err: any) {
+      toast({ title: "Erro ao importar", description: err.message, variant: "destructive" });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleCustomerSelect = (customerId: string) => {
@@ -1796,6 +1878,27 @@ export default function Sales() {
           <DialogHeader>
             <DialogTitle>Nova Venda</DialogTitle>
           </DialogHeader>
+
+          {/* Import Cart by Code */}
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-dashed bg-muted/30">
+            <Download className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              placeholder="Importar carrinho (ex: VP-A3F2)"
+              value={importCartCode}
+              onChange={e => setImportCartCode(e.target.value.toUpperCase())}
+              onKeyDown={e => { if (e.key === "Enter") handleImportCart(); }}
+              className="h-8 text-sm flex-1"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs shrink-0"
+              onClick={handleImportCart}
+              disabled={isImporting || !importCartCode.trim()}
+            >
+              {isImporting ? "Importando..." : "Importar"}
+            </Button>
+          </div>
 
           {/* Mobile: Show totals at top - always visible */}
           {isMobile && (

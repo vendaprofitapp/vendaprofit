@@ -1522,6 +1522,7 @@ export type Database = {
           product_name: string
           quantity: number
           selected_size: string | null
+          source: string | null
           status: string
           unit_price: number
           variant_color: string | null
@@ -1534,6 +1535,7 @@ export type Database = {
           product_name: string
           quantity?: number
           selected_size?: string | null
+          source?: string | null
           status?: string
           unit_price?: number
           variant_color?: string | null
@@ -1546,6 +1548,7 @@ export type Database = {
           product_name?: string
           quantity?: number
           selected_size?: string | null
+          source?: string | null
           status?: string
           unit_price?: number
           variant_color?: string | null
@@ -2333,6 +2336,100 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      saved_cart_items: {
+        Row: {
+          cart_id: string
+          id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          selected_size: string | null
+          source: string | null
+          unit_price: number
+          variant_color: string | null
+        }
+        Insert: {
+          cart_id: string
+          id?: string
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          selected_size?: string | null
+          source?: string | null
+          unit_price?: number
+          variant_color?: string | null
+        }
+        Update: {
+          cart_id?: string
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          selected_size?: string | null
+          source?: string | null
+          unit_price?: number
+          variant_color?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "saved_carts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_carts: {
+        Row: {
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          id: string
+          lead_id: string | null
+          owner_id: string
+          short_code: string
+          status: string
+          store_id: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          customer_phone: string
+          id?: string
+          lead_id?: string | null
+          owner_id: string
+          short_code: string
+          status?: string
+          store_id: string
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string
+          id?: string
+          lead_id?: string | null
+          owner_id?: string
+          short_code?: string
+          status?: string
+          store_id?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_carts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "store_leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_requests: {
         Row: {

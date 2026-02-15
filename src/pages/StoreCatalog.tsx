@@ -1457,20 +1457,76 @@ export default function StoreCatalog() {
     }).format(price);
   };
 
-  const sendCartViaWhatsApp = () => {
+  const generateShortCode = (): string => {
+    const hex = Math.random().toString(16).substring(2, 6).toUpperCase();
+    return `VP-${hex}`;
+  };
+
+  const getItemSource = (item: CartItem): string => {
+    if (item.displayItem.isB2B) return "b2b";
+    if (item.displayItem.isPartner) return "partner";
+    return "local";
+  };
+
+  const getSourceLabel = (source: string): string => {
+    switch (source) {
+      case "b2b": return "[Sob Encomenda]";
+      case "partner": return "[Parceira]";
+      default: return "[Estoque]";
+    }
+  };
+
+  const sendCartViaWhatsApp = async () => {
     if (!store?.whatsapp_number || cart.length === 0) return;
     
-    const hasPartnerProducts = cart.some(item => item.displayItem.isPartner);
+    const shortCode = generateShortCode();
+    const storedLead = getStoredLead();
     
+    // Save cart to database
+    try {
+      const { data: savedCart, error: cartError } = await supabase
+        .from("saved_carts")
+        .insert({
+          short_code: shortCode,
+          store_id: store.id,
+          owner_id: store.owner_id,
+          lead_id: storedLead?.lead_id || null,
+          customer_name: storedLead?.name || "Cliente",
+          customer_phone: storedLead?.whatsapp || "",
+          total: cartTotal,
+          status: "waiting",
+        } as any)
+        .select("id")
+        .single();
+
+      if (!cartError && savedCart) {
+        const cartItems = cart.map(item => ({
+          cart_id: savedCart.id,
+          product_id: item.displayItem.productId,
+          product_name: item.displayItem.name,
+          variant_color: item.displayItem.color || null,
+          selected_size: item.selectedSize,
+          quantity: item.quantity,
+          unit_price: item.effectivePrice,
+          source: getItemSource(item),
+        }));
+        await supabase.from("saved_cart_items").insert(cartItems as any);
+      }
+    } catch (err) {
+      console.error("Erro ao salvar carrinho:", err);
+    }
+
     const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
     
-    let message = "Olá! Gostaria de fazer o seguinte pedido:\n\n";
+    let message = `🧾 *Código do pedido: ${shortCode}*\n\n`;
+    message += "Olá! Gostaria de fazer o seguinte pedido:\n\n";
     
     cart.forEach((item, index) => {
       const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
-      const partnerMark = item.displayItem.isPartner ? " *" : "";
+      const source = getItemSource(item);
+      const sourceLabel = getSourceLabel(source);
       const emoji = index < numberEmojis.length ? numberEmojis[index] : `${index + 1}.`;
-      message += `${emoji} ${item.displayItem.name}${colorInfo}${partnerMark}\n`;
+      message += `${emoji} ${item.displayItem.name}${colorInfo} ${sourceLabel}\n`;
       message += `Tamanho: ${item.selectedSize}\n`;
       message += `Quantidade: ${item.quantity}\n`;
       message += `Preço unitário: ${formatPrice(item.effectivePrice)}\n`;
@@ -1479,19 +1535,14 @@ export default function StoreCatalog() {
     
     message += `✅ *TOTAL: ${formatPrice(cartTotal)}*`;
     
-    if (hasPartnerProducts) {
-      message += "\n\n_* Produto de estoque parceiro_";
-    }
-    
     const phone = store.whatsapp_number.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
     
-    // Mark lead cart items as converted
-    const storedLead = getStoredLead();
+    // Mark lead cart items as converted and save source
     if (storedLead?.lead_id) {
       supabase
         .from("lead_cart_items")
-        .update({ status: "converted" })
+        .update({ status: "converted" } as any)
         .eq("lead_id", storedLead.lead_id)
         .eq("status", "abandoned")
         .then(() => {});
