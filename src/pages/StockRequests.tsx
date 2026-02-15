@@ -75,6 +75,7 @@ const statusConfig = {
   pending: { label: "Pendente", variant: "secondary" as const, icon: Clock },
   approved: { label: "Aprovada", variant: "default" as const, icon: CheckCircle },
   rejected: { label: "Recusada", variant: "destructive" as const, icon: XCircle },
+  cancelled: { label: "Cancelada", variant: "outline" as const, icon: XCircle },
 };
 
 // Size ordering helper
