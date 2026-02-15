@@ -138,7 +138,7 @@ export function VoiceStockDialog({
 
   // Sort variants by size order
   const sortVariantsBySize = (variants: VariantQuantity[]): VariantQuantity[] => {
-    const sizeOrder = ['2', '4', '6', '8', '10', '12', 'PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 'U', 'UN', 'UNICO', 'ÚNICO', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', 'POTE 220 GRS', 'POTE 350 GRS', 'POTE 400 GRS', 'PACOTE 500 GRS', 'PACOTE 1 KG'];
+    const sizeOrder = ['2', '4', '6', '8', '10', '12', '14', 'PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 'U', 'UN', 'UNICO', 'ÚNICO', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', 'POTE 220 GRS', 'POTE 350 GRS', 'POTE 400 GRS', 'PACOTE 500 GRS', 'PACOTE 1 KG'];
     return [...variants].sort((a, b) => {
       // Sort by size
       const idxA = sizeOrder.indexOf(a.size?.toUpperCase() || '');
