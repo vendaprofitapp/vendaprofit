@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package } from "lucide-react";
+import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package, Pencil } from "lucide-react";
 
 interface B2BProduct {
   id: string;
@@ -83,9 +83,10 @@ interface Props {
   searchTerm?: string;
   filters?: ProductFiltersState;
   suppliers?: SupplierOption[];
+  onEditClone?: (cloneId: string) => void;
 }
 
-export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: supplierOptions = [] }: Props) {
+export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: supplierOptions = [], onEditClone }: Props) {
   const [products, setProducts] = useState<B2BProduct[]>([]);
   const [clones, setClones] = useState<B2BClone[]>([]);
   const [loading, setLoading] = useState(true);
@@ -548,10 +549,16 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
                         </Button>
                       )}
                       {clone && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleUpdateSizes(product)} disabled={isChecking}>
-                          {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                          Atualizar
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onEditClone?.(clone.id)}>
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Editar
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleUpdateSizes(product)} disabled={isChecking}>
+                            {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                            Atualizar
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>
