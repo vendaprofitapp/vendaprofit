@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,11 +51,36 @@ interface B2BCheckResult {
   error?: string;
 }
 
-interface Props {
-  userId: string;
+interface ProductFiltersState {
+  mainCategory: string;
+  subcategory: string;
+  isNewRelease: string;
+  status: string;
+  supplier: string;
+  color: string;
+  size: string;
+  minPrice: string;
+  maxPrice: string;
+  minCost: string;
+  maxCost: string;
+  minStock: string;
+  maxStock: string;
+  marketingStatus: string;
 }
 
-export function B2BStockTab({ userId }: Props) {
+interface SupplierOption {
+  id: string;
+  name: string;
+}
+
+interface Props {
+  userId: string;
+  searchTerm?: string;
+  filters?: ProductFiltersState;
+  suppliers?: SupplierOption[];
+}
+
+export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: supplierOptions = [] }: Props) {
   const [products, setProducts] = useState<B2BProduct[]>([]);
   const [clones, setClones] = useState<B2BClone[]>([]);
   const [loading, setLoading] = useState(true);
@@ -299,6 +324,54 @@ export function B2BStockTab({ userId }: Props) {
     }
   };
 
+  const normalize = (str: string | null | undefined) =>
+    (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const filteredProducts = useMemo(() => {
+    const term = normalize(searchTerm);
+
+    return products.filter((p) => {
+      // Search term
+      if (term) {
+        const matchesTerm =
+          normalize(p.name).includes(term) ||
+          normalize(p.sku).includes(term) ||
+          normalize(p.color_label).includes(term) ||
+          normalize(p.suppliers?.name).includes(term) ||
+          (p.product_variants || []).some(v => normalize(v.size).includes(term));
+        if (!matchesTerm) return false;
+      }
+
+      if (!filters) return true;
+
+      // Supplier
+      if (filters.supplier !== "all") {
+        const selectedName = supplierOptions.find(s => s.id === filters.supplier)?.name;
+        if (!selectedName || normalize(p.suppliers?.name) !== normalize(selectedName)) return false;
+      }
+
+      // Main category
+      if (filters.mainCategory !== "all" && p.main_category !== filters.mainCategory) return false;
+      // Subcategory
+      if (filters.subcategory !== "all" && p.subcategory !== filters.subcategory) return false;
+      // Color
+      if (filters.color !== "all" && normalize(p.color_label) !== normalize(filters.color)) return false;
+      // Size
+      if (filters.size !== "all") {
+        const sizes = (p.product_variants || []).map(v => normalize(v.size));
+        if (!sizes.includes(normalize(filters.size))) return false;
+      }
+      // Cost price range
+      if (filters.minCost && (p.cost_price || 0) < Number(filters.minCost)) return false;
+      if (filters.maxCost && (p.cost_price || 0) > Number(filters.maxCost)) return false;
+      // Price range
+      if (filters.minPrice && p.price < Number(filters.minPrice)) return false;
+      if (filters.maxPrice && p.price > Number(filters.maxPrice)) return false;
+
+      return true;
+    });
+  }, [products, searchTerm, filters, supplierOptions]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -321,7 +394,7 @@ export function B2BStockTab({ userId }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {products.length} produto(s) de fornecedores B2B · {clones.length} clone(s) criado(s)
+          {filteredProducts.length} de {products.length} produto(s) B2B · {clones.length} clone(s)
         </p>
         <Button variant="outline" size="sm" onClick={handleCheckAll}>
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -343,7 +416,7 @@ export function B2BStockTab({ userId }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {products.map(product => {
+            {filteredProducts.map(product => {
               const status = getStatus(product);
               const clone = getCloneForProduct(product.id);
               const result = checkResults[product.id];
