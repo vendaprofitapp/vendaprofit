@@ -13,9 +13,10 @@ import { toast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Award, Shield } from "lucide-react";
 
 const AVAILABLE_FEATURES = [
-  { key: "bazar_vip", label: "Bazar VIP" },
-  { key: "chat", label: "Chat Exclusivo" },
-  { key: "provador_ia", label: "Provador IA" },
+  { key: "fidelidade", label: "Entrar no Programa Fidelidade" },
+  { key: "area_secreta", label: "Acessar Área Secreta" },
+  { key: "bazar_comprar", label: "Comprar produtos no Bazar VIP" },
+  { key: "bazar_vender", label: "Vender produtos no Bazar VIP" },
 ];
 
 interface LoyaltyLevel {
@@ -63,23 +64,23 @@ export default function LoyaltyAdmin() {
       features: Array.isArray(d.features) ? d.features : [],
     })) as LoyaltyLevel[];
 
-    // Auto-create initial level if none exist
+    // Auto-create default levels if none exist
     if (parsed.length === 0 && user) {
-      const { data: newLevel, error: insertError } = await supabase
-        .from("loyalty_levels")
-        .insert({
-          owner_id: user.id,
-          name: "Inicial",
-          min_spent: 0,
-          color: "#9CA3AF",
-          features: [],
-          display_order: 0,
-        })
-        .select()
-        .single();
+      const defaultLevels = [
+        { owner_id: user.id, name: "Inicial", min_spent: 0, color: "#9CA3AF", features: [], display_order: 0 },
+        { owner_id: user.id, name: "Prata", min_spent: 500, color: "#A0AEC0", features: ["fidelidade"], display_order: 1 },
+        { owner_id: user.id, name: "Ouro", min_spent: 1000, color: "#D69E2E", features: ["fidelidade", "area_secreta"], display_order: 2 },
+        { owner_id: user.id, name: "Gold", min_spent: 2000, color: "#B7791F", features: ["fidelidade", "area_secreta", "bazar_comprar"], display_order: 3 },
+        { owner_id: user.id, name: "VIP", min_spent: 4000, color: "#8B5CF6", features: ["fidelidade", "area_secreta", "bazar_comprar", "bazar_vender"], display_order: 4 },
+      ];
 
-      if (!insertError && newLevel) {
-        parsed = [{ ...newLevel, features: [] } as LoyaltyLevel];
+      const { data: newLevels, error: insertError } = await supabase
+        .from("loyalty_levels")
+        .insert(defaultLevels)
+        .select();
+
+      if (!insertError && newLevels) {
+        parsed = newLevels.map((d: any) => ({ ...d, features: Array.isArray(d.features) ? d.features : [] })) as LoyaltyLevel[];
       }
     }
 

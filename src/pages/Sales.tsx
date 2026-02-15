@@ -2091,6 +2091,11 @@ export default function Sales() {
                                 Origem: Estoque Parceiro - {item.ownerName}
                               </p>
                             )}
+                            {!item.isPartnerStock && (item.product.isB2B || item.product.b2b_source_product_id) && (
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Origem: Sob Encomenda (B2B)
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button

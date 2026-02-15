@@ -1,4 +1,4 @@
-import { Crown, ShoppingBag, MessageCircle, Shirt, Lock, Award, Store } from "lucide-react";
+import { Crown, ShoppingBag, Lock, Award, Store } from "lucide-react";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,10 @@ import { BazarSubmissionDialog } from "./BazarSubmissionDialog";
 import { BazarShowcaseDialog } from "./BazarShowcaseDialog";
 
 const FEATURE_MAP: Record<string, { label: string; icon: React.ElementType; description: string }> = {
-  bazar_vip: { label: "Bazar VIP", icon: ShoppingBag, description: "Acesso a ofertas exclusivas" },
-  chat: { label: "Chat Direto", icon: MessageCircle, description: "Fale diretamente com a loja" },
-  provador_ia: { label: "Provador IA", icon: Shirt, description: "Experimente virtualmente" },
+  fidelidade: { label: "Programa Fidelidade", icon: Award, description: "Acumule pontos e suba de nível" },
+  area_secreta: { label: "Área Secreta", icon: Lock, description: "Acesso a conteúdo exclusivo" },
+  bazar_comprar: { label: "Comprar no Bazar VIP", icon: Store, description: "Peças exclusivas com preços incríveis" },
+  bazar_vender: { label: "Vender no Bazar VIP", icon: ShoppingBag, description: "Venda suas peças no bazar" },
 };
 
 interface VipAreaDrawerProps {
@@ -89,7 +90,7 @@ export function VipAreaDrawer({
             ) : hasFeatures ? (
               <div className="grid gap-3">
                 {/* Buy from Bazar button */}
-                {unlockedFeatures.includes("bazar_vip") && ownerId && (
+                {unlockedFeatures.includes("bazar_comprar") && ownerId && (
                   <button
                     className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left w-full"
                     onClick={() => { setOpen(false); setShowcaseOpen(true); }}
@@ -116,7 +117,7 @@ export function VipAreaDrawer({
                       key={featureKey}
                       className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left w-full"
                       onClick={() => {
-                        if (featureKey === "bazar_vip" && isIdentified && ownerId && sellerPhone && storeSlug) {
+                        if (featureKey === "bazar_vender" && isIdentified && ownerId && sellerPhone && storeSlug) {
                           setOpen(false);
                           setBazarOpen(true);
                         }
@@ -130,7 +131,7 @@ export function VipAreaDrawer({
                       </div>
                       <div>
                         <p className="text-sm font-semibold">
-                          {featureKey === "bazar_vip" ? "Vender Minha Peça" : feature.label}
+                          {featureKey === "bazar_vender" ? "Vender Minha Peça" : feature.label}
                         </p>
                         <p className="text-xs text-muted-foreground">{feature.description}</p>
                       </div>

@@ -12,6 +12,8 @@ interface CartItemWithCost {
     price: number;
     cost_price?: number;
     owner_id: string;
+    isB2B?: boolean;
+    b2b_source_product_id?: string | null;
   };
   quantity: number;
   isPartnerStock: boolean;
@@ -62,9 +64,10 @@ interface AggregatedSplits {
     partnershipPaymentDue: number;
     ownerName?: string;
     costPrice: number;
-    salePrice: number; // preço líquido já com desconto e taxa
+    salePrice: number;
     feeAmount: number;
-    salePriceGross: number; // antes de desconto/taxa (informativo)
+    salePriceGross: number;
+    isB2B?: boolean;
   }>;
 }
 
@@ -154,6 +157,7 @@ export function ProfitBreakdownCard({
         salePrice: splitResult.netRevenue,
         feeAmount,
         salePriceGross,
+        isB2B: !!(item.product.isB2B || item.product.b2b_source_product_id),
       });
     });
 
@@ -285,8 +289,11 @@ export function ProfitBreakdownCard({
                 <div key={idx} className="text-xs bg-background/50 rounded p-2 space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="font-medium truncate max-w-[180px]">{detail.productName}</span>
-                    <Badge variant="secondary" className="text-[10px] px-1.5">
-                      {getScenarioShortLabel(detail.scenario)}
+                    <Badge 
+                      variant="secondary" 
+                      className={`text-[10px] px-1.5 ${detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'bg-amber-500/15 text-amber-700 border-amber-500/30' : ''}`}
+                    >
+                      {detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'Sob Encomenda' : getScenarioShortLabel(detail.scenario)}
                     </Badge>
                   </div>
                   <p className="text-muted-foreground">
