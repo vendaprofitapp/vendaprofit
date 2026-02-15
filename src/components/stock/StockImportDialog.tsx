@@ -47,7 +47,7 @@ import { ColorManager, Color, findMatchingColor } from "@/components/products/Co
 import { ProductColorCombobox } from "./ProductColorCombobox";
 import { useFixedCategories } from "@/components/products/FixedCategorySelector";
 
-const availableSizes = ["PP", "P", "M", "G", "GG", "XG", "XXG", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "Único"];
+const availableSizes = ["2", "4", "6", "8", "10", "12", "PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG", "EG", "EGG", "EGGG", "Único", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "Pote 220 grs", "Pote 350 grs", "Pote 400 grs", "Pacote 500 grs", "Pacote 1 kg"];
 
 interface ProductVariant {
   size: string | null;

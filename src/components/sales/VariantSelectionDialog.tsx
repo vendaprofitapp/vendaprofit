@@ -38,11 +38,13 @@ interface VariantSelectionDialogProps {
 }
 
 // Size ordering helper
-const SIZE_ORDER = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 
+const SIZE_ORDER = ['2', '4', '6', '8', '10', '12',
+  'PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'EG', 'EGG', 'EGGG', 
   'U', 'UN', 'UNICO', 'ÚNICO',
   '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48',
-  '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
-  '1/2', '3/4', '5/6', '7/8', '9/10', '11/12'];
+  '1', '3', '5', '7', '9', '11',
+  '1/2', '3/4', '5/6', '7/8', '9/10', '11/12',
+  'POTE 220 GRS', 'POTE 350 GRS', 'POTE 400 GRS', 'PACOTE 500 GRS', 'PACOTE 1 KG'];
 
 const getSizeIndex = (size: string) => {
   const upperSize = size.toUpperCase().trim();
