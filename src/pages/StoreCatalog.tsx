@@ -744,30 +744,20 @@ export default function StoreCatalog() {
           });
         }
 
-        // Also fetch zero-stock products that have b2b_product_url (for B2B dropshipping display)
-        const { data: b2bProducts, error: b2bError } = await supabase
+        // Fetch B2B clone products (products with b2b_source_product_id)
+        // These are shown when the original local product has zero stock
+        const { data: b2bClones, error: b2bError } = await supabase
           .from("products")
-          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release, b2b_product_url, supplier_id")
+          .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release, b2b_product_url, supplier_id, b2b_source_product_id")
           .eq("owner_id", store.owner_id)
           .eq("is_active", true)
-          .eq("stock_quantity", 0)
-          .not("b2b_product_url", "is", null);
+          .not("b2b_source_product_id", "is", null);
 
-        if (!b2bError && b2bProducts) {
-          // Check which suppliers are b2b_enabled
-          const supplierIds = [...new Set(b2bProducts.filter(p => p.supplier_id).map(p => p.supplier_id!))];
-          let enabledSupplierIds = new Set<string>();
-          if (supplierIds.length > 0) {
-            const { data: suppliers } = await supabase
-              .from("suppliers")
-              .select("id")
-              .in("id", supplierIds)
-              .eq("b2b_enabled", true);
-            enabledSupplierIds = new Set((suppliers || []).map(s => s.id));
-          }
-
-          b2bProducts.forEach(p => {
-            if (p.supplier_id && enabledSupplierIds.has(p.supplier_id) && !ownProductIds.has(p.id)) {
+        if (!b2bError && b2bClones) {
+          // Only show B2B clone if the original product has zero stock (not in ownProductIds means it was filtered by stock > 0)
+          b2bClones.forEach(p => {
+            const originalInStock = ownProductIds.has((p as any).b2b_source_product_id);
+            if (!originalInStock && !ownProductIds.has(p.id)) {
               ownProductIds.add(p.id);
               ownProducts.push({ ...p, isPartner: false, isB2B: true });
             }
@@ -1174,112 +1164,25 @@ export default function StoreCatalog() {
     enabled: !!store,
   });
 
-  // B2B size cache and enrichment
-  const b2bCacheRef = useRef<Map<string, { sizes: string[]; available: boolean; fetchedAt: number }>>(new Map());
-  const B2B_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  const b2bProductIds = useMemo(() => 
-    catalogItems.filter(item => item.isB2B).map(item => item.productId),
-    [catalogItems]
-  );
-
-  const { data: b2bSizesMap } = useQuery({
-    queryKey: ["b2b-sizes", b2bProductIds.join(",")],
-    queryFn: async () => {
-      const results = new Map<string, { sizes: string[]; available: boolean }>();
-      const now = Date.now();
-
-      const toFetch: string[] = [];
-      for (const pid of b2bProductIds) {
-        const cached = b2bCacheRef.current.get(pid);
-        if (cached && (now - cached.fetchedAt) < B2B_CACHE_TTL) {
-          results.set(pid, { sizes: cached.sizes, available: cached.available });
-        } else {
-          toFetch.push(pid);
-        }
-      }
-
-      // Fetch in parallel (max 5 concurrent)
-      const batchSize = 5;
-      for (let i = 0; i < toFetch.length; i += batchSize) {
-        const batch = toFetch.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(async (pid) => {
-            try {
-              const { data, error } = await supabase.functions.invoke("check-b2b-stock", {
-                body: { product_id: pid },
-              });
-              if (error || !data?.success) {
-                return { pid, sizes: [], available: true };
-              }
-              return { pid, sizes: data.sizes || [], available: data.available !== false };
-            } catch {
-              return { pid, sizes: [], available: true };
-            }
-          })
-        );
-        batchResults.forEach(({ pid, sizes, available }) => {
-          results.set(pid, { sizes, available });
-          b2bCacheRef.current.set(pid, { sizes, available, fetchedAt: Date.now() });
-        });
-      }
-
-      return results;
-    },
-    enabled: b2bProductIds.length > 0,
-    staleTime: B2B_CACHE_TTL,
-    refetchOnWindowFocus: false,
-  });
-
-  // Enrich catalog items with B2B supplier sizes
+  // B2B clone enrichment: set virtual stock for B2B products (clones have stock_quantity=0 in DB but are sob encomenda)
   const enrichedCatalogItems = useMemo(() => {
-    if (!b2bSizesMap || b2bSizesMap.size === 0) return catalogItems;
-
     return catalogItems.map(item => {
       if (!item.isB2B) return item;
 
-      const b2bData = b2bSizesMap.get(item.productId);
-      if (!b2bData || !b2bData.available) {
-        // Supplier says unavailable - hide product
-        return null;
-      }
+      // B2B clones: override stock to 999 (sob encomenda)
+      const sizePhysicalStock: Record<string, number> = {};
+      item.sizes.forEach(size => {
+        sizePhysicalStock[size] = 999;
+      });
 
-      if (b2bData.sizes.length > 0) {
-        // Replace sizes with supplier sizes
-        const supplierSizes = b2bData.sizes;
-        const sizeMarketingStatus: Record<string, MarketingStatus> = {};
-        const sizeMarketingPrices: Record<string, MarketingPrices> = {};
-        const sizeMarketingDeliveryDays: Record<string, number | null> = {};
-        const sizeIsPartner: Record<string, boolean> = {};
-        const sizeConsignedCount: Record<string, number> = {};
-        const sizePhysicalStock: Record<string, number> = {};
-
-        supplierSizes.forEach(size => {
-          sizeMarketingStatus[size] = null;
-          sizeMarketingPrices[size] = null;
-          sizeMarketingDeliveryDays[size] = null;
-          sizeIsPartner[size] = false;
-          sizeConsignedCount[size] = 0;
-          sizePhysicalStock[size] = 999; // B2B - stock managed by supplier
-        });
-
-        return {
-          ...item,
-          sizes: supplierSizes,
-          sizeMarketingStatus,
-          sizeMarketingPrices,
-          sizeMarketingDeliveryDays,
-          sizeIsPartner,
-          sizeConsignedCount,
-          sizePhysicalStock,
-          totalStock: 999, // Virtual stock for B2B
-        };
-      }
-
-      // No sizes extracted - show product without size selection (just "Sob Encomenda")
-      return item;
-    }).filter(Boolean) as CatalogDisplayItem[];
-  }, [catalogItems, b2bSizesMap]);
+      return {
+        ...item,
+        sizePhysicalStock,
+        totalStock: 999,
+      };
+    });
+  }, [catalogItems]);
 
   // Get unique categories - sorted alphabetically, excluding "oportunidades"
   const categories = useMemo(() => {

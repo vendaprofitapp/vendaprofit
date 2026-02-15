@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +64,7 @@ export function VariantSelectionDialog({
   const [selectedB2BSize, setSelectedB2BSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [step, setStep] = useState<'size' | 'quantity'>('size');
+  const b2bFetchedSizesRef = useRef<string[]>([]);
 
   // Reset state when dialog opens or product changes
   useEffect(() => {
@@ -86,10 +87,11 @@ export function VariantSelectionDialog({
       }
       
       if (isB2B) {
-        // B2B without sizes - go straight to quantity
-        setIsLoading(false);
+        // B2B clone without explicit sizes - fetch variants from DB and treat as sob encomenda
+        setIsLoading(true);
         setVariants([]);
-        setStep('quantity');
+        setStep('size');
+        fetchB2BVariants(product);
         return;
       }
       
@@ -134,6 +136,39 @@ export function VariantSelectionDialog({
     }
   };
 
+  const fetchB2BVariants = async (prod: Product) => {
+    try {
+      // Fetch ALL variants for B2B clone (regardless of stock - they are sob encomenda)
+      const { data: variants, error } = await supabase
+        .from("product_variants")
+        .select("id, product_id, size, stock_quantity, image_url")
+        .eq("product_id", prod.id)
+        .order("size");
+
+      if (error) throw error;
+
+      const sizes = (variants || []).map(v => v.size).sort((a, b) => getSizeIndex(a) - getSizeIndex(b));
+      
+      if (sizes.length === 0) {
+        setStep('quantity');
+      } else if (sizes.length === 1) {
+        setSelectedB2BSize(sizes[0]);
+        setStep('quantity');
+      } else {
+        setStep('size');
+      }
+      // Store sizes in b2bSizes-like state via selectedB2BSize flow
+      // We use variants as empty and rely on b2b size buttons
+      setVariants([]);
+      // Inject sizes into the component by setting a local ref
+      b2bFetchedSizesRef.current = sizes;
+    } catch (error) {
+      console.error("Error fetching B2B variants:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSizeSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
     setSelectedB2BSize(null);
@@ -171,8 +206,9 @@ export function VariantSelectionDialog({
   };
 
   const canConfirm = () => {
+    const effectiveSizes = b2bSizes || b2bFetchedSizesRef.current;
     if (isB2B) {
-      if (b2bSizes && b2bSizes.length > 0) {
+      if (effectiveSizes && effectiveSizes.length > 0) {
         return !!selectedB2BSize && quantity > 0;
       }
       return quantity > 0;
@@ -206,7 +242,7 @@ export function VariantSelectionDialog({
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : isB2B && b2bSizes && b2bSizes.length > 0 ? (
+        ) : isB2B && (b2bSizes?.length || b2bFetchedSizesRef.current.length) > 0 ? (
           // B2B mode: show supplier sizes
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="space-y-4 py-2">
@@ -216,7 +252,7 @@ export function VariantSelectionDialog({
                     {step === 'size' ? 'Selecione o tamanho:' : 'Tamanho selecionado:'}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {b2bSizes.map((size) => (
+                    {(b2bSizes || b2bFetchedSizesRef.current).map((size) => (
                       <button
                         key={size}
                         type="button"
@@ -426,7 +462,8 @@ export function VariantSelectionDialog({
           <Button
             variant="outline"
             onClick={() => {
-              if (step === 'quantity' && (variants.length > 1 || (isB2B && b2bSizes && b2bSizes.length > 1))) {
+              const effectiveSizes = b2bSizes || b2bFetchedSizesRef.current;
+              if (step === 'quantity' && (variants.length > 1 || (isB2B && effectiveSizes && effectiveSizes.length > 1))) {
                 setSelectedVariant(null);
                 setSelectedB2BSize(null);
                 setStep('size');
@@ -436,7 +473,7 @@ export function VariantSelectionDialog({
             }}
             className="flex-1"
           >
-            {step === 'size' || (variants.length === 0 && !(isB2B && b2bSizes && b2bSizes.length > 1)) ? 'Cancelar' : 'Voltar'}
+            {step === 'size' || (variants.length === 0 && !(isB2B && (b2bSizes?.length || b2bFetchedSizesRef.current.length) > 1)) ? 'Cancelar' : 'Voltar'}
           </Button>
           <Button
             onClick={handleConfirm}

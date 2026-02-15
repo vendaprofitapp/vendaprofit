@@ -40,6 +40,7 @@ import { useStockVoiceCommand, StockVoiceCommand } from "@/hooks/useStockVoiceCo
 import { ProductFilters, ProductFiltersState, StockStatusKey } from "@/components/products/ProductFilters";
 import { useFixedCategories } from "@/components/products/FixedCategorySelector";
 import { StockExportDialog } from "@/components/stock/StockExportDialog";
+import { B2BStockTab } from "@/components/stock/B2BStockTab";
 
 interface Supplier {
   id: string;
@@ -694,6 +695,7 @@ export default function StockControl() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="b2b-stock" className="text-xs sm:text-sm">Estoque B2B</TabsTrigger>
         </TabsList>
 
         {/* My Stock Tab */}
@@ -1013,6 +1015,11 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+        </TabsContent>
+
+        {/* B2B Stock Tab */}
+        <TabsContent value="b2b-stock">
+          {user && <B2BStockTab userId={user.id} />}
         </TabsContent>
       </Tabs>
 
