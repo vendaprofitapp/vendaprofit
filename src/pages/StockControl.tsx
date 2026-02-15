@@ -1019,7 +1019,20 @@ export default function StockControl() {
 
         {/* B2B Stock Tab */}
         <TabsContent value="b2b-stock">
-          {user && <B2BStockTab userId={user.id} searchTerm={searchTerm} filters={filters} suppliers={suppliers} />}
+          {user && <B2BStockTab userId={user.id} searchTerm={searchTerm} filters={filters} suppliers={suppliers} onEditClone={async (cloneId) => {
+            const { data } = await supabase
+              .from("products")
+              .select("*, product_variants(id, size, stock_quantity, marketing_status), suppliers(name)")
+              .eq("id", cloneId)
+              .single();
+            if (data) {
+              setEditingProduct(data as Product);
+              setDuplicatingProduct(null);
+              setProductDialogOpen(true);
+            } else {
+              toast.error("Erro ao carregar clone para edição");
+            }
+          }} />}
         </TabsContent>
       </Tabs>
 
