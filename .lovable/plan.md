@@ -1,68 +1,84 @@
+# Correcao: Dessincronizacao entre Estoque de Variantes e Produto Principal
 
+## Problema Identificado
 
-# Correção: "Peça Desconhecida" nas Solicitações de Reserva
+O estoque do produto principal (`products.stock_quantity`) ficou zerado enquanto a variante tamanho M tinha 1 unidade. Isso causou:
 
-## Problema
+- Produto nao aparecer no PDV (Nova Venda) -- que filtra por `stock_quantity > 0`
+- Produto aparecer com estoque 0 na lista do Controle de Estoque
+- Ao editar o produto, o formulario recalculou a soma das variantes e corrigiu o valor
 
-Quando um usuario faz uma solicitacao de reserva de um produto de uma parceira, a pagina de Solicitacoes de Reserva exibe "Produto desconhecido" no lugar do nome do produto.
+### Causa raiz: Bug de subtracao dupla no `Sales.tsx`
 
-**Causa raiz**: A pagina `StockRequests.tsx` busca os produtos separadamente (`SELECT id, name, price FROM products`) e depois tenta associar pelo `product_id`. Porem, as politicas de seguranca (RLS) da tabela `products` so permitem que o usuario veja seus proprios produtos. Quando a solicitante tenta visualizar a solicitacao, o produto pertence a parceira e nao aparece na consulta -- resultando no fallback "Produto desconhecido".
+No codigo de finalizacao de venda (linha ~695-712 de `Sales.tsx`), quando um item tem variante:
+
+1. Atualiza o estoque da variante (subtrai a quantidade vendida) -- CORRETO
+2. Re-busca todas as variantes do produto (que ja inclui o valor decrementado do passo 1)
+3. Soma o estoque de todas as variantes E subtrai a quantidade vendida novamente -- BUG
+
+Resultado: o `products.stock_quantity` fica menor que a soma real das variantes. Com o tempo, fica zerado ou negativo (protegido por `Math.max(0, ...)`).
 
 ## Solucao
 
-Armazenar o nome e preco do produto diretamente na tabela `stock_requests` no momento da criacao (dado desnormalizado). Isso elimina a dependencia de consultar a tabela `products` para exibir informacoes basicas.
+### 1. Corrigir a subtracao dupla em `Sales.tsx`
 
-### 1. Migracao SQL
+Na linha 708, remover o `- item.quantity` pois os dados ja foram atualizados no passo anterior:
 
-Adicionar duas colunas na tabela `stock_requests`:
+```
+// ANTES (bug):
+const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0) - item.quantity;
 
-- `product_name` (text, nullable inicialmente para nao quebrar registros existentes)
-- `product_price` (numeric, nullable)
+// DEPOIS (correto):
+const totalVariantStock = allVariants.reduce((sum, v) => sum + v.stock_quantity, 0);
+```
 
-Depois, preencher os registros existentes com os dados dos produtos atuais.
+### 2. Criar trigger de sincronizacao automatica (protecao definitiva)
 
-### 2. Atualizar pontos de criacao de solicitacoes
+Criar um trigger na tabela `product_variants` que, ao alterar `stock_quantity`, recalcula automaticamente o `products.stock_quantity` como a soma de todas as variantes. Isso protege contra qualquer futuro bug no codigo frontend.
 
-Existem dois locais onde solicitacoes sao criadas:
+```text
+AFTER INSERT OR UPDATE OR DELETE ON product_variants
+-> Recalcula products.stock_quantity = SUM(product_variants.stock_quantity)
+```
 
-- **`src/pages/StockControl.tsx`** (~linha 363): Adicionar `product_name` e `product_price` no INSERT
-- **`src/pages/Sales.tsx`** (~linha 489): Adicionar `product_name` e `product_price` no INSERT
+### 3. Migracao para corrigir dados existentes
 
-### 3. Atualizar exibicao em `StockRequests.tsx`
+Executar um UPDATE para sincronizar todos os produtos que tenham variantes:
 
-- Remover a query separada de `products` (linhas 114-124)
-- Usar `req.product_name` e `req.product_price` diretamente dos dados da solicitacao
-- Manter o fallback "Produto desconhecido" apenas como seguranca para registros muito antigos
+```text
+UPDATE products p
+SET stock_quantity = sub.total
+FROM (
+  SELECT product_id, COALESCE(SUM(stock_quantity), 0) as total
+  FROM product_variants
+  GROUP BY product_id
+) sub
+WHERE p.id = sub.product_id
+  AND p.stock_quantity != sub.total;
+```
 
-### 4. Atualizar exibicao em `SystemAlerts.tsx`
+### 4. Remover sincronizacoes manuais redundantes
 
-- Usar `product_name` do registro de `stock_requests` ao inves de fazer join com `products`
+Com o trigger automatico, os trechos de codigo que manualmente recalculam `products.stock_quantity` a partir das variantes se tornam redundantes. Simplificar:
+
+- `**Sales.tsx**` (linhas 700-712): Remover o bloco de recalculo manual -- o trigger cuida disso
+- `**VoiceStockDialog.tsx**` (linhas 530-540): Remover recalculo manual
+- `**StockImportDialog.tsx**` (linhas 1141-1155): Remover recalculo manual
+- `**approve_stock_request**` (funcao SQL): Remover o `UPDATE products SET stock_quantity` -- o trigger cuida disso
+
+A funcao `ProductFormDialog.tsx` continuara setando `stock_quantity: totalStock` no INSERT/UPDATE do produto, o que e correto para edicao manual.
 
 ---
 
-## Detalhes tecnicos
+## Arquivos alterados
 
-### Colunas novas na tabela `stock_requests`
+1. **Nova migracao SQL** -- Trigger `sync_product_stock_from_variants` + correcao de dados existentes
+2. `**src/pages/Sales.tsx**` -- Remover subtracao dupla e recalculo manual
+3. `**src/components/stock/VoiceStockDialog.tsx**` -- Remover recalculo manual
+4. `**src/components/stock/StockImportDialog.tsx**` -- Remover recalculo manual
 
-| Coluna | Tipo | Default |
-|--------|------|---------|
-| product_name | text | null |
-| product_price | numeric | null |
+## Impacto
 
-### Migracao para dados existentes
-
-```text
-UPDATE stock_requests sr
-SET product_name = p.name, product_price = p.price
-FROM products p
-WHERE sr.product_id = p.id AND sr.product_name IS NULL;
-```
-
-### Arquivos alterados
-
-1. **Nova migracao SQL** -- Adicionar colunas + preencher dados existentes
-2. **`src/pages/StockRequests.tsx`** -- Usar product_name/product_price do registro
-3. **`src/pages/StockControl.tsx`** -- Incluir product_name/product_price no INSERT
-4. **`src/pages/Sales.tsx`** -- Incluir product_name/product_price no INSERT
-5. **`src/components/dashboard/SystemAlerts.tsx`** -- Usar product_name do registro
-
+- Corrige o bug imediato do usuario [teamwodbrasil@gmail.com e previne que não aconteça em qualquer usuário](mailto:teamwodbrasil@gmail.com)
+- Previne qualquer dessincronizacao futura com o trigger automatico
+- Simplifica o codigo removendo logica duplicada
