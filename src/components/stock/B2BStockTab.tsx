@@ -7,6 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, ExternalLink, Check, AlertTriangle, Clock, Link2, RefreshCw, Copy, Package } from "lucide-react";
 
 interface B2BProduct {
@@ -32,6 +33,7 @@ interface B2BProduct {
   description: string | null;
   is_new_release: boolean;
   sku: string | null;
+  b2b_visible_in_store: boolean;
   suppliers?: { name: string } | null;
   product_variants?: Array<{ id: string; size: string; stock_quantity: number }>;
 }
@@ -114,7 +116,7 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
     // Fetch products from these suppliers (excluding clones themselves)
     const { data: prods } = await supabase
       .from("products")
-      .select("id, name, image_url, image_url_2, image_url_3, video_url, price, cost_price, b2b_product_url, supplier_id, owner_id, category, category_2, category_3, main_category, subcategory, color_label, model, custom_detail, description, is_new_release, sku, suppliers(name), product_variants(id, size, stock_quantity)")
+      .select("id, name, image_url, image_url_2, image_url_3, video_url, price, cost_price, b2b_product_url, b2b_visible_in_store, supplier_id, owner_id, category, category_2, category_3, main_category, subcategory, color_label, model, custom_detail, description, is_new_release, sku, suppliers(name), product_variants(id, size, stock_quantity)")
       .eq("owner_id", userId)
       .in("supplier_id", supplierIds)
       .is("b2b_source_product_id", null)
@@ -163,6 +165,23 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
       toast.success("URL salva!");
       setProducts(prev => prev.map(p => p.id === productId ? { ...p, b2b_product_url: url } : p));
       setEditingUrl(prev => { const n = { ...prev }; delete n[productId]; return n; });
+    }
+  };
+
+  const handleToggleVisibility = async (product: B2BProduct) => {
+    const newValue = !product.b2b_visible_in_store;
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, b2b_visible_in_store: newValue } : p));
+
+    const { error } = await supabase
+      .from("products")
+      .update({ b2b_visible_in_store: newValue } as any)
+      .eq("id", product.id);
+
+    if (error) {
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, b2b_visible_in_store: !newValue } : p));
+      toast.error("Erro ao atualizar visibilidade");
+    } else {
+      toast.success(newValue ? "Produto visível na loja" : "Produto oculto da loja");
     }
   };
 
@@ -409,6 +428,7 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
               <TableHead>Produto</TableHead>
               <TableHead>Fornecedor</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-center">Na Loja</TableHead>
               <TableHead>Tam. Local</TableHead>
               <TableHead>Tam. Fornecedor</TableHead>
               <TableHead>URL B2B</TableHead>
@@ -442,6 +462,13 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
                   </TableCell>
                   <TableCell className="text-sm">{product.suppliers?.name || "-"}</TableCell>
                   <TableCell>{statusBadge(status)}</TableCell>
+                  <TableCell className="text-center">
+                    <Switch
+                      checked={product.b2b_visible_in_store}
+                      onCheckedChange={() => handleToggleVisibility(product)}
+                      disabled={status !== "ready"}
+                    />
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{localSizes}</TableCell>
                   <TableCell className="text-xs max-w-[120px] truncate">
                     {supplierSizes !== "-" ? (

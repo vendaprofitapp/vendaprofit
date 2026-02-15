@@ -1992,6 +1992,7 @@ export type Database = {
         Row: {
           b2b_product_url: string | null
           b2b_source_product_id: string | null
+          b2b_visible_in_store: boolean
           category: string
           category_2: string | null
           category_3: string | null
@@ -2030,6 +2031,7 @@ export type Database = {
         Insert: {
           b2b_product_url?: string | null
           b2b_source_product_id?: string | null
+          b2b_visible_in_store?: boolean
           category: string
           category_2?: string | null
           category_3?: string | null
@@ -2068,6 +2070,7 @@ export type Database = {
         Update: {
           b2b_product_url?: string | null
           b2b_source_product_id?: string | null
+          b2b_visible_in_store?: boolean
           category?: string
           category_2?: string | null
           category_3?: string | null
