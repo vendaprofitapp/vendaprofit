@@ -1174,51 +1174,158 @@ export default function StoreCatalog() {
     enabled: !!store,
   });
 
+  // B2B size cache and enrichment
+  const b2bCacheRef = useRef<Map<string, { sizes: string[]; available: boolean; fetchedAt: number }>>(new Map());
+  const B2B_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  const b2bProductIds = useMemo(() => 
+    catalogItems.filter(item => item.isB2B).map(item => item.productId),
+    [catalogItems]
+  );
+
+  const { data: b2bSizesMap } = useQuery({
+    queryKey: ["b2b-sizes", b2bProductIds.join(",")],
+    queryFn: async () => {
+      const results = new Map<string, { sizes: string[]; available: boolean }>();
+      const now = Date.now();
+
+      const toFetch: string[] = [];
+      for (const pid of b2bProductIds) {
+        const cached = b2bCacheRef.current.get(pid);
+        if (cached && (now - cached.fetchedAt) < B2B_CACHE_TTL) {
+          results.set(pid, { sizes: cached.sizes, available: cached.available });
+        } else {
+          toFetch.push(pid);
+        }
+      }
+
+      // Fetch in parallel (max 5 concurrent)
+      const batchSize = 5;
+      for (let i = 0; i < toFetch.length; i += batchSize) {
+        const batch = toFetch.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(async (pid) => {
+            try {
+              const { data, error } = await supabase.functions.invoke("check-b2b-stock", {
+                body: { product_id: pid },
+              });
+              if (error || !data?.success) {
+                return { pid, sizes: [], available: true };
+              }
+              return { pid, sizes: data.sizes || [], available: data.available !== false };
+            } catch {
+              return { pid, sizes: [], available: true };
+            }
+          })
+        );
+        batchResults.forEach(({ pid, sizes, available }) => {
+          results.set(pid, { sizes, available });
+          b2bCacheRef.current.set(pid, { sizes, available, fetchedAt: Date.now() });
+        });
+      }
+
+      return results;
+    },
+    enabled: b2bProductIds.length > 0,
+    staleTime: B2B_CACHE_TTL,
+    refetchOnWindowFocus: false,
+  });
+
+  // Enrich catalog items with B2B supplier sizes
+  const enrichedCatalogItems = useMemo(() => {
+    if (!b2bSizesMap || b2bSizesMap.size === 0) return catalogItems;
+
+    return catalogItems.map(item => {
+      if (!item.isB2B) return item;
+
+      const b2bData = b2bSizesMap.get(item.productId);
+      if (!b2bData || !b2bData.available) {
+        // Supplier says unavailable - hide product
+        return null;
+      }
+
+      if (b2bData.sizes.length > 0) {
+        // Replace sizes with supplier sizes
+        const supplierSizes = b2bData.sizes;
+        const sizeMarketingStatus: Record<string, MarketingStatus> = {};
+        const sizeMarketingPrices: Record<string, MarketingPrices> = {};
+        const sizeMarketingDeliveryDays: Record<string, number | null> = {};
+        const sizeIsPartner: Record<string, boolean> = {};
+        const sizeConsignedCount: Record<string, number> = {};
+        const sizePhysicalStock: Record<string, number> = {};
+
+        supplierSizes.forEach(size => {
+          sizeMarketingStatus[size] = null;
+          sizeMarketingPrices[size] = null;
+          sizeMarketingDeliveryDays[size] = null;
+          sizeIsPartner[size] = false;
+          sizeConsignedCount[size] = 0;
+          sizePhysicalStock[size] = 999; // B2B - stock managed by supplier
+        });
+
+        return {
+          ...item,
+          sizes: supplierSizes,
+          sizeMarketingStatus,
+          sizeMarketingPrices,
+          sizeMarketingDeliveryDays,
+          sizeIsPartner,
+          sizeConsignedCount,
+          sizePhysicalStock,
+          totalStock: 999, // Virtual stock for B2B
+        };
+      }
+
+      // No sizes extracted - show product without size selection (just "Sob Encomenda")
+      return item;
+    }).filter(Boolean) as CatalogDisplayItem[];
+  }, [catalogItems, b2bSizesMap]);
+
   // Get unique categories - sorted alphabetically, excluding "oportunidades"
   const categories = useMemo(() => {
-    const allCats = catalogItems.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean));
+    const allCats = enrichedCatalogItems.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean));
     const uniqueCats = [...new Set(allCats)]
       .filter(cat => cat?.toLowerCase() !== "oportunidades")
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return uniqueCats;
-  }, [catalogItems]);
+  }, [enrichedCatalogItems]);
 
   // Get unique sizes from all products - sorted using SIZE_ORDER
   const availableSizes = useMemo(() => {
-    const allSizes = catalogItems.flatMap(p => p.sizes);
+    const allSizes = enrichedCatalogItems.flatMap(p => p.sizes);
     const uniqueSizes = [...new Set(allSizes)];
     return sortSizes(uniqueSizes);
-  }, [catalogItems]);
+  }, [enrichedCatalogItems]);
 
   // Get unique colors from all products - sorted alphabetically
   const availableColors = useMemo(() => {
-    const allColors = catalogItems
+    const allColors = enrichedCatalogItems
       .map(p => p.color)
       .filter((c): c is string => !!c);
     const uniqueColors = [...new Set(allColors)]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return uniqueColors;
-  }, [catalogItems]);
+  }, [enrichedCatalogItems]);
 
   // Get unique models from all products - sorted alphabetically
   const availableModels = useMemo(() => {
-    const allModels = catalogItems
+    const allModels = enrichedCatalogItems
       .map(p => p.model)
       .filter((m): m is string => !!m && m.trim() !== '');
     const uniqueModels = [...new Set(allModels)]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return uniqueModels;
-  }, [catalogItems]);
+  }, [enrichedCatalogItems]);
 
   // Get unique details from all products - sorted alphabetically
   const availableDetails = useMemo(() => {
-    const allDetails = catalogItems
+    const allDetails = enrichedCatalogItems
       .map(p => p.custom_detail)
       .filter((d): d is string => !!d && d.trim() !== '');
     const uniqueDetails = [...new Set(allDetails)]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return uniqueDetails;
-  }, [catalogItems]);
+  }, [enrichedCatalogItems]);
 
   // Filter and transform products
   // When a marketing filter is active, we group sizes with the same status into one card per product/color
@@ -1330,7 +1437,7 @@ export default function StoreCatalog() {
         return [];
       }
       
-      catalogItems.forEach(item => {
+      enrichedCatalogItems.forEach(item => {
         // Collect all sizes with matching marketing status for this product/color
         const matchingSizes: string[] = [];
         const matchingSizeStatuses: Record<string, MarketingStatus> = {};
@@ -1396,7 +1503,7 @@ export default function StoreCatalog() {
     }
     
     // Normal filtering (show grouped products) - filter out secret items unless unlocked
-    return catalogItems
+    return enrichedCatalogItems
       .map(filterSecretSizes)
       .filter((p): p is CatalogDisplayItem => p !== null)
       .filter(p => {
@@ -1425,7 +1532,7 @@ export default function StoreCatalog() {
         
         return matchesSearch && matchesMainCat && matchesSubCat;
       });
-  }, [catalogItems, selectedMarketingFilter, search, selectedMainCategory, selectedSubcategory, showOpportunities, customerFilters, secretAreaUnlocked]);
+  }, [enrichedCatalogItems, selectedMarketingFilter, search, selectedMainCategory, selectedSubcategory, showOpportunities, customerFilters, secretAreaUnlocked]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("pt-BR", {
