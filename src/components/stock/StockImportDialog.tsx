@@ -1138,23 +1138,8 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             }
           }
           
-          // Also update the main product stock_quantity to reflect total
+          // Product stock sync is now handled automatically by database trigger
           if (variantUpdated) {
-            // Recalculate total from all variants
-            const { data: allVariants } = await supabase
-              .from("product_variants")
-              .select("stock_quantity")
-              .eq("product_id", productId);
-            
-            const totalVariantStock = allVariants?.reduce((sum, v) => sum + (v.stock_quantity || 0), 0) || 0;
-            
-            await supabase
-              .from("products")
-              .update({ 
-                stock_quantity: totalVariantStock,
-              })
-              .eq("id", productId);
-            
             updateCount++;
           }
         } else {
