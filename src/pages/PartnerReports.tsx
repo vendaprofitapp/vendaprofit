@@ -317,7 +317,7 @@ export default function PartnerReports() {
       const otherSplits = splits.filter((s) => s.user_id !== user.id);
 
       const saleKind = detectKindBySplits(sale.id);
-      const groupName = saleKind === "partnerships" ? "Parceria 1-1" : saleKind === "groups" ? "Grupo" : "Estoque Próprio";
+      const groupName = saleKind === "partnerships" ? "Sociedade 1-1" : saleKind === "groups" ? "Parceria" : "Estoque Próprio";
       const groupId = saleKind;
       const isDirect = saleKind === "partnerships";
 
@@ -443,7 +443,7 @@ export default function PartnerReports() {
     const isPartnership = activeTab === "partnerships";
     const summaries = isPartnership ? partnershipSummaries : groupSummaries;
     const totals = isPartnership ? partnershipTotals : groupTotals;
-    const typeLabel = isPartnership ? "PARCERIAS 1-1" : "GRUPOS";
+    const typeLabel = isPartnership ? "SOCIEDADES 1-1" : "PARCERIAS";
 
     let text = `📊 *ACERTO DE CONTAS - ${typeLabel}*\n`;
     text += `📅 ${periodLabel.toUpperCase()}: ${format(dateRange.start, "dd/MM/yyyy")} a ${format(dateRange.end, "dd/MM/yyyy")}\n\n`;
@@ -451,7 +451,7 @@ export default function PartnerReports() {
     text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     if (summaries.mySales.length > 0) {
-      text += `📤 *${isPartnership ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : 'Devo às Parceiras') : 'Devo aos Donos'}:*\n`;
+      text += `📤 *${isPartnership ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : 'Devo às Sócias') : (partners.length === 1 ? `Devo a ${partners[0].full_name}` : 'Devo às Parceiras')}:*\n`;
       summaries.mySales.forEach(s => {
         text += `  • ${s.partnerName}: ${formatCurrency(s.partnerEarnings)}\n`;
       });
@@ -510,13 +510,15 @@ export default function PartnerReports() {
   const hasDeferredAmounts = (totals: ReturnType<typeof calculateTotals>) => 
     totals.deferredIOwe > 0 || totals.deferredMyEarnings > 0 || totals.deferredOwnerEarnings > 0;
 
+  const currentUserName = profiles.find(p => p.id === user?.id)?.full_name || "Você";
+
   const renderSummaryCards = (totals: ReturnType<typeof calculateTotals>, isPartnership: boolean) => (
     <div className="space-y-4 mb-6">
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Meus Ganhos (Vendas)
+              Ganhos de {currentUserName}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -524,7 +526,7 @@ export default function PartnerReports() {
               {formatCurrency(totals.mySellerEarnings)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {isPartnership ? "Vendas de peças de parceiras" : "Vendas de peças de membros"}
+              {isPartnership ? "Vendas de peças de sócias" : "Vendas de peças de parceiras"}
             </p>
           </CardContent>
         </Card>
@@ -533,8 +535,8 @@ export default function PartnerReports() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {isPartnership 
-                ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : "Devo às Parceiras")
-                : "Devo aos Donos"}
+                ? (partners.length === 1 ? `Devo a ${partners[0].full_name}` : "Devo às Sócias")
+                : (partners.length === 1 ? `Devo a ${partners[0].full_name}` : "Devo às Parceiras")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -543,8 +545,8 @@ export default function PartnerReports() {
             </p>
             <p className="text-xs text-muted-foreground">
               {isPartnership 
-                ? (partners.length === 1 ? `Parte de ${partners[0].full_name}` : "Parte das parceiras")
-                : "Custo + comissão dos donos"}
+                ? (partners.length === 1 ? `Parte de ${partners[0].full_name}` : "Parte das sócias")
+                : (partners.length === 1 ? `Parte de ${partners[0].full_name}` : "Parte das parceiras")}
             </p>
           </CardContent>
         </Card>
@@ -560,7 +562,7 @@ export default function PartnerReports() {
               {formatCurrency(totals.myOwnerEarnings)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {isPartnership ? "Vendidas por parceiras" : "Vendidas por membros"}
+              {isPartnership ? "Vendidas por sócias" : "Vendidas por parceiras"}
             </p>
           </CardContent>
         </Card>
@@ -596,13 +598,13 @@ export default function PartnerReports() {
             <div className="grid gap-3 md:grid-cols-3">
               {totals.deferredMyEarnings > 0 && (
                 <div className="flex items-center justify-between p-2 rounded-md bg-background/80">
-                  <span className="text-sm text-muted-foreground">Meus ganhos pendentes</span>
+                  <span className="text-sm text-muted-foreground">Ganhos pendentes de {currentUserName}</span>
                   <span className="font-semibold text-amber-600">{formatCurrency(totals.deferredMyEarnings)}</span>
                 </div>
               )}
               {totals.deferredIOwe > 0 && (
                 <div className="flex items-center justify-between p-2 rounded-md bg-background/80">
-                  <span className="text-sm text-muted-foreground">{isPartnership ? "Devo (pendente)" : "Devo aos donos (pendente)"}</span>
+                  <span className="text-sm text-muted-foreground">{isPartnership ? (partners.length === 1 ? `Devo a ${partners[0].full_name} (pendente)` : "Devo às sócias (pendente)") : (partners.length === 1 ? `Devo a ${partners[0].full_name} (pendente)` : "Devo às parceiras (pendente)")}</span>
                   <span className="font-semibold text-amber-600">{formatCurrency(totals.deferredIOwe)}</span>
                 </div>
               )}
@@ -626,16 +628,16 @@ export default function PartnerReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            {isPartnership ? "Minhas Vendas (Peças de Parceiras)" : "Minhas Vendas (Peças de Membros)"}
+            {isPartnership ? "Minhas Vendas (Peças de Sócias)" : "Minhas Vendas (Peças de Parceiras)"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>{isPartnership ? "Parceira" : "Dono"}</TableHead>
+                <TableHead>{isPartnership ? "Sócia" : "Parceira"}</TableHead>
                 <TableHead className="text-right">Vendas</TableHead>
-                <TableHead className="text-right">{profiles.find(p => p.id === user?.id)?.full_name || "Meu Ganho"}</TableHead>
+                <TableHead className="text-right">{currentUserName}</TableHead>
                 <TableHead className="text-right">{isPartnership && partners.length === 1 ? `Pagar a ${partners[0].full_name}` : "Devo"}</TableHead>
               </TableRow>
             </TableHeader>
@@ -648,8 +650,8 @@ export default function PartnerReports() {
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                     {isPartnership
-                      ? "Nenhuma venda de parcerias no período (vendas de estoque próprio não entram aqui)."
-                      : "Nenhuma venda de grupos no período (vendas de estoque próprio não entram aqui)."}
+                      ? "Nenhuma venda de sociedades no período (vendas de estoque próprio não entram aqui)."
+                      : "Nenhuma venda de parcerias no período (vendas de estoque próprio não entram aqui)."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -689,17 +691,17 @@ export default function PartnerReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-primary" />
-            {isPartnership ? "Vendas de Parceiras (Minhas Peças)" : "Vendas de Membros (Minhas Peças)"}
+            {isPartnership ? "Vendas de Sócias (Minhas Peças)" : "Vendas de Parceiras (Minhas Peças)"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>{isPartnership ? "Parceira" : "Vendedor"}</TableHead>
+                <TableHead>{isPartnership ? "Sócia" : "Vendedora"}</TableHead>
                 <TableHead className="text-right">Vendas</TableHead>
-                <TableHead className="text-right">{profiles.find(p => p.id === user?.id)?.full_name || "Meu Ganho"}</TableHead>
-                <TableHead className="text-right">{isPartnership && partners.length === 1 ? `Ganho de ${partners[0].full_name}` : (isPartnership ? "Ganho Dela" : "Ganho Dele")}</TableHead>
+                <TableHead className="text-right">{currentUserName}</TableHead>
+                <TableHead className="text-right">{isPartnership && partners.length === 1 ? `Ganho de ${partners[0].full_name}` : (summaries.partnerSales.length === 1 ? `Ganho de ${summaries.partnerSales[0].partnerName}` : (isPartnership ? "Ganho da Sócia" : "Ganho da Parceira"))}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -711,8 +713,8 @@ export default function PartnerReports() {
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                     {isPartnership
-                      ? "Nenhuma venda de parceiras com suas peças no período."
-                      : "Nenhuma venda de membros com suas peças no período."}
+                      ? "Nenhuma venda de sócias com suas peças no período."
+                      : "Nenhuma venda de parceiras com suas peças no período."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -754,8 +756,8 @@ export default function PartnerReports() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Relatório de Parcerias e Grupos</h1>
-          <p className="text-muted-foreground">Acompanhe os ganhos e divisões com parcerias 1-1 e grupos</p>
+          <h1 className="text-2xl font-bold text-foreground">Relatório de Sociedades e Parcerias</h1>
+          <p className="text-muted-foreground">Acompanhe os ganhos e divisões com sociedades 1-1 e parcerias</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleRefresh} className="gap-2">
@@ -778,11 +780,11 @@ export default function PartnerReports() {
           </TabsTrigger>
           <TabsTrigger value="partnerships" className="gap-2">
             <Users className="h-4 w-4" />
-            Parcerias 1-1 ({directPartnerships.length})
+            Sociedades 1-1 ({directPartnerships.length})
           </TabsTrigger>
           <TabsTrigger value="groups" className="gap-2">
             <Building2 className="h-4 w-4" />
-            Grupos ({regularGroups.length})
+            Parcerias ({regularGroups.length})
           </TabsTrigger>
         </TabsList>
 
@@ -794,13 +796,13 @@ export default function PartnerReports() {
                 <>
                   <Users className="h-5 w-5 text-primary mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium text-foreground">Regra de Parceria 1-1</p>
+                    <p className="font-medium text-foreground">Regra de Sociedade 1-1</p>
                     <p className="text-muted-foreground">
                       <strong>Quem vende:</strong> 50% do custo + 70% do lucro | 
-                      <strong> Parceira:</strong> 50% do custo + 30% do lucro
+                      <strong> Sócia:</strong> 50% do custo + 30% do lucro
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      As regras podem variar por parceria. Verifique as configurações de cada parceria.
+                      As regras podem variar por sociedade. Verifique as configurações de cada sociedade.
                     </p>
                   </div>
                 </>
@@ -808,13 +810,13 @@ export default function PartnerReports() {
                 <>
                   <Building2 className="h-5 w-5 text-orange-600 mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium text-foreground">Regra de Grupo</p>
+                    <p className="font-medium text-foreground">Regra de Parceria</p>
                     <p className="text-muted-foreground">
                       <strong>Dono da peça:</strong> Custo + Comissão (ex: 20% do lucro) | 
                       <strong> Vendedor:</strong> Lucro restante (ex: 80%)
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      A comissão pode variar por grupo. Verifique as configurações de cada grupo.
+                      A comissão pode variar por parceria. Verifique as configurações de cada parceria.
                     </p>
                   </div>
                 </>
@@ -847,7 +849,7 @@ export default function PartnerReports() {
               <SelectValue placeholder={activeTab === "partnerships" ? "Parceria" : "Grupo"} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{activeTab === "partnerships" ? "Todas as Parcerias" : "Todos os Grupos"}</SelectItem>
+              <SelectItem value="all">{activeTab === "partnerships" ? "Todas as Sociedades" : "Todas as Parcerias"}</SelectItem>
               {currentGroups.map(group => (
                 <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
               ))}
@@ -856,10 +858,10 @@ export default function PartnerReports() {
 
           <Select value={selectedPartnerId} onValueChange={setSelectedPartnerId}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder={activeTab === "partnerships" ? "Parceira" : "Membro"} />
+              <SelectValue placeholder={activeTab === "partnerships" ? "Sócia" : "Parceira"} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{activeTab === "partnerships" ? "Todas as Parceiras" : "Todos os Membros"}</SelectItem>
+              <SelectItem value="all">{activeTab === "partnerships" ? "Todas as Sócias" : "Todas as Parceiras"}</SelectItem>
               {partners.map(partner => (
                 <SelectItem key={partner.id} value={partner.id}>{partner.full_name}</SelectItem>
               ))}
@@ -887,7 +889,7 @@ export default function PartnerReports() {
         <TabsContent value="partnerships">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
-            Acerto entre Parceiras (1-1)
+            Acerto entre Sócias (1-1)
           </h2>
           {renderSummaryCards(partnershipTotals, true)}
           <Separator className="my-6" />
@@ -897,7 +899,7 @@ export default function PartnerReports() {
         <TabsContent value="groups">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
-            Acerto entre Membros do Grupo
+            Acerto entre Parceiras
           </h2>
           {renderSummaryCards(groupTotals, false)}
           <Separator className="my-6" />

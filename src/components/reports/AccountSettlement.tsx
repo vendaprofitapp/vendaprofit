@@ -196,6 +196,8 @@ export function AccountSettlement() {
     return map;
   }, [profiles]);
 
+  const currentUserName = profiles.find(p => p.id === user?.id)?.full_name || "Você";
+
   // Create sales map
   const salesMap = useMemo(() => {
     const map = new Map<string, Sale & { sale_items: SaleItem[] }>();
@@ -419,7 +421,7 @@ export function AccountSettlement() {
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
-                <span className="text-xs font-medium text-emerald-700">Minha Parte</span>
+                <span className="text-xs font-medium text-emerald-700">Ganhos de {currentUserName}</span>
               </div>
               <p className="text-lg sm:text-xl font-bold text-emerald-600">
                 {formatCurrency(myEarnings.total)}
@@ -450,7 +452,7 @@ export function AccountSettlement() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Wallet className="h-5 w-5 text-emerald-600" />
-                <span className="font-medium text-emerald-700">Meus Ganhos no Período</span>
+                <span className="font-medium text-emerald-700">Ganhos de {currentUserName} no Período</span>
               </div>
               <p className="text-2xl font-bold text-emerald-600 mb-4">
                 {formatCurrency(myEarnings.total)}
@@ -480,7 +482,7 @@ export function AccountSettlement() {
             <div className="flex items-center gap-2 mb-3">
               <Users className="h-5 w-5 text-rose-600" />
               <span className="font-medium text-rose-700">
-                {settlements.length === 1 ? `Total a Pagar para ${settlements[0].partnerName}` : "Total a Pagar aos Sócios"}
+                {settlements.length === 1 ? `Total a Pagar para ${settlements[0].partnerName}` : "Total a Pagar aos Sócios/Parceiros"}
               </span>
             </div>
             <p className="text-2xl font-bold text-rose-600">

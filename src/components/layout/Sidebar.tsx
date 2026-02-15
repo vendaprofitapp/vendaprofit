@@ -71,7 +71,7 @@ const navItems: NavItem[] = [{
   path: "/stock-requests"
 }, {
   icon: Users,
-  label: "Parcerias",
+  label: "Socias / Parceiras",
   path: "/partnerships"
 }, {
   icon: TrendingUp,
@@ -79,7 +79,7 @@ const navItems: NavItem[] = [{
   path: "/reports"
 }, {
   icon: TrendingUp,
-  label: "Rel. Parcerias",
+  label: "Rel. Sociedades",
   path: "/partner-reports"
 }, {
   icon: Wallet,

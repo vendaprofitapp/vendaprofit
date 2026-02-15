@@ -568,8 +568,8 @@ export default function Partnerships() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Parcerias</h1>
-          <p className="text-muted-foreground">Gerencie suas parcerias e regras de divisão</p>
+          <h1 className="text-2xl font-bold text-foreground">Sociedades e Parcerias</h1>
+          <p className="text-muted-foreground">Gerencie suas sociedades 1-1 e parcerias em grupo</p>
         </div>
       </div>
 
@@ -578,11 +578,11 @@ export default function Partnerships() {
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="direct" className="flex items-center gap-2">
             <User className="h-4 w-4" />
-            Parcerias Diretas
+            Sociedades 1-1
           </TabsTrigger>
           <TabsTrigger value="groups" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
-            Grupos
+            Parcerias
           </TabsTrigger>
         </TabsList>
 
@@ -596,17 +596,17 @@ export default function Partnerships() {
           {/* Groups Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Grupos de Parceria</h2>
+              <h2 className="text-xl font-semibold">Parcerias em Grupo</h2>
               <p className="text-sm text-muted-foreground">Parcerias com múltiplos vendedores</p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setIsJoinOpen(true)}>
                 <UserPlus className="h-4 w-4 mr-2" />
-                Entrar em Grupo
+                Entrar em Parceria
               </Button>
               <Button onClick={() => setIsCreateOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Novo Grupo
+                Nova Parceria
               </Button>
             </div>
           </div>
@@ -765,9 +765,9 @@ export default function Partnerships() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Criar Nova Parceria</DialogTitle>
+            <DialogTitle>Criar Nova Parceria em Grupo</DialogTitle>
             <DialogDescription>
-              Crie uma parceria e convide outras vendedoras usando o código de convite.
+              Crie uma parceria em grupo e convide outras vendedoras usando o código de convite.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -808,9 +808,9 @@ export default function Partnerships() {
       <Dialog open={isJoinOpen} onOpenChange={setIsJoinOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Entrar em uma Parceria</DialogTitle>
+            <DialogTitle>Entrar em uma Parceria em Grupo</DialogTitle>
             <DialogDescription>
-              Digite o código de convite para entrar em uma parceria existente.
+              Digite o código de convite para entrar em uma parceria em grupo existente.
             </DialogDescription>
           </DialogHeader>
           <div>
@@ -841,7 +841,7 @@ export default function Partnerships() {
       <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Comissão do Grupo - {selectedGroup?.name}</DialogTitle>
+            <DialogTitle>Comissão da Parceria - {selectedGroup?.name}</DialogTitle>
             <DialogDescription>
               Configure a comissão que o proprietário da peça recebe quando um membro do grupo vende.
             </DialogDescription>
@@ -851,7 +851,7 @@ export default function Partnerships() {
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <p className="font-medium mb-2">Como funciona?</p>
               <p className="text-muted-foreground">
-                Quando um membro do grupo vende uma peça de outro membro:
+                Quando um membro da parceria vende uma peça de outro membro:
               </p>
               <ul className="list-disc list-inside text-muted-foreground mt-2 space-y-1">
                 <li>O <strong>proprietário</strong> recebe o custo + comissão sobre o lucro</li>
