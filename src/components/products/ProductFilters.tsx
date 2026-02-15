@@ -47,6 +47,8 @@ export interface ProductFiltersState {
   size: string;
   minPrice: string;
   maxPrice: string;
+  minCost: string;
+  maxCost: string;
   minStock: string;
   maxStock: string;
   marketingStatus: MarketingStatusFilter;
@@ -100,6 +102,8 @@ export function ProductFilters({
       size: "all",
       minPrice: "",
       maxPrice: "",
+      minCost: "",
+      maxCost: "",
       minStock: "",
       maxStock: "",
       marketingStatus: "all",
@@ -122,6 +126,8 @@ export function ProductFilters({
     filters.size !== "all" ||
     filters.minPrice !== "" ||
     filters.maxPrice !== "" ||
+    filters.minCost !== "" ||
+    filters.maxCost !== "" ||
     filters.minStock !== "" ||
     filters.maxStock !== "" ||
     filters.marketingStatus !== "all";
@@ -320,6 +326,25 @@ export function ProductFilters({
                 placeholder="Máx"
                 value={filters.maxPrice}
                 onChange={(e) => updateFilter("maxPrice", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Faixa de Preço de Custo */}
+          <div className="grid gap-2">
+            <Label>Faixa de Preço de Custo (R$)</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                placeholder="Mín"
+                value={filters.minCost}
+                onChange={(e) => updateFilter("minCost", e.target.value)}
+              />
+              <Input
+                type="number"
+                placeholder="Máx"
+                value={filters.maxCost}
+                onChange={(e) => updateFilter("maxCost", e.target.value)}
               />
             </div>
           </div>
