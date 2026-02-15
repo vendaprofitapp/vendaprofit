@@ -3,6 +3,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } f
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { BazarSubmissionDialog } from "./BazarSubmissionDialog";
 
 const FEATURE_MAP: Record<string, { label: string; icon: React.ElementType; description: string }> = {
   bazar_vip: { label: "Bazar VIP", icon: ShoppingBag, description: "Acesso a ofertas exclusivas" },
@@ -19,6 +20,10 @@ interface VipAreaDrawerProps {
   primaryColor: string;
   isIdentified: boolean;
   onIdentify: () => void;
+  ownerId?: string;
+  sellerPhone?: string;
+  sellerName?: string;
+  storeSlug?: string;
 }
 
 export function VipAreaDrawer({
@@ -30,8 +35,13 @@ export function VipAreaDrawer({
   primaryColor,
   isIdentified,
   onIdentify,
+  ownerId,
+  sellerPhone,
+  sellerName,
+  storeSlug,
 }: VipAreaDrawerProps) {
   const [open, setOpen] = useState(false);
+  const [bazarOpen, setBazarOpen] = useState(false);
 
   const hasFeatures = unlockedFeatures.length > 0;
 
@@ -84,6 +94,12 @@ export function VipAreaDrawer({
                     <button
                       key={featureKey}
                       className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left w-full"
+                      onClick={() => {
+                        if (featureKey === "bazar_vip" && isIdentified && ownerId && sellerPhone && storeSlug) {
+                          setOpen(false);
+                          setBazarOpen(true);
+                        }
+                      }}
                     >
                       <div
                         className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0"
@@ -92,7 +108,9 @@ export function VipAreaDrawer({
                         <Icon className="h-5 w-5" style={{ color: currentLevel?.color || primaryColor }} />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold">{feature.label}</p>
+                        <p className="text-sm font-semibold">
+                          {featureKey === "bazar_vip" ? "Vender Minha Peça" : feature.label}
+                        </p>
                         <p className="text-xs text-muted-foreground">{feature.description}</p>
                       </div>
                     </button>
@@ -127,6 +145,17 @@ export function VipAreaDrawer({
           </div>
         </DrawerContent>
       </Drawer>
+
+      {ownerId && sellerPhone && storeSlug && (
+        <BazarSubmissionDialog
+          open={bazarOpen}
+          onOpenChange={setBazarOpen}
+          ownerId={ownerId}
+          sellerPhone={sellerPhone}
+          sellerName={sellerName}
+          storeSlug={storeSlug}
+        />
+      )}
     </>
   );
 }

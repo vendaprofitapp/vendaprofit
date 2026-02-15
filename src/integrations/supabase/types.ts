@@ -131,6 +131,93 @@ export type Database = {
         }
         Relationships: []
       }
+      bazar_items: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          description: string | null
+          final_price: number | null
+          height_cm: number
+          id: string
+          image_url: string | null
+          image_url_2: string | null
+          image_url_3: string | null
+          length_cm: number
+          owner_id: string
+          seller_city: string | null
+          seller_name: string | null
+          seller_neighborhood: string | null
+          seller_number: string | null
+          seller_phone: string
+          seller_price: number
+          seller_state: string | null
+          seller_street: string | null
+          seller_zip: string | null
+          status: string
+          store_commission: number | null
+          title: string
+          updated_at: string
+          weight_grams: number
+          width_cm: number
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string | null
+          final_price?: number | null
+          height_cm: number
+          id?: string
+          image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
+          length_cm: number
+          owner_id: string
+          seller_city?: string | null
+          seller_name?: string | null
+          seller_neighborhood?: string | null
+          seller_number?: string | null
+          seller_phone: string
+          seller_price: number
+          seller_state?: string | null
+          seller_street?: string | null
+          seller_zip?: string | null
+          status?: string
+          store_commission?: number | null
+          title: string
+          updated_at?: string
+          weight_grams: number
+          width_cm: number
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string | null
+          final_price?: number | null
+          height_cm?: number
+          id?: string
+          image_url?: string | null
+          image_url_2?: string | null
+          image_url_3?: string | null
+          length_cm?: number
+          owner_id?: string
+          seller_city?: string | null
+          seller_name?: string | null
+          seller_neighborhood?: string | null
+          seller_number?: string | null
+          seller_phone?: string
+          seller_price?: number
+          seller_state?: string | null
+          seller_street?: string | null
+          seller_zip?: string | null
+          status?: string
+          store_commission?: number | null
+          title?: string
+          updated_at?: string
+          weight_grams?: number
+          width_cm?: number
+        }
+        Relationships: []
+      }
       catalog_product_views: {
         Row: {
           created_at: string
@@ -1996,6 +2083,13 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_number: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
           cpf: string | null
           created_at: string
           email: string
@@ -2012,6 +2106,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           cpf?: string | null
           created_at?: string
           email: string
@@ -2028,6 +2129,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           cpf?: string | null
           created_at?: string
           email?: string

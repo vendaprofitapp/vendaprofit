@@ -57,10 +57,8 @@ const navItems: NavItem[] = [{
   path: "/consortiums"
 }, {
   icon: ShoppingBag,
-  label: "Bazar",
-  path: "/bazar",
-  disabled: true,
-  comingSoon: true
+  label: "Bazar VIP",
+  path: "/admin/bazar"
 }, {
   icon: Package,
   label: "Dropshipping",
