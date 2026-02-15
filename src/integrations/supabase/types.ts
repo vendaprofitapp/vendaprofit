@@ -734,6 +734,7 @@ export type Database = {
           phone: string | null
           photo_url: string | null
           size: string | null
+          total_spent: number
           updated_at: string
         }
         Insert: {
@@ -755,6 +756,7 @@ export type Database = {
           phone?: string | null
           photo_url?: string | null
           size?: string | null
+          total_spent?: number
           updated_at?: string
         }
         Update: {
@@ -776,6 +778,7 @@ export type Database = {
           phone?: string | null
           photo_url?: string | null
           size?: string | null
+          total_spent?: number
           updated_at?: string
         }
         Relationships: []
@@ -1436,6 +1439,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      loyalty_levels: {
+        Row: {
+          color: string
+          created_at: string
+          display_order: number
+          features: Json
+          id: string
+          min_spent: number
+          name: string
+          owner_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          display_order?: number
+          features?: Json
+          id?: string
+          min_spent?: number
+          name: string
+          owner_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          display_order?: number
+          features?: Json
+          id?: string
+          min_spent?: number
+          name?: string
+          owner_id?: string
+        }
+        Relationships: []
       }
       main_categories: {
         Row: {
@@ -2636,6 +2672,10 @@ export type Database = {
       clear_category_from_products: {
         Args: { category_name: string }
         Returns: undefined
+      }
+      get_customer_loyalty_level: {
+        Args: { _customer_id: string }
+        Returns: Json
       }
       has_role: {
         Args: {
