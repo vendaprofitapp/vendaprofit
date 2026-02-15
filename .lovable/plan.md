@@ -1,41 +1,47 @@
 
-# Ajustar Texto do Nivel de Fidelidade + Toggle de Ativacao
+# Tornar Mensagens de Incentivos de Compra Mais Chamativas e Duradouras
 
-## 1. Alterar texto da barra de progresso no catalogo
+## Problema
 
-**Arquivo: `src/components/catalog/LoyaltyHeader.tsx`**
+As mensagens (toasts) de incentivos de compra que aparecem ao adicionar produtos ao carrinho no catalogo sao pequenas e desaparecem rapido (3-4 segundos). Isso vale tanto para mobile quanto desktop.
 
-O texto atual e:
-> "Falta R$ 12,00 para Prata"
+## Solucao
 
-Sera alterado para:
-> "Falta R$ 500,00 para Cliente Nivel Prata"
+Aumentar a duracao e o destaque visual das mensagens de incentivo, usando toasts customizados com estilo mais chamativo.
 
-Mudanca na linha 85-88: alterar o template da mensagem para incluir "Cliente Nivel" antes do nome do proximo nivel.
+### Alteracoes
 
-## 2. Toggle para ativar/desativar fidelidade na loja
+**Arquivo: `src/pages/StoreCatalog.tsx`** (linhas 436-456)
 
-### 2a. Nova coluna no banco de dados
+1. **Duracao**: Aumentar de 3-4 segundos para **6-8 segundos**
+   - Mensagem de tier desbloqueado (celebracao): 8 segundos
+   - Mensagem de progresso para proximo tier: 6 segundos
+   - Mensagem generica de incentivo (on_add): 5 segundos
 
-Adicionar coluna `loyalty_enabled` (boolean, default `false`) na tabela `store_settings`. Isso permite que cada usuario escolha se quer exibir o programa de fidelidade na sua loja.
+2. **Estilo visual**: Usar a opcao `className` do sonner para aumentar o tamanho do texto e adicionar destaque
+   - Texto principal maior (font-semibold, text-base)
+   - Descricao com tamanho legivel (text-sm)
+   - Padding extra para maior visibilidade no mobile
 
-### 2b. Toggle nas configuracoes da loja
+3. **Mensagem de tier desbloqueado** (celebracao): Adicionar descricao complementar mostrando o beneficio conquistado
 
-**Arquivo: `src/pages/StoreSettings.tsx`**
+### Exemplo do resultado
 
-Adicionar um Switch "Programa de Fidelidade" na secao de configuracoes da loja, similar aos outros toggles existentes (como `lead_capture_enabled`, `secret_area_active`). Quando desativado, o header de fidelidade nao aparece no catalogo.
+Antes:
+- Toast pequeno padrao, 3s de duracao
 
-### 2c. Condicional no catalogo
+Depois:
+- Toast com texto maior e mais visivel
+- 6-8 segundos de duracao
+- Estilo destacado com classes CSS customizadas aplicadas via `className` do sonner
 
-**Arquivo: `src/pages/StoreCatalog.tsx`**
+### Detalhes tecnicos
 
-Verificar se `store.loyalty_enabled === true` antes de renderizar o `LoyaltyHeader` e antes de carregar os dados de fidelidade. Se desativado, nada relacionado a fidelidade aparece.
+O sonner aceita `className` e `style` como opcoes, permitindo customizar cada toast individualmente. As classes aplicadas serao:
 
-## Resumo das alteracoes
+```text
+className: "!text-base !p-4" (para aumentar tamanho e padding)
+descriptionClassName: "!text-sm" (para descricao legivel)
+```
 
-| Local | Alteracao |
-|-------|-----------|
-| Banco de dados | Nova coluna `loyalty_enabled` (boolean, default false) em `store_settings` |
-| `LoyaltyHeader.tsx` | Texto alterado para "Falta R$ X para Cliente Nivel [Nome]" |
-| `StoreSettings.tsx` | Novo Switch para ativar/desativar fidelidade |
-| `StoreCatalog.tsx` | Condicional para mostrar fidelidade apenas quando habilitado |
+Isso garante visibilidade tanto no mobile (onde o toast pode ser ainda menor) quanto no desktop.
