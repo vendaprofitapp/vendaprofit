@@ -125,6 +125,8 @@ export default function StockControl() {
     size: "all",
     minPrice: "",
     maxPrice: "",
+    minCost: "",
+    maxCost: "",
     minStock: "",
     maxStock: "",
     marketingStatus: "all",
@@ -530,6 +532,13 @@ export default function StockControl() {
       const matchesMinPrice = minPrice === null || p.price >= minPrice;
       const matchesMaxPrice = maxPrice === null || p.price <= maxPrice;
       
+      // Cost price range
+      const minCost = filters.minCost ? Number(filters.minCost) : null;
+      const maxCost = filters.maxCost ? Number(filters.maxCost) : null;
+      const costPrice = p.cost_price || 0;
+      const matchesMinCost = minCost === null || costPrice >= minCost;
+      const matchesMaxCost = maxCost === null || costPrice <= maxCost;
+      
       // Stock range
       const minStock = filters.minStock ? Number(filters.minStock) : null;
       const maxStock = filters.maxStock ? Number(filters.maxStock) : null;
@@ -556,6 +565,8 @@ export default function StockControl() {
         matchesSize &&
         matchesMinPrice &&
         matchesMaxPrice &&
+        matchesMinCost &&
+        matchesMaxCost &&
         matchesMinStock &&
         matchesMaxStock &&
         matchesMarketingStatus
@@ -574,6 +585,8 @@ export default function StockControl() {
     if (filters.size !== "all") count++;
     if (filters.minPrice) count++;
     if (filters.maxPrice) count++;
+    if (filters.minCost) count++;
+    if (filters.maxCost) count++;
     if (filters.minStock) count++;
     if (filters.maxStock) count++;
     if (filters.marketingStatus !== "all") count++;
