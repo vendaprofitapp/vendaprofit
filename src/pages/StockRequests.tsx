@@ -40,7 +40,7 @@ interface StockRequest {
   requester_id: string;
   owner_id: string;
   quantity: number;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "cancelled";
   notes: string | null;
   response_notes: string | null;
   responded_at: string | null;
