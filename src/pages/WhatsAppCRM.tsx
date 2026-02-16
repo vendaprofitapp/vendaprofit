@@ -91,7 +91,6 @@ export default function WhatsAppCRM() {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      // filter out leads that have cart items
       const leadIds = (leads || []).map(l => l.id);
       if (leadIds.length === 0) return [];
       const { data: cartLeads } = await supabase
@@ -110,7 +109,7 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // 3. Contacted leads
+  // 3. Contacted leads (from lead_cart_items)
   const { data: contactedLeads = [] } = useQuery({
     queryKey: ["crm-contacted", user?.id],
     queryFn: async () => {
@@ -141,7 +140,37 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // 4. Birthday customers
+  // 4. Contacted customers (from crm_customer_contacts)
+  const { data: contactedCustomers = [] } = useQuery({
+    queryKey: ["crm-contacted-customers", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("crm_customer_contacts" as any)
+        .select("id, customer_id, status")
+        .eq("owner_id", user!.id)
+        .eq("status", "contacted");
+      if (error) throw error;
+      if (!data || data.length === 0) return [];
+
+      const customerIds = (data as any[]).map((c: any) => c.customer_id);
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id, name, phone, created_at")
+        .in("id", customerIds);
+
+      return (customers || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone || "",
+        type: "inactive" as const,
+        createdAt: c.created_at,
+        sourceTable: "customer" as const,
+      }));
+    },
+    enabled: !!user?.id,
+  });
+
+  // 5. Birthday customers
   const { data: birthdayCustomers = [] } = useQuery({
     queryKey: ["crm-birthdays", user?.id],
     queryFn: async () => {
@@ -167,7 +196,7 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // 5. Inactive 30d customers
+  // 6. Inactive 30d customers
   const { data: inactiveCustomers = [] } = useQuery({
     queryKey: ["crm-inactive", user?.id],
     queryFn: async () => {
@@ -206,19 +235,41 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
+  // Filter out customers already contacted
+  const contactedCustomerIds = useMemo(
+    () => new Set(contactedCustomers.map(c => c.id)),
+    [contactedCustomers]
+  );
+
+  const filteredBirthday = useMemo(
+    () => birthdayCustomers.filter(c => !contactedCustomerIds.has(c.id)),
+    [birthdayCustomers, contactedCustomerIds]
+  );
+
+  const filteredInactive = useMemo(
+    () => inactiveCustomers.filter(c => !contactedCustomerIds.has(c.id)),
+    [inactiveCustomers, contactedCustomerIds]
+  );
+
   // Summary counts
   const abandonedTotal = abandonedLeads.reduce((sum, l) => sum + (l.cartTotal || 0), 0);
-  const contactedCount = contactedLeads.length;
+  const allContactedCount = contactedLeads.length + contactedCustomers.length;
 
   // Merge pending leads
   const pendingLeads = useMemo(() => {
-    let all: UnifiedLead[] = [...abandonedLeads, ...newLeads, ...birthdayCustomers, ...inactiveCustomers];
+    let all: UnifiedLead[] = [...abandonedLeads, ...newLeads, ...filteredBirthday, ...filteredInactive];
     if (activeFilter === "abandoned") all = abandonedLeads;
     else if (activeFilter === "new") all = newLeads;
-    else if (activeFilter === "birthday") all = birthdayCustomers;
-    else if (activeFilter === "inactive") all = inactiveCustomers;
+    else if (activeFilter === "birthday") all = filteredBirthday;
+    else if (activeFilter === "inactive") all = filteredInactive;
     return all;
-  }, [activeFilter, abandonedLeads, newLeads, birthdayCustomers, inactiveCustomers]);
+  }, [activeFilter, abandonedLeads, newLeads, filteredBirthday, filteredInactive]);
+
+  // All contacted (leads + customers)
+  const allContacted = useMemo(
+    () => [...contactedLeads, ...contactedCustomers],
+    [contactedLeads, contactedCustomers]
+  );
 
   // Mutations
   const markContacted = useMutation({
@@ -237,6 +288,24 @@ export default function WhatsAppCRM() {
     },
   });
 
+  const markCustomerContacted = useMutation({
+    mutationFn: async (customerId: string) => {
+      const { error } = await supabase
+        .from("crm_customer_contacts" as any)
+        .upsert(
+          { customer_id: customerId, owner_id: user!.id, status: "contacted" } as any,
+          { onConflict: "customer_id,owner_id" }
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-contacted-customers"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-birthdays"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-inactive"] });
+      toast.success("Cliente movido para Contatados!");
+    },
+  });
+
   const updateLeadStatus = useMutation({
     mutationFn: async ({ leadId, status }: { leadId: string; status: string }) => {
       const { error } = await supabase
@@ -249,6 +318,23 @@ export default function WhatsAppCRM() {
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ["crm-contacted"] });
       toast.success(status === "converted" ? "Convertido em venda!" : "Lead descartado.");
+    },
+  });
+
+  const updateCustomerContactStatus = useMutation({
+    mutationFn: async ({ customerId, status }: { customerId: string; status: string }) => {
+      const { error } = await supabase
+        .from("crm_customer_contacts" as any)
+        .update({ status } as any)
+        .eq("customer_id", customerId)
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["crm-contacted-customers"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-birthdays"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-inactive"] });
+      toast.success(status === "converted" ? "Convertido em venda!" : "Cliente descartado.");
     },
   });
 
@@ -275,6 +361,8 @@ export default function WhatsAppCRM() {
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`, "_blank");
     if (lead.sourceTable === "lead" && lead.type === "abandoned") {
       markContacted.mutate(lead.id);
+    } else if (lead.sourceTable === "customer") {
+      markCustomerContacted.mutate(lead.id);
     }
   };
 
@@ -291,7 +379,7 @@ export default function WhatsAppCRM() {
   const summaryCards = [
     { key: "abandoned" as FilterType, icon: ShoppingCart, label: "Carrinhos Abandonados", value: formatPrice(abandonedTotal), count: abandonedLeads.length, color: "text-orange-500", bg: "bg-orange-500/10" },
     { key: "new" as FilterType, icon: UserPlus, label: "Novos Cadastros", value: String(newLeads.length), color: "text-blue-500", bg: "bg-blue-500/10" },
-    { key: "contacted" as FilterType, icon: Clock, label: "Aguardando Retorno", value: String(contactedCount), color: "text-yellow-500", bg: "bg-yellow-500/10" },
+    { key: "contacted" as FilterType, icon: Clock, label: "Aguardando Retorno", value: String(allContactedCount), color: "text-yellow-500", bg: "bg-yellow-500/10" },
     { key: "birthday" as FilterType, icon: Cake, label: "Aniversariantes do Mês", value: String(birthdayCustomers.length), color: "text-pink-500", bg: "bg-pink-500/10" },
     { key: "inactive" as FilterType, icon: UserX, label: "30 Dias sem Visita", value: String(inactiveCustomers.length), color: "text-muted-foreground", bg: "bg-muted" },
   ];
@@ -317,12 +405,10 @@ export default function WhatsAppCRM() {
     setDragOverColumn(null);
     try {
       const data = JSON.parse(e.dataTransfer.getData("application/json"));
-      if (data.sourceTable === "customer") {
-        toast.info(`${data.type === "birthday" ? "Aniversariante" : "Cliente inativo"} — contate via WhatsApp.`);
-        return;
-      }
       if (data.sourceTable === "lead") {
         markContacted.mutate(data.id);
+      } else if (data.sourceTable === "customer") {
+        markCustomerContacted.mutate(data.id);
       }
     } catch { /* ignore */ }
   };
@@ -375,35 +461,50 @@ export default function WhatsAppCRM() {
     );
   };
 
-  const renderContactedCard = (lead: UnifiedLead) => (
-    <div key={lead.id} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold truncate">{lead.name}</h3>
-            <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
+  const renderContactedCard = (lead: UnifiedLead) => {
+    const isCustomer = lead.sourceTable === "customer";
+    return (
+      <div key={`${lead.sourceTable}-${lead.id}`} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold truncate">{lead.name}</h3>
+              <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+              <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{lead.phone}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{lead.phone}</span>
-          </div>
+          {lead.cartTotal && lead.cartTotal > 0 && (
+            <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
+          )}
         </div>
-        {lead.cartTotal && lead.cartTotal > 0 && (
-          <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
-        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleWhatsApp(lead)}>
+            <MessageCircle className="h-3.5 w-3.5" />Follow-up
+          </Button>
+          <Button size="sm" className="flex-1 gap-1.5" onClick={() => {
+            if (isCustomer) {
+              updateCustomerContactStatus.mutate({ customerId: lead.id, status: "converted" });
+            } else {
+              updateLeadStatus.mutate({ leadId: lead.id, status: "converted" });
+            }
+          }}>
+            <CheckCircle className="h-3.5 w-3.5" />Converter
+          </Button>
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => {
+            if (isCustomer) {
+              updateCustomerContactStatus.mutate({ customerId: lead.id, status: "cancelled" });
+            } else {
+              updateLeadStatus.mutate({ leadId: lead.id, status: "cancelled" });
+            }
+          }}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleWhatsApp(lead)}>
-          <MessageCircle className="h-3.5 w-3.5" />Follow-up
-        </Button>
-        <Button size="sm" className="flex-1 gap-1.5" onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "converted" })}>
-          <CheckCircle className="h-3.5 w-3.5" />Converter
-        </Button>
-        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "cancelled" })}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <MainLayout>
@@ -466,7 +567,7 @@ export default function WhatsAppCRM() {
             <div className="flex items-center gap-2 px-1">
               <CheckCircle className="h-4 w-4 text-green-500" />
               <h2 className="font-semibold">Contatados</h2>
-              <Badge variant="outline" className="ml-auto">{contactedLeads.length}</Badge>
+              <Badge variant="outline" className="ml-auto">{allContacted.length}</Badge>
             </div>
             <div
               onDragOver={handleDragOver}
@@ -478,18 +579,18 @@ export default function WhatsAppCRM() {
                   : "border-border bg-muted/30"
               }`}
             >
-              {contactedLeads.length === 0 && !dragOverColumn ? (
+              {allContacted.length === 0 && !dragOverColumn ? (
                 <div className="text-center py-12">
                   <CheckCircle className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">Arraste leads aqui para marcar como contatados</p>
                 </div>
-              ) : contactedLeads.length === 0 && dragOverColumn ? (
+              ) : allContacted.length === 0 && dragOverColumn ? (
                 <div className="text-center py-12">
                   <CheckCircle className="h-10 w-10 text-green-500/50 mx-auto mb-3" />
                   <p className="text-sm text-green-600 font-medium">Solte aqui para marcar como contatado</p>
                 </div>
               ) : (
-                contactedLeads.map(renderContactedCard)
+                allContacted.map(renderContactedCard)
               )}
             </div>
           </div>

@@ -751,6 +751,38 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_customer_contacts: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          owner_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          owner_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          owner_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_customer_contacts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_payment_methods: {
         Row: {
           created_at: string
