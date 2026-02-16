@@ -1,9 +1,10 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock,
   Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package,
   Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
   Megaphone, Award, DollarSign, CreditCard, Video, MessageCircle, Zap,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -76,6 +77,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Sistema",
     items: [
+      { icon: Store, label: "Minha Loja", path: "/my-store" },
       { icon: Settings, label: "Configurações", path: "/settings" },
       { icon: BookOpen, label: "Tutorial", path: "/tutorial" },
     ],
@@ -92,8 +94,10 @@ const linkClasses = (isActive: boolean) =>
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [storeSlug, setStoreSlug] = useState<string | null>(null);
 
   useEffect(() => {
     async function check() {
@@ -107,8 +111,30 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     check();
   }, [user]);
 
+  useEffect(() => {
+    async function fetchSlug() {
+      if (!user) return;
+      const { data } = await supabase
+        .from("store_settings")
+        .select("store_slug")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      setStoreSlug(data?.store_slug ?? null);
+    }
+    fetchSlug();
+  }, [user]);
+
   const handleNavClick = () => onNavigate?.();
   const isSalesActive = location.pathname === "/sales";
+
+  const handleVisitStore = () => {
+    onNavigate?.();
+    if (storeSlug) {
+      window.open(`${window.location.origin}/l/${storeSlug}`, "_blank");
+    } else {
+      navigate("/my-store");
+    }
+  };
 
   return (
     <aside className="h-full w-64 bg-sidebar border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:z-40 md:h-screen">
@@ -149,19 +175,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </Link>
 
           {/* Minha Loja - Gold CTA */}
-          <Link
-            to="/my-store"
-            onClick={handleNavClick}
+          <button
+            onClick={handleVisitStore}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1",
-              location.pathname === "/my-store"
-                ? "bg-yellow-500 text-gray-900 shadow-md"
-                : "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
+              "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1 w-full",
+              "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
             )}
           >
             <Store className="h-5 w-5" />
             Minha Loja
-          </Link>
+            <ExternalLink className="h-3.5 w-3.5 ml-auto opacity-60" />
+          </button>
 
           {/* Grouped navigation */}
           {navGroups.map((group) => (
