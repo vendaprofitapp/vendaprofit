@@ -1,60 +1,72 @@
 
 
-# Separar abas do Estoque: Proprio, Sociedade, Parcerias, B2B
+# Modo Evento - Backend (Banco de Dados + Storage)
 
 ## Resumo
 
-Reorganizar as abas da pagina de Estoque (`/stock`) removendo as abas "Requisicoes" e "Recebidas" (que ja existem na pagina dedicada `/stock-requests`) e separando o estoque em 4 abas claras:
+Criar a infraestrutura de backend para o "Modo Evento", permitindo que vendedoras criem botoes rapidos e registrem rascunhos de vendas durante eventos presenciais, com fotos e notas de voz.
 
-1. **Proprio** - Somente produtos do usuario (como "Meu Estoque" atual)
-2. **Sociedade** - Produtos de parceiras via Sociedade 1-1 (`is_direct=true`)
-3. **Parcerias** - Produtos de parcerias em grupo (`is_direct=false`)
-4. **B2B** - Exatamente como esta funcionando hoje
+## Novas Tabelas
 
-## Alteracoes
+### 1. `event_quick_buttons`
 
-### Arquivo: `src/pages/StockControl.tsx`
+Botoes customizados para registro rapido durante eventos.
 
-**Remover:**
-- Abas "Requisicoes" (`my-requests`) e "Recebidas" (`incoming-requests`) - ja existem em `/stock-requests`
-- Estado e logica de `myRequests`, `incomingRequests`, `fetchRequests`, `subscribeToRequests`, `handleUpdateRequest`, `handleRequestProduct`, `requestDialogOpen`, `selectedProduct`, `requestQuantity`, `requestNotes`
-- Dialog de "Requisitar Produto"
+| Coluna | Tipo | Nullable | Default | Descricao |
+|--------|------|----------|---------|-----------|
+| id | uuid | NOT NULL | gen_random_uuid() | PK |
+| owner_id | uuid | NOT NULL | auth.uid() | Dono do botao |
+| label | text | NOT NULL | - | Rotulo (ex: "Legging") |
+| default_price | numeric | YES | NULL | Preco padrao opcional |
+| color | text | NOT NULL | '#8B5CF6' | Cor hex de exibicao |
+| sort_order | integer | NOT NULL | 0 | Ordem de exibicao |
+| created_at | timestamptz | NOT NULL | now() | - |
 
-**Modificar:**
-- Renomear aba "Meu Estoque" para **"Proprio"**
-- Renomear aba "Parceiros" para criar duas abas separadas
+### 2. `event_sale_drafts`
 
-**Adicionar:**
-- Separar `fetchPartnerProducts` em duas funcoes:
-  - `fetchDirectPartnerProducts()` - busca produtos de grupos com `is_direct=true` (Sociedade 1-1)
-  - `fetchGroupPartnerProducts()` - busca produtos de grupos com `is_direct=false` (Parcerias)
-- Estado separado: `directPartnerProducts` e `groupPartnerProducts`
-- Aba **"Sociedade"** - exibe `directPartnerProducts` com botao de "Requisitar"
-- Aba **"Parcerias"** - exibe `groupPartnerProducts` com botao de "Requisitar"
-- Manter o Dialog de "Requisitar Produto" para solicitar estoque de parceiras (sociedade e parcerias)
+Rascunhos de vendas registrados durante o evento.
 
-### Estrutura das abas (resultado final)
+| Coluna | Tipo | Nullable | Default | Descricao |
+|--------|------|----------|---------|-----------|
+| id | uuid | NOT NULL | gen_random_uuid() | PK |
+| owner_id | uuid | NOT NULL | auth.uid() | Dono |
+| photo_urls | text[] | YES | '{}' | URLs das fotos das pecas |
+| items | jsonb | NOT NULL | '[]' | Array de itens: [{button_id, label, quantity, price}] |
+| notes | text | YES | NULL | Observacoes / transcricao de voz |
+| estimated_total | numeric | NOT NULL | 0 | Valor total estimado |
+| status | text | NOT NULL | 'pending' | 'pending' ou 'reconciled' |
+| created_at | timestamptz | NOT NULL | now() | - |
+| updated_at | timestamptz | NOT NULL | now() | - |
 
-```text
-[ Proprio ] [ Sociedade ] [ Parcerias ] [ B2B ]
-```
+### 3. Storage Bucket: `event-photos`
 
-### Logica de separacao
+Bucket publico para fotos tiradas durante eventos, com RLS para upload restrito ao dono.
 
-A query atual de `fetchPartnerProducts` busca todos os grupos do usuario via `group_members`. A separacao sera feita assim:
+## Politicas RLS
 
-1. Buscar memberships com `groups!inner(id, is_direct)` para ter a flag
-2. Separar `groupIds` em `directGroupIds` (is_direct=true) e `regularGroupIds` (is_direct=false)
-3. Buscar `product_partnerships` para cada conjunto de grupos separadamente
-4. Carregar produtos de cada conjunto
+Ambas as tabelas terao politicas identicas ao padrao do projeto:
+- **SELECT**: `owner_id = auth.uid()`
+- **INSERT**: `owner_id = auth.uid()`
+- **UPDATE**: `owner_id = auth.uid()`
+- **DELETE**: `owner_id = auth.uid()`
 
-### Nenhuma alteracao no banco de dados
+Storage `event-photos`:
+- **INSERT** (upload): autenticado, path comeca com `uid/`
+- **SELECT** (download): publico
+- **DELETE**: autenticado, path comeca com `uid/`
 
-Apenas reorganizacao da UI.
+## Trigger
+
+- `update_updated_at_column` em `event_sale_drafts` para atualizar `updated_at` automaticamente (reutilizando a funcao existente no projeto).
+
+## Nenhuma dependencia nova
+
+Usa apenas o que ja existe no projeto.
 
 ## Resumo de Arquivos
 
-| Arquivo | Acao |
-|---------|------|
-| `src/pages/StockControl.tsx` | Reorganizar abas, separar parceiros em Sociedade e Parcerias, remover abas de requisicoes |
+| Item | Acao |
+|------|------|
+| Migration SQL | Criar tabelas, RLS, bucket e trigger |
+| `src/integrations/supabase/types.ts` | Atualizado automaticamente apos migration |
 
