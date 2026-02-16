@@ -1,63 +1,58 @@
 
-# WhatsApp CRM - Layout Kanban com Drag & Drop
+# WhatsApp CRM - Permitir arrastar clientes inativos e aniversariantes
 
-## Resumo
+## Problema
+Ao arrastar um cliente inativo ou aniversariante no Kanban, o sistema bloqueia a acao e exibe um toast "Cliente inativo - contate via WhatsApp" em vez de permitir que o usuario mova o card livremente para a coluna "Contatados".
 
-Substituir o layout atual de Tabs (Pendentes / Contatados) por um layout Kanban com duas colunas lado a lado, onde o usuario pode arrastar cards de "Pendentes" para "Contatados". O botao "Chamar no WhatsApp" permanece visivel nos cards da coluna Pendentes. Na coluna Contatados, os botoes de Follow-up, Converter e Descartar continuam disponiveis.
+## Solucao
 
-## Alteracoes
+Criar uma tabela no banco de dados para registrar quando clientes (birthday/inactive) sao marcados como contatados, e permitir o drag-and-drop livre para todos os tipos de leads/clientes.
 
-### Arquivo: `src/pages/WhatsAppCRM.tsx`
+### 1. Nova tabela: `crm_customer_contacts`
 
-**Remover:**
-- Componente `Tabs` / `TabsList` / `TabsContent` / `TabsTrigger`
-- Import de `Tabs` do radix
-- Estado `activeTab`
-
-**Adicionar:**
-- Implementacao de drag-and-drop nativo usando a HTML5 Drag and Drop API (sem dependencias externas)
-- Layout de duas colunas lado a lado (Kanban):
-  - Coluna "Pendentes" (esquerda): lista os leads pendentes filtrados pelos summary cards
-  - Coluna "Contatados" (direita): lista os leads ja contatados
-- Cada card de lead na coluna Pendentes tera `draggable="true"` com handlers `onDragStart`
-- Cada coluna tera handlers `onDragOver` e `onDrop`
-- Ao dropar um card de Pendentes em Contatados, chama a mutation `markContacted`
-- Cards na coluna Pendentes mantem o botao verde "Chamar no WhatsApp"
-- Cards na coluna Contatados mantem botoes de Follow-up, Converter e Descartar
-- No mobile (telas pequenas), as colunas empilham verticalmente
-
-### Layout visual
+Armazena o status de contato de clientes (que nao possuem `lead_cart_items`).
 
 ```text
-+---------------------------+---------------------------+
-|  PENDENTES (filtrados)    |  CONTATADOS               |
-|  [count] leads            |  [count] leads            |
-+---------------------------+---------------------------+
-| [Card Lead 1        drag] | [Card Lead A             ]|
-|  Nome / Badge / Phone     |  Nome / Badge / Phone     |
-|  [Chamar no WhatsApp]     |  [Follow-up] [Converter]  |
-|                           |                    [X]    |
-| [Card Lead 2        drag] |                           |
-|  ...                      |                           |
-+---------------------------+---------------------------+
+crm_customer_contacts
+---------------------
+id           UUID (PK)
+customer_id  UUID (referencia customers.id)
+owner_id     UUID
+status       TEXT (contacted, converted, cancelled)
+created_at   TIMESTAMPTZ
 ```
 
-### Detalhes tecnicos
+Com politica RLS para que cada usuario veja apenas seus proprios registros.
 
-- Usar `onDragStart` para guardar o ID e sourceTable do lead sendo arrastado em `dataTransfer`
-- Usar `onDragOver` com `preventDefault()` para permitir o drop
-- Usar `onDrop` para ler o ID e chamar `markContacted.mutate(leadId)`
-- Feedback visual: ao arrastar sobre a coluna Contatados, aplicar borda destacada (ex: `ring-2 ring-green-500`)
-- Estado `dragOverColumn` para controlar o highlight visual
-- Para leads do tipo "birthday" e "inactive" (sourceTable "customer"), o drag nao dispara mutation pois nao tem `lead_cart_items`, apenas move visualmente e exibe toast informativo
-- Layout responsivo: `grid grid-cols-1 lg:grid-cols-2` para empilhar no mobile
+### 2. Arquivo: `src/pages/WhatsAppCRM.tsx`
 
-### Nenhuma alteracao no banco de dados
+**Remover:**
+- O bloco no `handleDrop` que verifica `sourceTable === "customer"` e exibe toast bloqueando a acao
 
-A logica de mutations permanece identica - apenas a UI muda de tabs para kanban.
+**Adicionar:**
+- Nova mutation `markCustomerContacted` que insere um registro em `crm_customer_contacts` com status "contacted"
+- Nova query para buscar clientes ja contatados da tabela `crm_customer_contacts`
+- No `handleDrop`, quando `sourceTable === "customer"`, chamar `markCustomerContacted` em vez de bloquear
+- Filtrar clientes contatados da lista de "Pendentes" (birthday/inactive)
+- Exibir clientes contatados na coluna "Contatados" junto com os leads contatados
+- Botoes de "Converter" e "Descartar" tambem funcionam para clientes contatados (atualizando o status na nova tabela)
 
-## Resumo de Arquivos
+### Fluxo apos a mudanca
 
-| Arquivo | Acao |
-|---------|------|
-| `src/pages/WhatsAppCRM.tsx` | Reescrever layout de Tabs para Kanban com drag-and-drop nativo |
+```text
+Pendentes                          Contatados
++----------------------------+     +----------------------------+
+| [Inativo] Maria            |     | [Contatado] Joao           |
+| [Chamar no WhatsApp]       | --> | [Follow-up] [Converter] [X]|
+| (arrastar livremente)      |     |                            |
++----------------------------+     +----------------------------+
+```
+
+## Detalhes tecnicos
+
+| Item | Detalhe |
+|------|---------|
+| Nova tabela | `crm_customer_contacts` com RLS por `owner_id` |
+| Arquivo alterado | `src/pages/WhatsAppCRM.tsx` |
+| Queries novas | Buscar clientes contatados, mutation para inserir/atualizar status |
+| Sem dependencias novas | Usa apenas o que ja existe no projeto |
