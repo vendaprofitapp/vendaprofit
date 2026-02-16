@@ -155,7 +155,7 @@ export default function EventMode() {
 
   // Save draft
   const saveDraft = async () => {
-    if (!user || bagItems.length === 0) {
+    if (!user || (bagItems.length === 0 && photos.length === 0 && !notes.trim())) {
       toast({ title: "Adicione ao menos um item à sacola", variant: "destructive" });
       return;
     }
@@ -360,7 +360,7 @@ export default function EventMode() {
         </div>
         <Button
           className="w-full h-14 text-lg font-bold gap-2"
-          disabled={saving || bagItems.length === 0}
+          disabled={saving || (bagItems.length === 0 && photos.length === 0 && !notes.trim())}
           onClick={saveDraft}
         >
           {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
