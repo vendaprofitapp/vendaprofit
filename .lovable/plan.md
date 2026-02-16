@@ -1,103 +1,80 @@
 
 
-# Fluxo de Conciliacao Pos-Evento
+# Correção do Reset de Dados CRM no WhatsApp CRM
 
-## Resumo
+## Problema
 
-Criar o fluxo completo de conciliacao de rascunhos do Modo Evento, permitindo que a vendedora transforme rascunhos rapidos em vendas oficiais apos o evento, com alerta no Dashboard e interface dedicada.
+Quando a vendedora realiza ações (contatar, converter ou cancelar) em um cliente no CRM, o cliente reaparece na coluna "Pendentes" com o mesmo tempo de inatividade anterior. Isso acontece porque:
 
-## Arquivos a Criar/Modificar
+1. O filtro atual só exclui clientes com status "contacted" - quando o status muda para "converted" ou "cancelled", o cliente volta a aparecer
+2. Não existe um campo de "data do último contato" para reiniciar o relógio de inatividade
 
-### 1. `src/components/dashboard/EventDraftsBanner.tsx` (NOVO)
+## Solução
 
-Componente de alerta que aparece no Dashboard e na pagina de Vendas quando ha rascunhos pendentes.
+### 1. Migração: Adicionar coluna `contacted_at` na tabela `crm_customer_contacts`
 
-- Query em `event_sale_drafts` filtrando `status = 'pending'` e `owner_id = auth.uid()`
-- Exibe card com icone Zap, contagem de rascunhos pendentes e botao "Conciliar"
-- Botao navega para `/evento/conciliacao`
-- Se nao houver rascunhos pendentes, retorna null (nao renderiza nada)
-- Estilo similar aos cards existentes em SystemAlerts (cor violeta/roxa para combinar com o tema do Modo Evento)
+Adicionar uma coluna `contacted_at` (timestamptz, default now()) para registrar quando o cliente foi contatado pela última vez, independente do status atual.
 
-### 2. `src/pages/EventReconciliation.tsx` (NOVO)
+### 2. Correção da lógica de filtragem em `WhatsAppCRM.tsx`
 
-Pagina dedicada de conciliacao com lista de rascunhos pendentes.
+**Antes (bugado):**
+- Busca apenas `crm_customer_contacts` com `status = "contacted"`
+- Filtra pendentes excluindo só esses IDs
+- Resultado: clientes convertidos/cancelados voltam imediatamente
 
-**Layout:**
-- MainLayout com cabecalho "Conciliacao de Rascunhos"
-- Lista de cards, cada um representando um rascunho pendente
-- Card compacto mostrando: data/hora, quantidade de itens, total estimado, miniatura da primeira foto
+**Depois (corrigido):**
+- Buscar TODOS os registros de `crm_customer_contacts` do usuario (sem filtro de status)
+- Excluir dos pendentes qualquer cliente que foi contatado nos últimos 30 dias (usando `contacted_at`)
+- Manter na coluna "Contatados" apenas os com `status = "contacted"`
+- Resultado: clientes convertidos/cancelados ficam fora por 30 dias
 
-**Detalhe do Rascunho (Dialog):**
-- Ao clicar em um card, abre um Dialog largo com:
-  - Carrossel/galeria das fotos (usando scroll horizontal com miniaturas clicaveis)
-  - Lista dos itens rapidos selecionados (label, quantidade, preco)
-  - Texto das observacoes (transcritas por voz)
-  - Botao "Oficializar Venda" que navega para `/sales?from_draft=DRAFT_ID`
+### 3. Atualizar `contacted_at` no upsert
 
-**Acao de Descartar:**
-- Botao secundario para descartar/excluir rascunho (com confirmacao via AlertDialog)
-
-### 3. `src/pages/Sales.tsx` (MODIFICAR)
-
-- Ler query param `from_draft` na URL
-- Se presente, buscar o rascunho correspondente do banco
-- Pre-preencher o campo `notes` com as observacoes do rascunho + informacoes dos itens rapidos (rotulos e quantidades para referencia)
-- Abrir automaticamente o dialog de Nova Venda
-- Apos a venda ser criada com sucesso (dentro de `createSaleMutation.onSuccess`), atualizar o status do rascunho para `reconciled`
-- Limpar o query param da URL
-
-### 4. `src/pages/Dashboard.tsx` (MODIFICAR)
-
-- Importar e renderizar `EventDraftsBanner` logo abaixo de `SystemAlerts`
-
-### 5. `src/App.tsx` (MODIFICAR)
-
-- Adicionar rota protegida `/evento/conciliacao` para `EventReconciliation`
-
-## Fluxo do Usuario
-
-```text
-Dashboard/Vendas
-    |
-    v
-[Banner: "Voce tem X rascunhos pendentes"]
-    |
-    v  (clique em "Conciliar")
-    |
-[Pagina de Conciliacao - Lista de Cards]
-    |
-    v  (clique em um card)
-    |
-[Dialog com fotos, itens e notas]
-    |
-    v  (clique em "Oficializar Venda")
-    |
-[Pagina de Vendas - Dialog Nova Venda pre-preenchido]
-    |
-    v  (vendedora seleciona produtos reais e salva)
-    |
-[Rascunho atualizado para 'reconciled' automaticamente]
-```
+Quando a vendedora marca um cliente como "contacted" (via botao ou drag-and-drop), o campo `contacted_at` sera atualizado para `new Date().toISOString()`, reiniciando o relogio.
 
 ## Detalhes Tecnicos
 
-| Item | Detalhe |
-|------|---------|
-| Banner | Query simples em `event_sale_drafts` com `status = 'pending'`, count only |
-| Conciliacao | Query completa dos rascunhos pendentes com todos os campos |
-| Galeria de fotos | Scroll horizontal com `overflow-x-auto`, imagens vindas de `photo_urls` |
-| Pre-preenchimento | Notas do rascunho concatenadas com lista dos itens rapidos como referencia |
-| Atualizacao do status | `UPDATE event_sale_drafts SET status = 'reconciled' WHERE id = ?` apos sucesso da venda |
-| Navegacao | `useSearchParams` para ler `from_draft` e `useNavigate` para navegar |
-| Sem dependencias novas | Usa apenas o que ja existe no projeto |
+### Migração SQL
 
-## Resumo de Arquivos
+```sql
+ALTER TABLE crm_customer_contacts
+ADD COLUMN contacted_at timestamptz NOT NULL DEFAULT now();
+
+-- Preencher registros existentes
+UPDATE crm_customer_contacts SET contacted_at = created_at;
+```
+
+### Mudanças em `WhatsAppCRM.tsx`
+
+| Mudanca | Detalhe |
+|---------|---------|
+| Nova query `crm-all-contacts` | Busca TODOS os registros de `crm_customer_contacts` (sem filtro de status), retornando `customer_id` e `contacted_at` |
+| Filtro de pendentes atualizado | Exclui clientes com `contacted_at` nos ultimos 30 dias (em vez de apenas `status = "contacted"`) |
+| Query `crm-contacted-customers` | Continua filtrando por `status = "contacted"` (para a coluna Contatados) |
+| Mutation `markCustomerContacted` | Inclui `contacted_at: new Date().toISOString()` no upsert |
+
+### Fluxo corrigido
+
+```text
+Cliente inativo aparece em Pendentes
+    |
+    v (vendedora contata)
+Move para Contatados + contacted_at = agora
+    |
+    v (vendedora converte ou cancela)
+Status muda, mas contacted_at continua recente
+    |
+    v
+Cliente NAO reaparece em Pendentes por 30 dias
+    |
+    v (apos 30 dias sem nova compra)
+Cliente pode reaparecer como inativo novamente
+```
+
+## Arquivos Afetados
 
 | Arquivo | Acao |
-|--------|------|
-| `src/components/dashboard/EventDraftsBanner.tsx` | Criar - banner de alerta |
-| `src/pages/EventReconciliation.tsx` | Criar - pagina de conciliacao |
-| `src/pages/Sales.tsx` | Modificar - pre-preenchimento e atualizacao de status |
-| `src/pages/Dashboard.tsx` | Modificar - adicionar banner |
-| `src/App.tsx` | Modificar - adicionar rota |
+|---------|------|
+| Migration SQL | Adicionar coluna `contacted_at` |
+| `src/pages/WhatsAppCRM.tsx` | Corrigir logica de filtragem e upsert |
 
