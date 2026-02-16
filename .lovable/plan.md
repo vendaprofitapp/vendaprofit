@@ -1,58 +1,60 @@
 
-# WhatsApp CRM - Permitir arrastar clientes inativos e aniversariantes
 
-## Problema
-Ao arrastar um cliente inativo ou aniversariante no Kanban, o sistema bloqueia a acao e exibe um toast "Cliente inativo - contate via WhatsApp" em vez de permitir que o usuario mova o card livremente para a coluna "Contatados".
+# Separar abas do Estoque: Proprio, Sociedade, Parcerias, B2B
 
-## Solucao
+## Resumo
 
-Criar uma tabela no banco de dados para registrar quando clientes (birthday/inactive) sao marcados como contatados, e permitir o drag-and-drop livre para todos os tipos de leads/clientes.
+Reorganizar as abas da pagina de Estoque (`/stock`) removendo as abas "Requisicoes" e "Recebidas" (que ja existem na pagina dedicada `/stock-requests`) e separando o estoque em 4 abas claras:
 
-### 1. Nova tabela: `crm_customer_contacts`
+1. **Proprio** - Somente produtos do usuario (como "Meu Estoque" atual)
+2. **Sociedade** - Produtos de parceiras via Sociedade 1-1 (`is_direct=true`)
+3. **Parcerias** - Produtos de parcerias em grupo (`is_direct=false`)
+4. **B2B** - Exatamente como esta funcionando hoje
 
-Armazena o status de contato de clientes (que nao possuem `lead_cart_items`).
+## Alteracoes
 
-```text
-crm_customer_contacts
----------------------
-id           UUID (PK)
-customer_id  UUID (referencia customers.id)
-owner_id     UUID
-status       TEXT (contacted, converted, cancelled)
-created_at   TIMESTAMPTZ
-```
-
-Com politica RLS para que cada usuario veja apenas seus proprios registros.
-
-### 2. Arquivo: `src/pages/WhatsAppCRM.tsx`
+### Arquivo: `src/pages/StockControl.tsx`
 
 **Remover:**
-- O bloco no `handleDrop` que verifica `sourceTable === "customer"` e exibe toast bloqueando a acao
+- Abas "Requisicoes" (`my-requests`) e "Recebidas" (`incoming-requests`) - ja existem em `/stock-requests`
+- Estado e logica de `myRequests`, `incomingRequests`, `fetchRequests`, `subscribeToRequests`, `handleUpdateRequest`, `handleRequestProduct`, `requestDialogOpen`, `selectedProduct`, `requestQuantity`, `requestNotes`
+- Dialog de "Requisitar Produto"
+
+**Modificar:**
+- Renomear aba "Meu Estoque" para **"Proprio"**
+- Renomear aba "Parceiros" para criar duas abas separadas
 
 **Adicionar:**
-- Nova mutation `markCustomerContacted` que insere um registro em `crm_customer_contacts` com status "contacted"
-- Nova query para buscar clientes ja contatados da tabela `crm_customer_contacts`
-- No `handleDrop`, quando `sourceTable === "customer"`, chamar `markCustomerContacted` em vez de bloquear
-- Filtrar clientes contatados da lista de "Pendentes" (birthday/inactive)
-- Exibir clientes contatados na coluna "Contatados" junto com os leads contatados
-- Botoes de "Converter" e "Descartar" tambem funcionam para clientes contatados (atualizando o status na nova tabela)
+- Separar `fetchPartnerProducts` em duas funcoes:
+  - `fetchDirectPartnerProducts()` - busca produtos de grupos com `is_direct=true` (Sociedade 1-1)
+  - `fetchGroupPartnerProducts()` - busca produtos de grupos com `is_direct=false` (Parcerias)
+- Estado separado: `directPartnerProducts` e `groupPartnerProducts`
+- Aba **"Sociedade"** - exibe `directPartnerProducts` com botao de "Requisitar"
+- Aba **"Parcerias"** - exibe `groupPartnerProducts` com botao de "Requisitar"
+- Manter o Dialog de "Requisitar Produto" para solicitar estoque de parceiras (sociedade e parcerias)
 
-### Fluxo apos a mudanca
+### Estrutura das abas (resultado final)
 
 ```text
-Pendentes                          Contatados
-+----------------------------+     +----------------------------+
-| [Inativo] Maria            |     | [Contatado] Joao           |
-| [Chamar no WhatsApp]       | --> | [Follow-up] [Converter] [X]|
-| (arrastar livremente)      |     |                            |
-+----------------------------+     +----------------------------+
+[ Proprio ] [ Sociedade ] [ Parcerias ] [ B2B ]
 ```
 
-## Detalhes tecnicos
+### Logica de separacao
 
-| Item | Detalhe |
-|------|---------|
-| Nova tabela | `crm_customer_contacts` com RLS por `owner_id` |
-| Arquivo alterado | `src/pages/WhatsAppCRM.tsx` |
-| Queries novas | Buscar clientes contatados, mutation para inserir/atualizar status |
-| Sem dependencias novas | Usa apenas o que ja existe no projeto |
+A query atual de `fetchPartnerProducts` busca todos os grupos do usuario via `group_members`. A separacao sera feita assim:
+
+1. Buscar memberships com `groups!inner(id, is_direct)` para ter a flag
+2. Separar `groupIds` em `directGroupIds` (is_direct=true) e `regularGroupIds` (is_direct=false)
+3. Buscar `product_partnerships` para cada conjunto de grupos separadamente
+4. Carregar produtos de cada conjunto
+
+### Nenhuma alteracao no banco de dados
+
+Apenas reorganizacao da UI.
+
+## Resumo de Arquivos
+
+| Arquivo | Acao |
+|---------|------|
+| `src/pages/StockControl.tsx` | Reorganizar abas, separar parceiros em Sociedade e Parcerias, remover abas de requisicoes |
+
