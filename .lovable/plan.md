@@ -1,72 +1,62 @@
 
 
-# Modo Evento - Backend (Banco de Dados + Storage)
+# Modo Evento - Interface Mobile-First
 
 ## Resumo
 
-Criar a infraestrutura de backend para o "Modo Evento", permitindo que vendedoras criem botoes rapidos e registrem rascunhos de vendas durante eventos presenciais, com fotos e notas de voz.
+Criar uma nova pagina `/evento` dedicada ao registro rapido de vendas em eventos presenciais, com UX 100% mobile-first, operacao com uma mao, e sem distracao.
 
-## Novas Tabelas
+## Arquivos a Criar/Modificar
 
-### 1. `event_quick_buttons`
+### 1. `src/pages/EventMode.tsx` (NOVO)
 
-Botoes customizados para registro rapido durante eventos.
+Pagina principal do Modo Evento com os seguintes componentes integrados:
 
-| Coluna | Tipo | Nullable | Default | Descricao |
-|--------|------|----------|---------|-----------|
-| id | uuid | NOT NULL | gen_random_uuid() | PK |
-| owner_id | uuid | NOT NULL | auth.uid() | Dono do botao |
-| label | text | NOT NULL | - | Rotulo (ex: "Legging") |
-| default_price | numeric | YES | NULL | Preco padrao opcional |
-| color | text | NOT NULL | '#8B5CF6' | Cor hex de exibicao |
-| sort_order | integer | NOT NULL | 0 | Ordem de exibicao |
-| created_at | timestamptz | NOT NULL | now() | - |
+**Cabecalho:**
+- Botao voltar (arrow-left) para sair do modo evento
+- Badge "Modo Evento Ativo" com indicador pulsante
 
-### 2. `event_sale_drafts`
+**Grid de Botoes Rapidos:**
+- Query dos `event_quick_buttons` do usuario ordenados por `sort_order`
+- Botoes grandes e coloridos (usando a cor salva no banco)
+- Clique adiciona item a sacola; clique repetido incrementa quantidade
+- Botao "+" para criar novo botao rapido via dialog simples (label, preco, cor)
 
-Rascunhos de vendas registrados durante o evento.
+**Sacola Atual (lista de itens):**
+- Lista dos itens selecionados com label, quantidade, preco unitario e subtotal
+- Botoes de +/- para ajustar quantidade e remover
 
-| Coluna | Tipo | Nullable | Default | Descricao |
-|--------|------|----------|---------|-----------|
-| id | uuid | NOT NULL | gen_random_uuid() | PK |
-| owner_id | uuid | NOT NULL | auth.uid() | Dono |
-| photo_urls | text[] | YES | '{}' | URLs das fotos das pecas |
-| items | jsonb | NOT NULL | '[]' | Array de itens: [{button_id, label, quantity, price}] |
-| notes | text | YES | NULL | Observacoes / transcricao de voz |
-| estimated_total | numeric | NOT NULL | 0 | Valor total estimado |
-| status | text | NOT NULL | 'pending' | 'pending' ou 'reconciled' |
-| created_at | timestamptz | NOT NULL | now() | - |
-| updated_at | timestamptz | NOT NULL | now() | - |
+**Captura Visual:**
+- Botao grande de camera usando `<input type="file" accept="image/*" capture="environment" multiple />`
+- Miniaturas das fotos tiradas com opcao de remover
 
-### 3. Storage Bucket: `event-photos`
+**Transcricao de Voz:**
+- Botao de microfone usando Web Speech API (`webkitSpeechRecognition`)
+- Feedback visual "Gravando..." com animacao
+- Texto transcrito inserido em textarea editavel
 
-Bucket publico para fotos tiradas durante eventos, com RLS para upload restrito ao dono.
+**Rodape Fixo:**
+- Total estimado em destaque
+- Botao gigante "Salvar Rascunho" que:
+  1. Faz upload paralelo das fotos para bucket `event-photos`
+  2. Salva rascunho em `event_sale_drafts`
+  3. Limpa estado e exibe toast de sucesso
 
-## Politicas RLS
+### 2. `src/App.tsx` (MODIFICAR)
 
-Ambas as tabelas terao politicas identicas ao padrao do projeto:
-- **SELECT**: `owner_id = auth.uid()`
-- **INSERT**: `owner_id = auth.uid()`
-- **UPDATE**: `owner_id = auth.uid()`
-- **DELETE**: `owner_id = auth.uid()`
+- Adicionar import e rota protegida `/evento` para `EventMode`
 
-Storage `event-photos`:
-- **INSERT** (upload): autenticado, path comeca com `uid/`
-- **SELECT** (download): publico
-- **DELETE**: autenticado, path comeca com `uid/`
+### 3. `src/components/layout/Sidebar.tsx` (MODIFICAR)
 
-## Trigger
+- Adicionar link "Modo Evento" no grupo "Estrategias" com icone `Zap`
 
-- `update_updated_at_column` em `event_sale_drafts` para atualizar `updated_at` automaticamente (reutilizando a funcao existente no projeto).
+## Detalhes Tecnicos
 
-## Nenhuma dependencia nova
-
-Usa apenas o que ja existe no projeto.
-
-## Resumo de Arquivos
-
-| Item | Acao |
-|------|------|
-| Migration SQL | Criar tabelas, RLS, bucket e trigger |
-| `src/integrations/supabase/types.ts` | Atualizado automaticamente apos migration |
-
+| Item | Detalhe |
+|------|---------|
+| Pagina | `src/pages/EventMode.tsx` - pagina standalone sem MainLayout (fullscreen mobile) |
+| Rota | `/evento` protegida |
+| Sidebar | Link adicionado no grupo Estrategias |
+| Storage | Upload para bucket `event-photos` no path `{userId}/{timestamp}-{filename}` |
+| Speech API | `webkitSpeechRecognition` com lang `pt-BR`, continuous mode |
+| Sem dependencias novas | Usa apenas o que ja existe no projeto |
