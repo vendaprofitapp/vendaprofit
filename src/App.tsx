@@ -38,6 +38,7 @@ import PurchaseIncentivesSettings from "./pages/PurchaseIncentivesSettings";
 import SecretAreaSettings from "./pages/SecretAreaSettings";
 import SalesVideoSettings from "./pages/SalesVideoSettings";
 import EventMode from "./pages/EventMode";
+import EventReconciliation from "./pages/EventReconciliation";
 
 const queryClient = new QueryClient();
 
@@ -119,6 +120,7 @@ const AppRoutes = () => (
     <Route path="/marketing/area-secreta" element={<ProtectedRoute><SecretAreaSettings /></ProtectedRoute>} />
     <Route path="/marketing/video-vendedor" element={<ProtectedRoute><SalesVideoSettings /></ProtectedRoute>} />
     <Route path="/evento" element={<ProtectedRoute><EventMode /></ProtectedRoute>} />
+    <Route path="/evento/conciliacao" element={<ProtectedRoute><EventReconciliation /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
