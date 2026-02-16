@@ -10,7 +10,12 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import logoVendaProfit from "@/assets/logo-venda-profit.png";
+
+const isStandaloneMode = () =>
+  (window.navigator as any).standalone === true ||
+  window.matchMedia("(display-mode: standalone)").matches;
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -176,7 +181,19 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               href={`/${storeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => onNavigate?.()}
+              onClick={(e) => {
+                if (isStandaloneMode()) {
+                  e.preventDefault();
+                  const url = `${window.location.origin}/${storeSlug}`;
+                  if (navigator.share) {
+                    navigator.share({ title: "Minha Loja", url });
+                  } else {
+                    navigator.clipboard.writeText(url);
+                    toast.success("Link copiado! Cole no navegador para abrir.");
+                  }
+                }
+                onNavigate?.();
+              }}
               className={goldClasses}
             >
               <Store className="h-5 w-5" />
