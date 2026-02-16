@@ -988,6 +988,72 @@ export type Database = {
           },
         ]
       }
+      event_quick_buttons: {
+        Row: {
+          color: string
+          created_at: string
+          default_price: number | null
+          id: string
+          label: string
+          owner_id: string
+          sort_order: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          default_price?: number | null
+          id?: string
+          label: string
+          owner_id?: string
+          sort_order?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          default_price?: number | null
+          id?: string
+          label?: string
+          owner_id?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      event_sale_drafts: {
+        Row: {
+          created_at: string
+          estimated_total: number
+          id: string
+          items: Json
+          notes: string | null
+          owner_id: string
+          photo_urls: string[] | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_total?: number
+          id?: string
+          items?: Json
+          notes?: string | null
+          owner_id?: string
+          photo_urls?: string[] | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          estimated_total?: number
+          id?: string
+          items?: Json
+          notes?: string | null
+          owner_id?: string
+          photo_urls?: string[] | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expense_installments: {
         Row: {
           amount: number
