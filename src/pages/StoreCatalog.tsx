@@ -2268,10 +2268,12 @@ export default function StoreCatalog() {
       )}
 
       {/* Video Sales Bubble */}
-      <VideoSalesBubble 
-        previewUrl={store.bio_video_preview} 
-        fullUrl={store.bio_video_full} 
-      />
+      {(store as any).bio_video_enabled && (
+        <VideoSalesBubble 
+          previewUrl={store.bio_video_preview} 
+          fullUrl={store.bio_video_full} 
+        />
+      )}
 
       {/* Minimal Footer */}
       <footer className="py-8 px-4 border-t border-gray-100 mt-12">

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Award, Shield } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Pencil, Trash2, Award, Shield, Star } from "lucide-react";
 
 const AVAILABLE_FEATURES = [
   { key: "fidelidade", label: "Entrar no Programa Fidelidade" },
@@ -32,16 +34,58 @@ interface LoyaltyLevel {
 
 export default function LoyaltyAdmin() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [levels, setLevels] = useState<LoyaltyLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<LoyaltyLevel | null>(null);
+  const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
 
   // Form state
   const [formName, setFormName] = useState("");
   const [formMinSpent, setFormMinSpent] = useState("");
   const [formColor, setFormColor] = useState("#8B5CF6");
   const [formFeatures, setFormFeatures] = useState<string[]>([]);
+
+  // Fetch loyalty_enabled from store_settings
+  const { data: storeSettings } = useQuery({
+    queryKey: ["loyalty-enabled-setting", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_settings")
+        .select("id, loyalty_enabled")
+        .eq("owner_id", user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (storeSettings) {
+      setLoyaltyEnabled((storeSettings as any).loyalty_enabled ?? false);
+    }
+  }, [storeSettings]);
+
+  const toggleLoyaltyMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (!storeSettings?.id) return;
+      const { error } = await supabase
+        .from("store_settings")
+        .update({ loyalty_enabled: enabled })
+        .eq("id", storeSettings.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["loyalty-enabled-setting"] });
+    },
+  });
+
+  function handleToggleLoyalty(checked: boolean) {
+    setLoyaltyEnabled(checked);
+    toggleLoyaltyMutation.mutate(checked);
+  }
 
   useEffect(() => {
     if (user) fetchLevels();
@@ -184,6 +228,24 @@ export default function LoyaltyAdmin() {
             Novo Nível
           </Button>
         </div>
+
+        {/* Toggle de ativação */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+              <div className="space-y-0.5">
+                <Label className="font-medium flex items-center gap-2">
+                  <Star className="h-4 w-4 text-amber-500" />
+                  Ativar Programa de Fidelidade
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Exibe o nível de fidelidade do cliente na sua loja
+                </p>
+              </div>
+              <Switch checked={loyaltyEnabled} onCheckedChange={handleToggleLoyalty} />
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
