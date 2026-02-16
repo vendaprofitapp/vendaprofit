@@ -30,6 +30,7 @@ import Categories from "./pages/Categories";
 import Orders from "./pages/Orders";
 import Tutorial from "./pages/Tutorial";
 import Marketing from "./pages/Marketing";
+import WhatsAppCRM from "./pages/WhatsAppCRM";
 import LoyaltyAdmin from "./pages/LoyaltyAdmin";
 import BazarAdmin from "./pages/BazarAdmin";
 import B2BOrders from "./pages/B2BOrders";
@@ -109,6 +110,7 @@ const AppRoutes = () => (
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
     <Route path="/tutorial" element={<ProtectedRoute><Tutorial /></ProtectedRoute>} />
     <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
+    <Route path="/marketing/whatsapp" element={<ProtectedRoute><WhatsAppCRM /></ProtectedRoute>} />
     <Route path="/admin/fidelidade" element={<ProtectedRoute><LoyaltyAdmin /></ProtectedRoute>} />
     <Route path="/admin/bazar" element={<ProtectedRoute><BazarAdmin /></ProtectedRoute>} />
     <Route path="/b2b-orders" element={<ProtectedRoute><B2BOrders /></ProtectedRoute>} />
