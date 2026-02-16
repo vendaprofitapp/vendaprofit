@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2, Truck, Download } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
@@ -138,6 +139,7 @@ const statusConfig = {
 
 export default function Sales() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
@@ -1043,6 +1045,18 @@ export default function Sales() {
         setImportedCartId(null);
       }
 
+      // Reconcile event draft if this sale came from one
+      const draftId = searchParams.get("from_draft");
+      if (draftId) {
+        await supabase
+          .from("event_sale_drafts")
+          .update({ status: "reconciled" })
+          .eq("id", draftId);
+        setSearchParams({}, { replace: true });
+        queryClient.invalidateQueries({ queryKey: ["event-drafts-pending"] });
+        queryClient.invalidateQueries({ queryKey: ["event-drafts-pending-count"] });
+      }
+
       // Core lists
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
@@ -1098,6 +1112,21 @@ export default function Sales() {
     setImportCartCode("");
     setImportedCartId(null);
   };
+
+  // Handle from_draft query param (event reconciliation)
+  const fromDraftId = searchParams.get("from_draft");
+  const draftNotesParam = searchParams.get("draft_notes");
+
+  useEffect(() => {
+    if (fromDraftId && draftNotesParam) {
+      setNotes(decodeURIComponent(draftNotesParam));
+      setIsNewSaleOpen(true);
+      // Clean draft_notes from URL but keep from_draft for reconciliation on success
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("draft_notes");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [fromDraftId]);
 
   const handleImportCart = async () => {
     if (!importCartCode.trim()) return;

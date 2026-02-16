@@ -6,6 +6,7 @@ import { LowStockAlert } from "@/components/dashboard/LowStockAlert";
 import { SalesChart } from "@/components/dashboard/SalesChart";
 import { TopProducts } from "@/components/dashboard/TopProducts";
 import { SystemAlerts } from "@/components/dashboard/SystemAlerts";
+import { EventDraftsBanner } from "@/components/dashboard/EventDraftsBanner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -112,6 +113,9 @@ export default function Dashboard() {
 
       {/* System Alerts */}
       <SystemAlerts />
+
+      {/* Event Drafts Banner */}
+      <EventDraftsBanner />
 
       {/* Metrics Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
