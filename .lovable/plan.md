@@ -1,31 +1,35 @@
 
 
-# Correcao do Botao Gold "Minha Loja"
+# Fix: "Ver Minha Loja" Abrindo na Aba Atual
 
-## Problemas Identificados
+## Problema
 
-1. **404**: O botao abre a URL `/l/${storeSlug}`, mas o roteamento do app usa `/:slug` (sem o prefixo `/l/`). Isso faz a URL nao corresponder a nenhuma rota valida.
-2. **Nome**: O botao mostra "Minha Loja" e precisa ser renomeado para "Ver Minha Loja".
+Ao clicar no botao, a nova aba abre corretamente, mas a aba atual tambem navega para a URL da loja. Isso acontece por causa de comportamento inconsistente do `window.open` em alguns navegadores.
 
 ## Solucao
 
+Trocar o `<button>` + `window.open` por um `<a>` com `target="_blank"` e `rel="noopener noreferrer"`. Essa e a forma mais confiavel de abrir um link em nova aba sem afetar a aba atual.
+
 ### Arquivo: `src/components/layout/Sidebar.tsx`
 
-Duas mudancas simples:
+**Mudancas:**
 
-1. **Corrigir URL** (linha 133): Trocar `/l/${storeSlug}` por `/${storeSlug}`
+1. Quando `storeSlug` existe: renderizar um `<a href="/{slug}" target="_blank" rel="noopener noreferrer">` com o estilo gold
+2. Quando nao existe slug: renderizar um `<button>` que navega para `/my-store` (configuracoes)
+3. Remover a funcao `handleVisitStore` e o `window.open`
+
+**Logica simplificada:**
 
 ```
-// De:
-window.open(`${window.location.origin}/l/${storeSlug}`, "_blank");
-
-// Para:
-window.open(`${window.location.origin}/${storeSlug}`, "_blank");
+Se tem storeSlug:
+  <a href="/{slug}" target="_blank"> Ver Minha Loja </a>
+Senao:
+  <button onClick={navigate('/my-store')}> Ver Minha Loja </button>
 ```
 
-2. **Renomear botao** (linha ~188): Trocar o texto de "Minha Loja" para "Ver Minha Loja"
+Ambos manterao o mesmo estilo dourado.
 
 | Arquivo | Acao |
 |---------|------|
-| `src/components/layout/Sidebar.tsx` | Corrigir URL e renomear botao |
+| `src/components/layout/Sidebar.tsx` | Trocar button/window.open por tag `<a>` com target="_blank" |
 
