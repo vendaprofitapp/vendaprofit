@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock,
   Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package,
   Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
-  Megaphone, Award, DollarSign,
+  Megaphone, Award, DollarSign, CreditCard, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +41,9 @@ const navGroups: NavGroup[] = [
       { icon: UserCheck, label: "Clientes", path: "/customers" },
       { icon: Megaphone, label: "Marketing", path: "/marketing" },
       { icon: Award, label: "Fidelidade", path: "/admin/fidelidade" },
+      { icon: CreditCard, label: "Incentivos", path: "/marketing/incentivos" },
+      { icon: Lock, label: "Área Secreta", path: "/marketing/area-secreta" },
+      { icon: Video, label: "Vídeo Vendedor", path: "/marketing/video-vendedor" },
     ],
   },
   {

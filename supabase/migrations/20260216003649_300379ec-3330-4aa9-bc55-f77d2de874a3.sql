@@ -1,0 +1,1 @@
+ALTER TABLE public.store_settings ADD COLUMN bio_video_enabled boolean DEFAULT false;

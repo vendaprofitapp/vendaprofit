@@ -11,10 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers, Video, Lock, Eye, EyeOff, Plus, Trash2, Gift, Truck, Star, Crown, CreditCard } from "lucide-react";
-import { VideoUploader } from "@/components/admin/VideoUploader";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type PurchaseIncentivesConfig, type IncentiveTier, defaultIncentivesConfig } from "@/components/catalog/PurchaseIncentives";
 
 // Filter button configuration type
 interface FilterButtonConfig {
@@ -70,12 +68,6 @@ interface StoreSettings {
   show_store_description: boolean;
   custom_domain: string | null;
   filter_buttons_config: FilterButtonsConfig | null;
-  bio_video_preview: string | null;
-  bio_video_full: string | null;
-  secret_area_active: boolean | null;
-  secret_area_name: string | null;
-  secret_area_password: string | null;
-  purchase_incentives_config: PurchaseIncentivesConfig | null;
   favicon_url: string | null;
   page_title: string | null;
 }
@@ -123,11 +115,6 @@ export default function StoreSettings() {
     show_store_description: true,
     custom_domain: "",
     filter_buttons_config: defaultFilterButtonsConfig,
-    secret_area_active: false,
-    secret_area_name: "Área VIP",
-    loyalty_enabled: false,
-    secret_area_password: "",
-    purchase_incentives_config: defaultIncentivesConfig,
     page_title: "",
     favicon_url: "",
   });
@@ -137,9 +124,7 @@ export default function StoreSettings() {
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const [bannerUrlMobile, setBannerUrlMobile] = useState<string | null>(null);
   const [customFontUrl, setCustomFontUrl] = useState<string | null>(null);
-  const [bioVideoPreview, setBioVideoPreview] = useState<string | null>(null);
-  const [bioVideoFull, setBioVideoFull] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [uploadingBannerMobile, setUploadingBannerMobile] = useState(false);
@@ -187,7 +172,6 @@ export default function StoreSettings() {
       const result = {
         ...data,
         filter_buttons_config: (data.filter_buttons_config as unknown as FilterButtonsConfig) || defaultFilterButtonsConfig,
-        purchase_incentives_config: (data.purchase_incentives_config as unknown as PurchaseIncentivesConfig) || defaultIncentivesConfig,
       };
       return result as StoreSettings;
     },
@@ -262,11 +246,6 @@ export default function StoreSettings() {
         show_store_description: storeSettings.show_store_description ?? true,
         custom_domain: storeSettings.custom_domain || "",
         filter_buttons_config: storeSettings.filter_buttons_config || defaultFilterButtonsConfig,
-        secret_area_active: storeSettings.secret_area_active ?? false,
-        secret_area_name: storeSettings.secret_area_name || "Área VIP",
-        loyalty_enabled: (storeSettings as any).loyalty_enabled ?? false,
-        secret_area_password: storeSettings.secret_area_password || "",
-        purchase_incentives_config: (storeSettings.purchase_incentives_config as unknown as PurchaseIncentivesConfig) || defaultIncentivesConfig,
         page_title: (storeSettings as any).page_title || "",
         favicon_url: (storeSettings as any).favicon_url || "",
       });
@@ -275,8 +254,6 @@ export default function StoreSettings() {
       setBannerUrl(storeSettings.banner_url);
       setBannerUrlMobile(storeSettings.banner_url_mobile);
       setCustomFontUrl(storeSettings.custom_font_url);
-      setBioVideoPreview(storeSettings.bio_video_preview);
-      setBioVideoFull(storeSettings.bio_video_full);
     }
   }, [storeSettings]);
 
@@ -571,13 +548,6 @@ export default function StoreSettings() {
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
-            bio_video_preview: bioVideoPreview,
-            bio_video_full: bioVideoFull,
-            secret_area_active: formData.secret_area_active,
-            secret_area_name: formData.secret_area_name || null,
-            secret_area_password: formData.secret_area_password || null,
-            loyalty_enabled: formData.loyalty_enabled,
-            purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
             page_title: formData.page_title || null,
             favicon_url: faviconUrl || null,
             ...fontData,
@@ -614,13 +584,6 @@ export default function StoreSettings() {
             show_store_description: formData.show_store_description,
             custom_domain: formData.custom_domain || null,
             filter_buttons_config: JSON.parse(JSON.stringify(formData.filter_buttons_config)),
-            bio_video_preview: bioVideoPreview,
-            bio_video_full: bioVideoFull,
-            secret_area_active: formData.secret_area_active,
-            secret_area_name: formData.secret_area_name || null,
-            secret_area_password: formData.secret_area_password || null,
-            loyalty_enabled: formData.loyalty_enabled,
-            purchase_incentives_config: JSON.parse(JSON.stringify(formData.purchase_incentives_config)),
             page_title: formData.page_title || null,
             favicon_url: faviconUrl || null,
             ...fontData,
@@ -1544,461 +1507,6 @@ export default function StoreSettings() {
           </CardContent>
         </Card>
 
-        {/* 9 - Área Secreta / VIP */}
-        <Card className="border-2 border-rose-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-rose-500" />
-              Área Secreta / VIP
-            </CardTitle>
-            <CardDescription>
-              Crie uma área exclusiva para produtos especiais. Produtos marcados como "Secreto" só ficam visíveis para quem tem a senha.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Loyalty toggle */}
-            <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
-              <div className="space-y-0.5">
-                <Label className="font-medium flex items-center gap-2">
-                  <Star className="h-4 w-4 text-amber-500" />
-                  Programa de Fidelidade
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Exibe o nível de fidelidade do cliente na sua loja
-                </p>
-              </div>
-              <Switch
-                checked={formData.loyalty_enabled}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, loyalty_enabled: checked }))}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-rose-50 dark:bg-rose-950/20 rounded-lg">
-              <div className="space-y-0.5">
-                <Label className="font-medium flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-rose-500" />
-                  Ativar Área Secreta na Loja
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Quando ativada, um botão aparecerá na loja para acessar produtos exclusivos
-                </p>
-              </div>
-              <Switch
-                checked={formData.secret_area_active}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, secret_area_active: checked }))}
-              />
-            </div>
-
-            {formData.secret_area_active && (
-              <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="secret_area_name" className="font-medium">
-                      Nome do Botão
-                    </Label>
-                    <Input
-                      id="secret_area_name"
-                      value={formData.secret_area_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, secret_area_name: e.target.value }))}
-                      placeholder="Área VIP"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Ex: "Clube VIP", "Exclusivo", "Área Secreta"
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="secret_area_password" className="font-medium">
-                      Senha de Acesso
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="secret_area_password"
-                        type={showPassword ? "text" : "password"}
-                        value={formData.secret_area_password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, secret_area_password: e.target.value }))}
-                        placeholder="Digite a senha..."
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Ex: VIP2024, EXCLUSIVO, sua senha personalizada
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-muted/30 rounded-lg border">
-                  <Label className="font-medium mb-3 block">Prévia do Botão</Label>
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      className="px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      {formData.secret_area_name || "Área VIP"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">💡 Como funciona:</p>
-                  <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
-                    <li>• Marque produtos como "Secreto" 🔒 no seletor de marketing (ao editar produto/variação)</li>
-                    <li>• Produtos secretos ficam invisíveis na listagem principal da loja</li>
-                    <li>• O cliente clica no botão, digita a senha e vê os produtos exclusivos</li>
-                    <li>• Use para clientes VIP, promoções secretas ou lançamentos exclusivos</li>
-                  </ul>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 10 - Incentivos de Compra */}
-        <Card className="border-2 border-emerald-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-emerald-500" />
-              Incentivos de Compra
-            </CardTitle>
-            <CardDescription>
-              Configure parcelamento, desconto PIX e faixas de benefícios para seus clientes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Enable/Disable */}
-            <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg">
-              <div className="space-y-0.5">
-                <Label className="font-medium flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-emerald-500" />
-                  Ativar Incentivos de Compra
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Mostra parcelamento, PIX e barra de progresso no carrinho
-                </p>
-              </div>
-              <Switch
-                checked={formData.purchase_incentives_config.enabled}
-                onCheckedChange={(checked) => setFormData(prev => ({
-                  ...prev,
-                  purchase_incentives_config: { ...prev.purchase_incentives_config, enabled: checked }
-                }))}
-              />
-            </div>
-
-            {formData.purchase_incentives_config.enabled && (
-              <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
-                {/* Installments Config */}
-                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-between">
-                    <Label className="font-medium">💳 Parcelamento</Label>
-                    <Switch
-                      checked={formData.purchase_incentives_config.installments.enabled}
-                      onCheckedChange={(checked) => setFormData(prev => ({
-                        ...prev,
-                        purchase_incentives_config: {
-                          ...prev.purchase_incentives_config,
-                          installments: { ...prev.purchase_incentives_config.installments, enabled: checked }
-                        }
-                      }))}
-                    />
-                  </div>
-                  {formData.purchase_incentives_config.installments.enabled && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Máx. parcelas</Label>
-                        <Input
-                          type="number"
-                          min={2}
-                          max={12}
-                          value={formData.purchase_incentives_config.installments.max_installments}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            purchase_incentives_config: {
-                              ...prev.purchase_incentives_config,
-                              installments: { ...prev.purchase_incentives_config.installments, max_installments: parseInt(e.target.value) || 3 }
-                            }
-                          }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Valor mín. por parcela (R$)</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={formData.purchase_incentives_config.installments.min_amount_per_installment}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            purchase_incentives_config: {
-                              ...prev.purchase_incentives_config,
-                              installments: { ...prev.purchase_incentives_config.installments, min_amount_per_installment: parseInt(e.target.value) || 30 }
-                            }
-                          }))}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 pt-5">
-                        <Checkbox
-                          checked={formData.purchase_incentives_config.installments.no_interest}
-                          onCheckedChange={(checked) => setFormData(prev => ({
-                            ...prev,
-                            purchase_incentives_config: {
-                              ...prev.purchase_incentives_config,
-                              installments: { ...prev.purchase_incentives_config.installments, no_interest: !!checked }
-                            }
-                          }))}
-                        />
-                        <Label className="text-sm">Sem juros</Label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* PIX Discount Config */}
-                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-between">
-                    <Label className="font-medium">💰 Desconto PIX</Label>
-                    <Switch
-                      checked={formData.purchase_incentives_config.pix_discount.enabled}
-                      onCheckedChange={(checked) => setFormData(prev => ({
-                        ...prev,
-                        purchase_incentives_config: {
-                          ...prev.purchase_incentives_config,
-                          pix_discount: { ...prev.purchase_incentives_config.pix_discount, enabled: checked }
-                        }
-                      }))}
-                    />
-                  </div>
-                  {formData.purchase_incentives_config.pix_discount.enabled && (
-                    <div className="space-y-2 max-w-xs">
-                      <Label className="text-xs">Percentual de desconto (%)</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={formData.purchase_incentives_config.pix_discount.discount_percent}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          purchase_incentives_config: {
-                            ...prev.purchase_incentives_config,
-                            pix_discount: { ...prev.purchase_incentives_config.pix_discount, discount_percent: parseInt(e.target.value) || 5 }
-                          }
-                        }))}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Tiers Config */}
-                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-                  <Label className="font-medium">🎁 Faixas de Benefícios</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Configure faixas de valor do carrinho e os benefícios correspondentes
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {formData.purchase_incentives_config.tiers.map((tier, index) => {
-                      const emojiOptions = [
-                        { value: "truck", label: "🚚", Icon: Truck },
-                        { value: "gift", label: "🎁", Icon: Gift },
-                        { value: "star", label: "⭐", Icon: Star },
-                        { value: "crown", label: "👑", Icon: Crown },
-                      ];
-                      
-                      return (
-                        <div key={index} className="flex items-center gap-2 p-3 bg-background rounded-lg border">
-                          <select
-                            value={tier.emoji}
-                            onChange={(e) => {
-                              const newTiers = [...formData.purchase_incentives_config.tiers];
-                              newTiers[index] = { ...newTiers[index], emoji: e.target.value };
-                              setFormData(prev => ({
-                                ...prev,
-                                purchase_incentives_config: { ...prev.purchase_incentives_config, tiers: newTiers }
-                              }));
-                            }}
-                            className="w-16 h-9 rounded-md border border-input bg-background px-2 text-sm"
-                          >
-                            {emojiOptions.map(opt => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
-                          <div className="flex-shrink-0 w-24">
-                            <Input
-                              type="number"
-                              min={1}
-                              placeholder="R$"
-                              value={tier.min_value}
-                              onChange={(e) => {
-                                const newTiers = [...formData.purchase_incentives_config.tiers];
-                                newTiers[index] = { ...newTiers[index], min_value: parseInt(e.target.value) || 0 };
-                                setFormData(prev => ({
-                                  ...prev,
-                                  purchase_incentives_config: { ...prev.purchase_incentives_config, tiers: newTiers }
-                                }));
-                              }}
-                              className="h-9"
-                            />
-                          </div>
-                          <Input
-                            placeholder="Benefício"
-                            value={tier.benefit}
-                            onChange={(e) => {
-                              const newTiers = [...formData.purchase_incentives_config.tiers];
-                              newTiers[index] = { ...newTiers[index], benefit: e.target.value };
-                              setFormData(prev => ({
-                                ...prev,
-                                purchase_incentives_config: { ...prev.purchase_incentives_config, tiers: newTiers }
-                              }));
-                            }}
-                            className="h-9 flex-1"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-destructive hover:text-destructive"
-                            onClick={() => {
-                              const newTiers = formData.purchase_incentives_config.tiers.filter((_, i) => i !== index);
-                              setFormData(prev => ({
-                                ...prev,
-                                purchase_incentives_config: { ...prev.purchase_incentives_config, tiers: newTiers }
-                              }));
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newTiers = [...formData.purchase_incentives_config.tiers, { min_value: 0, benefit: "", emoji: "gift" }];
-                      setFormData(prev => ({
-                        ...prev,
-                        purchase_incentives_config: { ...prev.purchase_incentives_config, tiers: newTiers }
-                      }));
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Faixa
-                  </Button>
-                </div>
-
-                {/* Messages Config */}
-                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-                  <Label className="font-medium">💬 Mensagens Personalizadas</Label>
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Ao adicionar produto</Label>
-                      <Input
-                        value={formData.purchase_incentives_config.messages.on_add}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          purchase_incentives_config: {
-                            ...prev.purchase_incentives_config,
-                            messages: { ...prev.purchase_incentives_config.messages, on_add: e.target.value }
-                          }
-                        }))}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">
-                        Perto do frete grátis <span className="text-emerald-500">(use {"${remaining}"} para o valor restante)</span>
-                      </Label>
-                      <Input
-                        value={formData.purchase_incentives_config.messages.near_free_shipping}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          purchase_incentives_config: {
-                            ...prev.purchase_incentives_config,
-                            messages: { ...prev.purchase_incentives_config.messages, near_free_shipping: e.target.value }
-                          }
-                        }))}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Desbloqueou frete grátis</Label>
-                      <Input
-                        value={formData.purchase_incentives_config.messages.unlocked_free_shipping}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          purchase_incentives_config: {
-                            ...prev.purchase_incentives_config,
-                            messages: { ...prev.purchase_incentives_config.messages, unlocked_free_shipping: e.target.value }
-                          }
-                        }))}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Desbloqueou brinde</Label>
-                      <Input
-                        value={formData.purchase_incentives_config.messages.unlocked_gift}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          purchase_incentives_config: {
-                            ...prev.purchase_incentives_config,
-                            messages: { ...prev.purchase_incentives_config.messages, unlocked_gift: e.target.value }
-                          }
-                        }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 11 - Vídeo Vendedor */}
-        <Card className="border-2 border-pink-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5 text-pink-500" />
-              Vídeo Vendedor (Bolinha Flutuante)
-            </CardTitle>
-            <CardDescription>
-              Configure os vídeos que aparecerão na bolinha flutuante da sua loja. A bolinha só aparece se os vídeos estiverem configurados.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <VideoUploader
-                label="Vídeo da Bolinha (Preview - Mudo/Loop)"
-                description="Vídeo curto que aparece na bolinha flutuante. Recomendado: até 10 segundos, formato quadrado."
-                value={bioVideoPreview}
-                onChange={setBioVideoPreview}
-                maxSizeMB={10}
-              />
-              <VideoUploader
-                label="Vídeo de Apresentação (Stories)"
-                description="Vídeo completo exibido ao clicar na bolinha. Formato vertical (9:16) recomendado, estilo Stories."
-                value={bioVideoFull}
-                onChange={setBioVideoFull}
-                maxSizeMB={50}
-              />
-            </div>
-            
-            <div className="bg-pink-50 dark:bg-pink-950/20 p-4 rounded-lg">
-              <p className="text-sm font-medium text-pink-800 dark:text-pink-200 mb-2">💡 Dicas para seus vídeos:</p>
-              <ul className="text-sm text-pink-700 dark:text-pink-300 space-y-1">
-                <li>• Faça upload diretamente ou cole uma URL externa (MP4)</li>
-                <li>• O vídeo da bolinha deve ser curto e chamar atenção (máx. 10MB)</li>
-                <li>• O vídeo de apresentação pode ter até 60 segundos (máx. 50MB)</li>
-                <li>• Fale diretamente com seu cliente, seja autêntico!</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Save Button */}
         <div className="flex justify-end">
