@@ -4,15 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { MessageCircle, ShoppingCart, Clock, Users, Megaphone, Package, Sparkles, Search, RefreshCw, CheckCircle2, BarChart3, UserPlus, Zap, Store } from "lucide-react";
+import { Users, Megaphone, Sparkles, Search, RefreshCw, BarChart3, UserPlus, Zap, Store } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow, subDays, startOfDay } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { subDays, startOfDay } from "date-fns";
 import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
 import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
 import { GroupRecommendationCard } from "@/components/marketing/GroupRecommendationCard";
@@ -23,29 +21,10 @@ import { ActiveCampaignsList } from "@/components/marketing/ActiveCampaignsList"
 import { AdStockPausedCard } from "@/components/marketing/AdStockPausedCard";
 import { ExternalShowcasesSection } from "@/components/marketing/ExternalShowcasesSection";
 
-interface LeadWithCart {
-  id: string;
-  name: string;
-  whatsapp: string;
-  created_at: string;
-  last_seen_at: string | null;
-  store_name: string;
-  items: {
-    id: string;
-    product_name: string;
-    variant_color: string | null;
-    selected_size: string | null;
-    quantity: number;
-    unit_price: number;
-    status: string;
-  }[];
-  cart_total: number;
-}
-
 export default function Marketing() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState("content");
   const [analyticsDateRange, setAnalyticsDateRange] = useState({
     start: startOfDay(subDays(new Date(), 6)),
     end: new Date(),
@@ -78,45 +57,6 @@ export default function Marketing() {
       toast.success("Configuração atualizada!");
     },
     onError: () => toast.error("Erro ao atualizar configuração"),
-  });
-
-  // Fetch leads for pending/contacted tabs
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["marketing-leads", user?.id, activeTab],
-    queryFn: async () => {
-      const targetStatus = activeTab === "pending" ? "abandoned" : "contacted";
-      const { data: cartItems, error } = await supabase
-        .from("lead_cart_items")
-        .select("*, store_leads!inner(id, name, whatsapp, created_at, last_seen_at, owner_id, store_id)")
-        .eq("status", targetStatus)
-        .eq("store_leads.owner_id", user!.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      const leadMap = new Map<string, LeadWithCart>();
-      (cartItems || []).forEach((item: any) => {
-        const lead = item.store_leads;
-        if (!leadMap.has(lead.id)) {
-          leadMap.set(lead.id, {
-            id: lead.id, name: lead.name, whatsapp: lead.whatsapp,
-            created_at: lead.created_at, last_seen_at: lead.last_seen_at,
-            store_name: storeSettings?.store_name || "nossa loja",
-            items: [], cart_total: 0,
-          });
-        }
-        const entry = leadMap.get(lead.id)!;
-        entry.items.push({
-          id: item.id, product_name: item.product_name, variant_color: item.variant_color,
-          selected_size: item.selected_size, quantity: item.quantity,
-          unit_price: item.unit_price, status: item.status,
-        });
-        entry.cart_total += item.unit_price * item.quantity;
-      });
-
-      return Array.from(leadMap.values());
-    },
-    enabled: !!user?.id && (activeTab === "pending" || activeTab === "contacted"),
   });
 
   // Fetch marketing tasks
@@ -210,32 +150,6 @@ export default function Marketing() {
     onError: (err: any) => toast.error(err.message || "Erro ao gerar insights"),
   });
 
-  const markContacted = useMutation({
-    mutationFn: async (leadId: string) => {
-      const { error } = await supabase
-        .from("lead_cart_items")
-        .update({ status: "contacted" })
-        .eq("lead_id", leadId)
-        .eq("status", "abandoned");
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["marketing-leads"] });
-      toast.success("Lead marcado como contatado!");
-    },
-  });
-
-  const sendWhatsApp = (lead: LeadWithCart) => {
-    const storeName = storeSettings?.store_name || "nossa loja";
-    const message = `Oi ${lead.name}, aqui é da ${storeName}. Vi que você separou algumas peças lindas no carrinho, mas não finalizou. Posso te ajudar com alguma dúvida sobre tamanhos ou frete?`;
-    const phone = lead.whatsapp.replace(/\D/g, "");
-    window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
-    markContacted.mutate(lead.id);
-  };
-
-  const formatPrice = (price: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price);
-
   const boostTasks = adTasks.filter((t: any) => t.task_type === "ad_boost_meta" || t.task_type === "ad_google_pmax");
   const stockPausedTasks = adTasks.filter((t: any) => t.task_type === "ad_stock_paused");
 
@@ -248,8 +162,8 @@ export default function Marketing() {
               <Megaphone className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Marketing</h1>
-              <p className="text-sm text-muted-foreground">Recupere vendas e otimize seu catálogo</p>
+              <h1 className="text-2xl font-bold">Redes Sociais / Google</h1>
+              <p className="text-sm text-muted-foreground">Otimize seu catálogo e alcance</p>
             </div>
           </div>
           {(activeTab === "content" || activeTab === "seo" || activeTab === "groups" || activeTab === "ads") && (
@@ -284,11 +198,7 @@ export default function Marketing() {
         </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-4xl grid-cols-8">
-            <TabsTrigger value="pending" className="gap-1.5 text-xs">
-              <ShoppingCart className="h-3.5 w-3.5" />
-              Pendentes
-            </TabsTrigger>
+          <TabsList className="grid w-full max-w-3xl grid-cols-6">
             <TabsTrigger value="content" className="gap-1.5 text-xs">
               <Sparkles className="h-3.5 w-3.5" />
               Conteúdo
@@ -313,26 +223,7 @@ export default function Marketing() {
               <Store className="h-3.5 w-3.5" />
               Vitrines
             </TabsTrigger>
-            <TabsTrigger value="contacted" className="gap-1.5 text-xs">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Contatados
-            </TabsTrigger>
           </TabsList>
-
-          {/* Pending Tab */}
-          <TabsContent value="pending" className="mt-4">
-            {isLoading ? (
-              <LoadingSkeleton />
-            ) : leads.length === 0 ? (
-              <EmptyState icon={ShoppingCart} title="Nenhum carrinho abandonado" description="Quando visitantes deixarem itens no carrinho sem finalizar, eles aparecerão aqui." />
-            ) : (
-              <div className="space-y-4">
-                {leads.map(lead => (
-                  <AbandonedCartCard key={lead.id} lead={lead} onSendWhatsApp={() => sendWhatsApp(lead)} formatPrice={formatPrice} isPending />
-                ))}
-              </div>
-            )}
-          </TabsContent>
 
           {/* Content Tab */}
           <TabsContent value="content" className="mt-4">
@@ -408,22 +299,16 @@ export default function Marketing() {
           {/* Ads Tab */}
           <TabsContent value="ads" className="mt-4">
             <div className="space-y-4">
-              {/* Stock-paused alerts first */}
               {stockPausedTasks.map((task: any) => (
                 <AdStockPausedCard key={task.id} task={task} />
               ))}
-
-              {/* Boost recommendations */}
               {boostTasks.map((task: any) => (
                 <AdBoostCard key={task.id} task={task} integrations={adIntegrations as any} onCreated={() => {
                   queryClient.invalidateQueries({ queryKey: ["ad-campaigns"] });
                   queryClient.invalidateQueries({ queryKey: ["ad-tasks"] });
                 }} />
               ))}
-
-              {/* Active campaigns */}
               <ActiveCampaignsList campaigns={adCampaigns as any} />
-
               {boostTasks.length === 0 && stockPausedTasks.length === 0 && (adCampaigns as any[]).length === 0 && (
                 <EmptyState
                   icon={Zap}
@@ -437,21 +322,6 @@ export default function Marketing() {
           {/* Showcases Tab */}
           <TabsContent value="showcases" className="mt-4">
             <ExternalShowcasesSection />
-          </TabsContent>
-
-          {/* Contacted Tab */}
-          <TabsContent value="contacted" className="mt-4">
-            {isLoading ? (
-              <LoadingSkeleton />
-            ) : leads.length === 0 ? (
-              <EmptyState icon={Users} title="Nenhum lead contatado ainda" description="Leads contatados aparecerão aqui após você enviar o WhatsApp." />
-            ) : (
-              <div className="space-y-4">
-                {leads.map(lead => (
-                  <AbandonedCartCard key={lead.id} lead={lead} onSendWhatsApp={() => sendWhatsApp(lead)} formatPrice={formatPrice} isPending={false} />
-                ))}
-              </div>
-            )}
           </TabsContent>
         </Tabs>
       </div>
@@ -478,63 +348,6 @@ function EmptyState({ icon: Icon, title, description }: { icon: any; title: stri
       <Icon className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
       <h3 className="text-lg font-medium">{title}</h3>
       <p className="text-sm text-muted-foreground mt-1">{description}</p>
-    </div>
-  );
-}
-
-function AbandonedCartCard({ lead, onSendWhatsApp, formatPrice, isPending }: {
-  lead: LeadWithCart;
-  onSendWhatsApp: () => void;
-  formatPrice: (p: number) => string;
-  isPending: boolean;
-}) {
-  const timeAgo = formatDistanceToNow(new Date(lead.created_at), { addSuffix: true, locale: ptBR });
-
-  return (
-    <div className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-base truncate">{lead.name}</h3>
-            {isPending ? (
-              <Badge variant="destructive" className="text-[10px] shrink-0">Recuperar</Badge>
-            ) : (
-              <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{timeAgo}</span>
-            <span className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />{lead.items.length} {lead.items.length === 1 ? "item" : "itens"}</span>
-          </div>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-lg font-bold text-primary">{formatPrice(lead.cart_total)}</p>
-        </div>
-      </div>
-
-      <div className="space-y-1.5 text-sm">
-        {lead.items.slice(0, 3).map(item => (
-          <div key={item.id} className="flex justify-between text-muted-foreground">
-            <span className="truncate flex-1">
-              {item.product_name}
-              {item.variant_color ? ` - ${item.variant_color}` : ""}
-              {item.selected_size ? ` (${item.selected_size})` : ""}
-              {item.quantity > 1 ? ` x${item.quantity}` : ""}
-            </span>
-            <span className="ml-2 shrink-0">{formatPrice(item.unit_price * item.quantity)}</span>
-          </div>
-        ))}
-        {lead.items.length > 3 && (
-          <p className="text-xs text-muted-foreground">+{lead.items.length - 3} mais itens</p>
-        )}
-      </div>
-
-      {isPending && (
-        <Button onClick={onSendWhatsApp} className="w-full gap-2 font-semibold" style={{ backgroundColor: "#25D366" }}>
-          <MessageCircle className="h-4 w-4" />
-          Enviar WhatsApp
-        </Button>
-      )}
     </div>
   );
 }
