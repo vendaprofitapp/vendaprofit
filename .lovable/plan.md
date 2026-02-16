@@ -1,62 +1,103 @@
 
 
-# Modo Evento - Interface Mobile-First
+# Fluxo de Conciliacao Pos-Evento
 
 ## Resumo
 
-Criar uma nova pagina `/evento` dedicada ao registro rapido de vendas em eventos presenciais, com UX 100% mobile-first, operacao com uma mao, e sem distracao.
+Criar o fluxo completo de conciliacao de rascunhos do Modo Evento, permitindo que a vendedora transforme rascunhos rapidos em vendas oficiais apos o evento, com alerta no Dashboard e interface dedicada.
 
 ## Arquivos a Criar/Modificar
 
-### 1. `src/pages/EventMode.tsx` (NOVO)
+### 1. `src/components/dashboard/EventDraftsBanner.tsx` (NOVO)
 
-Pagina principal do Modo Evento com os seguintes componentes integrados:
+Componente de alerta que aparece no Dashboard e na pagina de Vendas quando ha rascunhos pendentes.
 
-**Cabecalho:**
-- Botao voltar (arrow-left) para sair do modo evento
-- Badge "Modo Evento Ativo" com indicador pulsante
+- Query em `event_sale_drafts` filtrando `status = 'pending'` e `owner_id = auth.uid()`
+- Exibe card com icone Zap, contagem de rascunhos pendentes e botao "Conciliar"
+- Botao navega para `/evento/conciliacao`
+- Se nao houver rascunhos pendentes, retorna null (nao renderiza nada)
+- Estilo similar aos cards existentes em SystemAlerts (cor violeta/roxa para combinar com o tema do Modo Evento)
 
-**Grid de Botoes Rapidos:**
-- Query dos `event_quick_buttons` do usuario ordenados por `sort_order`
-- Botoes grandes e coloridos (usando a cor salva no banco)
-- Clique adiciona item a sacola; clique repetido incrementa quantidade
-- Botao "+" para criar novo botao rapido via dialog simples (label, preco, cor)
+### 2. `src/pages/EventReconciliation.tsx` (NOVO)
 
-**Sacola Atual (lista de itens):**
-- Lista dos itens selecionados com label, quantidade, preco unitario e subtotal
-- Botoes de +/- para ajustar quantidade e remover
+Pagina dedicada de conciliacao com lista de rascunhos pendentes.
 
-**Captura Visual:**
-- Botao grande de camera usando `<input type="file" accept="image/*" capture="environment" multiple />`
-- Miniaturas das fotos tiradas com opcao de remover
+**Layout:**
+- MainLayout com cabecalho "Conciliacao de Rascunhos"
+- Lista de cards, cada um representando um rascunho pendente
+- Card compacto mostrando: data/hora, quantidade de itens, total estimado, miniatura da primeira foto
 
-**Transcricao de Voz:**
-- Botao de microfone usando Web Speech API (`webkitSpeechRecognition`)
-- Feedback visual "Gravando..." com animacao
-- Texto transcrito inserido em textarea editavel
+**Detalhe do Rascunho (Dialog):**
+- Ao clicar em um card, abre um Dialog largo com:
+  - Carrossel/galeria das fotos (usando scroll horizontal com miniaturas clicaveis)
+  - Lista dos itens rapidos selecionados (label, quantidade, preco)
+  - Texto das observacoes (transcritas por voz)
+  - Botao "Oficializar Venda" que navega para `/sales?from_draft=DRAFT_ID`
 
-**Rodape Fixo:**
-- Total estimado em destaque
-- Botao gigante "Salvar Rascunho" que:
-  1. Faz upload paralelo das fotos para bucket `event-photos`
-  2. Salva rascunho em `event_sale_drafts`
-  3. Limpa estado e exibe toast de sucesso
+**Acao de Descartar:**
+- Botao secundario para descartar/excluir rascunho (com confirmacao via AlertDialog)
 
-### 2. `src/App.tsx` (MODIFICAR)
+### 3. `src/pages/Sales.tsx` (MODIFICAR)
 
-- Adicionar import e rota protegida `/evento` para `EventMode`
+- Ler query param `from_draft` na URL
+- Se presente, buscar o rascunho correspondente do banco
+- Pre-preencher o campo `notes` com as observacoes do rascunho + informacoes dos itens rapidos (rotulos e quantidades para referencia)
+- Abrir automaticamente o dialog de Nova Venda
+- Apos a venda ser criada com sucesso (dentro de `createSaleMutation.onSuccess`), atualizar o status do rascunho para `reconciled`
+- Limpar o query param da URL
 
-### 3. `src/components/layout/Sidebar.tsx` (MODIFICAR)
+### 4. `src/pages/Dashboard.tsx` (MODIFICAR)
 
-- Adicionar link "Modo Evento" no grupo "Estrategias" com icone `Zap`
+- Importar e renderizar `EventDraftsBanner` logo abaixo de `SystemAlerts`
+
+### 5. `src/App.tsx` (MODIFICAR)
+
+- Adicionar rota protegida `/evento/conciliacao` para `EventReconciliation`
+
+## Fluxo do Usuario
+
+```text
+Dashboard/Vendas
+    |
+    v
+[Banner: "Voce tem X rascunhos pendentes"]
+    |
+    v  (clique em "Conciliar")
+    |
+[Pagina de Conciliacao - Lista de Cards]
+    |
+    v  (clique em um card)
+    |
+[Dialog com fotos, itens e notas]
+    |
+    v  (clique em "Oficializar Venda")
+    |
+[Pagina de Vendas - Dialog Nova Venda pre-preenchido]
+    |
+    v  (vendedora seleciona produtos reais e salva)
+    |
+[Rascunho atualizado para 'reconciled' automaticamente]
+```
 
 ## Detalhes Tecnicos
 
 | Item | Detalhe |
 |------|---------|
-| Pagina | `src/pages/EventMode.tsx` - pagina standalone sem MainLayout (fullscreen mobile) |
-| Rota | `/evento` protegida |
-| Sidebar | Link adicionado no grupo Estrategias |
-| Storage | Upload para bucket `event-photos` no path `{userId}/{timestamp}-{filename}` |
-| Speech API | `webkitSpeechRecognition` com lang `pt-BR`, continuous mode |
+| Banner | Query simples em `event_sale_drafts` com `status = 'pending'`, count only |
+| Conciliacao | Query completa dos rascunhos pendentes com todos os campos |
+| Galeria de fotos | Scroll horizontal com `overflow-x-auto`, imagens vindas de `photo_urls` |
+| Pre-preenchimento | Notas do rascunho concatenadas com lista dos itens rapidos como referencia |
+| Atualizacao do status | `UPDATE event_sale_drafts SET status = 'reconciled' WHERE id = ?` apos sucesso da venda |
+| Navegacao | `useSearchParams` para ler `from_draft` e `useNavigate` para navegar |
 | Sem dependencias novas | Usa apenas o que ja existe no projeto |
+
+## Resumo de Arquivos
+
+| Arquivo | Acao |
+|--------|------|
+| `src/components/dashboard/EventDraftsBanner.tsx` | Criar - banner de alerta |
+| `src/pages/EventReconciliation.tsx` | Criar - pagina de conciliacao |
+| `src/pages/Sales.tsx` | Modificar - pre-preenchimento e atualizacao de status |
+| `src/pages/Dashboard.tsx` | Modificar - adicionar banner |
+| `src/App.tsx` | Modificar - adicionar rota |
+
