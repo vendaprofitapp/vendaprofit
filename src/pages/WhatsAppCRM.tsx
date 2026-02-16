@@ -5,14 +5,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   MessageCircle, ShoppingCart, UserPlus, Clock, CheckCircle, X,
-  Cake, UserX, Phone,
+  Cake, UserX, Phone, GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow, subDays, differenceInDays } from "date-fns";
+import { formatDistanceToNow, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 type FilterType = "all" | "abandoned" | "new" | "contacted" | "birthday" | "inactive";
@@ -32,8 +31,8 @@ interface UnifiedLead {
 export default function WhatsAppCRM() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("pending");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   const { data: storeSettings } = useQuery({
     queryKey: ["crm-store-settings", user?.id],
@@ -290,48 +289,121 @@ export default function WhatsAppCRM() {
   };
 
   const summaryCards = [
-    {
-      key: "abandoned" as FilterType,
-      icon: ShoppingCart,
-      label: "Carrinhos Abandonados",
-      value: formatPrice(abandonedTotal),
-      count: abandonedLeads.length,
-      color: "text-orange-500",
-      bg: "bg-orange-500/10",
-    },
-    {
-      key: "new" as FilterType,
-      icon: UserPlus,
-      label: "Novos Cadastros",
-      value: String(newLeads.length),
-      color: "text-blue-500",
-      bg: "bg-blue-500/10",
-    },
-    {
-      key: "contacted" as FilterType,
-      icon: Clock,
-      label: "Aguardando Retorno",
-      value: String(contactedCount),
-      color: "text-yellow-500",
-      bg: "bg-yellow-500/10",
-    },
-    {
-      key: "birthday" as FilterType,
-      icon: Cake,
-      label: "Aniversariantes do Mês",
-      value: String(birthdayCustomers.length),
-      color: "text-pink-500",
-      bg: "bg-pink-500/10",
-    },
-    {
-      key: "inactive" as FilterType,
-      icon: UserX,
-      label: "30 Dias sem Visita",
-      value: String(inactiveCustomers.length),
-      color: "text-muted-foreground",
-      bg: "bg-muted",
-    },
+    { key: "abandoned" as FilterType, icon: ShoppingCart, label: "Carrinhos Abandonados", value: formatPrice(abandonedTotal), count: abandonedLeads.length, color: "text-orange-500", bg: "bg-orange-500/10" },
+    { key: "new" as FilterType, icon: UserPlus, label: "Novos Cadastros", value: String(newLeads.length), color: "text-blue-500", bg: "bg-blue-500/10" },
+    { key: "contacted" as FilterType, icon: Clock, label: "Aguardando Retorno", value: String(contactedCount), color: "text-yellow-500", bg: "bg-yellow-500/10" },
+    { key: "birthday" as FilterType, icon: Cake, label: "Aniversariantes do Mês", value: String(birthdayCustomers.length), color: "text-pink-500", bg: "bg-pink-500/10" },
+    { key: "inactive" as FilterType, icon: UserX, label: "30 Dias sem Visita", value: String(inactiveCustomers.length), color: "text-muted-foreground", bg: "bg-muted" },
   ];
+
+  // Drag & Drop handlers
+  const handleDragStart = (e: React.DragEvent, lead: UnifiedLead) => {
+    e.dataTransfer.setData("application/json", JSON.stringify({ id: lead.id, sourceTable: lead.sourceTable, type: lead.type }));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverColumn("contacted");
+  };
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData("application/json"));
+      if (data.sourceTable === "customer") {
+        toast.info(`${data.type === "birthday" ? "Aniversariante" : "Cliente inativo"} — contate via WhatsApp.`);
+        return;
+      }
+      if (data.sourceTable === "lead") {
+        markContacted.mutate(data.id);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const renderPendingCard = (lead: UnifiedLead) => {
+    const badge = badgeConfig[lead.type];
+    return (
+      <div
+        key={`${lead.sourceTable}-${lead.id}`}
+        draggable
+        onDragStart={(e) => handleDragStart(e, lead)}
+        className="rounded-xl border bg-card p-4 space-y-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <GripVertical className="h-4 w-4 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold truncate text-foreground">{lead.name}</h3>
+                <Badge variant={badge.variant} className="text-[10px] shrink-0">{badge.label}</Badge>
+              </div>
+              <div className="flex items-center gap-3 text-sm mt-1">
+                <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{lead.phone}</span>
+                <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true, locale: ptBR })}</span>
+              </div>
+            </div>
+          </div>
+          {lead.cartTotal && lead.cartTotal > 0 && (
+            <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
+          )}
+        </div>
+
+        {lead.cartItems && lead.cartItems.length > 0 && (
+          <div className="space-y-1 text-sm text-muted-foreground">
+            {lead.cartItems.slice(0, 3).map((item) => (
+              <div key={item.id} className="flex justify-between">
+                <span className="truncate flex-1">{item.product_name}{item.quantity > 1 ? ` x${item.quantity}` : ""}</span>
+                <span className="ml-2 shrink-0">{formatPrice(item.unit_price * item.quantity)}</span>
+              </div>
+            ))}
+            {lead.cartItems.length > 3 && <p className="text-xs">+{lead.cartItems.length - 3} mais itens</p>}
+          </div>
+        )}
+
+        <Button onClick={() => handleWhatsApp(lead)} className="w-full gap-2 font-semibold" style={{ backgroundColor: "#25D366" }}>
+          <MessageCircle className="h-4 w-4" />
+          Chamar no WhatsApp
+        </Button>
+      </div>
+    );
+  };
+
+  const renderContactedCard = (lead: UnifiedLead) => (
+    <div key={lead.id} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold truncate">{lead.name}</h3>
+            <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+            <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{lead.phone}</span>
+          </div>
+        </div>
+        {lead.cartTotal && lead.cartTotal > 0 && (
+          <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleWhatsApp(lead)}>
+          <MessageCircle className="h-3.5 w-3.5" />Follow-up
+        </Button>
+        <Button size="sm" className="flex-1 gap-1.5" onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "converted" })}>
+          <CheckCircle className="h-3.5 w-3.5" />Converter
+        </Button>
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "cancelled" })}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <MainLayout>
@@ -368,142 +440,60 @@ export default function WhatsAppCRM() {
           ))}
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setActiveFilter("all"); }}>
-          <TabsList className="grid w-full max-w-sm grid-cols-2">
-            <TabsTrigger value="pending" className="gap-1.5">
-              <ShoppingCart className="h-3.5 w-3.5" />
-              Pendentes
-            </TabsTrigger>
-            <TabsTrigger value="contacted" className="gap-1.5">
-              <CheckCircle className="h-3.5 w-3.5" />
-              Contatados
-            </TabsTrigger>
-          </TabsList>
+        {/* Kanban Board */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pendentes Column */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-1">
+              <ShoppingCart className="h-4 w-4 text-orange-500" />
+              <h2 className="font-semibold">Pendentes</h2>
+              <Badge variant="outline" className="ml-auto">{pendingLeads.length}</Badge>
+            </div>
+            <div className="space-y-3 min-h-[200px] rounded-xl border-2 border-dashed border-border p-3 bg-muted/30">
+              {pendingLeads.length === 0 ? (
+                <div className="text-center py-12">
+                  <ShoppingCart className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Nenhum lead pendente</p>
+                </div>
+              ) : (
+                pendingLeads.map(renderPendingCard)
+              )}
+            </div>
+          </div>
 
-          <TabsContent value="pending" className="mt-4">
-            {pendingLeads.length === 0 ? (
-              <div className="text-center py-16">
-                <ShoppingCart className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="text-lg font-medium">Nenhum lead pendente</h3>
-                <p className="text-sm text-muted-foreground mt-1">Quando houver leads ou clientes para contatar, eles aparecerão aqui.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingLeads.map((lead) => {
-                  const badge = badgeConfig[lead.type];
-                  return (
-                    <div key={`${lead.sourceTable}-${lead.id}`} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold truncate">{lead.name}</h3>
-                            <Badge variant={badge.variant} className="text-[10px] shrink-0">{badge.label}</Badge>
-                          </div>
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3.5 w-3.5" />
-                              {lead.phone}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5" />
-                              {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true, locale: ptBR })}
-                            </span>
-                          </div>
-                        </div>
-                        {lead.cartTotal && lead.cartTotal > 0 && (
-                          <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
-                        )}
-                      </div>
-
-                      {lead.cartItems && lead.cartItems.length > 0 && (
-                        <div className="space-y-1 text-sm text-muted-foreground">
-                          {lead.cartItems.slice(0, 3).map((item) => (
-                            <div key={item.id} className="flex justify-between">
-                              <span className="truncate flex-1">{item.product_name}{item.quantity > 1 ? ` x${item.quantity}` : ""}</span>
-                              <span className="ml-2 shrink-0">{formatPrice(item.unit_price * item.quantity)}</span>
-                            </div>
-                          ))}
-                          {lead.cartItems.length > 3 && (
-                            <p className="text-xs">+{lead.cartItems.length - 3} mais itens</p>
-                          )}
-                        </div>
-                      )}
-
-                      <Button
-                        onClick={() => handleWhatsApp(lead)}
-                        className="w-full gap-2 font-semibold"
-                        style={{ backgroundColor: "#25D366" }}
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        Chamar no WhatsApp
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="contacted" className="mt-4">
-            {contactedLeads.length === 0 ? (
-              <div className="text-center py-16">
-                <CheckCircle className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="text-lg font-medium">Nenhum lead contatado</h3>
-                <p className="text-sm text-muted-foreground mt-1">Leads contatados aparecerão aqui.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {contactedLeads.map((lead) => (
-                  <div key={lead.id} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold truncate">{lead.name}</h3>
-                          <Badge variant="secondary" className="text-[10px] shrink-0">Contatado</Badge>
-                        </div>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                          <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{lead.phone}</span>
-                        </div>
-                      </div>
-                      {lead.cartTotal && lead.cartTotal > 0 && (
-                        <p className="text-lg font-bold text-primary shrink-0">{formatPrice(lead.cartTotal)}</p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 gap-1.5"
-                        onClick={() => handleWhatsApp(lead)}
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        Follow-up
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 gap-1.5"
-                        onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "converted" })}
-                      >
-                        <CheckCircle className="h-3.5 w-3.5" />
-                        Converter
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5 text-muted-foreground"
-                        onClick={() => updateLeadStatus.mutate({ leadId: lead.id, status: "cancelled" })}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+          {/* Contatados Column */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-1">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <h2 className="font-semibold">Contatados</h2>
+              <Badge variant="outline" className="ml-auto">{contactedLeads.length}</Badge>
+            </div>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`space-y-3 min-h-[200px] rounded-xl border-2 border-dashed p-3 transition-colors ${
+                dragOverColumn === "contacted"
+                  ? "border-green-500 bg-green-500/5 ring-2 ring-green-500/20"
+                  : "border-border bg-muted/30"
+              }`}
+            >
+              {contactedLeads.length === 0 && !dragOverColumn ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Arraste leads aqui para marcar como contatados</p>
+                </div>
+              ) : contactedLeads.length === 0 && dragOverColumn ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="h-10 w-10 text-green-500/50 mx-auto mb-3" />
+                  <p className="text-sm text-green-600 font-medium">Solte aqui para marcar como contatado</p>
+                </div>
+              ) : (
+                contactedLeads.map(renderContactedCard)
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </MainLayout>
   );
