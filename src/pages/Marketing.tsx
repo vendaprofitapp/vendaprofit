@@ -209,7 +209,7 @@ export default function Marketing() {
             </TabsTrigger>
             <TabsTrigger value="groups" className="gap-1.5 text-xs">
               <Users className="h-3.5 w-3.5" />
-              Grupos
+              Parcerias
             </TabsTrigger>
             <TabsTrigger value="analytics" className="gap-1.5 text-xs">
               <BarChart3 className="h-3.5 w-3.5" />
@@ -270,8 +270,8 @@ export default function Marketing() {
             ) : marketingTasks.length === 0 ? (
               <EmptyState
                 icon={Users}
-                title="Nenhuma recomendação de grupo"
-                description='Clique em "Atualizar Insights" para descobrir grupos que podem expandir seu catálogo.'
+                title="Nenhuma recomendação de parceria"
+                description='Clique em "Atualizar Insights" para descobrir parcerias que podem expandir seu catálogo.'
               />
             ) : (
               <div className="space-y-4">
