@@ -76,7 +76,6 @@ const navGroups: NavGroup[] = [
   {
     label: "Sistema",
     items: [
-      { icon: Store, label: "Minha Loja", path: "/my-store" },
       { icon: Settings, label: "Configurações", path: "/settings" },
       { icon: BookOpen, label: "Tutorial", path: "/tutorial" },
     ],
@@ -147,6 +146,21 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           >
             <LayoutDashboard className="h-5 w-5" />
             Dashboard
+          </Link>
+
+          {/* Minha Loja - Gold CTA */}
+          <Link
+            to="/my-store"
+            onClick={handleNavClick}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1",
+              location.pathname === "/my-store"
+                ? "bg-yellow-500 text-gray-900 shadow-md"
+                : "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
+            )}
+          >
+            <Store className="h-5 w-5" />
+            Minha Loja
           </Link>
 
           {/* Grouped navigation */}
