@@ -127,14 +127,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const handleNavClick = () => onNavigate?.();
   const isSalesActive = location.pathname === "/sales";
 
-  const handleVisitStore = () => {
-    onNavigate?.();
-    if (storeSlug) {
-      window.open(`${window.location.origin}/${storeSlug}`, "_blank");
-    } else {
-      navigate("/my-store");
-    }
-  };
+  const goldClasses = cn(
+    "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1 w-full",
+    "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
+  );
 
   return (
     <aside className="h-full w-64 bg-sidebar border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:z-40 md:h-screen">
@@ -175,17 +171,27 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </Link>
 
           {/* Minha Loja - Gold CTA */}
-          <button
-            onClick={handleVisitStore}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1 w-full",
-              "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
-            )}
-          >
-            <Store className="h-5 w-5" />
-            Ver Minha Loja
-            <ExternalLink className="h-3.5 w-3.5 ml-auto opacity-60" />
-          </button>
+          {storeSlug ? (
+            <a
+              href={`/${storeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onNavigate?.()}
+              className={goldClasses}
+            >
+              <Store className="h-5 w-5" />
+              Ver Minha Loja
+              <ExternalLink className="h-3.5 w-3.5 ml-auto opacity-60" />
+            </a>
+          ) : (
+            <button
+              onClick={() => { onNavigate?.(); navigate("/my-store"); }}
+              className={goldClasses}
+            >
+              <Store className="h-5 w-5" />
+              Ver Minha Loja
+            </button>
+          )}
 
           {/* Grouped navigation */}
           {navGroups.map((group) => (
