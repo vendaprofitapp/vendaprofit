@@ -1,27 +1,53 @@
 
-# Permitir Salvar Rascunho Sem Itens no Modo Evento
+
+# Correcao da Gravacao por Voz no Modo Evento (iOS e Android)
 
 ## Problema
 
-Atualmente o botao "Salvar Rascunho" so funciona se houver pelo menos um item na sacola (botao rapido clicado). A vendedora nao consegue salvar um rascunho contendo apenas fotos e/ou observacoes.
+No mobile (especialmente iOS Safari), o `SpeechRecognition` com `continuous = true` pode parar automaticamente apos alguns segundos de silencio, disparando o evento `onend` e resetando o estado para "nao gravando" sem o usuario ter clicado para parar. Isso quebra o fluxo esperado de "clicar para comecar, clicar para terminar".
+
+Alem disso, no iOS o `webkitSpeechRecognition` tem comportamento inconsistente com modo continuo - ele frequentemente encerra a sessao sozinho.
 
 ## Solucao
 
-Alterar duas validacoes em `src/pages/EventMode.tsx`:
+Modificar `src/pages/EventMode.tsx` para:
 
-1. **Validacao do `saveDraft`** (linha ~157): Trocar a condicao de `bagItems.length === 0` para verificar se nao ha NENHUM conteudo (sem itens, sem fotos e sem notas). Se pelo menos um desses existir, permitir salvar.
+1. **Adicionar flag `stoppingRef`**: Um ref booleano que indica se o usuario clicou explicitamente para parar. Isso diferencia uma parada intencional de uma parada automatica do navegador.
 
-2. **Estado `disabled` do botao** (linha ~219): Trocar `bagItems.length === 0` pela mesma logica - desabilitar apenas quando nao houver nenhum conteudo.
+2. **Reiniciar automaticamente no `onend`**: Se o reconhecimento parar sozinho (sem o usuario ter clicado no botao de parar), reiniciar a gravacao automaticamente para manter o modo continuo funcionando.
+
+3. **Forcar estado visual correto**: Usar `setIsRecording(true)` de forma controlada, garantindo que o botao continue mostrando "Gravando..." ate o usuario clicar para parar.
+
+4. **Tratamento de erro robusto**: No `onerror`, verificar se o erro e do tipo `no-speech` (comum no mobile) e reiniciar em vez de parar definitivamente.
 
 ## Detalhe Tecnico
 
-| Local | Antes | Depois |
-|-------|-------|--------|
-| Condicao de bloqueio no `saveDraft` | `bagItems.length === 0` | `bagItems.length === 0 && photos.length === 0 && !notes.trim()` |
-| Atributo `disabled` do botao | `saving \|\| bagItems.length === 0` | `saving \|\| (bagItems.length === 0 && photos.length === 0 && !notes.trim())` |
+### Mudancas em `src/pages/EventMode.tsx`
+
+**Novo ref:**
+```
+const stoppingRef = useRef(false);
+```
+
+**toggleRecording atualizado:**
+- Ao clicar para parar: `stoppingRef.current = true` antes de chamar `.stop()`
+- Ao clicar para comecar: `stoppingRef.current = false` antes de chamar `.start()`
+
+**Handler `onend` atualizado:**
+- Se `stoppingRef.current === false` (parada automatica do navegador): reiniciar `recognition.start()` 
+- Se `stoppingRef.current === true` (usuario clicou parar): setar `isRecording = false` e limpar
+
+**Handler `onerror` atualizado:**
+- Erros `no-speech` e `aborted`: ignorar (nao parar gravacao, deixar o `onend` cuidar do restart)
+- Erros `not-allowed` ou `network`: parar definitivamente e avisar o usuario
+
+### Cleanup no useEffect
+
+Adicionar limpeza no unmount para garantir que o reconhecimento e parado se o usuario navegar para outra pagina enquanto grava.
 
 ## Arquivo Afetado
 
 | Arquivo | Acao |
 |---------|------|
-| `src/pages/EventMode.tsx` | Modificar - relaxar validacao de salvamento |
+| `src/pages/EventMode.tsx` | Modificar - tornar gravacao robusta no mobile |
+
