@@ -1,53 +1,56 @@
 
 
-# Correcao da Gravacao por Voz no Modo Evento (iOS e Android)
+# Adicionar Botao "Minha Loja" na Sidebar
 
-## Problema
+## Objetivo
 
-No mobile (especialmente iOS Safari), o `SpeechRecognition` com `continuous = true` pode parar automaticamente apos alguns segundos de silencio, disparando o evento `onend` e resetando o estado para "nao gravando" sem o usuario ter clicado para parar. Isso quebra o fluxo esperado de "clicar para comecar, clicar para terminar".
+Adicionar um botao dourado (gold) logo abaixo do link "Dashboard" na barra lateral, oferecendo acesso rapido a pagina "Minha Loja" (`/my-store`).
 
-Alem disso, no iOS o `webkitSpeechRecognition` tem comportamento inconsistente com modo continuo - ele frequentemente encerra a sessao sozinho.
+## Detalhes Tecnicos
 
-## Solucao
+### Arquivo: `src/components/layout/Sidebar.tsx`
 
-Modificar `src/pages/EventMode.tsx` para:
+Inserir um `<Link>` estilizado com cor dourada entre o link do Dashboard e o primeiro grupo de navegacao ("Estrategias").
 
-1. **Adicionar flag `stoppingRef`**: Um ref booleano que indica se o usuario clicou explicitamente para parar. Isso diferencia uma parada intencional de uma parada automatica do navegador.
+**Estilo do botao:**
+- Fundo dourado (`bg-yellow-500`) com hover (`hover:bg-yellow-600`)
+- Texto escuro para contraste (`text-gray-900`)
+- Icone `Store` (ja importado)
+- Bordas arredondadas, fonte bold, similar ao CTA de "Registrar Venda"
+- Margem inferior para separar dos grupos seguintes
 
-2. **Reiniciar automaticamente no `onend`**: Se o reconhecimento parar sozinho (sem o usuario ter clicado no botao de parar), reiniciar a gravacao automaticamente para manter o modo continuo funcionando.
-
-3. **Forcar estado visual correto**: Usar `setIsRecording(true)` de forma controlada, garantindo que o botao continue mostrando "Gravando..." ate o usuario clicar para parar.
-
-4. **Tratamento de erro robusto**: No `onerror`, verificar se o erro e do tipo `no-speech` (comum no mobile) e reiniciar em vez de parar definitivamente.
-
-## Detalhe Tecnico
-
-### Mudancas em `src/pages/EventMode.tsx`
-
-**Novo ref:**
+**Posicao na sidebar:**
 ```
-const stoppingRef = useRef(false);
+[Registrar Venda]  (CTA primario)
+[Dashboard]
+[Minha Loja]       << NOVO botao gold
+--- Estrategias ---
+...
 ```
 
-**toggleRecording atualizado:**
-- Ao clicar para parar: `stoppingRef.current = true` antes de chamar `.stop()`
-- Ao clicar para comecar: `stoppingRef.current = false` antes de chamar `.start()`
+### Mudanca especifica
 
-**Handler `onend` atualizado:**
-- Se `stoppingRef.current === false` (parada automatica do navegador): reiniciar `recognition.start()` 
-- Se `stoppingRef.current === true` (usuario clicou parar): setar `isRecording = false` e limpar
+Adicionar o seguinte bloco logo apos o `<Link to="/">Dashboard</Link>` (aproximadamente linha 136):
 
-**Handler `onerror` atualizado:**
-- Erros `no-speech` e `aborted`: ignorar (nao parar gravacao, deixar o `onend` cuidar do restart)
-- Erros `not-allowed` ou `network`: parar definitivamente e avisar o usuario
-
-### Cleanup no useEffect
-
-Adicionar limpeza no unmount para garantir que o reconhecimento e parado se o usuario navegar para outra pagina enquanto grava.
+```tsx
+<Link
+  to="/my-store"
+  onClick={handleNavClick}
+  className={cn(
+    "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1",
+    location.pathname === "/my-store"
+      ? "bg-yellow-500 text-gray-900 shadow-md"
+      : "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
+  )}
+>
+  <Store className="h-5 w-5" />
+  Minha Loja
+</Link>
+```
 
 ## Arquivo Afetado
 
 | Arquivo | Acao |
 |---------|------|
-| `src/pages/EventMode.tsx` | Modificar - tornar gravacao robusta no mobile |
+| `src/components/layout/Sidebar.tsx` | Adicionar botao gold "Minha Loja" abaixo do Dashboard |
 
