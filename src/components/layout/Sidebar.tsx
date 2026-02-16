@@ -1,11 +1,15 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock, Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package, Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet, Megaphone, Award } from "lucide-react";
+import {
+  LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock,
+  Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package,
+  Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
+  Megaphone, Award, DollarSign,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import logoVendaProfit from "@/assets/logo-venda-profit.png";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -15,125 +19,93 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   label: string;
   path: string;
-  disabled?: boolean;
-  comingSoon?: boolean;
 }
 
-const navItems: NavItem[] = [{
-  icon: LayoutDashboard,
-  label: "Painel",
-  path: "/"
-}, {
-  icon: Warehouse,
-  label: "Estoque",
-  path: "/stock"
-}, {
-  icon: Truck,
-  label: "Fornecedores",
-  path: "/suppliers"
-}, {
-  icon: Tag,
-  label: "Categorias",
-  path: "/categories"
-}, {
-  icon: ClipboardList,
-  label: "Encomendas",
-  path: "/orders"
-}, {
-  icon: ShoppingCart,
-  label: "Vendas",
-  path: "/sales"
-}, {
-  icon: UserCheck,
-  label: "Clientes",
-  path: "/customers"
-}, {
-  icon: Briefcase,
-  label: "Bolsa Consignada",
-  path: "/consignments"
-}, {
-  icon: Gift,
-  label: "Consórcios",
-  path: "/consortiums"
-}, {
-  icon: ShoppingBag,
-  label: "Bazar VIP",
-  path: "/admin/bazar"
-}, {
-  icon: Package,
-  label: "Pedidos B2B",
-  path: "/b2b-orders"
-}, {
-  icon: Clock,
-  label: "Solicitações",
-  path: "/stock-requests"
-}, {
-  icon: Users,
-  label: "Socias / Parceiras",
-  path: "/partnerships"
-}, {
-  icon: TrendingUp,
-  label: "Relatórios",
-  path: "/reports"
-}, {
-  icon: TrendingUp,
-  label: "Rel. Sociedades",
-  path: "/partner-reports"
-}, {
-  icon: Wallet,
-  label: "Financeiro",
-  path: "/financial"
-}, {
-  icon: Store,
-  label: "Minha Loja",
-  path: "/my-store"
-}, {
-  icon: Megaphone,
-  label: "Marketing",
-  path: "/marketing"
-}, {
-  icon: Award,
-  label: "Fidelidade",
-  path: "/admin/fidelidade"
-}, {
-  icon: BookOpen,
-  label: "Tutorial",
-  path: "/tutorial"
-}, {
-  icon: Settings,
-  label: "Configurações",
-  path: "/settings"
-}];
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
 
-export function Sidebar({
-  onNavigate
-}: SidebarProps) {
+const navGroups: NavGroup[] = [
+  {
+    label: "Estratégias",
+    items: [
+      { icon: Briefcase, label: "Bolsa Consignada", path: "/consignments" },
+      { icon: Gift, label: "Consórcios", path: "/consortiums" },
+      { icon: ShoppingBag, label: "Bazar VIP", path: "/admin/bazar" },
+    ],
+  },
+  {
+    label: "Marketing",
+    items: [
+      { icon: UserCheck, label: "Clientes", path: "/customers" },
+      { icon: Megaphone, label: "Marketing", path: "/marketing" },
+      { icon: Award, label: "Fidelidade", path: "/admin/fidelidade" },
+    ],
+  },
+  {
+    label: "Estoque",
+    items: [
+      { icon: Warehouse, label: "Controle", path: "/stock" },
+      { icon: Tag, label: "Categorias", path: "/categories" },
+      { icon: Truck, label: "Fornecedores", path: "/suppliers" },
+      { icon: Package, label: "Pedidos B2B", path: "/b2b-orders" },
+      { icon: ClipboardList, label: "Encomendas", path: "/orders" },
+    ],
+  },
+  {
+    label: "Parcerias",
+    items: [
+      { icon: Users, label: "Sócias / Parceiras", path: "/partnerships" },
+      { icon: Clock, label: "Solicitações", path: "/stock-requests" },
+    ],
+  },
+  {
+    label: "Gestão",
+    items: [
+      { icon: Wallet, label: "Financeiro", path: "/financial" },
+      { icon: TrendingUp, label: "Relatórios", path: "/reports" },
+      { icon: TrendingUp, label: "Rel. Sociedades", path: "/partner-reports" },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { icon: Store, label: "Minha Loja", path: "/my-store" },
+      { icon: Settings, label: "Configurações", path: "/settings" },
+      { icon: BookOpen, label: "Tutorial", path: "/tutorial" },
+    ],
+  },
+];
+
+const linkClasses = (isActive: boolean) =>
+  cn(
+    "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
+    isActive
+      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-glow"
+      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+  );
+
+export function Sidebar({ onNavigate }: SidebarProps) {
   const location = useLocation();
-  const {
-    user
-  } = useAuth();
+  const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
-  
+
   useEffect(() => {
     async function check() {
       if (!user) return;
-      const {
-        data
-      } = await supabase.rpc("has_role", {
+      const { data } = await supabase.rpc("has_role", {
         _user_id: user.id,
-        _role: "admin"
+        _role: "admin",
       });
       setIsAdmin(!!data);
     }
     check();
   }, [user]);
-  
-  const handleNavClick = () => {
-    if (onNavigate) {
-      onNavigate();
-    }
-  };
-  
+
+  const handleNavClick = () => onNavigate?.();
+  const isSalesActive = location.pathname === "/sales";
+
   return (
     <aside className="h-full w-64 bg-sidebar border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:z-40 md:h-screen">
       <div className="flex h-full flex-col">
@@ -147,63 +119,61 @@ export function Sidebar({
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-          <TooltipProvider delayDuration={300}>
-            {navItems.map(item => {
-              const isActive = location.pathname === item.path;
-              
-              if (item.disabled) {
-                return (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>
-                      <div
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
-                          "text-sidebar-foreground/40 cursor-not-allowed opacity-60"
-                        )}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        <span className="flex-1">{item.label}</span>
-                        <Lock className="h-3.5 w-3.5" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="bg-popover text-popover-foreground">
-                      <p className="text-xs">Em breve</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }
-              
-              return (
+          {/* CTA Vendas */}
+          <Link
+            to="/sales"
+            onClick={handleNavClick}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-bold transition-all duration-200 mb-3",
+              isSalesActive
+                ? "bg-primary text-primary-foreground shadow-glow"
+                : "bg-primary text-primary-foreground shadow-glow hover:brightness-110"
+            )}
+          >
+            <DollarSign className={cn("h-5 w-5", !isSalesActive && "animate-pulse")} />
+            Registrar Venda
+          </Link>
+
+          {/* Dashboard */}
+          <Link
+            to="/"
+            onClick={handleNavClick}
+            className={linkClasses(location.pathname === "/")}
+          >
+            <LayoutDashboard className="h-5 w-5" />
+            Dashboard
+          </Link>
+
+          {/* Grouped navigation */}
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              <p className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider px-4 pt-4 pb-1">
+                {group.label}
+              </p>
+              {group.items.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
                   onClick={handleNavClick}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
-                    isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-glow"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  )}
+                  className={linkClasses(location.pathname === item.path)}
                 >
                   <item.icon className="h-5 w-5" />
                   {item.label}
                 </Link>
-              );
-            })}
-          </TooltipProvider>
+              ))}
+            </div>
+          ))}
 
-          {/* Admin-only links */}
+          {/* Admin */}
           {isAdmin && (
-            <>
+            <div>
+              <p className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider px-4 pt-4 pb-1">
+                Admin
+              </p>
               <Link
                 to="/admin/users"
                 onClick={handleNavClick}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
-                  location.pathname === "/admin/users"
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-glow"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
+                className={linkClasses(location.pathname === "/admin/users")}
               >
                 <ShieldCheck className="h-5 w-5" />
                 Admin Usuários
@@ -211,17 +181,12 @@ export function Sidebar({
               <Link
                 to="/admin/landing-page"
                 onClick={handleNavClick}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
-                  location.pathname === "/admin/landing-page"
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-glow"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
+                className={linkClasses(location.pathname === "/admin/landing-page")}
               >
                 <PanelLeft className="h-5 w-5" />
                 Editor Landing Page
               </Link>
-            </>
+            </div>
           )}
         </nav>
       </div>
