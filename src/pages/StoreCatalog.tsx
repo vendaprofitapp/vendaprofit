@@ -2413,6 +2413,25 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const viewTrackedRef = useRef(false);
+
+  // Track view when card becomes visible (IntersectionObserver)
+  useEffect(() => {
+    if (!cardRef.current || !onTrackView || viewTrackedRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !viewTrackedRef.current) {
+          viewTrackedRef.current = true;
+          onTrackView(item.productId);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [onTrackView, item.productId]);
 
   // Check if a size is fully consigned (available stock = 0 but physical > 0)
   const isSizeConsigned = (size: string) => {
@@ -2505,6 +2524,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
   return (
     <>
       <div 
+        ref={cardRef}
         className="group flex flex-col p-3 rounded-2xl shadow-sm hover:shadow-md transition-shadow"
         style={{ backgroundColor: cardBackgroundColor }}
         onMouseEnter={handleInteractionStart}
@@ -2514,7 +2534,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
         {/* Image Container - 3:4 Portrait */}
         <div 
           className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3 cursor-pointer"
-          onClick={() => { if (item.image_url) { setImageOpen(true); onTrackView?.(item.productId); } }}
+          onClick={() => { if (item.image_url) { setImageOpen(true); } }}
         >
           {/* Partner indicator - Show if card has any sizes from partner */}
           {item.hasPartnerSizes && (
