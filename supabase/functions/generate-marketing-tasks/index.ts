@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
     });
 
     for (const [term, stats] of searchTermMap) {
-      if (stats.count >= 3 && stats.zeroResults >= 3) {
+      if (stats.count >= 1 && stats.zeroResults >= 1) {
         tasks.push({
           owner_id: ownerId,
           product_id: null,
