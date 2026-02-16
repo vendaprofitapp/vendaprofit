@@ -45,6 +45,7 @@ export default function EventMode() {
   // Voice
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const stoppingRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,6 +109,7 @@ export default function EventMode() {
   // Voice recognition
   const toggleRecording = () => {
     if (isRecording) {
+      stoppingRef.current = true;
       recognitionRef.current?.stop();
       setIsRecording(false);
       return;
@@ -125,8 +127,21 @@ export default function EventMode() {
       const transcript = event.results[event.results.length - 1][0].transcript;
       setNotes((prev) => (prev ? prev + " " : "") + transcript);
     };
-    recognition.onerror = () => setIsRecording(false);
-    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = (event: any) => {
+      const ignorable = ["no-speech", "aborted"];
+      if (ignorable.includes(event.error)) return;
+      stoppingRef.current = true;
+      setIsRecording(false);
+      toast({ title: "Erro no reconhecimento de voz", description: event.error, variant: "destructive" });
+    };
+    recognition.onend = () => {
+      if (!stoppingRef.current) {
+        try { recognition.start(); } catch (_) { setIsRecording(false); }
+      } else {
+        setIsRecording(false);
+      }
+    };
+    stoppingRef.current = false;
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
@@ -207,7 +222,11 @@ export default function EventMode() {
 
   // Cleanup
   useEffect(() => {
-    return () => photoPreviewUrls.forEach((u) => URL.revokeObjectURL(u));
+    return () => {
+      photoPreviewUrls.forEach((u) => URL.revokeObjectURL(u));
+      stoppingRef.current = true;
+      recognitionRef.current?.stop();
+    };
   }, []);
 
   return (
