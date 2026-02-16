@@ -1,35 +1,54 @@
 
 
-# Fix: "Ver Minha Loja" Abrindo na Aba Atual
+# Fix: "Ver Minha Loja" no iOS WebApp (Standalone Mode)
 
 ## Problema
 
-Ao clicar no botao, a nova aba abre corretamente, mas a aba atual tambem navega para a URL da loja. Isso acontece por causa de comportamento inconsistente do `window.open` em alguns navegadores.
+No iOS, quando o app roda como WebApp (modo standalone/PWA), tanto `target="_blank"` quanto `window.open` abrem a URL dentro do proprio WebApp, substituindo a tela atual. Isso e uma limitacao conhecida do Safari em modo standalone -- ele nao tem conceito de "abas".
 
 ## Solucao
 
-Trocar o `<button>` + `window.open` por um `<a>` com `target="_blank"` e `rel="noopener noreferrer"`. Essa e a forma mais confiavel de abrir um link em nova aba sem afetar a aba atual.
+Detectar se o app esta rodando em modo standalone (PWA) e, nesse caso, usar `navigator.share()` para permitir ao usuario abrir o link no Safari. Se `navigator.share` nao estiver disponivel, copiar o link para a area de transferencia e mostrar um aviso (toast).
+
+Em navegadores normais (desktop, mobile browser), o comportamento atual com `<a target="_blank">` sera mantido.
+
+## Mudancas
 
 ### Arquivo: `src/components/layout/Sidebar.tsx`
 
-**Mudancas:**
+1. **Criar funcao auxiliar** `isStandaloneMode()` que detecta se o app roda como PWA:
+   - Checa `(window.navigator as any).standalone === true` (iOS Safari)
+   - Checa `window.matchMedia('(display-mode: standalone)').matches` (Android/outros)
 
-1. Quando `storeSlug` existe: renderizar um `<a href="/{slug}" target="_blank" rel="noopener noreferrer">` com o estilo gold
-2. Quando nao existe slug: renderizar um `<button>` que navega para `/my-store` (configuracoes)
-3. Remover a funcao `handleVisitStore` e o `window.open`
+2. **Modificar o botao gold** quando `storeSlug` existe:
+   - Sempre renderizar como `<a target="_blank">` (funciona em navegadores normais)
+   - No `onClick`, se estiver em modo standalone:
+     - Chamar `e.preventDefault()` para impedir a navegacao
+     - Tentar `navigator.share({ url })` para abrir no Safari
+     - Se share nao disponivel, copiar URL com `navigator.clipboard.writeText()` e mostrar toast
 
-**Logica simplificada:**
+3. **Importar** `toast` de sonner para feedback ao usuario
+
+### Logica resumida
 
 ```
-Se tem storeSlug:
-  <a href="/{slug}" target="_blank"> Ver Minha Loja </a>
-Senao:
-  <button onClick={navigate('/my-store')}> Ver Minha Loja </button>
+onClick(e) {
+  if (isStandaloneMode()) {
+    e.preventDefault();
+    const url = `${window.location.origin}/${storeSlug}`;
+    
+    if (navigator.share) {
+      navigator.share({ title: 'Minha Loja', url });
+    } else {
+      navigator.clipboard.writeText(url);
+      toast('Link copiado! Cole no navegador para abrir.');
+    }
+  }
+  // Em navegador normal, o <a target="_blank"> funciona normalmente
+}
 ```
-
-Ambos manterao o mesmo estilo dourado.
 
 | Arquivo | Acao |
 |---------|------|
-| `src/components/layout/Sidebar.tsx` | Trocar button/window.open por tag `<a>` com target="_blank" |
+| `src/components/layout/Sidebar.tsx` | Adicionar deteccao de standalone + share/clipboard fallback |
 
