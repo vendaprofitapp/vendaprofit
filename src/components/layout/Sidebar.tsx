@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, TrendingUp, Settings, Warehouse, Clock,
   Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package,
   Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
-  Megaphone, Award, DollarSign, CreditCard, Video, MessageCircle,
+  Megaphone, Award, DollarSign, CreditCard, Video, MessageCircle, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +30,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Estratégias",
     items: [
+      { icon: Zap, label: "Modo Evento", path: "/evento" },
       { icon: Briefcase, label: "Bolsa Consignada", path: "/consignments" },
       { icon: Gift, label: "Consórcios", path: "/consortiums" },
       { icon: ShoppingBag, label: "Bazar VIP", path: "/admin/bazar" },

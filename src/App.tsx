@@ -37,6 +37,7 @@ import B2BOrders from "./pages/B2BOrders";
 import PurchaseIncentivesSettings from "./pages/PurchaseIncentivesSettings";
 import SecretAreaSettings from "./pages/SecretAreaSettings";
 import SalesVideoSettings from "./pages/SalesVideoSettings";
+import EventMode from "./pages/EventMode";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,7 @@ const AppRoutes = () => (
     <Route path="/marketing/incentivos" element={<ProtectedRoute><PurchaseIncentivesSettings /></ProtectedRoute>} />
     <Route path="/marketing/area-secreta" element={<ProtectedRoute><SecretAreaSettings /></ProtectedRoute>} />
     <Route path="/marketing/video-vendedor" element={<ProtectedRoute><SalesVideoSettings /></ProtectedRoute>} />
+    <Route path="/evento" element={<ProtectedRoute><EventMode /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
