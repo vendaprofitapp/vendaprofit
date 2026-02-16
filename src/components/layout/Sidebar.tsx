@@ -130,7 +130,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const handleVisitStore = () => {
     onNavigate?.();
     if (storeSlug) {
-      window.open(`${window.location.origin}/l/${storeSlug}`, "_blank");
+      window.open(`${window.location.origin}/${storeSlug}`, "_blank");
     } else {
       navigate("/my-store");
     }
@@ -183,7 +183,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             )}
           >
             <Store className="h-5 w-5" />
-            Minha Loja
+            Ver Minha Loja
             <ExternalLink className="h-3.5 w-3.5 ml-auto opacity-60" />
           </button>
 
