@@ -1,84 +1,92 @@
 
-# Mover Configuracoes de Marketing para Paginas Independentes
+# CRM de WhatsApp - Reestruturacao do Modulo de Marketing
 
-## Resumo
+## Visao Geral
 
-Retirar 3 secoes de configuracao da pagina "Minha Loja" (StoreSettings.tsx) e criar paginas independentes acessiveis pelo menu lateral no grupo MARKETING. Cada pagina tera seu proprio toggle de ativacao/desativacao. A pagina de Fidelidade (LoyaltyAdmin) tambem ganhara um toggle de ativacao no topo.
+Criar uma nova pagina dedicada "WhatsApp CRM" focada em recuperacao de vendas, renomear "Marketing" para "Redes Sociais / Google" na sidebar e extrair toda a logica de leads/carrinhos abandonados da pagina Marketing atual.
 
-## Novas Paginas
+## Alteracoes
 
-### 1. `src/pages/PurchaseIncentivesSettings.tsx` (Incentivos de Compra)
-- Rota: `/marketing/incentivos`
-- Toggle de ativacao no topo (campo `purchase_incentives_config.enabled` em `store_settings`)
-- Contem toda a configuracao de parcelamento, PIX, faixas de beneficios e mensagens (linhas 1664-1960 do StoreSettings atual)
-- Busca e salva dados diretamente em `store_settings` do usuario logado
+### 1. Sidebar (`src/components/layout/Sidebar.tsx`)
 
-### 2. `src/pages/SecretAreaSettings.tsx` (Area Secreta)
-- Rota: `/marketing/area-secreta`
-- Toggle de ativacao no topo (campo `secret_area_active` em `store_settings`)
-- Contem nome do botao, senha de acesso, previa do botao e dicas (linhas 1547-1662 do StoreSettings atual, sem o toggle de fidelidade que sera movido)
-- Busca e salva dados diretamente em `store_settings`
+Renomear o item "Marketing" para "Redes Sociais / Google" e adicionar "WhatsApp" logo abaixo.
 
-### 3. `src/pages/SalesVideoSettings.tsx` (Video Vendedor)
-- Rota: `/marketing/video-vendedor`
-- Toggle de ativacao no topo — **requer nova coluna** `bio_video_enabled` (boolean, default false) na tabela `store_settings`
-- A bolinha flutuante no catalogo so aparecera se `bio_video_enabled === true` E os videos estiverem configurados
-- Contem os uploaders de video preview e video completo (linhas 1962-2001 do StoreSettings atual)
+Ordem final do grupo MARKETING:
+- Clientes
+- Redes Sociais / Google (Megaphone, /marketing)
+- WhatsApp (MessageCircle, /marketing/whatsapp)
+- Fidelidade
+- Incentivos
+- Area Secreta
+- Video Vendedor
 
-### 4. Atualizar `src/pages/LoyaltyAdmin.tsx` (Fidelidade)
-- Adicionar toggle de ativacao no topo da pagina (campo `loyalty_enabled` em `store_settings`)
-- Buscar e salvar o campo `loyalty_enabled` diretamente, sem precisar ir em "Minha Loja"
+### 2. Nova pagina `src/pages/WhatsAppCRM.tsx`
 
-## Alteracoes no Menu Lateral
+**5 Cards Resumo no topo:**
+- "Carrinhos Abandonados" com valor total em R$ (lead_cart_items com status "abandoned")
+- "Novos Cadastros" com contagem de leads recentes sem itens no carrinho (store_leads sem lead_cart_items)
+- "Aguardando Retorno" com contagem de leads com status "contacted"
+- "Aniversariantes do Mes" buscando da tabela `customers` onde `birth_date` tem o mesmo mes atual
+- "30 Dias sem Visita/Compra" buscando `customers` cuja ultima venda (`sales.created_at`) ou ultima visualizacao (`catalog_product_views.created_at` ou `store_leads.last_seen_at`) foi ha mais de 30 dias
 
-**Arquivo: `src/components/layout/Sidebar.tsx`**
+**Tabs (2 abas):**
 
-Adicionar 3 novos itens no grupo MARKETING:
+Aba "Pendentes":
+- Lista filtrada pelos cards de resumo (ao clicar um card, filtra a lista)
+- Cada item mostra: Nome, Telefone formatado, Badge de tipo (laranja "Carrinho Abandonado" / azul "Novo Cadastro" / rosa "Aniversariante" / cinza "Inativo 30d"), Valor do carrinho se houver
+- Botao "Chamar no WhatsApp" (1-click): abre wa.me com mensagem pre-formatada de acordo com o tipo (carrinho abandonado, boas-vindas, parabens, saudade) e move para "Contatados"
 
-| Item | Icone | Rota |
-|------|-------|------|
-| Clientes | UserCheck | /customers |
-| Marketing | Megaphone | /marketing |
-| Fidelidade | Award | /admin/fidelidade |
-| Incentivos | CreditCard | /marketing/incentivos |
-| Area Secreta | Lock | /marketing/area-secreta |
-| Video Vendedor | Video | /marketing/video-vendedor |
+Aba "Contatados":
+- Lista leads ja contatados
+- Botoes: "Fazer Follow-up" (reabre WhatsApp), "Converter em Venda" (CheckCircle, marca como "converted"), "Descartar" (X, marca como "cancelled")
 
-## Rotas no App.tsx
+### 3. Atualizar pagina Marketing (`src/pages/Marketing.tsx`)
 
-Adicionar 3 novas rotas protegidas:
-- `/marketing/incentivos` -> PurchaseIncentivesSettings
-- `/marketing/area-secreta` -> SecretAreaSettings
-- `/marketing/video-vendedor` -> SalesVideoSettings
+- Remover as abas "Pendentes" e "Contatados" e toda logica associada (queries de leads, mutations markContacted/sendWhatsApp, componente AbandonedCartCard, interface LeadWithCart)
+- Reduzir TabsList de 8 colunas para 6: Conteudo, SEO, Grupos, Analytics, Anuncios, Vitrines
+- Renomear titulo de "Marketing" para "Redes Sociais / Google"
 
-## Banco de Dados
+### 4. Rotas (`src/App.tsx`)
 
-Nova coluna na tabela `store_settings`:
-- `bio_video_enabled` (boolean, default false) — controla se o video vendedor esta ativo
+Adicionar rota protegida `/marketing/whatsapp` -> WhatsAppCRM
 
-## Remocao do StoreSettings.tsx
+### 5. Banco de Dados
 
-Remover completamente os 3 Cards:
-- Card "Area Secreta / VIP" (linhas 1547-1662), incluindo o toggle de fidelidade que estava ali
-- Card "Incentivos de Compra" (linhas 1664-1960)
-- Card "Video Vendedor" (linhas 1962-2001)
+Nenhuma alteracao necessaria. Todas as tabelas ja existem:
+- `store_leads` + `lead_cart_items` para leads/carrinhos
+- `customers` com `birth_date` para aniversariantes
+- `sales` para detectar inatividade de compra
+- `catalog_product_views` / `store_leads.last_seen_at` para inatividade de visita
 
-Os campos correspondentes no `formData`, `useEffect` de inicializacao e `saveMutation` tambem serao limpos (remover `secret_area_active`, `secret_area_name`, `secret_area_password`, `loyalty_enabled`, `purchase_incentives_config`, `bioVideoPreview`, `bioVideoFull`).
+## Detalhes Tecnicos
 
-## Condicional no Catalogo (StoreCatalog.tsx)
+### Queries da pagina WhatsAppCRM
 
-Atualizar a condicao da bolinha flutuante de video vendedor para tambem verificar `bio_video_enabled === true` do `store_settings`.
+1. **Carrinhos abandonados**: `lead_cart_items` com status "abandoned" + join `store_leads` filtrado por owner_id
+2. **Novos cadastros**: `store_leads` que NAO possuem `lead_cart_items`, criados nos ultimos 7 dias
+3. **Aguardando retorno**: `lead_cart_items` com status "contacted" + join `store_leads`
+4. **Aniversariantes do mes**: `customers` filtrados pelo mes atual do `birth_date` (filtro client-side como ja feito no SystemAlerts)
+5. **30 dias sem visita/compra**: `customers` com join em `sales` para pegar a ultima compra; filtrar onde a ultima compra foi ha mais de 30 dias ou nunca comprou
+
+### Mutations
+
+- `markContacted`: Atualiza `lead_cart_items.status` para "contacted" (para leads com carrinho)
+- `convertLead`: Atualiza status para "converted"
+- `discardLead`: Atualiza status para "cancelled"
+- Para clientes (aniversariantes/inativos) sem lead_cart_items, o botao WhatsApp apenas abre o link sem mutation
+
+### Mensagens pre-formatadas por tipo
+
+- Carrinho abandonado: "Oi {nome}, vi que voce separou pecas lindas... posso ajudar?"
+- Novo cadastro: "Oi {nome}, bem-vinda a {loja}! Tem novidades incriveis te esperando"
+- Aniversariante: "Parabens {nome}! A {loja} preparou algo especial pra voce"
+- Inativo 30d: "Oi {nome}, sentimos sua falta! Tem muita novidade na {loja}"
 
 ## Resumo de Arquivos
 
 | Arquivo | Acao |
 |---------|------|
-| `supabase/migrations/...` | Nova coluna `bio_video_enabled` |
-| `src/pages/PurchaseIncentivesSettings.tsx` | Criar (pagina com toggle + config incentivos) |
-| `src/pages/SecretAreaSettings.tsx` | Criar (pagina com toggle + config area secreta) |
-| `src/pages/SalesVideoSettings.tsx` | Criar (pagina com toggle + config video) |
-| `src/pages/LoyaltyAdmin.tsx` | Adicionar toggle de ativacao no topo |
-| `src/pages/StoreSettings.tsx` | Remover 3 cards e campos relacionados |
-| `src/components/layout/Sidebar.tsx` | Adicionar 3 links no grupo Marketing |
-| `src/App.tsx` | Adicionar 3 rotas protegidas |
-| `src/pages/StoreCatalog.tsx` | Condicional `bio_video_enabled` para bolinha |
+| `src/pages/WhatsAppCRM.tsx` | Criar (pagina completa do CRM com cards + tabs) |
+| `src/pages/Marketing.tsx` | Remover abas Pendentes/Contatados, renomear titulo, reduzir tabs |
+| `src/components/layout/Sidebar.tsx` | Renomear "Marketing" e adicionar "WhatsApp" |
+| `src/App.tsx` | Adicionar rota /marketing/whatsapp |
