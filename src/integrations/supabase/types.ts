@@ -753,6 +753,7 @@ export type Database = {
       }
       crm_customer_contacts: {
         Row: {
+          contacted_at: string
           created_at: string
           customer_id: string
           id: string
@@ -760,6 +761,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          contacted_at?: string
           created_at?: string
           customer_id: string
           id?: string
@@ -767,6 +769,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          contacted_at?: string
           created_at?: string
           customer_id?: string
           id?: string

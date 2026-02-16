@@ -140,7 +140,7 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // 4. Contacted customers (from crm_customer_contacts)
+  // 4. Contacted customers (from crm_customer_contacts) - only status "contacted" for the Contatados column
   const { data: contactedCustomers = [] } = useQuery({
     queryKey: ["crm-contacted-customers", user?.id],
     queryFn: async () => {
@@ -166,6 +166,20 @@ export default function WhatsAppCRM() {
         createdAt: c.created_at,
         sourceTable: "customer" as const,
       }));
+    },
+    enabled: !!user?.id,
+  });
+
+  // 4b. ALL contacts (any status) with contacted_at - used to exclude from pending for 30 days
+  const { data: allCrmContacts = [] } = useQuery({
+    queryKey: ["crm-all-contacts", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("crm_customer_contacts" as any)
+        .select("customer_id, contacted_at")
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+      return (data || []) as unknown as { customer_id: string; contacted_at: string }[];
     },
     enabled: !!user?.id,
   });
@@ -235,20 +249,26 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // Filter out customers already contacted
-  const contactedCustomerIds = useMemo(
-    () => new Set(contactedCustomers.map(c => c.id)),
-    [contactedCustomers]
-  );
+  // Filter out customers contacted in the last 30 days (any status)
+  const recentlyContactedIds = useMemo(() => {
+    const thirtyDaysAgo = subDays(new Date(), 30);
+    const ids = new Set<string>();
+    allCrmContacts.forEach((c: any) => {
+      if (c.contacted_at && new Date(c.contacted_at) > thirtyDaysAgo) {
+        ids.add(c.customer_id);
+      }
+    });
+    return ids;
+  }, [allCrmContacts]);
 
   const filteredBirthday = useMemo(
-    () => birthdayCustomers.filter(c => !contactedCustomerIds.has(c.id)),
-    [birthdayCustomers, contactedCustomerIds]
+    () => birthdayCustomers.filter(c => !recentlyContactedIds.has(c.id)),
+    [birthdayCustomers, recentlyContactedIds]
   );
 
   const filteredInactive = useMemo(
-    () => inactiveCustomers.filter(c => !contactedCustomerIds.has(c.id)),
-    [inactiveCustomers, contactedCustomerIds]
+    () => inactiveCustomers.filter(c => !recentlyContactedIds.has(c.id)),
+    [inactiveCustomers, recentlyContactedIds]
   );
 
   // Summary counts
@@ -293,13 +313,14 @@ export default function WhatsAppCRM() {
       const { error } = await supabase
         .from("crm_customer_contacts" as any)
         .upsert(
-          { customer_id: customerId, owner_id: user!.id, status: "contacted" } as any,
+          { customer_id: customerId, owner_id: user!.id, status: "contacted", contacted_at: new Date().toISOString() } as any,
           { onConflict: "customer_id,owner_id" }
         );
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["crm-contacted-customers"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-all-contacts"] });
       queryClient.invalidateQueries({ queryKey: ["crm-birthdays"] });
       queryClient.invalidateQueries({ queryKey: ["crm-inactive"] });
       toast.success("Cliente movido para Contatados!");
@@ -325,13 +346,14 @@ export default function WhatsAppCRM() {
     mutationFn: async ({ customerId, status }: { customerId: string; status: string }) => {
       const { error } = await supabase
         .from("crm_customer_contacts" as any)
-        .update({ status } as any)
+        .update({ status, contacted_at: new Date().toISOString() } as any)
         .eq("customer_id", customerId)
         .eq("owner_id", user!.id);
       if (error) throw error;
     },
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ["crm-contacted-customers"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-all-contacts"] });
       queryClient.invalidateQueries({ queryKey: ["crm-birthdays"] });
       queryClient.invalidateQueries({ queryKey: ["crm-inactive"] });
       toast.success(status === "converted" ? "Convertido em venda!" : "Cliente descartado.");
