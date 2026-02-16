@@ -1,87 +1,84 @@
-# Refatoracao do Menu Lateral (Sidebar) - Navegacao Estrategica
 
-## Visao Geral
-
-Reestruturar completamente a Sidebar para ter um botao de Vendas em destaque no topo, seguido do Dashboard, e depois os links agrupados por categorias com subtitulos visuais.
-
-## Estrutura Final do Menu
-
-```text
-+----------------------------+
-| [Logo] Venda PROFIT        |
-+----------------------------+
-| [$$$ VENDAS $$$]           |  <-- Botao CTA grande, cor primaria, pulse
-+----------------------------+
-| Dashboard                  |
-+----------------------------+
-| ESTRATEGIAS                |
-|   Bolsa Consignada         |
-|   Consorcios               |
-|   Bazar VIP                |
-+----------------------------+
-| MARKETING                  |
-|   Clientes                 |
-|   Marketing                |
-|   Fidelidade               |
-+----------------------------+
-| ESTOQUE                    |
-|   Controle                 |
-|   Categorias               |
-|   Fornecedores             |
-|   Pedidos B2B              |
-|   Encomendas               |
-+----------------------------+
-| PARCERIAS                  |
-|   Socias / Parceiras       |
-|   Solicitacoes             |
-+----------------------------+
-| GESTAO                     |
-|   Financeiro               |
-|   Relatorios               |
-|   Rel. Sociedades          |
-+----------------------------+
-| SISTEMA                    |
-|   Minha Loja               |
-|   Configuracoes            |
-|   Tutorial                 |
-+----------------------------+
-| (Admin only)               |
-|   Admin Usuarios           |
-|   Editor Landing Page      |
-+----------------------------+
-```
-
-## Alteracoes Tecnicas
-
-### Arquivo: `src/components/layout/Sidebar.tsx`
-
-1. **Botao de Vendas CTA** — No topo, logo abaixo do logo, renderizar um `Link` para `/sales` estilizado como botao primario chamativo:
-  - Classes: `bg-primary text-white font-bold py-3.5 rounded-xl shadow-glow text-base`
-  - Adicionar animacao `animate-pulse` sutil no icone (DollarSign ou ShoppingCart)
-  - Quando ativo (rota `/sales`), manter destaque mas sem pulse
-2. **Dashboard** — Link simples logo abaixo do botao CTA
-3. **Grupos com subtitulos** — Substituir a lista flat `navItems` por uma estrutura de grupos:
-  ```typescript
-   interface NavGroup {
-     label: string;
-     items: NavItem[];
-   }
-  ```
-   Cada grupo renderiza um subtitulo com classes `text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider px-4 pt-4 pb-1`
-4. **Links individuais** — Manter o estilo atual dos links (mesmas classes de hover/active), apenas reorganizar a ordem
-5. **Links admin** — Manter no final, dentro de um grupo "ADMIN" que so aparece quando `isAdmin === true`
-
-### Arquivo: `src/components/layout/MainLayout.tsx`
-
-Nenhuma alteracao estrutural necessaria. O mobile ja usa `Sheet` com `Sidebar` dentro. O botao CTA ficara no topo do menu mobile naturalmente pois e renderizado primeiro na sidebar. O `overflow-y-auto` ja existente garante rolagem.
-
-## Nota sobre "Rel. Parcerias"
-
-O menu atual tem apenas "Rel. Sociedades" (`/partner-reports`). Nao existe uma rota separada para "Rel. Parcerias". Vou incluir apenas "Rel. Sociedades" no grupo GESTAO, conforme as rotas existentes. Se futuramente uma pagina de Relatorios de Parcerias for criada, basta adicionar ao grupo.
+# Mover Configuracoes de Marketing para Paginas Independentes
 
 ## Resumo
 
+Retirar 3 secoes de configuracao da pagina "Minha Loja" (StoreSettings.tsx) e criar paginas independentes acessiveis pelo menu lateral no grupo MARKETING. Cada pagina tera seu proprio toggle de ativacao/desativacao. A pagina de Fidelidade (LoyaltyAdmin) tambem ganhara um toggle de ativacao no topo.
 
-| Arquivo                             | Alteracao                                                                                                   |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `src/components/layout/Sidebar.tsx` | Reescrita completa: botao CTA de vendas, dashboard separado, links agrupados com subtitulos, admin no final |
+## Novas Paginas
+
+### 1. `src/pages/PurchaseIncentivesSettings.tsx` (Incentivos de Compra)
+- Rota: `/marketing/incentivos`
+- Toggle de ativacao no topo (campo `purchase_incentives_config.enabled` em `store_settings`)
+- Contem toda a configuracao de parcelamento, PIX, faixas de beneficios e mensagens (linhas 1664-1960 do StoreSettings atual)
+- Busca e salva dados diretamente em `store_settings` do usuario logado
+
+### 2. `src/pages/SecretAreaSettings.tsx` (Area Secreta)
+- Rota: `/marketing/area-secreta`
+- Toggle de ativacao no topo (campo `secret_area_active` em `store_settings`)
+- Contem nome do botao, senha de acesso, previa do botao e dicas (linhas 1547-1662 do StoreSettings atual, sem o toggle de fidelidade que sera movido)
+- Busca e salva dados diretamente em `store_settings`
+
+### 3. `src/pages/SalesVideoSettings.tsx` (Video Vendedor)
+- Rota: `/marketing/video-vendedor`
+- Toggle de ativacao no topo — **requer nova coluna** `bio_video_enabled` (boolean, default false) na tabela `store_settings`
+- A bolinha flutuante no catalogo so aparecera se `bio_video_enabled === true` E os videos estiverem configurados
+- Contem os uploaders de video preview e video completo (linhas 1962-2001 do StoreSettings atual)
+
+### 4. Atualizar `src/pages/LoyaltyAdmin.tsx` (Fidelidade)
+- Adicionar toggle de ativacao no topo da pagina (campo `loyalty_enabled` em `store_settings`)
+- Buscar e salvar o campo `loyalty_enabled` diretamente, sem precisar ir em "Minha Loja"
+
+## Alteracoes no Menu Lateral
+
+**Arquivo: `src/components/layout/Sidebar.tsx`**
+
+Adicionar 3 novos itens no grupo MARKETING:
+
+| Item | Icone | Rota |
+|------|-------|------|
+| Clientes | UserCheck | /customers |
+| Marketing | Megaphone | /marketing |
+| Fidelidade | Award | /admin/fidelidade |
+| Incentivos | CreditCard | /marketing/incentivos |
+| Area Secreta | Lock | /marketing/area-secreta |
+| Video Vendedor | Video | /marketing/video-vendedor |
+
+## Rotas no App.tsx
+
+Adicionar 3 novas rotas protegidas:
+- `/marketing/incentivos` -> PurchaseIncentivesSettings
+- `/marketing/area-secreta` -> SecretAreaSettings
+- `/marketing/video-vendedor` -> SalesVideoSettings
+
+## Banco de Dados
+
+Nova coluna na tabela `store_settings`:
+- `bio_video_enabled` (boolean, default false) — controla se o video vendedor esta ativo
+
+## Remocao do StoreSettings.tsx
+
+Remover completamente os 3 Cards:
+- Card "Area Secreta / VIP" (linhas 1547-1662), incluindo o toggle de fidelidade que estava ali
+- Card "Incentivos de Compra" (linhas 1664-1960)
+- Card "Video Vendedor" (linhas 1962-2001)
+
+Os campos correspondentes no `formData`, `useEffect` de inicializacao e `saveMutation` tambem serao limpos (remover `secret_area_active`, `secret_area_name`, `secret_area_password`, `loyalty_enabled`, `purchase_incentives_config`, `bioVideoPreview`, `bioVideoFull`).
+
+## Condicional no Catalogo (StoreCatalog.tsx)
+
+Atualizar a condicao da bolinha flutuante de video vendedor para tambem verificar `bio_video_enabled === true` do `store_settings`.
+
+## Resumo de Arquivos
+
+| Arquivo | Acao |
+|---------|------|
+| `supabase/migrations/...` | Nova coluna `bio_video_enabled` |
+| `src/pages/PurchaseIncentivesSettings.tsx` | Criar (pagina com toggle + config incentivos) |
+| `src/pages/SecretAreaSettings.tsx` | Criar (pagina com toggle + config area secreta) |
+| `src/pages/SalesVideoSettings.tsx` | Criar (pagina com toggle + config video) |
+| `src/pages/LoyaltyAdmin.tsx` | Adicionar toggle de ativacao no topo |
+| `src/pages/StoreSettings.tsx` | Remover 3 cards e campos relacionados |
+| `src/components/layout/Sidebar.tsx` | Adicionar 3 links no grupo Marketing |
+| `src/App.tsx` | Adicionar 3 rotas protegidas |
+| `src/pages/StoreCatalog.tsx` | Condicional `bio_video_enabled` para bolinha |
