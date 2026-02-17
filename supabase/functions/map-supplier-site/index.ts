@@ -64,45 +64,87 @@ Deno.serve(async (req) => {
 
     const allLinks = data.links || [];
     const searchTerm = (search || '').toLowerCase().trim();
-    
+
+    // Dooca Commerce category slugs to exclude (newhype.com.br and similar stores)
+    const doocaCategorySlugs = [
+      'combo', 'combos', 'conjunto-com-calca', 'conjunto-com-calca-1',
+      'macaquinho', 'macaquinho-1', 'acessorio', 'acessorios',
+      'colete', 'jaqueta', 'macacao', 'camisas', 'camisa',
+      'calcas', 'calca', 'shorts', 'vestido', 'vestidos',
+      'saia', 'saias', 'top', 'tops', 'body', 'bodies',
+      'kit', 'kits', 'novidades', 'lancamentos', 'sale', 'outlet',
+    ];
+
+    // Detect if any link follows Dooca pattern: domain/product/color (5 parts when split by /)
+    const hasDoocaPattern = allLinks.some((link: string) => link.split('/').length === 5);
+
     // Filter for product URLs - look for common product URL patterns
     const productUrls = allLinks.filter((link: string) => {
       const lowerLink = link.toLowerCase();
-      
+
       // First, if there's a search term, the URL MUST contain it
       if (searchTerm && !lowerLink.includes(searchTerm)) {
         return false;
       }
-      
-      // Common product URL patterns
-      const isProduct = 
-        lowerLink.includes('/produto/') ||
-        lowerLink.includes('/products/') ||
-        lowerLink.includes('/p/') ||
-        // Pattern: domain.com/product-name (no category prefix, ends with product name)
-        (!lowerLink.includes('/categoria') && 
-         !lowerLink.includes('/category') &&
-         !lowerLink.includes('/busca') &&
-         !lowerLink.includes('/search') &&
-         !lowerLink.includes('/carrinho') &&
-         !lowerLink.includes('/cart') &&
-         !lowerLink.includes('/login') &&
-         !lowerLink.includes('/conta') &&
-         !lowerLink.includes('/account') &&
-         !lowerLink.includes('/politica') &&
-         !lowerLink.includes('/policy') &&
-         !lowerLink.includes('/faq') &&
-         !lowerLink.includes('/contato') &&
-         !lowerLink.includes('/contact') &&
-         !lowerLink.includes('/sobre') &&
-         !lowerLink.includes('/about') &&
-         !lowerLink.includes('/blog') &&
-         !lowerLink.includes('?') &&
-         link.split('/').length >= 4 &&
-         // Has a slug-like ending (words separated by hyphens)
-         /\/[a-z0-9]+-[a-z0-9]+/.test(lowerLink));
-      
-      return isProduct;
+
+      // Skip URLs with query strings or anchors
+      if (lowerLink.includes('?') || lowerLink.includes('#')) return false;
+
+      // Skip generic non-product pages
+      const genericExclusions = [
+        '/categoria', '/category', '/busca', '/search', '/carrinho', '/cart',
+        '/login', '/conta', '/account', '/politica', '/policy', '/faq',
+        '/contato', '/contact', '/sobre', '/about', '/blog', '/checkout',
+        '/wishlist', '/favoritos',
+      ];
+      if (genericExclusions.some(ex => lowerLink.includes(ex))) return false;
+
+      const parts = link.split('/');
+      // parts: ['https:', '', 'domain.com', 'slug1', 'slug2?']
+      // length 4 = domain/slug1, length 5 = domain/slug1/slug2
+
+      // --- Dooca Commerce detection (5-part URLs = product + color variant) ---
+      if (hasDoocaPattern && parts.length === 5) {
+        const productSlug = parts[3].toLowerCase();
+        const colorSlug = parts[4].toLowerCase();
+
+        // Exclude known category slugs in product position
+        if (doocaCategorySlugs.includes(productSlug)) return false;
+
+        // Color slug must look like a real word (letters/hyphens only, no digits at end like -1, -2)
+        if (!/^[a-z][a-z-]*[a-z]$/.test(colorSlug) && !/^[a-z]+$/.test(colorSlug)) return false;
+
+        // Product slug should have at least one hyphen (real product names have hyphens)
+        if (!productSlug.includes('-')) return false;
+
+        // Exclude slugs that end with -1, -2 etc. (Dooca category pagination variants)
+        if (/-(1|2|3|4|5|6|7|8|9|10)$/.test(productSlug)) return false;
+
+        return true;
+      }
+
+      // --- Standard product URL patterns (non-Dooca or 4-part URLs) ---
+      if (lowerLink.includes('/produto/') || lowerLink.includes('/products/') || lowerLink.includes('/p/')) {
+        return true;
+      }
+
+      // Generic pattern for 4-part URLs: domain/product-slug
+      if (parts.length === 4) {
+        const slug = parts[3].toLowerCase();
+
+        // Exclude Dooca category slugs
+        if (doocaCategorySlugs.includes(slug)) return false;
+
+        // Exclude slugs ending with digit suffix (pagination)
+        if (/-(1|2|3|4|5|6|7|8|9|10)$/.test(slug)) return false;
+
+        // Must have hyphen (real product names)
+        if (!slug.includes('-')) return false;
+
+        return /^[a-z0-9]+-[a-z0-9]/.test(slug);
+      }
+
+      return false;
     });
 
     console.log(`Found ${allLinks.length} total links, ${productUrls.length} product URLs matching "${searchTerm}"`);
