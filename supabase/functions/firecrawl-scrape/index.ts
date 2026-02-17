@@ -44,7 +44,8 @@ Deno.serve(async (req) => {
         url: formattedUrl,
         formats: options?.formats || ['markdown'],
         onlyMainContent: options?.onlyMainContent ?? true,
-        waitFor: options?.waitFor || 5000,
+        waitFor: options?.waitFor || 15000,
+        timeout: options?.timeout || 60000,
         location: options?.location,
       }),
     });
