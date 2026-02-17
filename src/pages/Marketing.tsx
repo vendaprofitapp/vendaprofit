@@ -8,14 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Users, Megaphone, Sparkles, Search, RefreshCw, BarChart3, UserPlus, Zap, Store } from "lucide-react";
+import { Users, Megaphone, Sparkles, Search, RefreshCw, UserPlus, Zap, Store } from "lucide-react";
 import { toast } from "sonner";
-import { subDays, startOfDay } from "date-fns";
 import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
 import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
 import { GroupRecommendationCard } from "@/components/marketing/GroupRecommendationCard";
-import { AnalyticsDashboard } from "@/components/marketing/AnalyticsDashboard";
-import { LeadsCRM } from "@/components/marketing/LeadsCRM";
 import { AdBoostCard } from "@/components/marketing/AdBoostCard";
 import { ActiveCampaignsList } from "@/components/marketing/ActiveCampaignsList";
 import { AdStockPausedCard } from "@/components/marketing/AdStockPausedCard";
@@ -25,10 +22,6 @@ export default function Marketing() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("content");
-  const [analyticsDateRange, setAnalyticsDateRange] = useState({
-    start: startOfDay(subDays(new Date(), 6)),
-    end: new Date(),
-  });
 
   const { data: storeSettings } = useQuery({
     queryKey: ["my-store-settings", user?.id],
@@ -198,7 +191,7 @@ export default function Marketing() {
         </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-3xl grid-cols-6">
+        <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="content" className="gap-1.5 text-xs">
               <Sparkles className="h-3.5 w-3.5" />
               Conteúdo
@@ -210,10 +203,6 @@ export default function Marketing() {
             <TabsTrigger value="groups" className="gap-1.5 text-xs">
               <Users className="h-3.5 w-3.5" />
               Parcerias
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="gap-1.5 text-xs">
-              <BarChart3 className="h-3.5 w-3.5" />
-              Analytics
             </TabsTrigger>
             <TabsTrigger value="ads" className="gap-1.5 text-xs">
               <Zap className="h-3.5 w-3.5" />
@@ -282,19 +271,6 @@ export default function Marketing() {
             )}
           </TabsContent>
 
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" className="mt-4">
-            {user?.id && (
-              <div className="space-y-8">
-                <AnalyticsDashboard
-                  ownerId={user.id}
-                  dateRange={analyticsDateRange}
-                  onDateRangeChange={setAnalyticsDateRange}
-                />
-                <LeadsCRM ownerId={user.id} dateRange={analyticsDateRange} />
-              </div>
-            )}
-          </TabsContent>
 
           {/* Ads Tab */}
           <TabsContent value="ads" className="mt-4">
