@@ -31,11 +31,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Search, Building2, Phone, User, Globe, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Building2, Phone, User, Globe, Loader2, CheckCircle2, XCircle, AlertTriangle, PackageSearch } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { syncSupplierCatalog } from "@/utils/catalogSync";
 
 interface Supplier {
   id: string;
@@ -53,6 +55,7 @@ interface Supplier {
   b2b_login: string | null;
   b2b_password: string | null;
   b2b_enabled: boolean;
+  catalog_synced: boolean;
   created_at: string;
 }
 
@@ -85,6 +88,8 @@ export default function Suppliers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syncingSupplier, setSyncingSupplier] = useState<string | null>(null);
+  const [productCounts, setProductCounts] = useState<Record<string, number>>({});
 
   const testB2bConnection = async () => {
     if (!formData.b2b_url.trim()) {
@@ -133,8 +138,57 @@ export default function Suppliers() {
     setLoading(false);
   };
 
+  const fetchProductCounts = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("products")
+      .select("supplier_id")
+      .eq("owner_id", user.id)
+      .not("supplier_id", "is", null)
+      .limit(5000);
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach((p) => {
+        if (p.supplier_id) {
+          counts[p.supplier_id] = (counts[p.supplier_id] || 0) + 1;
+        }
+      });
+      setProductCounts(counts);
+    }
+  };
+
+  const handleCatalogToggle = async (supplier: Supplier, checked: boolean) => {
+    if (!user) return;
+    if (checked) {
+      setSyncingSupplier(supplier.id);
+      try {
+        const count = await syncSupplierCatalog(user.id, supplier.id, supplier.name);
+        setSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, catalog_synced: true } : s));
+        await fetchProductCounts();
+        toast.success(count > 0 ? `${count} produtos adicionados ao seu estoque!` : "Catálogo já está atualizado.");
+      } catch (err: any) {
+        console.error("Catalog sync error:", err);
+        toast.error(err.message || "Erro ao sincronizar catálogo");
+      } finally {
+        setSyncingSupplier(null);
+      }
+    } else {
+      const { error } = await supabase
+        .from("suppliers")
+        .update({ catalog_synced: false } as any)
+        .eq("id", supplier.id);
+      if (error) {
+        toast.error("Erro ao desativar catálogo");
+      } else {
+        setSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, catalog_synced: false } : s));
+        toast.info("Catálogo desativado. Produtos já importados permanecem no estoque.");
+      }
+    }
+  };
+
   useEffect(() => {
     fetchSuppliers();
+    fetchProductCounts();
   }, [user]);
 
   const handleOpenDialog = (supplier?: Supplier) => {
@@ -292,9 +346,8 @@ export default function Suppliers() {
                     <TableRow>
                       <TableHead>Empresa</TableHead>
                       <TableHead>CNPJ</TableHead>
-                      <TableHead>Telefone Geral</TableHead>
                       <TableHead>Atendente</TableHead>
-                      <TableHead>Tel. Atendente</TableHead>
+                      <TableHead>Catálogo</TableHead>
                       <TableHead>B2B Ativo</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -306,9 +359,25 @@ export default function Suppliers() {
                           {supplier.name}
                         </TableCell>
                         <TableCell>{supplier.cnpj || "-"}</TableCell>
-                        <TableCell>{supplier.phone || "-"}</TableCell>
                         <TableCell>{supplier.attendant_name || "-"}</TableCell>
-                        <TableCell>{supplier.attendant_phone || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={supplier.catalog_synced}
+                              disabled={syncingSupplier === supplier.id}
+                              onCheckedChange={(checked) => handleCatalogToggle(supplier, checked)}
+                            />
+                            {syncingSupplier === supplier.id && (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                            {supplier.catalog_synced && productCounts[supplier.id] && (
+                              <Badge variant="secondary" className="text-xs">
+                                <PackageSearch className="h-3 w-3 mr-1" />
+                                {productCounts[supplier.id]} peças
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Switch
