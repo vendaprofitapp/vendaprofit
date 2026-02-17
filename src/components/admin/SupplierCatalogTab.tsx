@@ -51,7 +51,7 @@ export function SupplierCatalogTab({
     setLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, category, price, cost_price, model, image_url, stock_quantity, color, color_label")
+      .select("id, name, category, price, cost_price, model, image_url, stock_quantity, color, color_label, product_variants(id)")
       .eq("owner_id", adminId)
       .eq("supplier_id", supplierId)
       .order("name");
@@ -62,19 +62,19 @@ export function SupplierCatalogTab({
       return;
     }
 
-    // Count variants per product
-    const productsWithVariants: Product[] = [];
-    for (const p of data || []) {
-      const { count } = await supabase
-        .from("product_variants")
-        .select("id", { count: "exact", head: true })
-        .eq("product_id", p.id);
-
-      productsWithVariants.push({
-        ...p,
-        variantCount: count || 0,
-      });
-    }
+    const productsWithVariants: Product[] = (data || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      price: p.price,
+      cost_price: p.cost_price,
+      model: p.model,
+      image_url: p.image_url,
+      stock_quantity: p.stock_quantity,
+      color: p.color,
+      color_label: p.color_label,
+      variantCount: p.product_variants?.length || 0,
+    }));
 
     setProducts(productsWithVariants);
     setLoading(false);
