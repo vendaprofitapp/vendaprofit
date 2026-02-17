@@ -1,54 +1,35 @@
 
-
-# Fix: "Ver Minha Loja" no iOS WebApp (Standalone Mode)
+# Filtrar Vendas na Tela "Registrar Vendas"
 
 ## Problema
 
-No iOS, quando o app roda como WebApp (modo standalone/PWA), tanto `target="_blank"` quanto `window.open` abrem a URL dentro do proprio WebApp, substituindo a tela atual. Isso e uma limitacao conhecida do Safari em modo standalone -- ele nao tem conceito de "abas".
+A query de vendas na pagina `/sales` busca todas as vendas sem filtrar por usuario. Como as politicas de RLS permitem que socias vejam vendas umas das outras (necessario para os relatorios de sociedade), vendas de parceiras tambem aparecem nessa tela.
 
 ## Solucao
 
-Detectar se o app esta rodando em modo standalone (PWA) e, nesse caso, usar `navigator.share()` para permitir ao usuario abrir o link no Safari. Se `navigator.share` nao estiver disponivel, copiar o link para a area de transferencia e mostrar um aviso (toast).
+Adicionar `.eq("owner_id", user.id)` na query de vendas em `src/pages/Sales.tsx`. Isso garante que apenas as vendas registradas pela propria usuaria aparecam nessa tela, enquanto os relatorios de sociedade continuam mostrando os dados cruzados normalmente.
 
-Em navegadores normais (desktop, mobile browser), o comportamento atual com `<a target="_blank">` sera mantido.
+## Mudanca
 
-## Mudancas
-
-### Arquivo: `src/components/layout/Sidebar.tsx`
-
-1. **Criar funcao auxiliar** `isStandaloneMode()` que detecta se o app roda como PWA:
-   - Checa `(window.navigator as any).standalone === true` (iOS Safari)
-   - Checa `window.matchMedia('(display-mode: standalone)').matches` (Android/outros)
-
-2. **Modificar o botao gold** quando `storeSlug` existe:
-   - Sempre renderizar como `<a target="_blank">` (funciona em navegadores normais)
-   - No `onClick`, se estiver em modo standalone:
-     - Chamar `e.preventDefault()` para impedir a navegacao
-     - Tentar `navigator.share({ url })` para abrir no Safari
-     - Se share nao disponivel, copiar URL com `navigator.clipboard.writeText()` e mostrar toast
-
-3. **Importar** `toast` de sonner para feedback ao usuario
-
-### Logica resumida
+### Arquivo: `src/pages/Sales.tsx` (linha ~221-224)
 
 ```
-onClick(e) {
-  if (isStandaloneMode()) {
-    e.preventDefault();
-    const url = `${window.location.origin}/${storeSlug}`;
-    
-    if (navigator.share) {
-      navigator.share({ title: 'Minha Loja', url });
-    } else {
-      navigator.clipboard.writeText(url);
-      toast('Link copiado! Cole no navegador para abrir.');
-    }
-  }
-  // Em navegador normal, o <a target="_blank"> funciona normalmente
-}
+// De:
+const { data, error } = await supabase
+  .from("sales")
+  .select("*")
+  .order("created_at", { ascending: false });
+
+// Para:
+const { data, error } = await supabase
+  .from("sales")
+  .select("*")
+  .eq("owner_id", user?.id)
+  .order("created_at", { ascending: false });
 ```
+
+Isso tambem corrigira automaticamente os cards de resumo (Vendas Hoje, Vendas do Mes, Ticket Medio), pois eles sao calculados a partir dos mesmos dados.
 
 | Arquivo | Acao |
 |---------|------|
-| `src/components/layout/Sidebar.tsx` | Adicionar deteccao de standalone + share/clipboard fallback |
-
+| `src/pages/Sales.tsx` | Adicionar filtro `owner_id` na query de vendas |
