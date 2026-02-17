@@ -549,31 +549,31 @@ Deno.serve(async (req) => {
 
     // Extract product name from metadata or title
     let productName = '';
-    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    const titleMatch = fullHtml.match(/<title>([^<]+)<\/title>/i);
     if (titleMatch) {
       productName = titleMatch[1].split('|')[0].split('-')[0].trim();
     }
     
     // Try og:title as well
-    const ogTitleMatch = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+    const ogTitleMatch = fullHtml.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
     if (ogTitleMatch && ogTitleMatch[1].length > productName.length) {
       productName = ogTitleMatch[1].split('|')[0].split('-')[0].trim();
     }
 
     // Try h1 tag for product name
-    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+    const h1Match = fullHtml.match(/<h1[^>]*>([^<]+)<\/h1>/i);
     if (h1Match && h1Match[1].trim().length > 3) {
       productName = h1Match[1].trim();
     }
 
-    // Try product name from JSON-LD (reuse previous jsonLdMatch or re-search)
-    const jsonLdForName = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+    // Try product name from JSON-LD - ONLY accept @type Product (use fullHtml to include rawHtml with scripts)
+    const jsonLdForName = fullHtml.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
     if (jsonLdForName) {
       for (const jsonLd of jsonLdForName) {
         try {
           const jsonContent = jsonLd.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
           const parsed = JSON.parse(jsonContent);
-          if (parsed.name) {
+          if (parsed['@type'] === 'Product' && parsed.name) {
             productName = parsed.name;
             break;
           }
@@ -596,7 +596,8 @@ Deno.serve(async (req) => {
       const urlObj = new URL(formattedUrl);
       const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
       if (pathParts.length > 0) {
-        const slug = pathParts[pathParts.length - 1];
+        // Para URLs Dooca (produto/cor), usar penúltimo segmento como nome
+        const slug = pathParts.length >= 2 ? pathParts[pathParts.length - 2] : pathParts[pathParts.length - 1];
         // Convert slug to title case (e.g., "top-alana-aloe-botanical" -> "Top Alana Aloe Botanical")
         productName = slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         // Remove size indicators at the end (e.g., "G", "GG", "P", "M")
