@@ -70,6 +70,7 @@ const emptySupplier = {
   b2b_url: "",
   b2b_login: "",
   b2b_password: "",
+  b2b_enabled: false,
 };
 
 export default function Suppliers() {
@@ -100,7 +101,8 @@ export default function Suppliers() {
       const markdown = data?.data?.markdown || data?.markdown;
       if (markdown && markdown.length > 50) {
         setConnectionStatus('success');
-        toast.success("Conexão OK! O portal B2B está acessível.");
+        setFormData(prev => ({ ...prev, b2b_enabled: true }));
+        toast.success("Conexão OK! B2B ativado automaticamente.");
       } else {
         setConnectionStatus('error');
         toast.error("A página foi acessada mas não retornou conteúdo suficiente. Verifique a URL.");
@@ -153,6 +155,7 @@ export default function Suppliers() {
         b2b_url: supplier.b2b_url || "",
         b2b_login: supplier.b2b_login || "",
         b2b_password: supplier.b2b_password || "",
+        b2b_enabled: supplier.b2b_enabled,
       });
     } else {
       setEditingSupplier(null);
@@ -182,6 +185,7 @@ export default function Suppliers() {
       b2b_url: formData.b2b_url.trim() || null,
       b2b_login: formData.b2b_login.trim() || null,
       b2b_password: formData.b2b_password.trim() || null,
+      b2b_enabled: formData.b2b_enabled,
       owner_id: user.id,
     } as any;
 
@@ -517,7 +521,7 @@ export default function Suppliers() {
                       </Button>
                     </div>
                     {connectionStatus === 'success' && (
-                      <p className="text-xs text-green-600">✅ Portal acessível! Você pode ativar o dropshipping na listagem.</p>
+                      <p className="text-xs text-green-600">✅ Portal acessível! O B2B será ativado automaticamente ao salvar.</p>
                     )}
                     {connectionStatus === 'error' && (
                       <p className="text-xs text-destructive">❌ Verifique se a URL está correta e tente novamente.</p>
@@ -545,9 +549,16 @@ export default function Suppliers() {
                     />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Ative o toggle "B2B Ativo" na listagem para exibir produtos deste fornecedor como "Sob Encomenda" no catálogo.
-                </p>
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <div>
+                    <p className="text-sm font-medium">Ativar Dropshipping B2B</p>
+                    <p className="text-xs text-muted-foreground">Exibe produtos deste fornecedor como "Sob Encomenda" no catálogo</p>
+                  </div>
+                  <Switch
+                    checked={formData.b2b_enabled}
+                    onCheckedChange={(checked) => setFormData({ ...formData, b2b_enabled: checked })}
+                  />
+                </div>
               </div>
             </div>
             <DialogFooter>
