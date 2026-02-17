@@ -252,6 +252,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                 <PanelLeft className="h-5 w-5" />
                 Editor Landing Page
               </Link>
+              <Link
+                to="/admin/catalog"
+                onClick={handleNavClick}
+                className={linkClasses(location.pathname === "/admin/catalog")}
+              >
+                <Package className="h-5 w-5" />
+                Central de Peças
+              </Link>
             </div>
           )}
         </nav>
