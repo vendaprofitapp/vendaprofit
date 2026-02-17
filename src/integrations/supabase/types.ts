@@ -251,6 +251,36 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_requests: {
+        Row: {
+          b2b_url: string | null
+          b2c_url: string | null
+          brand_name: string
+          created_at: string
+          id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          b2b_url?: string | null
+          b2c_url?: string | null
+          brand_name: string
+          created_at?: string
+          id?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          b2b_url?: string | null
+          b2c_url?: string | null
+          brand_name?: string
+          created_at?: string
+          id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       catalog_product_views: {
         Row: {
           created_at: string
