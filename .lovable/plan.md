@@ -1,52 +1,72 @@
 
-# Correção: Nome do Produto Vindo como "XEngine Cross Domain Data Tunnel"
+# Criar Wizard de Onboarding para Novos Usuarios
 
-## Causa Raiz
+## Problema
 
-Confirmado via teste direto: a edge function `scrape-product-images` retorna `"name": "XEngine Cross Domain Data Tunnel"` para todas as URLs da NewHype.
+O Wizard de Onboarding mencionado na memoria do projeto nunca foi implementado no codigo. Quando o usuario `hybridrunbrasil@gmail.com` criou a conta, ele foi direto para o Dashboard sem passar por nenhuma configuracao inicial. Os campos essenciais do perfil estao todos vazios (`store_name`, `phone`, `origin_zip`, `cpf`), e nao foi criado nenhum registro em `store_settings`.
 
-O bug esta na extração de nome via JSON-LD (linhas 570-592 de `scrape-product-images/index.ts`):
+## Solucao
 
-```typescript
-// CODIGO ATUAL (com bug):
-if (parsed.name) {           // Aceita QUALQUER JSON-LD com "name"
-  productName = parsed.name;  // Pega o nome do script de tracking!
-  break;
-}
+Criar um componente `OnboardingWizard` que aparece como um Dialog modal no Dashboard quando campos essenciais estao ausentes. O wizard tera 3 etapas:
+
+### Etapa 1 — Identidade da Loja
+- **Nome da revenda** (`profiles.store_name`)
+- **WhatsApp** (`profiles.phone`)
+- **CEP de origem** (`profiles.origin_zip`)
+- **CPF** (`profiles.cpf`)
+
+### Etapa 2 — Configurar Loja Online
+- **Slug da URL** (gera automaticamente a partir do nome da revenda)
+- Cria o registro em `store_settings` com `store_slug`, `store_name`, `whatsapp_number`
+
+### Etapa 3 — Selecao de Marcas Parceiras
+- Exibe as marcas disponiveis dos fornecedores do admin: **BECHOSE**, **INMOOV**, **NEW HYPE**, **POWERED BY COFFEE**, **YOPP**
+- Marcas selecionadas sincronizam os fornecedores e produtos (com estoque zero) da conta admin para a conta do novo usuario
+- Campo "Outra marca" para registrar em `brand_requests`
+
+## Logica de Exibicao
+
+O wizard aparece no Dashboard quando **qualquer um** desses campos esta vazio:
+- `profiles.store_name`
+- `profiles.phone`
+- `profiles.origin_zip`
+
+Se todos estiverem preenchidos, o wizard nao aparece.
+
+## Arquivos a Criar/Modificar
+
+| Arquivo | Acao |
+|---------|------|
+| `src/components/onboarding/OnboardingWizard.tsx` | **CRIAR** — Componente Dialog multi-step com as 3 etapas |
+| `src/pages/Dashboard.tsx` | **MODIFICAR** — Adicionar query para verificar campos vazios do perfil e renderizar o `OnboardingWizard` |
+
+## Detalhes Tecnicos
+
+### OnboardingWizard.tsx
+
+```text
+Componente: Dialog (Radix) nao-dismissivel (sem fechar clicando fora)
+Estado: step (1, 2, 3), formData com campos de cada etapa
+Step 1: Formulario com Input para store_name, phone (mascara), origin_zip (mascara), cpf (mascara)
+Step 2: Input para slug (auto-gerado do store_name, editavel), preview da URL
+Step 3: Checkboxes das 5 marcas + campo texto "Outra marca"
+Botoes: "Proximo" / "Anterior" / "Finalizar"
 ```
 
-O site da NewHype (Dooca Commerce) injeta um bloco JSON-LD do "XEngine Cross Domain Data Tunnel" (ferramenta de tracking) que tem um campo `name`. Como o codigo aceita qualquer bloco com `name` sem verificar o `@type`, ele pega o nome do tracker em vez do produto.
+### Acao ao Finalizar
 
-A extração anterior via `<h1>` provavelmente funciona corretamente mas eh sobrescrita pelo JSON-LD bugado.
+1. Atualizar `profiles` com `store_name`, `phone`, `origin_zip`, `cpf`
+2. Inserir em `store_settings` com `store_slug`, `store_name`, `whatsapp_number`, `owner_id`
+3. Se marcas foram selecionadas — os produtos ja foram copiados pelo trigger `copy_admin_defaults_to_new_user`, entao essa etapa sera apenas informativa/confirmacao
+4. Se "Outra marca" foi preenchida — inserir em `brand_requests`
+5. Fechar wizard e recarregar dados do dashboard
 
-## Correção
+### Dashboard.tsx
 
-### Arquivo: `supabase/functions/scrape-product-images/index.ts`
-
-**Mudanca 1 — JSON-LD: Aceitar apenas `@type: 'Product'`** (linhas 570-592)
-
-Alterar a logica para so extrair o nome quando o bloco JSON-LD for do tipo Product:
-
-```typescript
-// CORRIGIDO:
-if (parsed['@type'] === 'Product' && parsed.name) {
-  productName = parsed.name;
-  break;
-}
+Adicionar no inicio do componente:
+```text
+useQuery para buscar profiles onde id = user.id
+Verificar se store_name, phone, origin_zip estao preenchidos
+Se algum estiver vazio: showOnboarding = true
+Renderizar <OnboardingWizard open={showOnboarding} onComplete={refetch} />
 ```
-
-**Mudanca 2 — Fallback de URL: Usar penultimo segmento para Dooca** (linhas 594-605)
-
-Quando o fallback de URL eh acionado, URLs Dooca tem formato `/produto/cor`. O codigo atual usa o ultimo segmento (a cor). Corrigir para usar o penultimo segmento quando houver 2+ segmentos no path:
-
-```typescript
-const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
-// Para Dooca (produto/cor), usar penultimo segmento como nome
-const slug = pathParts.length >= 2
-  ? pathParts[pathParts.length - 2]
-  : pathParts[pathParts.length - 1] || '';
-```
-
-## Resultado Esperado
-
-Apos a correcao, o scraper retornara o nome correto do produto (ex: "CONJUNTO PUMP CASTOR" via `<h1>`, ou "Conjunto Pump" via URL fallback) em vez de "XEngine Cross Domain Data Tunnel".
