@@ -8,15 +8,19 @@ import { Search, Radar, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NewProductsScanner } from "./NewProductsScanner";
 import { PropagateProductsDialog } from "./PropagateProductsDialog";
+import { ProductFormDialog } from "@/components/stock/ProductFormDialog";
 
 interface Product {
   id: string;
   name: string;
   category: string;
   price: number;
+  cost_price: number | null;
+  model: string | null;
   image_url: string | null;
   stock_quantity: number;
   color: string | null;
+  color_label: string | null;
   variantCount: number;
 }
 
@@ -40,12 +44,14 @@ export function SupplierCatalogTab({
   const [search, setSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [showPropagate, setShowPropagate] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   const fetchProducts = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, category, price, image_url, stock_quantity, color")
+      .select("id, name, category, price, cost_price, model, image_url, stock_quantity, color, color_label")
       .eq("owner_id", adminId)
       .eq("supplier_id", supplierId)
       .order("name");
@@ -78,6 +84,19 @@ export function SupplierCatalogTab({
     fetchProducts();
   }, [supplierId]);
 
+  const handleProductClick = async (productId: string) => {
+    const { data } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", productId)
+      .single();
+
+    if (data) {
+      setEditingProduct(data);
+      setShowEditDialog(true);
+    }
+  };
+
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -88,7 +107,10 @@ export function SupplierCatalogTab({
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <CardTitle className="text-lg">{supplierName}</CardTitle>
+          <div className="flex items-center gap-3">
+            <CardTitle className="text-lg">{supplierName}</CardTitle>
+            <Badge variant="secondary">{products.length} peças</Badge>
+          </div>
           <div className="flex flex-wrap gap-2">
             {siteUrl && (
               <Button
@@ -133,14 +155,20 @@ export function SupplierCatalogTab({
                   <TableHead className="w-12">Img</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Cor</TableHead>
+                  <TableHead>Modelo</TableHead>
                   <TableHead>Categoria</TableHead>
+                  <TableHead className="text-right">Custo</TableHead>
                   <TableHead className="text-right">Preço</TableHead>
                   <TableHead className="text-center">Variantes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow
+                    key={p.id}
+                    className="cursor-pointer"
+                    onClick={() => handleProductClick(p.id)}
+                  >
                     <TableCell>
                       {p.image_url ? (
                         <img
@@ -153,8 +181,12 @@ export function SupplierCatalogTab({
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{p.color || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{p.color_label || p.color || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{p.model || "—"}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{p.category}</TableCell>
+                    <TableCell className="text-right text-muted-foreground text-sm">
+                      {p.cost_price ? `R$ ${p.cost_price.toFixed(2)}` : "—"}
+                    </TableCell>
                     <TableCell className="text-right">
                       R$ {p.price.toFixed(2)}
                     </TableCell>
@@ -191,6 +223,22 @@ export function SupplierCatalogTab({
           supplierName={supplierName}
           supplierId={supplierId}
           adminId={adminId}
+        />
+      )}
+
+      {showEditDialog && editingProduct && (
+        <ProductFormDialog
+          open={showEditDialog}
+          onOpenChange={(open) => {
+            setShowEditDialog(open);
+            if (!open) setEditingProduct(null);
+          }}
+          editingProduct={editingProduct}
+          onSuccess={() => {
+            setShowEditDialog(false);
+            setEditingProduct(null);
+            fetchProducts();
+          }}
         />
       )}
     </Card>

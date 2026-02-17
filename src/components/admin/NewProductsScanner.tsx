@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Radar, Plus, Loader2, ExternalLink } from "lucide-react";
+import { Radar, Loader2, ExternalLink, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { AdminProductEditDialog } from "./AdminProductEditDialog";
 
 interface DetectedProduct {
   name: string;
@@ -41,11 +42,11 @@ export function NewProductsScanner({
 }: NewProductsScannerProps) {
   const [scanning, setScanning] = useState(false);
   const [scraping, setScraping] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [productUrls, setProductUrls] = useState<string[]>([]);
   const [detected, setDetected] = useState<DetectedProduct[]>([]);
   const [step, setStep] = useState<"idle" | "mapped" | "scraped">("idle");
   const [progress, setProgress] = useState("");
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   const handleMap = async () => {
     setScanning(true);
@@ -75,7 +76,7 @@ export function NewProductsScanner({
 
   const handleScrape = async () => {
     setScraping(true);
-    const batch = productUrls.slice(0, 20); // Max 20
+    const batch = productUrls.slice(0, 20);
     setProgress(`Extraindo dados de ${batch.length} páginas...`);
 
     const newProducts: DetectedProduct[] = [];
@@ -93,12 +94,10 @@ export function NewProductsScanner({
         if (error || !data?.success) continue;
 
         const markdown = data?.data?.markdown || data?.markdown || "";
-        // Extract product name from first heading
         const headingMatch = markdown.match(/^#\s+(.+)$/m);
         const name = headingMatch?.[1]?.trim();
 
         if (name && !existingProductNames.includes(name.toLowerCase())) {
-          // Check not already in detected
           if (!newProducts.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
             newProducts.push({ name, url: batch[i], selected: true });
           }
@@ -125,132 +124,115 @@ export function NewProductsScanner({
     );
   };
 
-  const handleAdd = async () => {
+  const handleEditAndAdd = () => {
     const selected = detected.filter((p) => p.selected);
     if (selected.length === 0) {
       toast.error("Selecione pelo menos um produto");
       return;
     }
+    setShowEditDialog(true);
+  };
 
-    setAdding(true);
-    let added = 0;
-
-    for (const product of selected) {
-      const { error } = await supabase.from("products").insert({
-        owner_id: adminId,
-        name: product.name,
-        supplier_id: supplierId,
-        category: "Sem Categoria",
-        price: 0,
-        stock_quantity: 0,
-      });
-
-      if (!error) added++;
-    }
-
-    toast.success(`${added} produto(s) adicionado(s) ao catálogo!`);
-    setAdding(false);
+  const handleEditDialogClose = () => {
+    setShowEditDialog(false);
     onClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Radar className="h-5 w-5 text-primary" />
-            Buscar Novidades — {supplierName}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open && !showEditDialog} onOpenChange={() => onClose()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Radar className="h-5 w-5 text-primary" />
+              Buscar Novidades — {supplierName}
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Site: <a href={siteUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">{siteUrl} <ExternalLink className="inline h-3 w-3" /></a>
-          </p>
-
-          {progress && (
-            <Badge variant="outline" className="text-xs">
-              {progress}
-            </Badge>
-          )}
-
-          {step === "idle" && (
-            <Button onClick={handleMap} disabled={scanning} className="w-full">
-              {scanning ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Radar className="h-4 w-4 mr-2" />
-              )}
-              {scanning ? "Mapeando site..." : "1. Mapear URLs do Site"}
-            </Button>
-          )}
-
-          {step === "mapped" && (
-            <div className="space-y-3">
-              <p className="text-sm">{productUrls.length} URLs de produtos encontradas</p>
-              <Button onClick={handleScrape} disabled={scraping} className="w-full">
-                {scraping ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Radar className="h-4 w-4 mr-2" />
-                )}
-                {scraping ? "Extraindo dados..." : `2. Extrair dados (até ${Math.min(productUrls.length, 20)} páginas)`}
-              </Button>
-            </div>
-          )}
-
-          {step === "scraped" && detected.length > 0 && (
-            <ScrollArea className="h-64">
-              <div className="space-y-2">
-                {detected.map((p, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-2 border rounded-lg"
-                  >
-                    <Checkbox
-                      checked={p.selected}
-                      onCheckedChange={() => toggleProduct(i)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{p.name}</p>
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-muted-foreground hover:text-primary truncate block"
-                      >
-                        {p.url}
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-
-          {step === "scraped" && detected.length === 0 && (
-            <p className="text-center text-muted-foreground py-4">
-              Todos os produtos do site já estão cadastrados! 🎉
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Site:{" "}
+              <a href={siteUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                {siteUrl} <ExternalLink className="inline h-3 w-3" />
+              </a>
             </p>
-          )}
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Fechar
-          </Button>
-          {step === "scraped" && detected.length > 0 && (
-            <Button onClick={handleAdd} disabled={adding}>
-              {adding ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4 mr-2" />
-              )}
-              Adicionar {detected.filter((p) => p.selected).length} Selecionado(s)
+            {progress && (
+              <Badge variant="outline" className="text-xs">
+                {progress}
+              </Badge>
+            )}
+
+            {step === "idle" && (
+              <Button onClick={handleMap} disabled={scanning} className="w-full">
+                {scanning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Radar className="h-4 w-4 mr-2" />}
+                {scanning ? "Mapeando site..." : "1. Mapear URLs do Site"}
+              </Button>
+            )}
+
+            {step === "mapped" && (
+              <div className="space-y-3">
+                <p className="text-sm">{productUrls.length} URLs de produtos encontradas</p>
+                <Button onClick={handleScrape} disabled={scraping} className="w-full">
+                  {scraping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Radar className="h-4 w-4 mr-2" />}
+                  {scraping ? "Extraindo dados..." : `2. Extrair dados (até ${Math.min(productUrls.length, 20)} páginas)`}
+                </Button>
+              </div>
+            )}
+
+            {step === "scraped" && detected.length > 0 && (
+              <ScrollArea className="h-64">
+                <div className="space-y-2">
+                  {detected.map((p, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 border rounded-lg">
+                      <Checkbox checked={p.selected} onCheckedChange={() => toggleProduct(i)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-muted-foreground hover:text-primary truncate block"
+                        >
+                          {p.url}
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+
+            {step === "scraped" && detected.length === 0 && (
+              <p className="text-center text-muted-foreground py-4">
+                Todos os produtos do site já estão cadastrados! 🎉
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Fechar
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {step === "scraped" && detected.length > 0 && (
+              <Button onClick={handleEditAndAdd}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar e Adicionar {detected.filter((p) => p.selected).length} Selecionado(s)
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {showEditDialog && (
+        <AdminProductEditDialog
+          open={showEditDialog}
+          onClose={handleEditDialogClose}
+          products={detected.filter((p) => p.selected).map(({ name, url }) => ({ name, url }))}
+          supplierId={supplierId}
+          adminId={adminId}
+        />
+      )}
+    </>
   );
 }
