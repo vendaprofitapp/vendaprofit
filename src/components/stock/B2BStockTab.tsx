@@ -90,6 +90,8 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
   const [products, setProducts] = useState<B2BProduct[]>([]);
   const [clones, setClones] = useState<B2BClone[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeSupplierNames, setActiveSupplierNames] = useState<string[]>([]);
+  const [hasActiveB2BSuppliers, setHasActiveB2BSuppliers] = useState(false);
   const [editingUrl, setEditingUrl] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, B2BCheckResult>>({});
   const [checkingIds, setCheckingIds] = useState<Set<string>>(new Set());
@@ -106,11 +108,17 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
     // Get suppliers with b2b_enabled
     const { data: suppliers } = await supabase
       .from("suppliers")
-      .select("id")
+      .select("id, name")
       .eq("owner_id", userId)
       .eq("b2b_enabled", true);
 
-    const supplierIds = (suppliers || []).map(s => s.id);
+    const activeSuppliers = suppliers || [];
+    const supplierIds = activeSuppliers.map(s => s.id);
+    const supplierNames = activeSuppliers.map(s => s.name);
+
+    setHasActiveB2BSuppliers(supplierIds.length > 0);
+    setActiveSupplierNames(supplierNames);
+
     if (supplierIds.length === 0) {
       setProducts([]);
       setClones([]);
@@ -411,6 +419,25 @@ export function B2BStockTab({ userId, searchTerm = "", filters, suppliers: suppl
   }
 
   if (products.length === 0) {
+    if (hasActiveB2BSuppliers) {
+      return (
+        <div className="text-center py-12 text-muted-foreground max-w-md mx-auto">
+          <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p className="font-medium text-foreground">
+            Você tem {activeSupplierNames.length} fornecedor(es) B2B ativo(s)
+          </p>
+          <p className="text-sm mt-1 font-semibold text-primary">
+            {activeSupplierNames.join(", ")}
+          </p>
+          <p className="text-sm mt-3 leading-relaxed">
+            Mas ainda não há produtos cadastrados vinculados a {activeSupplierNames.length === 1 ? "ele" : "eles"}.
+          </p>
+          <p className="text-sm mt-2 leading-relaxed">
+            Para usar o B2B, cadastre produtos na aba <span className="font-semibold">Próprio</span> do Controle de Estoque e vincule-os ao fornecedor <span className="font-semibold">{activeSupplierNames[0]}</span>.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="text-center py-12 text-muted-foreground">
         <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
