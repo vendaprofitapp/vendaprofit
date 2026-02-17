@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Store, Globe, ShoppingBag, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { syncSupplierCatalog } from "@/utils/catalogSync";
 
 interface OnboardingWizardProps {
   open: boolean;
@@ -107,7 +108,36 @@ export function OnboardingWizard({ open, onComplete }: OnboardingWizardProps) {
 
       if (storeError && !storeError.message.includes("duplicate")) throw storeError;
 
-      // Step 3: Brand requests for "other" brand
+      // Step 3: Sync catalogs for selected brands
+      if (selectedBrands.length > 0) {
+        // Get user's suppliers
+        const { data: userSuppliers } = await supabase
+          .from("suppliers")
+          .select("id, name")
+          .eq("owner_id", user.id);
+
+        if (userSuppliers) {
+          let totalSynced = 0;
+          for (const brand of selectedBrands) {
+            const matched = userSuppliers.find(
+              (s) => s.name.toLowerCase() === brand.toLowerCase()
+            );
+            if (matched) {
+              try {
+                const count = await syncSupplierCatalog(user.id, matched.id, matched.name);
+                totalSynced += count;
+              } catch (err) {
+                console.error(`Sync error for ${brand}:`, err);
+              }
+            }
+          }
+          if (totalSynced > 0) {
+            toast.success(`${totalSynced} produtos adicionados ao seu catálogo!`);
+          }
+        }
+      }
+
+      // Brand requests for "other" brand
       if (otherBrand.trim()) {
         await supabase.from("brand_requests").insert({
           user_id: user.id,

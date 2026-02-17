@@ -2902,6 +2902,7 @@ export type Database = {
           b2b_login: string | null
           b2b_password: string | null
           b2b_url: string | null
+          catalog_synced: boolean
           cnpj: string | null
           created_at: string
           email: string | null
@@ -2922,6 +2923,7 @@ export type Database = {
           b2b_login?: string | null
           b2b_password?: string | null
           b2b_url?: string | null
+          catalog_synced?: boolean
           cnpj?: string | null
           created_at?: string
           email?: string | null
@@ -2942,6 +2944,7 @@ export type Database = {
           b2b_login?: string | null
           b2b_password?: string | null
           b2b_url?: string | null
+          catalog_synced?: boolean
           cnpj?: string | null
           created_at?: string
           email?: string | null
