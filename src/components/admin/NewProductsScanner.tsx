@@ -93,12 +93,26 @@ export function NewProductsScanner({
 
         if (error || !data?.success) continue;
 
-        const markdown = data?.data?.markdown || data?.markdown || "";
-        const headingMatch = markdown.match(/^#\s+(.+)$/m);
-        const name = headingMatch?.[1]?.trim();
+        // Try to extract clean name from URL first (handles Dooca Commerce format: /product-slug/color)
+        const urlParts = batch[i].split('/').filter((p: string) => p.length > 0);
+        let name: string | undefined;
+
+        if (urlParts.length >= 3) {
+          // Dooca pattern: domain/product-slug/color → use penultimate segment as name
+          const productSlug = urlParts[urlParts.length - 2];
+          name = productSlug.replace(/-/g, ' ').toUpperCase().trim();
+        }
+
+        // Fallback: extract from markdown heading (for single-segment URLs like combos)
+        if (!name || name.length < 2) {
+          const markdown = data?.data?.markdown || data?.markdown || "";
+          const headingMatch = markdown.match(/^#\s+(.+)$/m);
+          name = headingMatch?.[1]?.trim();
+        }
 
         if (name && !existingProductNames.includes(name.toLowerCase())) {
-          if (!newProducts.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+          // Deduplicate by base product name (ignore color variants)
+          if (!newProducts.some((p) => p.name.toLowerCase() === name!.toLowerCase())) {
             newProducts.push({ name, url: batch[i], selected: true });
           }
         }
