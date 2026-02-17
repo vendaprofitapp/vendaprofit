@@ -7,6 +7,7 @@ import { SalesChart } from "@/components/dashboard/SalesChart";
 import { TopProducts } from "@/components/dashboard/TopProducts";
 import { SystemAlerts } from "@/components/dashboard/SystemAlerts";
 import { EventDraftsBanner } from "@/components/dashboard/EventDraftsBanner";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,6 +16,22 @@ import { startOfDay, startOfWeek, subDays, format } from "date-fns";
 
 export default function Dashboard() {
   const { user } = useAuth();
+
+  const { data: profile, refetch: refetchProfile } = useQuery({
+    queryKey: ['onboarding-profile', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('store_name, phone, origin_zip')
+        .eq('id', user?.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const showOnboarding = !!profile && (!profile.store_name || !profile.phone || !profile.origin_zip);
 
   const { data: sales = [] } = useQuery({
     queryKey: ['dashboard-sales', user?.id],
@@ -105,7 +122,8 @@ export default function Dashboard() {
 
   return (
     <MainLayout>
-      {/* Page Header */}
+      {/* Onboarding Wizard */}
+      <OnboardingWizard open={showOnboarding} onComplete={refetchProfile} />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">Bem-vindo de volta! Aqui está o resumo das suas operações.</p>
