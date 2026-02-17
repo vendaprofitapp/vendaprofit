@@ -1,182 +1,115 @@
 
-# Wizard de Onboarding para Novos Usuarios
+# Central de Controle de Cadastro de Pecas (Admin)
 
 ## Visao Geral
 
-Criar um Wizard (Dialog multi-step) que aparece automaticamente no Dashboard quando o usuario logado tem campos essenciais nao preenchidos. Pode ser fechado a qualquer momento, mas reaparecera no proximo acesso.
+Criar uma nova pagina exclusiva para admins que centraliza o gerenciamento do catalogo master de produtos, organizado por fornecedor. Essa central permite ao admin manter o catalogo "fonte da verdade" que e copiado para todos os usuarios, e inclui um sistema de busca automatica de novos produtos nos sites dos fornecedores via Firecrawl.
 
-## Deteccao de Campos Pendentes
+## Dados Atuais no Admin
 
-O wizard aparece se QUALQUER um destes estiver vazio:
-- `store_settings.store_name` nao existe ou esta vazio
-- `store_settings.whatsapp_number` vazio
-- `profiles.origin_zip` vazio
-- `profiles.cpf` vazio
-- Zero registros em `custom_payment_methods`
-- Zero registros em `suppliers` (marcas)
+| Fornecedor | Produtos |
+|---|---|
+| POWERED BY COFFEE LTDA | 187 |
+| BECHOSE MODA FITNESS | 116 |
+| INMOOV MODA FITNESS | 5 |
+| YOPP | 0 |
 
-Ao fechar (X), salva flag em `sessionStorage` para nao reabrir na mesma sessao. No proximo login, se ainda houver pendencias, reaparece.
+## Funcionalidades
 
-## Steps do Wizard
+### 1. Visao por Fornecedor (Tabs/Accordion)
+- Cada fornecedor do admin aparece como uma aba ou secao
+- Mostra a lista de produtos cadastrados com nome, preco, imagem, categoria e quantidade de variantes
+- Permite buscar/filtrar dentro de cada fornecedor
+- Badge com contagem de produtos por fornecedor
 
-### Step 1 - Nome da Revenda
-- Campo de texto para o nome
-- Ao avancar: gera slug automatico (ex: "Moda Fitness Lu" -> "moda-fitness-lu")
-- Salva em `store_settings`: `store_name`, `store_slug`, `page_title`
+### 2. Sincronizacao de Novos Produtos (Firecrawl)
+- Botao "Buscar Novidades" por fornecedor que acessa o site B2C/B2B do fornecedor via Firecrawl (map + scrape)
+- Compara os produtos encontrados no site com os ja cadastrados (por nome, case-insensitive)
+- Exibe lista de "Novos Produtos Detectados" que o admin pode revisar e adicionar ao catalogo master
+- Os produtos adicionados ao admin sao automaticamente propagados aos usuarios via o trigger existente (para novos usuarios) ou via um botao "Propagar para Usuarios"
 
-### Step 2 - WhatsApp
-- Campo com mascara (00) 00000-0000
-- Salva em `store_settings.whatsapp_number`
+### 3. Propagacao para Usuarios Existentes
+- Botao "Propagar Novos Produtos" que copia produtos do admin que ainda nao existem nos usuarios
+- Funciona por fornecedor: busca todos os usuarios que tem aquele fornecedor e insere os produtos faltantes (com estoque 0)
 
-### Step 3 - Marcas / Fornecedores (REVISADO)
-
-Interface com duas secoes:
-
-**Marcas Disponiveis (botoes de selecao)**
-Exibir botoes/chips clicaveis para as 4 marcas ja cadastradas no admin:
-- PWRD BY COFFEE
-- BECHOSE
-- INMOOV
-- YOPP
-
-O usuario clica para selecionar/deselecionar (toggle visual com check). Ao avancar, para cada marca selecionada:
-1. Busca o fornecedor do admin por nome
-2. Copia o fornecedor e seus produtos (com estoque zerado) para o usuario
-
-**Adicionar outra marca**
-Abaixo dos botoes, um formulario colapsavel "Adicionar marca que nao esta na lista":
-- Nome da Marca (texto)
-- Site B2C (opcional)
-- Site B2B (opcional)
-- Botao "+ Adicionar"
-
-Cada marca adicionada aparece numa lista com botao de remover. Ao avancar, essas marcas sao inseridas na tabela `brand_requests` (para o admin cadastrar depois) e tambem criadas como fornecedores basicos para o usuario.
-
-### Step 4 - Formas de Pagamento
-- Lista para adicionar formas de pagamento
-- Campos: Nome, Taxa (%), toggle "A prazo"
-- Botao "Adicionar"
-- Salva em `custom_payment_methods`
-
-### Step 5 - CEP de Origem e CPF
-- CEP com mascara 00000-000
-- CPF com mascara 000.000.000-00
-- Salva em `profiles.origin_zip` e `profiles.cpf`
-
-## Nota sobre o Trigger Existente
-
-O trigger `on_profile_created_copy_defaults` ja copia TODOS os fornecedores/produtos do admin para novos usuarios no momento do cadastro. No wizard, precisamos verificar se o usuario ja tem esses fornecedores antes de copiar novamente (para evitar duplicatas). Se o trigger ja copiou, o step 3 serve apenas para confirmar quais marcas o usuario quer manter. Se o usuario nao quer uma marca, nao deletamos nada -- simplesmente nao selecionam e os produtos ficam inativos ou com estoque zero.
-
-## Banco de Dados
-
-### Nova tabela: `brand_requests`
-
-```
-id uuid PK
-user_id uuid NOT NULL
-brand_name text NOT NULL
-b2c_url text (nullable)
-b2b_url text (nullable)
-status text DEFAULT 'pending'
-created_at timestamptz DEFAULT now()
-```
-
-RLS:
-- Usuarios podem inserir e ver as proprias solicitacoes
-- Admins podem ver e atualizar todas
+### 4. Gestao de Solicitacoes de Marcas
+- Secao que mostra as `brand_requests` pendentes (da tabela que sera criada no onboarding wizard)
+- Admin pode aprovar (cadastrar a marca) ou rejeitar
 
 ## Arquivos a Criar/Modificar
 
 | Arquivo | Acao |
-|---------|------|
-| `src/components/onboarding/OnboardingWizard.tsx` | Criar - Componente principal (Dialog com 5 steps) |
-| `src/hooks/useOnboardingStatus.tsx` | Criar - Hook que verifica pendencias e controla exibicao |
-| `src/pages/Dashboard.tsx` | Modificar - Importar e renderizar OnboardingWizard |
-| Migracao SQL | Criar tabela `brand_requests` com RLS |
+|---|---|
+| `src/pages/AdminCatalog.tsx` | Criar - Pagina principal da Central de Controle |
+| `src/components/admin/SupplierCatalogTab.tsx` | Criar - Componente de aba por fornecedor (lista de produtos + busca de novidades) |
+| `src/components/admin/NewProductsScanner.tsx` | Criar - Componente que usa Firecrawl para detectar novos produtos |
+| `src/components/admin/BrandRequestsList.tsx` | Criar - Lista de solicitacoes de marcas pendentes |
+| `src/components/admin/PropagateProductsDialog.tsx` | Criar - Dialog de confirmacao para propagar produtos aos usuarios |
+| `src/App.tsx` | Modificar - Adicionar rota `/admin/catalog` |
+| `src/components/layout/Sidebar.tsx` | Modificar - Adicionar link no menu admin |
+| Migracao SQL | Criar tabela `brand_requests` (se ainda nao existir do plano anterior) |
 
 ## Detalhes Tecnicos
 
-### Constantes das Marcas Disponiveis
+### Pagina AdminCatalog
+- Verifica se o usuario e admin via `has_role` (igual ao AdminUsers)
+- Carrega fornecedores do admin (`owner_id = ADMIN_ID`)
+- Renderiza tabs, uma por fornecedor
+- Secao separada para Brand Requests
+
+### SupplierCatalogTab
+- Recebe `supplierId` e `supplierName`
+- Carrega produtos do admin filtrados por `supplier_id`
+- Tabela com: Imagem (thumbnail), Nome, Categoria, Preco, Variantes (count), Acoes (editar/excluir)
+- Busca por nome
+- Botao "Buscar Novidades no Site" (abre NewProductsScanner)
+
+### NewProductsScanner
+- Usa a edge function `firecrawl-map` para mapear URLs do site do fornecedor
+- Filtra URLs que parecem ser paginas de produto (heuristica por padrao de URL)
+- Faz scrape das paginas encontradas para extrair nome e preco
+- Compara com produtos existentes do admin para aquele fornecedor
+- Exibe lista de novos produtos com checkbox para selecao
+- Botao "Adicionar Selecionados" que insere no banco do admin
+
+### PropagateProductsDialog
+- Busca todos os usuarios que tem o fornecedor correspondente (por nome, via `suppliers` table)
+- Para cada usuario, verifica quais produtos do admin ainda nao existem (por nome)
+- Insere os faltantes com estoque 0
+- Mostra progresso e resultado
+
+### Rota e Menu
 ```typescript
-const AVAILABLE_BRANDS = [
-  { name: "PWRD BY COFFEE", displayName: "PWRD BY COFFEE" },
-  { name: "BECHOSE", displayName: "BECHOSE" },
-  { name: "INMOOV", displayName: "INMOOV" },
-  { name: "YOPP", displayName: "YOPP" },
-];
+// App.tsx - nova rota
+<Route path="/admin/catalog" element={<ProtectedRoute><AdminCatalog /></ProtectedRoute>} />
+
+// Sidebar.tsx - no grupo admin (ja existem /admin/users e /admin/landing-page)
+{ icon: Package, label: "Central de Pecas", path: "/admin/catalog" }
 ```
 
-### Slug Generation
-```typescript
-const generateSlug = (name: string) =>
-  name.toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+### Fluxo de Busca de Novidades
+
+```text
+1. Admin clica "Buscar Novidades" no fornecedor BECHOSE
+2. Sistema usa firecrawl-map com URL "https://www.bechose.com.br/"
+3. Recebe lista de URLs do site
+4. Filtra URLs que parecem produtos (ex: /produto/, /p/, /product/)
+5. Faz scrape de cada URL candidata (batch, max 20)
+6. Extrai nome do produto de cada pagina
+7. Compara com nomes existentes no admin para BECHOSE
+8. Exibe: "3 novos produtos encontrados" com nome e link
+9. Admin seleciona e clica "Adicionar ao Catalogo"
+10. Produtos sao criados no admin com dados basicos
+11. Admin pode entao completar manualmente (preco, imagens, categorias)
 ```
 
-### Busca e Copia de Marca do Admin
-```typescript
-const ADMIN_ID = "9cd05136-6005-4e16-85a9-02539aaa12c1";
+### Propagacao para Usuarios
 
-// Verifica se usuario ja tem o fornecedor (evita duplicata do trigger)
-const { data: existing } = await supabase
-  .from("suppliers")
-  .select("id")
-  .eq("owner_id", user.id)
-  .ilike("name", `%${brandName}%`)
-  .maybeSingle();
-
-if (!existing) {
-  // Busca fornecedor do admin
-  const { data: adminSupplier } = await supabase
-    .from("suppliers")
-    .select("*")
-    .eq("owner_id", ADMIN_ID)
-    .ilike("name", `%${brandName}%`)
-    .maybeSingle();
-  
-  if (adminSupplier) {
-    // Copia fornecedor
-    // Copia produtos com estoque 0
-  }
-}
-```
-
-### Hook useOnboardingStatus
-```typescript
-// Retorna { showWizard, dismiss, refetch }
-// Verifica: store_settings, profiles, custom_payment_methods, suppliers
-// dismiss() -> sessionStorage.setItem("onboarding_dismissed", "true")
-```
-
-### Tabela brand_requests (SQL)
-```sql
-CREATE TABLE public.brand_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  brand_name text NOT NULL,
-  b2c_url text,
-  b2b_url text,
-  status text NOT NULL DEFAULT 'pending',
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.brand_requests ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can insert own brand requests"
-  ON public.brand_requests FOR INSERT
-  WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "Users can view own brand requests"
-  ON public.brand_requests FOR SELECT
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Admins can view all brand requests"
-  ON public.brand_requests FOR SELECT
-  USING (has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Admins can update brand requests"
-  ON public.brand_requests FOR UPDATE
-  USING (has_role(auth.uid(), 'admin'));
+```text
+1. Admin clica "Propagar para Usuarios" no fornecedor BECHOSE
+2. Sistema busca todos os usuarios que tem um supplier chamado "BECHOSE" (ilike)
+3. Para cada usuario, busca os produtos do admin para BECHOSE
+4. Compara com os produtos do usuario para aquele supplier
+5. Insere os faltantes com estoque 0 e mesmos dados (nome, preco, imagens, etc.)
+6. Exibe resultado: "15 produtos propagados para 8 usuarios"
 ```
