@@ -221,6 +221,7 @@ export default function Sales() {
       const { data, error } = await supabase
         .from("sales")
         .select("*")
+        .eq("owner_id", user?.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Sale[];
