@@ -135,6 +135,10 @@ Deno.serve(async (req) => {
         // Exclude Dooca category slugs
         if (doocaCategorySlugs.includes(slug)) return false;
 
+        // Exclude slugs starting with category prefixes (combos, kits, etc.)
+        const categoryPrefixes = ['combo-', 'kit-', 'novidade-', 'lancamento-', 'sale-', 'outlet-'];
+        if (categoryPrefixes.some(prefix => slug.startsWith(prefix))) return false;
+
         // Exclude slugs ending with digit suffix (pagination)
         if (/-(1|2|3|4|5|6|7|8|9|10)$/.test(slug)) return false;
 

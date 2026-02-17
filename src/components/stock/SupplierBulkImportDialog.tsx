@@ -147,7 +147,7 @@ export function SupplierBulkImportDialog({
 }: SupplierBulkImportDialogProps) {
   const { user } = useAuth();
   const [step, setStep] = useState<"url" | "discover" | "preview" | "scrape" | "group" | "importing">("url");
-  const [searchFilter, setSearchFilter] = useState("top");
+  const [searchFilter, setSearchFilter] = useState("");
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [productUrls, setProductUrls] = useState<string[]>([]);
   const [products, setProducts] = useState<ScrapedProduct[]>([]);
@@ -520,7 +520,9 @@ export function SupplierBulkImportDialog({
   const extractNameFromUrl = (url: string): string => {
     try {
       const path = new URL(url).pathname;
-      const slug = path.split("/").filter(Boolean).pop() || "";
+      const parts = path.split("/").filter(Boolean);
+      // Para URLs Dooca Commerce (produto/cor), usar penúltimo segmento como nome
+      const slug = parts.length >= 2 ? parts[parts.length - 2] : (parts[parts.length - 1] || "");
       return slug
         .replace(/-/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -740,10 +742,10 @@ export function SupplierBulkImportDialog({
                 <Input
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
-                  placeholder="top, vestido, calça..."
+                  placeholder="conjunto, top, vestido... (deixe vazio para todos)"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Filtra URLs que contêm esta palavra
+                  Filtra URLs que contêm esta palavra (opcional — deixe vazio para importar tudo)
                 </p>
               </div>
             </div>
