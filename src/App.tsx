@@ -40,6 +40,7 @@ import SalesVideoSettings from "./pages/SalesVideoSettings";
 import EventMode from "./pages/EventMode";
 import EventReconciliation from "./pages/EventReconciliation";
 import AdminCatalog from "./pages/AdminCatalog";
+import Analytics from "./pages/Analytics";
 
 const queryClient = new QueryClient();
 
@@ -123,6 +124,7 @@ const AppRoutes = () => (
     <Route path="/evento" element={<ProtectedRoute><EventMode /></ProtectedRoute>} />
     <Route path="/evento/conciliacao" element={<ProtectedRoute><EventReconciliation /></ProtectedRoute>} />
     <Route path="/admin/catalog" element={<ProtectedRoute><AdminCatalog /></ProtectedRoute>} />
+    <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
