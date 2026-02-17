@@ -1,75 +1,66 @@
 
-# Melhorias na Central de Pecas do Admin
+# Melhorias na Central de Pecas: Filtros Completos + Propagacao Seletiva
 
-## Problema Atual
+## 1. Filtros Completos por Marca
 
-1. A listagem de produtos por fornecedor ja existe, mas pode ser melhorada com paginacao e mais detalhes visiveis.
-2. O scanner de novidades (NewProductsScanner) adiciona produtos apenas com nome e dados basicos (preco 0, sem imagem, sem categoria). O admin precisa editar cada produto depois manualmente.
+Adicionar ao `SupplierCatalogTab` o mesmo sistema de filtros existente no Estoque (`ProductFilters`), adaptado para o contexto da Central de Pecas (sem filtro de fornecedor, ja que estamos dentro de uma aba por fornecedor).
 
-## Solucao
+**Mudancas em `src/components/admin/SupplierCatalogTab.tsx`:**
+- Importar e reutilizar o componente `ProductFilters` existente
+- Adicionar botao "Filtros" ao lado da busca
+- Carregar dados auxiliares necessarios (categorias principais, subcategorias, cores e tamanhos unicos dos produtos daquele fornecedor)
+- Aplicar os filtros na listagem local (categoria, cor, modelo, preco, custo, estoque, lancamento, status de marketing)
+- Mostrar badge com contagem de filtros ativos
+- Buscar campos extras na query: `main_category`, `subcategory`, `is_new_release`, `size` para alimentar os filtros
 
-### 1. Listagem completa de pecas por fornecedor
+## 2. Propagacao Seletiva com Lista de Usuarios
 
-A tabela atual ja mostra Imagem, Nome, Cor, Categoria, Preco e Variantes. Melhorias:
-- Adicionar coluna "Custo" (cost_price) para o admin ver o preco de custo
-- Adicionar coluna "Modelo" (model) para filtros
-- Permitir clicar em um produto para abrir o ProductFormDialog existente (o mesmo usado no Estoque) para edicao completa
-- Mostrar total de produtos no header
+Reescrever o `PropagateProductsDialog` para ter duas etapas:
 
-### 2. Edicao de novidades antes de inserir
+**Etapa 1 - Escolher modo:**
+- Opcao "Todos os usuarios" (comportamento atual)
+- Opcao "Escolher usuarios" (nova)
 
-Atualmente o scanner detecta novos produtos e os insere com dados vazios. A mudanca principal:
+**Etapa 2 - Se "Escolher usuarios":**
+- Buscar todos os usuarios que possuem o fornecedor (via tabela `suppliers` + join com `profiles` para pegar nome e email)
+- Exibir lista com checkboxes mostrando: Nome completo, Email, Nome da loja
+- Permitir selecionar/deselecionar todos
+- Botao "Propagar" so executa para os usuarios marcados
 
-**Novo fluxo apos deteccao:**
-1. Admin seleciona os produtos detectados (como ja funciona)
-2. Ao clicar "Adicionar Selecionados", em vez de inserir direto no banco, abre uma tela de edicao sequencial
-3. Para cada produto selecionado, o sistema faz scrape da URL do produto (usando a edge function `scrape-product-data` existente) e exibe a interface de mapeamento igual ao UrlProductImporter:
-   - Selecao de fotos
-   - Mapeamento de campos (nome, preco, cor, categoria, modelo, etc.)
-4. Apos confirmar os dados de cada produto, ele e inserido no banco com os dados completos
-5. O admin avanca para o proximo produto ate completar todos
+**Mudancas em `src/components/admin/PropagateProductsDialog.tsx`:**
+- Adicionar estado para modo (todos vs seletivo)
+- Adicionar estado para lista de usuarios carregados
+- Adicionar estado para usuarios selecionados (Set de user_ids)
+- Na abertura do dialog, buscar usuarios com o fornecedor e seus perfis
+- Exibir a lista com checkboxes
+- Filtrar a propagacao pelos usuarios selecionados
 
-### Arquivos a Modificar
+## Detalhes Tecnicos
 
-| Arquivo | Acao |
-|---------|------|
-| `src/components/admin/SupplierCatalogTab.tsx` | Modificar - Adicionar colunas extras e clique para editar produto |
-| `src/components/admin/NewProductsScanner.tsx` | Modificar - Adicionar step de edicao/scrape individual antes de inserir |
-| `src/components/admin/AdminProductEditDialog.tsx` | Criar - Dialog que usa scrape-product-data + mapeamento de campos para editar dados antes de salvar (inspirado no UrlProductImporter) |
+### SupplierCatalogTab - Filtros
+- Reutiliza o componente `ProductFilters` existente passando `suppliers` como array vazio (nao necessario filtrar por fornecedor)
+- Extrai cores e tamanhos unicos dos produtos carregados
+- Carrega `main_categories` e `subcategories` do banco
+- Adiciona campos `main_category`, `subcategory`, `is_new_release` a interface Product e a query
+- Aplica filtros client-side sobre a lista de produtos ja carregada
 
-### Detalhes Tecnicos
-
-#### SupplierCatalogTab - Melhorias na tabela
-- Adicionar colunas: Custo, Modelo
-- Adicionar estado para produto selecionado para edicao
-- Ao clicar numa linha, abrir o ProductFormDialog existente passando o produto para edicao (reutilizando o componente ja existente no Estoque)
-
-#### AdminProductEditDialog - Novo componente
-- Recebe uma lista de produtos detectados (nome + URL)
-- Processa um produto por vez
-- Para cada produto:
-  1. Chama `scrape-product-data` com a URL
-  2. Exibe interface de selecao de imagens (grid de fotos)
-  3. Exibe mapeamento de campos com auto-sugestao
-  4. Botao "Salvar e Proximo" que insere no banco com dados completos
-- Campos mapeados: nome, preco (venda), preco de custo, cor, modelo, categoria, detalhe, descricao, imagens (ate 3)
-- Ao salvar, insere em `products` com `owner_id = adminId`, `supplier_id`, e todas as imagens/campos preenchidos
-- Cria variantes padrao (PP, P, M, G, GG) com estoque 0
-
-#### NewProductsScanner - Modificacao do fluxo
-- O botao "Adicionar Selecionados" nao insere mais direto no banco
-- Em vez disso, abre o AdminProductEditDialog passando os produtos selecionados (nome + URL)
-- Ao fechar o dialog de edicao, fecha o scanner e atualiza a lista
-
-```text
-Fluxo revisado:
-1. Mapear URLs do site
-2. Extrair dados (detectar novos produtos por nome)
-3. Selecionar produtos novos desejados
-4. Clicar "Editar e Adicionar"
-5. Para cada produto:
-   a. Scrape completo da URL (dados + imagens)
-   b. Admin seleciona fotos e mapeia campos
-   c. Salva com dados formatados
-6. Todos inseridos -> fecha scanner -> atualiza lista
+### PropagateProductsDialog - Selecao de Usuarios
+- Query para buscar usuarios:
+```sql
+-- Busca suppliers com mesmo nome + profiles
+suppliers (id, owner_id, name) WHERE ilike name AND neq owner_id admin
+profiles (full_name, email, store_name) WHERE id IN (owner_ids encontrados)
 ```
+- Interface de usuario com:
+  - Radio group: "Todos" / "Selecionar"
+  - Lista de usuarios com Checkbox, nome, email e loja
+  - Campo de busca para filtrar usuarios na lista
+  - Botao "Selecionar todos" / "Desmarcar todos"
+- A logica de propagacao existente e filtrada pelo Set de user_ids selecionados
+
+### Arquivos Modificados
+
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/components/admin/SupplierCatalogTab.tsx` | Adicionar botao de filtros, carregar categorias, aplicar filtros completos usando ProductFilters |
+| `src/components/admin/PropagateProductsDialog.tsx` | Reescrever com modo todos/seletivo, lista de usuarios com checkboxes |
