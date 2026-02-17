@@ -1,72 +1,112 @@
 
-# Criar Wizard de Onboarding para Novos Usuarios
 
-## Problema
+# Estoque Zerado para Novos Usuarios + Toggle de Ativacao por Fornecedor
 
-O Wizard de Onboarding mencionado na memoria do projeto nunca foi implementado no codigo. Quando o usuario `hybridrunbrasil@gmail.com` criou a conta, ele foi direto para o Dashboard sem passar por nenhuma configuracao inicial. Os campos essenciais do perfil estao todos vazios (`store_name`, `phone`, `origin_zip`, `cpf`), e nao foi criado nenhum registro em `store_settings`.
+## Situacao Atual
 
-## Solucao
+O trigger `copy_admin_defaults_to_new_user` copia **todos os 284 produtos do admin** para novos usuarios (com estoque 0), sem vincular `supplier_id`. O usuario recebe um estoque cheio de produtos de fornecedores que talvez nao queira revender.
 
-Criar um componente `OnboardingWizard` que aparece como um Dialog modal no Dashboard quando campos essenciais estao ausentes. O wizard tera 3 etapas:
+## Nova Logica
 
-### Etapa 1 — Identidade da Loja
-- **Nome da revenda** (`profiles.store_name`)
-- **WhatsApp** (`profiles.phone`)
-- **CEP de origem** (`profiles.origin_zip`)
-- **CPF** (`profiles.cpf`)
+1. Novos usuarios comecam **sem nenhum produto** (trigger para de copiar produtos)
+2. Na aba **Fornecedores**, cada fornecedor tera um toggle **"Ativar Catalogo"**
+3. Ao ativar, o sistema puxa os produtos do admin (Central de Pecas) para aquele fornecedor especifico, com estoque zerado e `supplier_id` correto
+4. No **Wizard de Onboarding**, as marcas selecionadas ativam automaticamente o catalogo dos fornecedores correspondentes
 
-### Etapa 2 — Configurar Loja Online
-- **Slug da URL** (gera automaticamente a partir do nome da revenda)
-- Cria o registro em `store_settings` com `store_slug`, `store_name`, `whatsapp_number`
+---
 
-### Etapa 3 — Selecao de Marcas Parceiras
-- Exibe as marcas disponiveis dos fornecedores do admin: **BECHOSE**, **INMOOV**, **NEW HYPE**, **POWERED BY COFFEE**, **YOPP**
-- Marcas selecionadas sincronizam os fornecedores e produtos (com estoque zero) da conta admin para a conta do novo usuario
-- Campo "Outra marca" para registrar em `brand_requests`
+## Mudancas Necessarias
 
-## Logica de Exibicao
+### 1. Nova coluna no banco: `suppliers.catalog_synced`
 
-O wizard aparece no Dashboard quando **qualquer um** desses campos esta vazio:
-- `profiles.store_name`
-- `profiles.phone`
-- `profiles.origin_zip`
+Adicionar coluna booleana para rastrear quais fornecedores ja tiveram o catalogo sincronizado:
 
-Se todos estiverem preenchidos, o wizard nao aparece.
+```sql
+ALTER TABLE suppliers ADD COLUMN catalog_synced boolean NOT NULL DEFAULT false;
+```
 
-## Arquivos a Criar/Modificar
+### 2. Alterar trigger `copy_admin_defaults_to_new_user`
 
-| Arquivo | Acao |
-|---------|------|
-| `src/components/onboarding/OnboardingWizard.tsx` | **CRIAR** — Componente Dialog multi-step com as 3 etapas |
-| `src/pages/Dashboard.tsx` | **MODIFICAR** — Adicionar query para verificar campos vazios do perfil e renderizar o `OnboardingWizard` |
+Remover o bloco que copia produtos. O trigger continuara copiando apenas:
+- Fornecedores
+- Formas de pagamento customizadas
+
+Produtos serao adicionados sob demanda via toggle.
+
+### 3. Aba Fornecedores (`src/pages/Suppliers.tsx`)
+
+Adicionar nova coluna **"Catalogo"** na tabela com um toggle + badge:
+
+```text
+| Empresa | CNPJ | ... | Catalogo        | Acoes |
+|---------|------|-----|-----------------|-------|
+| BECHOSE | ...  | ... | [toggle] 127 pcs| ...   |
+| INMOOV  | ...  | ... | [toggle] -      | ...   |
+```
+
+Ao ativar o toggle:
+1. Buscar o fornecedor admin com nome igual (case-insensitive)
+2. Buscar todos os produtos do admin vinculados a esse fornecedor
+3. Inserir os que ainda nao existem no estoque do usuario (comparacao por nome, case-insensitive)
+4. Marcar `catalog_synced = true` no fornecedor do usuario
+5. Toast de sucesso com quantidade de produtos adicionados
+
+Ao desativar o toggle:
+- Apenas marca `catalog_synced = false` (nao remove produtos ja existentes)
+- Mostra aviso que produtos ja importados permanecem no estoque
+
+### 4. Wizard de Onboarding (`src/components/onboarding/OnboardingWizard.tsx`)
+
+Na Step 3 (selecao de marcas), ao clicar "Finalizar":
+1. Para cada marca selecionada, localizar o fornecedor do usuario pelo nome
+2. Executar a mesma logica de sync de produtos (buscar admin products -> inserir com stock 0)
+3. Marcar `catalog_synced = true` nos fornecedores correspondentes
+
+---
 
 ## Detalhes Tecnicos
 
-### OnboardingWizard.tsx
+### Funcao de sync de catalogo (reutilizavel)
 
-```text
-Componente: Dialog (Radix) nao-dismissivel (sem fechar clicando fora)
-Estado: step (1, 2, 3), formData com campos de cada etapa
-Step 1: Formulario com Input para store_name, phone (mascara), origin_zip (mascara), cpf (mascara)
-Step 2: Input para slug (auto-gerado do store_name, editavel), preview da URL
-Step 3: Checkboxes das 5 marcas + campo texto "Outra marca"
-Botoes: "Proximo" / "Anterior" / "Finalizar"
+Criar funcao utilitaria `syncSupplierCatalog` usada tanto na pagina de Fornecedores quanto no Wizard:
+
+```typescript
+async function syncSupplierCatalog(
+  userId: string,
+  userSupplierId: string,
+  supplierName: string
+): Promise<number>
 ```
 
-### Acao ao Finalizar
+Logica interna:
+1. Buscar admin_id via `user_roles` (role = 'admin')
+2. Buscar fornecedor admin com `ilike` no nome
+3. Buscar produtos do admin com `supplier_id` do admin
+4. Buscar produtos existentes do usuario com `supplier_id` do usuario
+5. Filtrar produtos faltantes por nome (case-insensitive)
+6. Inserir com `owner_id = userId`, `supplier_id = userSupplierId`, `stock_quantity = 0`
+7. Atualizar `catalog_synced = true` no fornecedor do usuario
+8. Retornar quantidade de produtos inseridos
 
-1. Atualizar `profiles` com `store_name`, `phone`, `origin_zip`, `cpf`
-2. Inserir em `store_settings` com `store_slug`, `store_name`, `whatsapp_number`, `owner_id`
-3. Se marcas foram selecionadas — os produtos ja foram copiados pelo trigger `copy_admin_defaults_to_new_user`, entao essa etapa sera apenas informativa/confirmacao
-4. Se "Outra marca" foi preenchida — inserir em `brand_requests`
-5. Fechar wizard e recarregar dados do dashboard
+### Arquivos a criar/modificar
 
-### Dashboard.tsx
+| Arquivo | Acao |
+|---------|------|
+| Migracao SQL | Adicionar coluna `catalog_synced` e atualizar trigger |
+| `src/utils/catalogSync.ts` | **CRIAR** — Funcao reutilizavel de sync |
+| `src/pages/Suppliers.tsx` | Adicionar coluna "Catalogo" com toggle de sync |
+| `src/components/onboarding/OnboardingWizard.tsx` | Chamar sync ao finalizar com marcas selecionadas |
 
-Adicionar no inicio do componente:
-```text
-useQuery para buscar profiles onde id = user.id
-Verificar se store_name, phone, origin_zip estao preenchidos
-Se algum estiver vazio: showOnboarding = true
-Renderizar <OnboardingWizard open={showOnboarding} onComplete={refetch} />
-```
+### Interface do toggle na tabela de Fornecedores
+
+O toggle "Catalogo" tera 3 estados visuais:
+- **Desativado**: Toggle off, sem badge
+- **Sincronizando**: Toggle desabilitado + spinner
+- **Ativado**: Toggle on + badge com quantidade de produtos (ex: "127 pecas")
+
+### Tratamento de casos especiais
+
+- Se o fornecedor do usuario nao tiver correspondente no admin: toggle desabilitado com tooltip "Fornecedor nao encontrado no catalogo master"
+- Se ja estiver sincronizado e usuario ativar novamente: apenas insere produtos novos que ainda nao existam (idempotente)
+- Produtos removidos do admin nao sao removidos automaticamente do usuario
+
