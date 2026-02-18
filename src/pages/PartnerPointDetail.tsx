@@ -7,12 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TransferItemsDialog } from "@/components/partners/TransferItemsDialog";
 import { ReturnItemsDialog } from "@/components/partners/ReturnItemsDialog";
+import { PartnerSalesQueue } from "@/components/partners/PartnerSalesQueue";
+import { PartnerSettlementTab } from "@/components/partners/PartnerSettlementTab";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   ArrowLeft, MapPin, Package, Phone, Send, RotateCcw,
-  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle
+  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell
 } from "lucide-react";
 
 interface PartnerPoint {
@@ -50,6 +52,8 @@ interface Sale {
   pass_color: string;
   pass_status: string;
   created_at: string;
+  items: any;
+  notes: string | null;
 }
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "destructive" | "secondary" | "outline" }> = {
@@ -96,7 +100,7 @@ export default function PartnerPointDetail() {
       supabase.from("partner_points").select("*").eq("id", id).eq("owner_id", user.id).maybeSingle(),
       supabase.from("partner_point_items").select("id, product_id, quantity, status, allocated_at")
         .eq("partner_point_id", id).not("status", "in", '("returned","lost")').order("allocated_at", { ascending: false }),
-      supabase.from("partner_point_sales").select("id, customer_name, customer_phone, total_gross, payment_method, pass_color, pass_status, created_at")
+      supabase.from("partner_point_sales").select("id, customer_name, customer_phone, total_gross, payment_method, pass_color, pass_status, created_at, items, notes")
         .eq("partner_point_id", id).order("created_at", { ascending: false }).limit(50),
     ]);
 
@@ -183,7 +187,7 @@ export default function PartnerPointDetail() {
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
               <Button variant="outline" size="sm" className="gap-1.5" onClick={handleCopyLink}>
-                {linkCopied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                {linkCopied ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
                 {linkCopied ? "Copiado!" : "Copiar Link QR"}
               </Button>
               {partner.contact_phone && (
@@ -221,6 +225,15 @@ export default function PartnerPointDetail() {
             <TabsTrigger value="sales" className="flex-1 gap-1.5">
               <ShoppingBag className="h-4 w-4" />
               Vendas ({sales.length})
+              {sales.filter(s => s.pass_status === "pending").length > 0 && (
+                <span className="ml-1 bg-destructive text-destructive-foreground text-xs rounded-full px-1.5 py-0.5 leading-none">
+                  {sales.filter(s => s.pass_status === "pending").length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="settlement" className="flex-1 gap-1.5">
+              <FileText className="h-4 w-4" />
+              Acerto
             </TabsTrigger>
           </TabsList>
 
@@ -277,8 +290,18 @@ export default function PartnerPointDetail() {
             )}
           </TabsContent>
 
-          {/* Sales tab */}
-          <TabsContent value="sales" className="space-y-3 mt-4">
+          {/* Sales tab — histórico + fila de validação */}
+          <TabsContent value="sales" className="space-y-4 mt-4">
+            {sales.some(s => s.pass_status === "pending") && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-destructive" />
+                  <p className="text-sm font-semibold text-destructive">Fila de Validação</p>
+                </div>
+                <PartnerSalesQueue sales={sales} onUpdated={fetchData} />
+              </div>
+            )}
+
             {sales.length === 0 ? (
               <div className="text-center py-10">
                 <ShoppingBag className="h-10 w-10 mx-auto text-muted-foreground/30 mb-2" />
@@ -287,6 +310,7 @@ export default function PartnerPointDetail() {
               </div>
             ) : (
               <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Histórico completo</p>
                 {sales.map(sale => (
                   <div key={sale.id} className="flex items-center gap-3 p-3 border rounded-lg">
                     <div className="flex-1 min-w-0">
@@ -312,6 +336,11 @@ export default function PartnerPointDetail() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          {/* Settlement tab */}
+          <TabsContent value="settlement" className="mt-4">
+            <PartnerSettlementTab partner={partner} sales={sales} />
           </TabsContent>
         </Tabs>
       </div>

@@ -410,6 +410,63 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   return result;
 }
 
+// ============================================================
+// Partner Point Profit Engine (Cenário P — Fase 3)
+// Completamente separado de calculateSaleSplits (zero risco)
+// ============================================================
+
+export interface PartnerPointSplitInput {
+  grossPrice: number;          // Preço bruto da venda no ponto
+  costPrice: number;           // Custo do produto
+  rackCommissionPct: number;   // Comissão da arara (%) ex: 20
+  paymentFeePct: number;       // Taxa da maquininha do parceiro (%) ex: 3.5
+}
+
+export interface PartnerPointSplitResult {
+  grossPrice: number;
+  paymentFeeAmount: number;
+  netRevenue: number;          // Bruto – taxa pagamento
+  partnerCommission: number;   // netRevenue × rackCommissionPct
+  costPrice: number;
+  sellerNet: number;           // netRevenue – partnerCommission – costPrice
+  totalProfit: number;         // netRevenue – costPrice
+  partnerPct: number;          // rackCommissionPct usado
+  paymentFeePct: number;       // paymentFeePct usado
+}
+
+/**
+ * Calcula a divisão financeira de uma venda registrada em um Ponto Parceiro.
+ * 
+ * Fórmula:
+ *   paymentFeeAmount = grossPrice × (paymentFeePct / 100)
+ *   netRevenue       = grossPrice − paymentFeeAmount
+ *   partnerCommission= netRevenue × (rackCommissionPct / 100)
+ *   sellerNet        = netRevenue − partnerCommission − costPrice
+ * 
+ * IMPORTANTE: esta função é ADICIONAL — não altera calculateSaleSplits.
+ */
+export function calculatePartnerPointSplit(input: PartnerPointSplitInput): PartnerPointSplitResult {
+  const { grossPrice, costPrice, rackCommissionPct, paymentFeePct } = input;
+
+  const paymentFeeAmount = grossPrice * (paymentFeePct / 100);
+  const netRevenue = grossPrice - paymentFeeAmount;
+  const partnerCommission = netRevenue * (rackCommissionPct / 100);
+  const totalProfit = Math.max(0, netRevenue - costPrice);
+  const sellerNet = netRevenue - partnerCommission - costPrice;
+
+  return {
+    grossPrice,
+    paymentFeeAmount,
+    netRevenue,
+    partnerCommission,
+    costPrice,
+    sellerNet,
+    totalProfit,
+    partnerPct: rackCommissionPct,
+    paymentFeePct,
+  };
+}
+
 /**
  * Format currency for display (Brazilian Real)
  */
