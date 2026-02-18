@@ -1811,6 +1811,175 @@ export type Database = {
         }
         Relationships: []
       }
+      partner_point_items: {
+        Row: {
+          allocated_at: string
+          id: string
+          notes: string | null
+          owner_id: string
+          partner_point_id: string
+          product_id: string
+          quantity: number
+          returned_at: string | null
+          status: string
+          updated_at: string
+          variant_id: string | null
+        }
+        Insert: {
+          allocated_at?: string
+          id?: string
+          notes?: string | null
+          owner_id: string
+          partner_point_id: string
+          product_id: string
+          quantity?: number
+          returned_at?: string | null
+          status?: string
+          updated_at?: string
+          variant_id?: string | null
+        }
+        Update: {
+          allocated_at?: string
+          id?: string
+          notes?: string | null
+          owner_id?: string
+          partner_point_id?: string
+          product_id?: string
+          quantity?: number
+          returned_at?: string | null
+          status?: string
+          updated_at?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_point_items_partner_point_id_fkey"
+            columns: ["partner_point_id"]
+            isOneToOne: false
+            referencedRelation: "partner_points"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_point_sales: {
+        Row: {
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          id: string
+          items: Json
+          notes: string | null
+          owner_id: string
+          partner_point_id: string
+          pass_color: string
+          pass_status: string
+          payment_method: string
+          payment_proof_url: string | null
+          total_gross: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          customer_phone: string
+          id?: string
+          items?: Json
+          notes?: string | null
+          owner_id: string
+          partner_point_id: string
+          pass_color?: string
+          pass_status?: string
+          payment_method?: string
+          payment_proof_url?: string | null
+          total_gross?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string
+          id?: string
+          items?: Json
+          notes?: string | null
+          owner_id?: string
+          partner_point_id?: string
+          pass_color?: string
+          pass_status?: string
+          payment_method?: string
+          payment_proof_url?: string | null
+          total_gross?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_point_sales_partner_point_id_fkey"
+            columns: ["partner_point_id"]
+            isOneToOne: false
+            referencedRelation: "partner_points"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_points: {
+        Row: {
+          access_token: string
+          address: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          loss_risk_enabled: boolean
+          min_stock_alert: number | null
+          name: string
+          notes: string | null
+          owner_id: string
+          payment_fee_pct: number
+          pickup_commission_pct: number
+          rack_commission_pct: number
+          replenishment_cycle_days: number | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string
+          address?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          loss_risk_enabled?: boolean
+          min_stock_alert?: number | null
+          name: string
+          notes?: string | null
+          owner_id: string
+          payment_fee_pct?: number
+          pickup_commission_pct?: number
+          rack_commission_pct?: number
+          replenishment_cycle_days?: number | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          address?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          loss_risk_enabled?: boolean
+          min_stock_alert?: number | null
+          name?: string
+          notes?: string | null
+          owner_id?: string
+          payment_fee_pct?: number
+          pickup_commission_pct?: number
+          rack_commission_pct?: number
+          replenishment_cycle_days?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partnership_auto_share: {
         Row: {
           created_at: string
