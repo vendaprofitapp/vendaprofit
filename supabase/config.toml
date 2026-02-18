@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.checkout-bazar]
 verify_jwt = false
+
+[functions.accept-partner-contract]
+verify_jwt = false

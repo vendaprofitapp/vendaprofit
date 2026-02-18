@@ -1933,6 +1933,9 @@ export type Database = {
           allowed_payment_methods: Json | null
           contact_name: string | null
           contact_phone: string | null
+          contract_accepted_at: string | null
+          contract_accepted_ip: string | null
+          contract_token: string | null
           cpf_cnpj: string | null
           created_at: string
           id: string
@@ -1955,6 +1958,9 @@ export type Database = {
           allowed_payment_methods?: Json | null
           contact_name?: string | null
           contact_phone?: string | null
+          contract_accepted_at?: string | null
+          contract_accepted_ip?: string | null
+          contract_token?: string | null
           cpf_cnpj?: string | null
           created_at?: string
           id?: string
@@ -1977,6 +1983,9 @@ export type Database = {
           allowed_payment_methods?: Json | null
           contact_name?: string | null
           contact_phone?: string | null
+          contract_accepted_at?: string | null
+          contract_accepted_ip?: string | null
+          contract_token?: string | null
           cpf_cnpj?: string | null
           created_at?: string
           id?: string
