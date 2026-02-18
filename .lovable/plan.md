@@ -1,39 +1,51 @@
 
-# Correção: Taxas por Método de Pagamento no Contrato
+# Correção: Produtos não aparecem no Link QR do Ponto Parceiro
 
-## Problema Identificado
+## Causa Raiz
 
-Na **Cláusula 3**, quando o fluxo é `payment_receiver = "seller"`, o contrato exibe apenas uma linha genérica:
+O catálogo do Ponto Parceiro (`/p/:token`) busca produtos em dois passos:
 
-> "A taxa do meio de pagamento fixada em **0%** será descontada..."
+1. Busca os `partner_point_items` com `status = "allocated"` — **funciona** (policy pública existe)
+2. Busca os dados dos produtos pelos IDs encontrados — **falha silenciosamente**
 
-Isso acontece porque o código usa `partner.payment_fee_pct`, que é sempre `0` no modo vendedora — as taxas reais estão dentro do array `allowed_payment_methods`, no campo `fee_percent` de **cada método individual**.
+Na etapa 2, o código usa um cliente anônimo (sem login). As policies públicas de leitura da tabela `products` exigem que a loja tenha um registro em `store_settings` com `is_active = true`. Se esse registro não existir ainda, **todos os produtos ficam invisíveis** para o catálogo do parceiro — mesmo com o item alocado.
 
-## Correção — Arquivo único
+Adicionalmente, uma das policies exige `stock_quantity > 0`, o que pode bloquear produtos zerados futuramente.
 
-**`src/pages/PartnerContract.tsx`** — somente a Cláusula 3 do fluxo "seller" precisa mudar.
+## Solução
 
-### Substituição no bloco "Pagamento à Vendedora"
+Adicionar uma policy RLS específica para o caso de uso do Ponto Parceiro:
 
-**Antes** (exibe taxa única genérica `feePct` com valor 0):
+> "Um produto pode ser lido anonimamente se existir um `partner_point_items` com `status = 'allocated'` referenciando esse produto."
+
+Isso é cirúrgico: não abre o acesso geral da tabela `products`, apenas permite leitura do produto quando ele foi explicitamente colocado numa arara de parceiro.
+
+## Migração SQL
+
+```sql
+CREATE POLICY "Public can read products allocated to partner points"
+ON products
+FOR SELECT
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM partner_point_items ppi
+    WHERE ppi.product_id = products.id
+      AND ppi.status = 'allocated'
+  )
+);
 ```
-Taxas de Transação: A taxa do meio de pagamento fixada em {feePct} será descontada...
-```
 
-**Depois** (exibe tabela com taxa real de cada método):
-- Remove a frase de taxa genérica
-- Adiciona uma tabela com coluna "Método", "Taxa (%)" e "Valor Mínimo" para cada método do array `allowed_payment_methods`
-- Se a taxa de um método for 0, exibe "Sem taxa"
-- Unifica as seções "Métodos aceitos" e "Taxas por método" em uma única tabela clara, eliminando redundância
+Esta policy é segura porque:
+- Não exige autenticação (necessário pois o catálogo é público via QR Code)
+- Só expõe produtos que a vendedora explicitamente colocou na arara
+- Não depende de `store_settings`, `stock_quantity` ou qualquer outro dado que possa estar ausente
 
-### Exemplo visual do resultado:
+## O que Muda
 
-| Método | Taxa | Valor Mínimo |
+| Componente | Tipo | Detalhe |
 |---|---|---|
-| Cartão de Crédito | 3,5% | R$ 50,00 |
-| PIX | Sem taxa | — |
-| Dinheiro | Sem taxa | R$ 20,00 |
+| `products` (RLS) | Migração | Nova policy pública baseada em alocação em arara |
 
-### Detalhe técnico
-
-O campo correto para a taxa de cada método é `m.fee_percent` (vindo do snapshot salvo em `allowed_payment_methods`), não `partner.payment_fee_pct`. A variável `feePct` que existia no código pode ser removida pois não será mais usada.
+Nenhum arquivo de código precisa mudar — apenas a regra de acesso ao banco.
