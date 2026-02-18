@@ -1,51 +1,111 @@
 
-# Correção: Produtos não aparecem no Link QR do Ponto Parceiro
+# Redesign do Catálogo do Ponto Parceiro + Analytics por Ponto
 
-## Causa Raiz
+## Visão Geral
 
-O catálogo do Ponto Parceiro (`/p/:token`) busca produtos em dois passos:
+Duas frentes de trabalho paralelas e complementares:
 
-1. Busca os `partner_point_items` com `status = "allocated"` — **funciona** (policy pública existe)
-2. Busca os dados dos produtos pelos IDs encontrados — **falha silenciosamente**
+1. **`/p/:token` (PartnerCatalog)** — Redesign visual idêntico ao StoreCatalog + captura de leads + rastreamento de visualizações
+2. **`/partner-points/:id` (PartnerPointDetail)** — Nova aba "Analytics" para a vendedora ver o desempenho de cada ponto individualmente
 
-Na etapa 2, o código usa um cliente anônimo (sem login). As policies públicas de leitura da tabela `products` exigem que a loja tenha um registro em `store_settings` com `is_active = true`. Se esse registro não existir ainda, **todos os produtos ficam invisíveis** para o catálogo do parceiro — mesmo com o item alocado.
+---
 
-Adicionalmente, uma das policies exige `stock_quantity > 0`, o que pode bloquear produtos zerados futuramente.
+## Frente 1 — Redesign do Catálogo Público `/p/:token`
 
-## Solução
+### O que muda no visual
 
-Adicionar uma policy RLS específica para o caso de uso do Ponto Parceiro:
+A página atual é um grid simples com cards básicos. A nova versão terá:
 
-> "Um produto pode ser lido anonimamente se existir um `partner_point_items` com `status = 'allocated'` referenciando esse produto."
+- **Header white-label** com logo, nome da loja e banner (vindos de `store_settings` do owner)
+- **Banner de identificação do ponto** (faixa colorida: "Estoque disponível em [Nome do Ponto]")
+- **Grid 2 colunas (mobile) / 4 colunas (desktop)** usando os cards boutique com carrossel de fotos/vídeo
+- **Barra de busca** estilizada igual ao StoreCatalog
+- **Sacola flutuante** com Sheet lateral para checkout (em vez de mudar de view)
+- **Modal de captura de lead** (`LeadCaptureSheet`) — igual ao catálogo principal
 
-Isso é cirúrgico: não abre o acesso geral da tabela `products`, apenas permite leitura do produto quando ele foi explicitamente colocado numa arara de parceiro.
+### Captura de Leads
 
-## Migração SQL
+O `LeadCaptureSheet` já existe e funciona no StoreCatalog. No catálogo do ponto parceiro ele será acionado na mesma lógica: ao clicar em "Adicionar à sacola" pela primeira vez, se o lead ainda não foi identificado, abre o formulário de nome + WhatsApp.
+
+O lead será salvo em `store_leads` com `owner_id = partnerPoint.owner_id` (da vendedora dona do estoque), e os itens do carrinho em `lead_cart_items` normalmente.
+
+Isso significa que os leads capturados no catálogo do ponto parceiro aparecem no CRM da vendedora junto com os outros leads — ela consegue ver de onde veio (será marcado com `source = "partner_point"` e o `partner_point_id`).
+
+### Rastreamento de Visualizações (Analytics)
+
+O StoreCatalog usa `IntersectionObserver` para registrar uma visualização em `catalog_product_views` quando um card atinge 50% de visibilidade. O mesmo comportamento será replicado no catálogo do ponto, com o `owner_id` da vendedora.
+
+Para diferenciar que a visita veio de um ponto específico, será adicionada uma coluna `partner_point_id` à tabela `catalog_product_views` (migration necessária). Isso permite filtrar no Analytics.
+
+---
+
+## Frente 2 — Aba "Analytics" em `/partner-points/:id`
+
+### Onde fica
+
+Na página de detalhe do ponto parceiro (`PartnerPointDetail`), que já possui abas:
+- Estoque | Vendas | Acerto
+
+Será adicionada uma quarta aba: **Analytics**.
+
+### O que a aba exibe
+
+Reutilizando os componentes já existentes (`AnalyticsDashboard` + `LeadsCRM`) com filtro por `partner_point_id`:
+
+| Métrica | Fonte |
+|---|---|
+| Visitantes únicos do QR | `catalog_product_views` filtrado por `partner_point_id` |
+| Taxa de captura | leads / visitantes do ponto |
+| Carrinhos ativos/abandonados | `lead_cart_items` dos leads do ponto |
+| Gráfico de tráfego diário | mesmo AreaChart do AnalyticsDashboard |
+| Lista de leads capturados | LeadsCRM filtrado por `partner_point_id` |
+
+A vendedora consegue responder: "Vale a pena manter arara neste ponto? Quantas pessoas acessaram o QR? Quantas viraram leads? Quantas compraram?"
+
+---
+
+## Arquivos alterados
+
+| Arquivo | Tipo |
+|---|---|
+| `supabase/migrations/...` | **Migration** — adiciona coluna `partner_point_id` em `catalog_product_views` |
+| `src/pages/PartnerCatalog.tsx` | **Reescrita** — novo design + leads + tracking |
+| `src/pages/PartnerPointDetail.tsx` | **Edição** — nova aba "Analytics" |
+| `src/components/marketing/AnalyticsDashboard.tsx` | **Edição** — aceita `partnerPointId` opcional para filtrar |
+
+### Detalhe técnico da migration
 
 ```sql
-CREATE POLICY "Public can read products allocated to partner points"
-ON products
-FOR SELECT
-TO public
-USING (
-  EXISTS (
-    SELECT 1
-    FROM partner_point_items ppi
-    WHERE ppi.product_id = products.id
-      AND ppi.status = 'allocated'
-  )
-);
+ALTER TABLE catalog_product_views
+  ADD COLUMN IF NOT EXISTS partner_point_id uuid REFERENCES partner_points(id) ON DELETE SET NULL;
 ```
 
-Esta policy é segura porque:
-- Não exige autenticação (necessário pois o catálogo é público via QR Code)
-- Só expõe produtos que a vendedora explicitamente colocou na arara
-- Não depende de `store_settings`, `stock_quantity` ou qualquer outro dado que possa estar ausente
+Essa coluna é nullable — visualizações do catálogo principal continuam sem `partner_point_id`. Apenas as visitas vindas do QR de um ponto preenchem o campo.
 
-## O que Muda
+---
 
-| Componente | Tipo | Detalhe |
-|---|---|---|
-| `products` (RLS) | Migração | Nova policy pública baseada em alocação em arara |
+## Fluxo completo de dados
 
-Nenhum arquivo de código precisa mudar — apenas a regra de acesso ao banco.
+```text
+Cliente escaneia QR → /p/:token
+  → PartnerCatalog carrega identidade visual (store_settings)
+  → Produtos "allocated" aparecem com cards boutique
+  → IntersectionObserver registra view em catalog_product_views
+      (com owner_id + partner_point_id)
+  → Cliente adiciona item → LeadCaptureSheet (nome + WhatsApp)
+  → Lead salvo em store_leads (owner_id da vendedora)
+  → Carrinho salvo em lead_cart_items
+  → Checkout via PartnerCheckoutPasses (Passes Coloridos)
+
+Vendedora acessa /partner-points/:id → aba Analytics
+  → Vê visitantes únicos do QR deste ponto
+  → Vê taxa de captura e carrinhos abandonados
+  → Vê lista de leads com filtros e botão WhatsApp
+```
+
+## O que NÃO muda
+
+- Filtros de marketing (Oportunidades, Pré-venda, etc.) — sem contexto na arara
+- Área VIP / Senha secreta
+- Programa de Fidelidade
+- O Analytics global em `/analytics` continua funcionando normalmente
