@@ -287,6 +287,7 @@ export type Database = {
           device_id: string | null
           id: string
           owner_id: string
+          partner_point_id: string | null
           product_id: string
           store_id: string
         }
@@ -295,6 +296,7 @@ export type Database = {
           device_id?: string | null
           id?: string
           owner_id: string
+          partner_point_id?: string | null
           product_id: string
           store_id: string
         }
@@ -303,10 +305,19 @@ export type Database = {
           device_id?: string | null
           id?: string
           owner_id?: string
+          partner_point_id?: string | null
           product_id?: string
           store_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "catalog_product_views_partner_point_id_fkey"
+            columns: ["partner_point_id"]
+            isOneToOne: false
+            referencedRelation: "partner_points"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       catalog_search_logs: {
         Row: {

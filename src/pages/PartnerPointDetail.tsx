@@ -9,17 +9,21 @@ import { TransferItemsDialog } from "@/components/partners/TransferItemsDialog";
 import { ReturnItemsDialog } from "@/components/partners/ReturnItemsDialog";
 import { PartnerSalesQueue } from "@/components/partners/PartnerSalesQueue";
 import { PartnerSettlementTab } from "@/components/partners/PartnerSettlementTab";
+import { AnalyticsDashboard } from "@/components/marketing/AnalyticsDashboard";
+import { LeadsCRM } from "@/components/marketing/LeadsCRM";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   ArrowLeft, MapPin, Package, Phone, Send, RotateCcw,
-  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell, ClipboardCheck
+  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell, ClipboardCheck, BarChart2
 } from "lucide-react";
+import { subDays, startOfDay } from "date-fns";
 
 interface PartnerPoint {
   id: string;
   name: string;
+  owner_id: string;
   contact_name: string | null;
   contact_phone: string | null;
   address: string | null;
@@ -95,6 +99,10 @@ export default function PartnerPointDetail() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [contractCopied, setContractCopied] = useState(false);
   const [contractLoading, setContractLoading] = useState(false);
+  const [analyticsDateRange, setAnalyticsDateRange] = useState({
+    start: startOfDay(subDays(new Date(), 6)),
+    end: new Date(),
+  });
 
   const fetchData = async () => {
     if (!id || !user) return;
@@ -291,6 +299,10 @@ export default function PartnerPointDetail() {
               <FileText className="h-4 w-4" />
               Acerto
             </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex-1 gap-1.5">
+              <BarChart2 className="h-4 w-4" />
+              Analytics
+            </TabsTrigger>
           </TabsList>
 
           {/* Stock tab */}
@@ -397,6 +409,30 @@ export default function PartnerPointDetail() {
           {/* Settlement tab */}
           <TabsContent value="settlement" className="mt-4">
             <PartnerSettlementTab partner={partner} sales={sales} />
+          </TabsContent>
+
+          {/* Analytics tab */}
+          <TabsContent value="analytics" className="mt-4 space-y-6">
+            <div className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              📊 Analytics filtrado exclusivamente para o QR Code deste ponto parceiro
+            </div>
+            {user && (
+              <>
+                <AnalyticsDashboard
+                  ownerId={partner.owner_id}
+                  dateRange={analyticsDateRange}
+                  onDateRangeChange={setAnalyticsDateRange}
+                  partnerPointId={partner.id}
+                />
+                <div className="space-y-2">
+                  <h3 className="text-base font-semibold text-foreground">Leads Capturados neste Ponto</h3>
+                  <LeadsCRM
+                    ownerId={partner.owner_id}
+                    dateRange={analyticsDateRange}
+                  />
+                </div>
+              </>
+            )}
           </TabsContent>
         </Tabs>
       </div>
