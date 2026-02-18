@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   ArrowLeft, MapPin, Package, Phone, Send, RotateCcw,
-  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell
+  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell, ClipboardCheck
 } from "lucide-react";
 
 interface PartnerPoint {
@@ -32,6 +32,8 @@ interface PartnerPoint {
   access_token: string;
   is_active: boolean;
   notes: string | null;
+  contract_token: string | null;
+  contract_accepted_at: string | null;
 }
 
 interface AllocatedItem {
@@ -91,6 +93,8 @@ export default function PartnerPointDetail() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [contractCopied, setContractCopied] = useState(false);
+  const [contractLoading, setContractLoading] = useState(false);
 
   const fetchData = async () => {
     if (!id || !user) return;
@@ -128,6 +132,37 @@ export default function PartnerPointDetail() {
     setLinkCopied(true);
     toast.success("Link do catálogo QR copiado!");
     setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  const handleSendContract = async () => {
+    if (!partner || !user) return;
+    setContractLoading(true);
+    try {
+      let token = partner.contract_token;
+
+      if (!token) {
+        // Generate new UUID token and save
+        const newToken = crypto.randomUUID();
+        const { error } = await supabase
+          .from("partner_points")
+          .update({ contract_token: newToken })
+          .eq("id", partner.id)
+          .eq("owner_id", user.id);
+
+        if (error) { toast.error("Erro ao gerar link do contrato."); return; }
+
+        token = newToken;
+        setPartner(prev => prev ? { ...prev, contract_token: newToken } : prev);
+      }
+
+      const link = `https://vendaprofit.lovable.app/contrato/${token}`;
+      navigator.clipboard.writeText(link);
+      setContractCopied(true);
+      toast.success("Link do contrato copiado! Envie pelo WhatsApp para o parceiro.");
+      setTimeout(() => setContractCopied(false), 3000);
+    } finally {
+      setContractLoading(false);
+    }
   };
 
   const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -198,6 +233,27 @@ export default function PartnerPointDetail() {
                   </a>
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleSendContract}
+                disabled={contractLoading}
+              >
+                {contractCopied ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <ClipboardCheck className="h-4 w-4" />}
+                {contractCopied ? "Link Copiado!" : contractLoading ? "Gerando..." : "Contrato"}
+              </Button>
+            </div>
+            {/* Contract status badge */}
+            <div className="flex items-center gap-2 pt-1">
+              {partner.contract_accepted_at ? (
+                <Badge variant="default" className="text-xs gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Assinado em {new Date(partner.contract_accepted_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </Badge>
+              ) : partner.contract_token ? (
+                <Badge variant="secondary" className="text-xs">📄 Contrato enviado — aguardando assinatura</Badge>
+              ) : null}
             </div>
           </CardContent>
         </Card>
