@@ -14,6 +14,13 @@ import { syncSupplierCatalog } from "@/utils/catalogSync";
 interface OnboardingWizardProps {
   open: boolean;
   onComplete: () => void;
+  onDismiss: () => void;
+  existingProfile?: {
+    store_name?: string | null;
+    phone?: string | null;
+    origin_zip?: string | null;
+    cpf?: string | null;
+  } | null;
 }
 
 const BRANDS = ["BECHOSE", "INMOOV", "NEW HYPE", "POWERED BY COFFEE", "YOPP"];
@@ -48,15 +55,15 @@ function maskCPF(value: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
 
-export function OnboardingWizard({ open, onComplete }: OnboardingWizardProps) {
+export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile }: OnboardingWizardProps) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  const [storeName, setStoreName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [originZip, setOriginZip] = useState("");
-  const [cpf, setCpf] = useState("");
+  const [storeName, setStoreName] = useState(existingProfile?.store_name || "");
+  const [phone, setPhone] = useState(existingProfile?.phone ? maskPhone(existingProfile.phone) : "");
+  const [originZip, setOriginZip] = useState(existingProfile?.origin_zip ? maskCEP(existingProfile.origin_zip) : "");
+  const [cpf, setCpf] = useState(existingProfile?.cpf ? maskCPF(existingProfile.cpf) : "");
 
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
@@ -165,12 +172,9 @@ export function OnboardingWizard({ open, onComplete }: OnboardingWizardProps) {
   const stepLabels = ["Identidade", "Loja Online", "Marcas"];
 
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent
-        className="sm:max-w-lg"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-      >
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onDismiss(); }}>
+      <DialogContent className="sm:max-w-lg">
+
         <DialogHeader>
           <DialogTitle className="text-xl">Configuração Inicial</DialogTitle>
           <DialogDescription>
@@ -287,7 +291,9 @@ export function OnboardingWizard({ open, onComplete }: OnboardingWizardProps) {
               <ArrowLeft className="h-4 w-4 mr-1" /> Anterior
             </Button>
           ) : (
-            <div />
+            <Button variant="ghost" size="sm" onClick={onDismiss} className="text-muted-foreground text-xs">
+              Preencher depois
+            </Button>
           )}
           {step < 3 ? (
             <Button onClick={handleNext} disabled={step === 1 && !step1Valid}>

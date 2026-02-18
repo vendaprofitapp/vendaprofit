@@ -11,18 +11,22 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { startOfDay, startOfWeek, subDays, format } from "date-fns";
 
 export default function Dashboard() {
   const { user } = useAuth();
+
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(`onboarding_dismissed_${user?.id}`) === 'true'
+  );
 
   const { data: profile, refetch: refetchProfile } = useQuery({
     queryKey: ['onboarding-profile', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('store_name, phone, origin_zip')
+        .select('store_name, phone, origin_zip, cpf')
         .eq('id', user?.id)
         .single();
       if (error) throw error;
@@ -31,7 +35,21 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
-  const showOnboarding = !!profile && (!profile.store_name || !profile.phone || !profile.origin_zip);
+  const { data: storeSettings } = useQuery({
+    queryKey: ['onboarding-store', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('store_settings')
+        .select('id')
+        .eq('owner_id', user?.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const needsOnboarding = !!profile && (!profile.store_name || !profile.phone || !profile.origin_zip);
+  const showOnboarding = needsOnboarding && !dismissed && !storeSettings;
 
   const { data: sales = [] } = useQuery({
     queryKey: ['dashboard-sales', user?.id],
@@ -123,7 +141,15 @@ export default function Dashboard() {
   return (
     <MainLayout>
       {/* Onboarding Wizard */}
-      <OnboardingWizard open={showOnboarding} onComplete={refetchProfile} />
+      <OnboardingWizard
+        open={showOnboarding}
+        existingProfile={profile}
+        onComplete={refetchProfile}
+        onDismiss={() => {
+          localStorage.setItem(`onboarding_dismissed_${user?.id}`, 'true');
+          setDismissed(true);
+        }}
+      />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">Bem-vindo de volta! Aqui está o resumo das suas operações.</p>
