@@ -16,8 +16,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   ArrowLeft, MapPin, Package, Phone, Send, RotateCcw,
-  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell, ClipboardCheck, BarChart2
+  Copy, CheckCircle2, ShoppingBag, Clock, AlertTriangle, FileText, Bell, ClipboardCheck, BarChart2, QrCode, Printer
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
+} from "@/components/ui/dialog";
 import { subDays, startOfDay } from "date-fns";
 
 interface PartnerPoint {
@@ -95,6 +98,7 @@ export default function PartnerPointDetail() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showQrDialog, setShowQrDialog] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [contractCopied, setContractCopied] = useState(false);
@@ -250,6 +254,15 @@ export default function PartnerPointDetail() {
               >
                 {contractCopied ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <ClipboardCheck className="h-4 w-4" />}
                 {contractCopied ? "Link Copiado!" : contractLoading ? "Gerando..." : "Contrato"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setShowQrDialog(true)}
+              >
+                <QrCode className="h-4 w-4" />
+                QR Code
               </Button>
             </div>
             {/* Contract status badge */}
@@ -452,6 +465,48 @@ export default function PartnerPointDetail() {
         partnerName={partner.name}
         onReturned={fetchData}
       />
+
+      {/* QR Code Printable Dialog */}
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="max-w-xs sm:max-w-sm">
+          <style>{`
+            @media print {
+              body > *:not([data-qr-print-root]) { display: none !important; }
+              [data-qr-print-root] * { display: flex !important; }
+            }
+          `}</style>
+          <div className="flex flex-col items-center gap-4 py-2">
+            <DialogHeader className="items-center text-center w-full">
+              <DialogTitle className="text-lg font-bold leading-tight">{partner.name}</DialogTitle>
+              <p className="text-sm text-muted-foreground">Escaneie para ver o catálogo</p>
+            </DialogHeader>
+
+            <div className="border-2 border-border rounded-xl p-3 bg-white">
+              <img
+                src={`https://chart.googleapis.com/chart?cht=qr&chs=260x260&chl=${encodeURIComponent(`${window.location.origin}/p/${partner.access_token}`)}&choe=UTF-8`}
+                alt="QR Code do catálogo"
+                width={260}
+                height={260}
+                className="block"
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center break-all px-2">
+              {window.location.origin}/p/{partner.access_token}
+            </p>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 sm:justify-center">
+            <Button onClick={() => window.print()} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Imprimir
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
