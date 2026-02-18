@@ -139,7 +139,9 @@ export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile 
             }
           }
           if (totalSynced > 0) {
-            toast.success(`${totalSynced} produtos adicionados ao seu catálogo!`);
+            toast.success(`${totalSynced} produtos novos adicionados ao seu catálogo!`);
+          } else {
+            toast.info("Seu catálogo já está atualizado — nenhum produto novo foi encontrado.");
           }
         }
       }
@@ -256,6 +258,12 @@ export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile 
             <p className="text-sm text-muted-foreground">
               Selecione as marcas que você deseja revender. Os produtos serão adicionados automaticamente ao seu catálogo.
             </p>
+            <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3">
+              <span className="mt-0.5">ℹ️</span>
+              <p className="text-xs text-muted-foreground">
+                Apenas produtos ainda <strong className="text-foreground">não cadastrados</strong> no seu estoque serão adicionados. Seus dados existentes (preços, estoque, fotos) <strong className="text-foreground">nunca serão alterados</strong>.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {BRANDS.map((brand) => (
                 <label

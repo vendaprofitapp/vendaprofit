@@ -44,12 +44,11 @@ export async function syncSupplierCatalog(
 
   if (!adminProducts || adminProducts.length === 0) return 0;
 
-  // 4. Fetch existing user products for this supplier (to avoid duplicates)
+  // 4. Fetch ALL existing user products (to avoid duplicates regardless of supplier)
   const { data: existingProducts } = await supabase
     .from("products")
     .select("name")
     .eq("owner_id", userId)
-    .eq("supplier_id", userSupplierId)
     .limit(5000);
 
   const existingNames = new Set(
