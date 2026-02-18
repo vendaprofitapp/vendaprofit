@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ShoppingBag, Search, Package, MapPin, X, Plus, Minus } from "lucide-react";
+import { ShoppingBag, Search, Package, MapPin, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 interface PartnerPoint {
@@ -15,10 +15,19 @@ interface PartnerPoint {
   owner_id: string;
   payment_fee_pct: number;
   access_token: string;
+  payment_receiver: string;
+  allowed_payment_methods: AllowedMethod[];
+}
+
+interface AllowedMethod {
+  id: string;
+  name: string;
+  fee_percent: number;
+  is_deferred: boolean;
 }
 
 interface CatalogItem {
-  id: string; // partner_point_items.id
+  id: string;
   product_id: string;
   quantity: number;
   product: {
@@ -42,10 +51,7 @@ interface CartItem {
 interface StoreInfo {
   whatsapp_number: string | null;
   store_name: string;
-}
-
-interface PixKeyInfo {
-  pix_key: string | null;
+  pix_key?: string | null;
 }
 
 export default function PartnerCatalog() {
@@ -63,18 +69,20 @@ export default function PartnerCatalog() {
     if (!token) return;
     const load = async () => {
       setLoading(true);
-      // Find partner point by access_token
       const { data: pp } = await supabase
         .from("partner_points")
-        .select("id, name, owner_id, payment_fee_pct, access_token")
+        .select("id, name, owner_id, payment_fee_pct, access_token, payment_receiver, allowed_payment_methods")
         .eq("access_token", token)
         .eq("is_active", true)
         .maybeSingle();
 
       if (!pp) { setNotFound(true); setLoading(false); return; }
-      setPartnerPoint(pp as PartnerPoint);
+      setPartnerPoint({
+        ...pp,
+        payment_receiver: (pp as any).payment_receiver ?? "partner",
+        allowed_payment_methods: ((pp as any).allowed_payment_methods ?? []) as AllowedMethod[],
+      });
 
-      // Fetch allocated items + product info
       const { data: rawItems } = await supabase
         .from("partner_point_items")
         .select("id, product_id, quantity")
@@ -96,7 +104,6 @@ export default function PartnerCatalog() {
         );
       }
 
-      // Fetch store info for WhatsApp
       const { data: store } = await supabase
         .from("store_settings")
         .select("whatsapp_number, store_name")
@@ -117,7 +124,7 @@ export default function PartnerCatalog() {
   const addToCart = (item: CatalogItem) => {
     setCart(prev => {
       const exists = prev.find(c => c.partner_item_id === item.id);
-      if (exists) return prev; // already in cart
+      if (exists) return prev;
       return [...prev, {
         partner_item_id: item.id,
         product_id: item.product_id,
@@ -168,7 +175,7 @@ export default function PartnerCatalog() {
           <PartnerCheckoutPasses
             cartItems={cart}
             partnerPoint={partnerPoint}
-            pixKey={undefined}
+            pixKey={storeInfo?.pix_key ?? undefined}
             whatsappNumber={storeInfo?.whatsapp_number ?? undefined}
             onCheckoutComplete={() => {
               setCart([]);
@@ -182,7 +189,6 @@ export default function PartnerCatalog() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header banner */}
       <div className="bg-primary text-primary-foreground px-4 py-3 text-center">
         <div className="flex items-center justify-center gap-2">
           <MapPin className="h-4 w-4" />
@@ -196,7 +202,6 @@ export default function PartnerCatalog() {
       </div>
 
       <div className="max-w-2xl mx-auto p-4 space-y-4">
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -207,7 +212,6 @@ export default function PartnerCatalog() {
           />
         </div>
 
-        {/* Products grid */}
         {filtered.length === 0 ? (
           <div className="text-center py-12">
             <Package className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
@@ -273,7 +277,6 @@ export default function PartnerCatalog() {
         )}
       </div>
 
-      {/* Cart floating button */}
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t shadow-lg">
           <Button className="w-full max-w-2xl mx-auto flex gap-3" onClick={() => setView("checkout")}>

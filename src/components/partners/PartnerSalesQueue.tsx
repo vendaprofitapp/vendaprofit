@@ -17,6 +17,7 @@ interface Sale {
   created_at: string;
   items: any;
   notes: string | null;
+  payment_fee_applied?: number;
 }
 
 interface Props {
@@ -24,15 +25,17 @@ interface Props {
   onUpdated: () => void;
 }
 
-const PASS_LABELS: Record<string, { label: string; emoji: string }> = {
-  pix:            { label: "PIX",          emoji: "🟢" },
-  card:           { label: "Cartão",       emoji: "🟡" },
-  try_home:       { label: "Casa 24h",     emoji: "🔵" },
-  infinite_shelf: { label: "Encomenda",    emoji: "🟣" },
-};
-
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+// Map pass_color to emoji indicator
+const PASS_COLOR_EMOJI: Record<string, string> = {
+  green: "🟢",
+  yellow: "🟡",
+  blue: "🔵",
+  purple: "🟣",
+  gray: "⚫",
+};
 
 export function PartnerSalesQueue({ sales, onUpdated }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
@@ -68,11 +71,12 @@ export function PartnerSalesQueue({ sales, onUpdated }: Props) {
         {pending.length} venda(s) aguardando validação
       </p>
       {pending.map(sale => {
-        const pass = PASS_LABELS[sale.payment_method] ?? { label: sale.payment_method, emoji: "⚪" };
         const isLoading = loading === sale.id;
         const createdAt = new Date(sale.created_at);
         const hoursElapsed = (Date.now() - createdAt.getTime()) / 3_600_000;
-        const isOverdue24h = sale.payment_method === "try_home" && hoursElapsed >= 24;
+        const isOverdue24h = sale.pass_color === "blue" && hoursElapsed >= 24;
+        const passEmoji = PASS_COLOR_EMOJI[sale.pass_color] ?? "⚪";
+        const feeApplied = sale.payment_fee_applied;
 
         return (
           <Card key={sale.id} className={isOverdue24h ? "border-destructive/50 bg-destructive/5" : ""}>
@@ -84,13 +88,16 @@ export function PartnerSalesQueue({ sales, onUpdated }: Props) {
                     <span className="font-medium text-sm">{sale.customer_name}</span>
                     <span className="text-xs text-muted-foreground">{sale.customer_phone}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <Badge variant="secondary" className="text-xs py-0">
-                      {pass.emoji} {pass.label}
+                      {passEmoji} {sale.payment_method}
                     </Badge>
+                    {typeof feeApplied === "number" && feeApplied > 0 && (
+                      <span className="text-xs text-muted-foreground">taxa {feeApplied}%</span>
+                    )}
                     {isOverdue24h && (
                       <Badge variant="destructive" className="text-xs py-0">
-                        Prazo 24h expirado
+                        Prazo expirado
                       </Badge>
                     )}
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -107,28 +114,28 @@ export function PartnerSalesQueue({ sales, onUpdated }: Props) {
                 <ul className="text-xs text-muted-foreground space-y-0.5 border-t pt-2">
                   {sale.items.map((item: any, idx: number) => (
                     <li key={idx} className="flex justify-between">
-                      <span>{item.product_name} {item.selected_size ? `(${item.selected_size})` : ""} × {item.quantity}</span>
+                      <span>{item.product_name} × {item.quantity}</span>
                       <span>{fmtBRL(item.unit_price * item.quantity)}</span>
                     </li>
                   ))}
                 </ul>
               )}
 
-              {/* Actions */}
+              {/* Actions based on pass_color */}
               <div className="flex gap-2 flex-wrap pt-1 border-t">
-                {sale.payment_method === "pix" && (
+                {sale.pass_color === "green" && (
                   <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
                     <CheckCircle2 className="h-4 w-4" />
-                    {isLoading ? "Salvando..." : "Confirmar Recebimento PIX"}
+                    {isLoading ? "Salvando..." : "Confirmar Recebimento"}
                   </Button>
                 )}
-                {sale.payment_method === "card" && (
+                {sale.pass_color === "yellow" && (
                   <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "validated")}>
                     <CheckCircle2 className="h-4 w-4" />
                     {isLoading ? "Salvando..." : "Validar Pagamento"}
                   </Button>
                 )}
-                {sale.payment_method === "try_home" && (
+                {sale.pass_color === "blue" && (
                   <>
                     <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
                       <CheckCircle2 className="h-4 w-4" />
@@ -140,10 +147,16 @@ export function PartnerSalesQueue({ sales, onUpdated }: Props) {
                     </Button>
                   </>
                 )}
-                {sale.payment_method === "infinite_shelf" && (
+                {sale.pass_color === "purple" && (
                   <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
                     <ShoppingBag className="h-4 w-4" />
                     {isLoading ? "Salvando..." : "Confirmar Encomenda"}
+                  </Button>
+                )}
+                {sale.pass_color === "gray" && (
+                  <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    {isLoading ? "Salvando..." : "Confirmar Pagamento Local"}
                   </Button>
                 )}
               </div>

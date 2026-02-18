@@ -15,6 +15,7 @@ interface Sale {
   pass_status: string;
   created_at: string;
   items: any;
+  payment_fee_applied?: number;
 }
 
 interface PartnerPoint {
@@ -23,6 +24,7 @@ interface PartnerPoint {
   pickup_commission_pct: number;
   payment_fee_pct: number;
   contact_phone: string | null;
+  payment_receiver?: string;
 }
 
 interface Props {
@@ -32,17 +34,9 @@ interface Props {
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const PASS_LABELS: Record<string, string> = {
-  pix:            "🟢 PIX",
-  card:           "🟡 Cartão",
-  try_home:       "🔵 Casa 24h",
-  infinite_shelf: "🟣 Encomenda",
-};
-
 export function PartnerSettlementTab({ partner, sales }: Props) {
   const [period, setPeriod] = useState<"all" | "30" | "7">("30");
 
-  // Filter by period
   const now = Date.now();
   const filteredSales = sales.filter(s => {
     if (s.pass_status !== "completed") return false;
@@ -51,14 +45,19 @@ export function PartnerSettlementTab({ partner, sales }: Props) {
     return now - new Date(s.created_at).getTime() <= days * 86_400_000;
   });
 
-  // Calculate totals using the new engine
+  // Resolve effective fee per sale: prefer payment_fee_applied if set, else partner.payment_fee_pct
+  const getEffectiveFee = (sale: Sale) =>
+    typeof sale.payment_fee_applied === "number" && sale.payment_fee_applied > 0
+      ? sale.payment_fee_applied
+      : partner.payment_fee_pct;
+
   const totals = filteredSales.reduce(
     (acc, sale) => {
       const result = calculatePartnerPointSplit({
         grossPrice: sale.total_gross,
-        costPrice: 0, // cost not stored per sale — show gross breakdown only
+        costPrice: 0,
         rackCommissionPct: partner.rack_commission_pct,
-        paymentFeePct: partner.payment_fee_pct,
+        paymentFeePct: getEffectiveFee(sale),
       });
       acc.gross += sale.total_gross;
       acc.fee += result.paymentFeeAmount;
@@ -76,27 +75,30 @@ export function PartnerSettlementTab({ partner, sales }: Props) {
     }
     const lines = [
       `*Extrato de Acerto — ${partner.name}*`,
-      `Período: últimos ${period === "all" ? "todos os tempos" : period + " dias"}`,
+      `Período: ${period === "all" ? "todos os tempos" : `últimos ${period} dias`}`,
       `Vendas concluídas: ${filteredSales.length}`,
       ``,
       `💰 Total bruto: ${fmtBRL(totals.gross)}`,
-      `💳 Taxa maquininha (${partner.payment_fee_pct}%): -${fmtBRL(totals.fee)}`,
+      `💳 Taxas de pagamento: -${fmtBRL(totals.fee)}`,
       `🏪 Comissão arara (${partner.rack_commission_pct}%): -${fmtBRL(totals.partnerCommission)}`,
       `✅ Líquido para mim: ${fmtBRL(totals.net)}`,
       ``,
       `*Detalhe por venda:*`,
-      ...filteredSales.map(s =>
-        `• ${s.customer_name} — ${fmtBRL(s.total_gross)} (${PASS_LABELS[s.payment_method] ?? s.payment_method})`
-      ),
+      ...filteredSales.map(s => {
+        const fee = getEffectiveFee(s);
+        const feeLabel = fee > 0 ? ` | taxa ${fee}%` : "";
+        return `• ${s.customer_name} — ${fmtBRL(s.total_gross)} (${s.payment_method}${feeLabel})`;
+      }),
     ];
     const text = encodeURIComponent(lines.join("\n"));
     const phone = partner.contact_phone.replace(/\D/g, "");
     window.open(`https://wa.me/55${phone}?text=${text}`, "_blank");
   };
 
+  const paymentReceiver = partner.payment_receiver ?? "partner";
+
   return (
     <div className="space-y-4">
-      {/* Period selector */}
       <div className="flex gap-2">
         {(["7", "30", "all"] as const).map(p => (
           <Button
@@ -144,7 +146,11 @@ export function PartnerSettlementTab({ partner, sales }: Props) {
               <span className="font-medium">{fmtBRL(totals.gross)}</span>
             </div>
             <div className="flex justify-between text-destructive/80">
-              <span>Taxa maquininha ({partner.payment_fee_pct}%)</span>
+              <span>
+                {paymentReceiver === "partner"
+                  ? `Taxa maquininha parceiro (${partner.payment_fee_pct}%)`
+                  : "Taxas por forma de pagamento"}
+              </span>
               <span>-{fmtBRL(totals.fee)}</span>
             </div>
             <div className="flex justify-between text-destructive/80">
@@ -163,7 +169,6 @@ export function PartnerSettlementTab({ partner, sales }: Props) {
         </CardContent>
       </Card>
 
-      {/* Actions */}
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1 gap-2" onClick={generateWhatsApp} disabled={filteredSales.length === 0}>
           <Share2 className="h-4 w-4" />
@@ -176,20 +181,24 @@ export function PartnerSettlementTab({ partner, sales }: Props) {
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendas do período</p>
           {filteredSales.map(sale => {
+            const effectiveFee = getEffectiveFee(sale);
             const split = calculatePartnerPointSplit({
               grossPrice: sale.total_gross,
               costPrice: 0,
               rackCommissionPct: partner.rack_commission_pct,
-              paymentFeePct: partner.payment_fee_pct,
+              paymentFeePct: effectiveFee,
             });
             return (
               <div key={sale.id} className="flex items-center gap-3 p-3 border rounded-lg">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{sale.customer_name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <Badge variant="secondary" className="text-xs py-0">
-                      {PASS_LABELS[sale.payment_method] ?? sale.payment_method}
+                      {sale.payment_method}
                     </Badge>
+                    {effectiveFee > 0 && (
+                      <span className="text-xs text-muted-foreground">taxa {effectiveFee}%</span>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {new Date(sale.created_at).toLocaleDateString("pt-BR")}
                     </span>
