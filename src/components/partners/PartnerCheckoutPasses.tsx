@@ -74,7 +74,7 @@ export function PartnerCheckoutPasses({
   // If data is prefilled and mode is partner, skip info step and confirm sale immediately
   useEffect(() => {
     if (hasPrefilledData && paymentReceiver === "partner") {
-      handleConfirmSale("pay_at_partner", 0, null, false);
+      handleConfirmSale("pay_at_partner", 0, null, false, initialName!, initialPhone!);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -116,9 +116,20 @@ export function PartnerCheckoutPasses({
     feeApplied: number,
     customMethodId: string | null,
     isDeferred: boolean,
+    overrideName?: string,
+    overridePhone?: string,
   ) => {
     setLoading(true);
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const finalName = (overrideName ?? customerName).trim();
+    const finalPhone = (overridePhone ?? customerPhone).trim();
+
+    if (!finalName || !finalPhone) {
+      setLoading(false);
+      toast.error("Dados do cliente incompletos.");
+      return;
+    }
 
     // Determine pass color
     let passColor = "gray";
@@ -136,8 +147,8 @@ export function PartnerCheckoutPasses({
     const { error } = await supabase.from("partner_point_sales").insert({
       partner_point_id: partnerPoint.id,
       owner_id: partnerPoint.owner_id,
-      customer_name: customerName.trim(),
-      customer_phone: customerPhone.trim(),
+      customer_name: finalName,
+      customer_phone: finalPhone,
       items: cartItems.map(i => ({
         product_id: i.product_id,
         product_name: i.product_name,
@@ -155,6 +166,7 @@ export function PartnerCheckoutPasses({
 
     if (error) {
       setLoading(false);
+      console.error("partner_point_sales insert error:", error);
       toast.error("Erro ao registrar venda. Tente novamente.");
       return;
     }
@@ -165,7 +177,7 @@ export function PartnerCheckoutPasses({
       const methodLabel = method?.name ?? (paymentReceiver === "partner" ? "Pagar no local" : paymentMethodKey);
       const itemLines = cartItems.map(i => `• ${i.product_name} (${i.quantity}x) — ${fmtBRL(i.unit_price)}`).join("\n");
       const msg = encodeURIComponent(
-        `🛍️ *Nova venda no ${partnerPoint.name}!*\n\n${itemLines}\n\n*Total: ${fmtBRL(totalGross)}*\nPagamento: ${methodLabel}\nCliente: ${customerName} (${customerPhone})\nPasse: #${passCode}`
+        `🛍️ *Nova venda no ${partnerPoint.name}!*\n\n${itemLines}\n\n*Total: ${fmtBRL(totalGross)}*\nPagamento: ${methodLabel}\nCliente: ${finalName} (${finalPhone})\nPasse: #${passCode}`
       );
       window.open(`https://wa.me/55${wNum}?text=${msg}`, "_blank");
     }
