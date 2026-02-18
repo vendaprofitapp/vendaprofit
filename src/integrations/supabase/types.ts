@@ -1864,6 +1864,7 @@ export type Database = {
       partner_point_sales: {
         Row: {
           created_at: string
+          custom_payment_method_id: string | null
           customer_name: string
           customer_phone: string
           id: string
@@ -1873,6 +1874,7 @@ export type Database = {
           partner_point_id: string
           pass_color: string
           pass_status: string
+          payment_fee_applied: number | null
           payment_method: string
           payment_proof_url: string | null
           total_gross: number
@@ -1880,6 +1882,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          custom_payment_method_id?: string | null
           customer_name: string
           customer_phone: string
           id?: string
@@ -1889,6 +1892,7 @@ export type Database = {
           partner_point_id: string
           pass_color?: string
           pass_status?: string
+          payment_fee_applied?: number | null
           payment_method?: string
           payment_proof_url?: string | null
           total_gross?: number
@@ -1896,6 +1900,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          custom_payment_method_id?: string | null
           customer_name?: string
           customer_phone?: string
           id?: string
@@ -1905,6 +1910,7 @@ export type Database = {
           partner_point_id?: string
           pass_color?: string
           pass_status?: string
+          payment_fee_applied?: number | null
           payment_method?: string
           payment_proof_url?: string | null
           total_gross?: number
@@ -1924,6 +1930,7 @@ export type Database = {
         Row: {
           access_token: string
           address: string | null
+          allowed_payment_methods: Json | null
           contact_name: string | null
           contact_phone: string | null
           created_at: string
@@ -1935,6 +1942,7 @@ export type Database = {
           notes: string | null
           owner_id: string
           payment_fee_pct: number
+          payment_receiver: string
           pickup_commission_pct: number
           rack_commission_pct: number
           replenishment_cycle_days: number | null
@@ -1943,6 +1951,7 @@ export type Database = {
         Insert: {
           access_token?: string
           address?: string | null
+          allowed_payment_methods?: Json | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -1954,6 +1963,7 @@ export type Database = {
           notes?: string | null
           owner_id: string
           payment_fee_pct?: number
+          payment_receiver?: string
           pickup_commission_pct?: number
           rack_commission_pct?: number
           replenishment_cycle_days?: number | null
@@ -1962,6 +1972,7 @@ export type Database = {
         Update: {
           access_token?: string
           address?: string | null
+          allowed_payment_methods?: Json | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -1973,6 +1984,7 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           payment_fee_pct?: number
+          payment_receiver?: string
           pickup_commission_pct?: number
           rack_commission_pct?: number
           replenishment_cycle_days?: number | null

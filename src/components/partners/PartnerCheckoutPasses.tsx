@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle2, Copy, CreditCard, Home } from "lucide-react";
+import { CheckCircle2, Copy, Home, Store } from "lucide-react";
 
 interface CartItem {
   partner_item_id: string;
@@ -15,11 +15,20 @@ interface CartItem {
   unit_price: number;
 }
 
+interface AllowedMethod {
+  id: string;
+  name: string;
+  fee_percent: number;
+  is_deferred: boolean;
+}
+
 interface PartnerPoint {
   id: string;
   name: string;
   owner_id: string;
   payment_fee_pct: number;
+  payment_receiver?: string;
+  allowed_payment_methods?: AllowedMethod[];
 }
 
 interface PartnerCheckoutPassesProps {
@@ -30,24 +39,27 @@ interface PartnerCheckoutPassesProps {
   onCheckoutComplete: () => void;
 }
 
-type PaymentMethod = "pix" | "card" | "try_home" | null;
-
-const PASS_CONFIG = {
-  pix:      { colorClass: "bg-green-600",  label: "🟢 Passe Verde — PIX" },
-  card:     { colorClass: "bg-yellow-500", label: "🟡 Passe Amarelo — Cartão" },
-  try_home: { colorClass: "bg-blue-600",   label: "🔵 Passe Azul — Provar em Casa 24h" },
+const PASS_CONFIG: Record<string, { colorClass: string; label: string }> = {
+  pix:            { colorClass: "bg-green-600",  label: "🟢 Passe Verde — PIX" },
+  card:           { colorClass: "bg-yellow-500", label: "🟡 Passe Amarelo — Cartão" },
+  try_home:       { colorClass: "bg-blue-600",   label: "🔵 Passe Azul — Provar em Casa 24h" },
+  pay_at_partner: { colorClass: "bg-gray-700",   label: "⚫ Passe — Pagar no Local" },
 };
 
 export function PartnerCheckoutPasses({
   cartItems, partnerPoint, pixKey, whatsappNumber, onCheckoutComplete
 }: PartnerCheckoutPassesProps) {
+  const paymentReceiver = partnerPoint.payment_receiver ?? "partner";
+  const allowedMethods = partnerPoint.allowed_payment_methods ?? [];
+
   const [step, setStep] = useState<"info" | "method" | "pass">("info");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>(null);
+  // For seller mode: id of selected AllowedMethod; for partner mode: "pay_at_partner"
+  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [termAccepted, setTermAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [passData, setPassData] = useState<{ code: string; method: PaymentMethod } | null>(null);
+  const [passData, setPassData] = useState<{ code: string; passKey: string; methodName: string; isDeferred: boolean } | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
 
   const totalGross = cartItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -58,17 +70,44 @@ export function PartnerCheckoutPasses({
       toast.error("Preencha seu nome e WhatsApp.");
       return;
     }
+    if (paymentReceiver === "partner") {
+      // Skip method selection for partner-pays mode
+      setSelectedMethodId("pay_at_partner");
+      handleConfirmSale("pay_at_partner", 0, null, false);
+      return;
+    }
     setStep("method");
   };
 
-  const handleConfirmMethod = async () => {
-    if (!method) { toast.error("Escolha uma forma de pagamento."); return; }
-    if (method === "try_home" && !termAccepted) { toast.error("Aceite o termo de responsabilidade."); return; }
+  const handleConfirmMethod = () => {
+    if (!selectedMethodId) { toast.error("Escolha uma forma de pagamento."); return; }
+    const method = allowedMethods.find(m => m.id === selectedMethodId);
+    const isDeferred = method?.is_deferred ?? false;
+    if (isDeferred && !termAccepted) { toast.error("Aceite o termo de responsabilidade."); return; }
+    handleConfirmSale(selectedMethodId, method?.fee_percent ?? 0, selectedMethodId, isDeferred);
+  };
 
+  const handleConfirmSale = async (
+    paymentMethodKey: string,
+    feeApplied: number,
+    customMethodId: string | null,
+    isDeferred: boolean,
+  ) => {
     setLoading(true);
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    const passColorMap: Record<string, string> = { pix: "green", card: "yellow", try_home: "blue" };
+    // Determine pass color
+    let passColor = "gray";
+    let passKey = "pay_at_partner";
+    const method = allowedMethods.find(m => m.id === paymentMethodKey);
+    if (paymentReceiver === "partner") {
+      passColor = "gray";
+      passKey = "pay_at_partner";
+    } else if (method) {
+      if (method.is_deferred) { passColor = "blue"; passKey = "try_home"; }
+      else if (method.fee_percent === 0) { passColor = "green"; passKey = "pix"; }
+      else { passColor = "yellow"; passKey = "card"; }
+    }
 
     const { error } = await supabase.from("partner_point_sales").insert({
       partner_point_id: partnerPoint.id,
@@ -82,10 +121,12 @@ export function PartnerCheckoutPasses({
         unit_price: i.unit_price,
       })),
       total_gross: totalGross,
-      payment_method: method,
-      pass_color: passColorMap[method],
-      pass_status: "pending",
+      payment_method: method?.name ?? paymentMethodKey,
+      pass_color: passColor,
+      pass_status: paymentReceiver === "partner" ? "validated" : "pending",
       notes: `Passe ${passCode}`,
+      payment_fee_applied: feeApplied,
+      custom_payment_method_id: customMethodId,
     });
 
     if (error) {
@@ -94,18 +135,18 @@ export function PartnerCheckoutPasses({
       return;
     }
 
-    // Notify seller via WhatsApp if configured
+    // WhatsApp notification
     if (whatsappNumber) {
       const wNum = whatsappNumber.replace(/\D/g, "");
-      const methodLabels: Record<string, string> = { pix: "PIX", card: "Cartão", try_home: "Provar em Casa 24h" };
+      const methodLabel = method?.name ?? (paymentReceiver === "partner" ? "Pagar no local" : paymentMethodKey);
       const itemLines = cartItems.map(i => `• ${i.product_name} (${i.quantity}x) — ${fmtBRL(i.unit_price)}`).join("\n");
       const msg = encodeURIComponent(
-        `🛍️ *Nova venda no ${partnerPoint.name}!*\n\n${itemLines}\n\n*Total: ${fmtBRL(totalGross)}*\nPagamento: ${methodLabels[method]}\nCliente: ${customerName} (${customerPhone})\nPasse: #${passCode}`
+        `🛍️ *Nova venda no ${partnerPoint.name}!*\n\n${itemLines}\n\n*Total: ${fmtBRL(totalGross)}*\nPagamento: ${methodLabel}\nCliente: ${customerName} (${customerPhone})\nPasse: #${passCode}`
       );
       window.open(`https://wa.me/55${wNum}?text=${msg}`, "_blank");
     }
 
-    setPassData({ code: passCode, method });
+    setPassData({ code: passCode, passKey, methodName: method?.name ?? "Pagar no local", isDeferred });
     setStep("pass");
     setLoading(false);
   };
@@ -119,6 +160,7 @@ export function PartnerCheckoutPasses({
     }
   };
 
+  // Step: info
   if (step === "info") {
     return (
       <div className="space-y-4">
@@ -147,66 +189,64 @@ export function PartnerCheckoutPasses({
           </div>
         </div>
 
-        <Button className="w-full" onClick={handleConfirmInfo}>Continuar →</Button>
+        {paymentReceiver === "partner" && (
+          <div className="flex items-center gap-2 bg-muted/40 border rounded-lg p-3">
+            <Store className="h-4 w-4 text-muted-foreground shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              O pagamento será feito diretamente na recepção do <strong>{partnerPoint.name}</strong>.
+            </p>
+          </div>
+        )}
+
+        <Button className="w-full" disabled={loading} onClick={handleConfirmInfo}>
+          {loading ? "Processando..." : "Continuar →"}
+        </Button>
       </div>
     );
   }
 
+  // Step: method (seller mode only)
   if (step === "method") {
+    const selectedMethod = allowedMethods.find(m => m.id === selectedMethodId);
     return (
       <div className="space-y-4">
         <p className="text-sm font-medium">Como você quer pagar?</p>
 
         <div className="grid gap-2">
-          <Card
-            className={`cursor-pointer transition-all border-2 ${method === "pix" ? "border-primary bg-primary/5" : "border-transparent"}`}
-            onClick={() => setMethod("pix")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-xs font-bold shrink-0">PIX</div>
-              <div>
-                <p className="font-medium text-sm">Pagar Agora — PIX</p>
-                <p className="text-xs text-muted-foreground">Receba o QR Code / chave PIX</p>
-              </div>
-            </CardContent>
-          </Card>
+          {allowedMethods.map(method => {
+            const isSelected = selectedMethodId === method.id;
+            let colorBg = "bg-yellow-500";
+            let emoji = "💳";
+            if (method.is_deferred) { colorBg = "bg-blue-600"; emoji = "🏠"; }
+            else if (method.fee_percent === 0) { colorBg = "bg-green-600"; emoji = "⚡"; }
 
-          <Card
-            className={`cursor-pointer transition-all border-2 ${method === "card" ? "border-primary bg-primary/5" : "border-transparent"}`}
-            onClick={() => setMethod("card")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center shrink-0">
-                <CreditCard className="h-4 w-4 text-foreground" />
-              </div>
-              <div>
-                <p className="font-medium text-sm">Pagar no Cartão</p>
-                <p className="text-xs text-muted-foreground">A vendedora te envia o link de pagamento</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`cursor-pointer transition-all border-2 ${method === "try_home" ? "border-primary bg-primary/5" : "border-transparent"}`}
-            onClick={() => setMethod("try_home")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-                <Home className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <p className="font-medium text-sm">Provar em Casa — 24h</p>
-                <p className="text-xs text-muted-foreground">Leve, prove, pague em 24h</p>
-              </div>
-            </CardContent>
-          </Card>
+            return (
+              <Card
+                key={method.id}
+                className={`cursor-pointer transition-all border-2 ${isSelected ? "border-primary bg-primary/5" : "border-transparent"}`}
+                onClick={() => setSelectedMethodId(method.id)}
+              >
+                <CardContent className="p-3 flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full ${colorBg} flex items-center justify-center text-white text-sm shrink-0`}>
+                    {emoji}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{method.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {method.is_deferred ? "Leve agora, pague depois" : method.fee_percent > 0 ? `Taxa: ${method.fee_percent}%` : "Sem taxa"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        {method === "try_home" && (
+        {selectedMethod?.is_deferred && (
           <div className="border border-border rounded-lg p-3 bg-muted/40 space-y-2">
             <p className="text-sm font-medium text-foreground">Termo de Responsabilidade</p>
             <p className="text-xs text-muted-foreground">
-              Declaro que sou responsável pela(s) peça(s) retirada(s) e me comprometo a pagar ou devolver em perfeito estado em até 24 horas. Em caso de dano ou extravio, serei responsável pelo valor integral do produto.
+              Declaro que sou responsável pela(s) peça(s) retirada(s) e me comprometo a pagar ou devolver em perfeito estado no prazo combinado. Em caso de dano ou extravio, serei responsável pelo valor integral do produto.
             </p>
             <div className="flex items-center gap-2 mt-2">
               <input type="checkbox" id="term" checked={termAccepted} onChange={e => setTermAccepted(e.target.checked)} className="rounded" />
@@ -217,7 +257,7 @@ export function PartnerCheckoutPasses({
 
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setStep("info")} className="flex-1">← Voltar</Button>
-          <Button onClick={handleConfirmMethod} disabled={loading || !method} className="flex-1">
+          <Button onClick={handleConfirmMethod} disabled={loading || !selectedMethodId} className="flex-1">
             {loading ? "Processando..." : "Confirmar →"}
           </Button>
         </div>
@@ -227,14 +267,16 @@ export function PartnerCheckoutPasses({
 
   // Step: pass
   if (!passData) return null;
-  const passConfig = PASS_CONFIG[passData.method!];
+  const passConfig = PASS_CONFIG[passData.passKey] ?? PASS_CONFIG["pay_at_partner"];
 
   return (
     <div className="space-y-4 text-center">
       <div className={`${passConfig.colorClass} rounded-2xl p-6 text-white`}>
         <p className="text-lg font-bold">{passConfig.label}</p>
         <p className="text-4xl font-mono font-black mt-2">#{passData.code}</p>
-        <p className="text-sm mt-1 opacity-90">Mostre este código na recepção</p>
+        <p className="text-sm mt-1 opacity-90">
+          {paymentReceiver === "partner" ? "Mostre este código na recepção para retirar as peças" : "Mostre este código para confirmar seu pedido"}
+        </p>
       </div>
 
       <div className="border rounded-lg p-3 text-left space-y-1">
@@ -249,9 +291,10 @@ export function PartnerCheckoutPasses({
           <span>Total</span>
           <span>{fmtBRL(totalGross)}</span>
         </div>
+        <p className="text-xs text-muted-foreground pt-1">Pagamento: {passData.methodName}</p>
       </div>
 
-      {passData.method === "pix" && pixKey && (
+      {passData.passKey === "pix" && pixKey && (
         <div className="border rounded-lg p-3 space-y-2">
           <p className="text-sm font-medium">Chave PIX</p>
           <div className="flex items-center gap-2">
@@ -264,12 +307,19 @@ export function PartnerCheckoutPasses({
         </div>
       )}
 
-      {passData.method === "card" && (
+      {passData.passKey === "card" && (
         <p className="text-sm text-muted-foreground">A vendedora receberá uma notificação e te enviará o link de pagamento em breve.</p>
       )}
 
-      {passData.method === "try_home" && (
-        <p className="text-sm text-orange-600 font-medium">⏱️ Você tem 24 horas para pagar ou devolver as peças.</p>
+      {passData.isDeferred && (
+        <p className="text-sm text-orange-600 font-medium">⏱️ Você tem um prazo para pagar ou devolver as peças. Aguarde contato da vendedora.</p>
+      )}
+
+      {paymentReceiver === "partner" && (
+        <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5">
+          <Home className="h-4 w-4" />
+          Dirija-se à recepção com este passe para retirar suas peças.
+        </p>
       )}
 
       <Button className="w-full gap-2" onClick={onCheckoutComplete}>
