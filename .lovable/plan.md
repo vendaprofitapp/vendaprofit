@@ -1,136 +1,111 @@
 
-# Configuração de Pagamento por Ponto Parceiro — Plano de Implementação
+# Valor Mínimo por Forma de Pagamento no Ponto Parceiro
 
-## Contexto e Análise do Estado Atual
+## Diagnóstico do Estado Atual
 
-Hoje, o cadastro de um Ponto Parceiro tem apenas um campo genérico `payment_fee_pct` (taxa da maquininha) e nenhuma configuração sobre **quem recebe o pagamento** nem **quais formas de pagamento estão disponíveis** no catálogo do QR Code.
+O snapshot de formas de pagamento salvo no campo `allowed_payment_methods` (JSONB) da tabela `partner_points` tem a estrutura:
 
-A nova funcionalidade exige:
+```json
+{ "id": "...", "name": "PIX", "fee_percent": 0, "is_deferred": false }
+```
 
-1. **Nova configuração no cadastro do parceiro:** quem recebe o pagamento — "Ponto Parceiro" ou "Vendedora"
-2. **Se for a vendedora:** quais formas de pagamento (das personalizadas já cadastradas no sistema) estarão disponíveis naquele ponto, com as taxas de cada uma aplicadas automaticamente
-3. **No catálogo do QR Code (`/p/:token`):** o checkout exibe apenas as formas de pagamento habilitadas para aquele ponto
-4. **Nos relatórios e acertos:** o pagamento via forma selecionada aparece com a taxa correta nos cálculos
+Não há campo `min_amount`. Isso precisa ser adicionado em toda a cadeia: cadastro → armazenamento → exibição no catálogo → validação no checkout.
 
 ---
 
-## O que Muda e o que NÃO Muda
+## Escopo de Mudanças — Apenas 2 Arquivos
 
-| Componente | O que muda |
+Toda a lógica está concentrada em dois arquivos. Nenhum outro arquivo precisa ser tocado.
+
+| Arquivo | O que muda |
 |---|---|
-| `partner_points` (tabela) | Adiciona `payment_receiver` (`seller` ou `partner`) e `allowed_payment_methods` (jsonb com ids das formas habilitadas) |
-| `partner_point_sales` (tabela) | Já tem `payment_method` — passa a armazenar o `custom_payment_method_id` quando aplicável |
-| `NewPartnerDialog.tsx` | Adiciona seção "Como o cliente paga?" com toggle e seletor de formas de pagamento |
-| `PartnerCheckoutPasses.tsx` | Quando `payment_receiver = seller`, exibe as formas de pagamento configuradas (personalizadas) no lugar do menu fixo PIX/Cartão/Casa 24h |
-| `PartnerSettlementTab.tsx` | Usa a taxa da forma de pagamento selecionada em vez do `payment_fee_pct` fixo |
-| `PartnerCatalog.tsx` | Busca as formas de pagamento habilitadas e as passa para o checkout |
-| `StoreCatalog.tsx`, `profitEngine.ts`, `consignments`, qualquer outra tela | **Nada muda** |
+| `NewPartnerDialog.tsx` | Adiciona campo "Valor mínimo" por forma de pagamento selecionada |
+| `PartnerCheckoutPasses.tsx` | Valida o total do carrinho contra o `min_amount` da forma selecionada e exibe aviso |
+
+Banco de dados: **não precisa de migração** — `allowed_payment_methods` já é JSONB e aceita o campo `min_amount` adicionalmente sem qualquer alteração de schema.
 
 ---
 
-## Banco de Dados — Migração Aditiva
+## Detalhe das Mudanças
 
-### Alteração em `partner_points`:
+### 1. `NewPartnerDialog.tsx`
 
-```sql
-ALTER TABLE partner_points
-  ADD COLUMN payment_receiver text NOT NULL DEFAULT 'partner',
-  ADD COLUMN allowed_payment_methods jsonb DEFAULT '[]'::jsonb;
+**Interface `CustomPaymentMethod`**: Adicionar estado local para guardar o `min_amount` de cada método selecionado.
+
+```typescript
+// Estado local: mapa de id → valor mínimo configurado
+const [methodMinAmounts, setMethodMinAmounts] = useState<Record<string, string>>({});
 ```
 
-- `payment_receiver`: `'seller'` = pagamento vai para a vendedora (formas personalizadas); `'partner'` = parceiro gerencia o pagamento como quiser
-- `allowed_payment_methods`: array de objetos `{ id: string, name: string, fee_percent: number }` — snapshot das formas habilitadas no momento do cadastro/edição
+**UI na lista de formas de pagamento selecionáveis**: Quando um método está marcado (checked), exibir abaixo do checkbox um campo de input "Valor mínimo (opcional)" com prefixo R$.
 
-### Alteração em `partner_point_sales`:
-
-```sql
-ALTER TABLE partner_point_sales
-  ADD COLUMN payment_fee_applied numeric DEFAULT 0,
-  ADD COLUMN custom_payment_method_id text DEFAULT NULL;
+Exemplo visual:
+```
+☑ Link de Pagamento 4x          Taxa: 3.5%  [A prazo]
+  └─ Valor mínimo para esta forma:  R$ [500,00]
 ```
 
-- `payment_fee_applied`: taxa percentual efetivamente aplicada na venda (vem da forma de pagamento escolhida, não do valor genérico do parceiro)
-- `custom_payment_method_id`: referência ao id da forma de pagamento personalizada usada
+O campo só aparece se o método estiver selecionado (checked), ficando oculto quando desmarcado.
 
-**Nenhuma tabela existente é modificada além de `partner_points` e `partner_point_sales`, que são novas.**
+**No `handleSubmit`**, ao construir o snapshot `allowedMethods`, incluir `min_amount`:
+
+```typescript
+.map(m => ({
+  id: m.id,
+  name: m.name,
+  fee_percent: m.fee_percent,
+  is_deferred: m.is_deferred,
+  min_amount: parseFloat(methodMinAmounts[m.id]?.replace(",", ".") || "0") || 0,
+}))
+```
 
 ---
 
-## Arquivos a Criar/Modificar
+### 2. `PartnerCheckoutPasses.tsx`
 
-### 1. `NewPartnerDialog.tsx` — Nova seção de pagamento
+**Interface `AllowedMethod`**: Adicionar campo opcional `min_amount?: number`.
 
-Após a seção "Comissões e Taxas", adicionar nova seção "Como o cliente paga?":
+**Etapa de seleção do método (step = "method")**: 
+- Exibir o valor mínimo no card de cada forma de pagamento quando `min_amount > 0`.
+- Métodos com `min_amount` maior que o total do carrinho ficam **desabilitados** (não clicáveis), com badge de aviso.
 
-**Toggle "Quem recebe o pagamento?":**
-- Opção A — **Ponto Parceiro** (padrão): o parceiro usa sua própria maquininha/dinheiro. O campo `payment_fee_pct` atual continua sendo usado para calcular o acerto. O cliente no QR Code vê apenas um aviso para pagar no local.
-- Opção B — **Vendedora**: o pagamento vem direto para a vendedora. Exibe multi-seletor das formas de pagamento personalizadas ativas da vendedora (busca da tabela `custom_payment_methods` filtrando por `owner_id` + `is_active = true`). A vendedora marca quais formas quer disponibilizar naquele ponto.
-
-**UX do seletor:** checkboxes com nome da forma + taxa (ex: "✓ PIX — 0%" / "✓ Cartão Crédito 3x — 3.5%"). Mínimo 1 deve ser selecionado se `payment_receiver = seller`.
-
-A taxa genérica `payment_fee_pct` fica visível somente quando `payment_receiver = partner` (para o acerto). Quando `payment_receiver = seller`, a taxa vem automaticamente de cada forma de pagamento.
-
-### 2. `PartnerCatalog.tsx` — Buscar e repassar configuração de pagamento
-
-Na query de carregamento do `partner_point`, adicionar os campos novos:
+Exemplo visual do card desabilitado:
 ```
-payment_receiver, allowed_payment_methods
+┌─────────────────────────────────────────────────┐
+│ 💳  Link de Pagamento 4x                         │
+│     Taxa: 3.5%  •  Mínimo: R$ 500,00            │
+│     ⚠️ Seu pedido (R$ 180,00) não atinge o valor │
+│        mínimo para esta forma de pagamento        │
+└─────────────────────────────────────────────────┘  [desabilitado, opacidade reduzida]
 ```
 
-Passar essas informações para `PartnerCheckoutPasses`.
+Cards disponíveis ficam normais e selecionáveis como hoje.
 
-### 3. `PartnerCheckoutPasses.tsx` — Checkout adaptável
-
-**Cenário A — `payment_receiver = partner`:**
-- Exibe uma única opção "Pagar no Local" com instrução genérica
-- Gera um passe simples para o cliente mostrar na recepção
-- O parceiro cuida do pagamento como bem entender
-- O status da venda entra como `pass_status = 'validated'` automaticamente (responsabilidade do parceiro)
-
-**Cenário B — `payment_receiver = seller`:**
-- Exibe a lista das formas de pagamento habilitadas (`allowed_payment_methods`) como cards selecionáveis
-- Cada forma tem cor/ícone específico
-- Mantém o fluxo existente de PIX (com chave), Cartão (link), e o Passe Azul 24h se a forma for a prazo (`is_deferred = true`)
-- Ao confirmar, grava `payment_fee_applied` com a taxa da forma escolhida e `custom_payment_method_id`
-
-### 4. `PartnerSettlementTab.tsx` — Usar taxa real da venda
-
-Ao calcular o split de cada venda, usar `sale.payment_fee_applied` em vez do `partner.payment_fee_pct` fixo. Isso garante que cada venda seja calculada com a taxa correta da forma de pagamento que o cliente usou.
-
-### 5. `PartnerSalesQueue.tsx` — Exibir forma de pagamento real
-
-Na fila de validações, exibir o nome da forma de pagamento ao lado do status do passe para facilitar a conferência.
+**Validação extra no `handleConfirmMethod`**: Verificação de segurança antes de prosseguir caso o usuário tente confirmar uma forma cujo mínimo não foi atingido (não deveria acontecer se o card estiver desabilitado, mas é uma camada extra de proteção).
 
 ---
 
-## Fluxo Completo por Cenário
+## Fluxo Completo
 
-**Cenário Ponto Parceiro (payment_receiver = partner):**
 ```text
-Cliente lê QR → Vê catálogo → Adiciona itens → Preenche nome/WhatsApp
-→ Tela "Pague no local com a recepção" → Passe único gerado
-→ Vendedora recebe notificação WhatsApp
-→ Na fila de validação: vendedora confirma que o parceiro pagou
-→ Acerto: usa payment_fee_pct do parceiro (taxa negociada)
-```
+Vendedora cadastra parceiro
+  → Seleciona "Link de Pagamento 4x"
+  → Define valor mínimo: R$ 500,00
+  → Salvo em allowed_payment_methods: [...{ min_amount: 500 }]
 
-**Cenário Vendedora (payment_receiver = seller):**
-```text
-Cliente lê QR → Vê catálogo → Adiciona itens → Preenche nome/WhatsApp
-→ Seleciona forma de pagamento da lista habilitada pela vendedora
-→ PIX: chave copia-e-cola + Passe Verde
-   Cartão: link enviado pela vendedora + Passe Amarelo
-   A prazo (is_deferred): Passe Azul 24h
-→ Venda gravada com payment_fee_applied = taxa da forma escolhida
-→ Relatório de acerto usa taxa real de cada venda individualmente
+Cliente acessa QR do ponto parceiro
+  → Adiciona 2 peças → Total: R$ 180,00
+  → Tela de pagamento: "PIX" disponível, "Link 4x" desabilitado com aviso
+
+Cliente adiciona mais 3 peças → Total: R$ 620,00
+  → Tela de pagamento: "PIX" disponível, "Link 4x" disponível e selecionável
 ```
 
 ---
 
 ## Garantias de Não-Regressão
 
-- `StoreCatalog.tsx`: não tocado
-- `consignments`: não tocado
-- `profitEngine.ts`: a função `calculatePartnerPointSplit` já aceita `paymentFeePct` como parâmetro — basta passar `sale.payment_fee_applied` em vez de `partner.payment_fee_pct`. Sem modificar a assinatura da função.
-- Parceiros já cadastrados: `payment_receiver` tem `DEFAULT 'partner'` → funcionamento atual preservado. `allowed_payment_methods` tem `DEFAULT '[]'` → sem quebra.
-- `PartnerCheckoutPasses` atual: o novo `payment_receiver` é opcional com fallback para o comportamento atual.
+- Parceiros já cadastrados sem `min_amount` no snapshot: o campo será `undefined`, tratado como `0` (sem restrição) — comportamento idêntico ao atual.
+- Nenhum arquivo além dos dois listados é tocado.
+- Nenhuma migração de banco de dados necessária.
+- A lógica de acerto (`PartnerSettlementTab.tsx`) não precisa de mudança — ela já usa `payment_fee_applied` e não depende de `min_amount`.
