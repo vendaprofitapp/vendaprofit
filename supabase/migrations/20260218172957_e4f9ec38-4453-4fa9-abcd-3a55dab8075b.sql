@@ -1,0 +1,1 @@
+ALTER TABLE partner_points ADD COLUMN cpf_cnpj text DEFAULT NULL;

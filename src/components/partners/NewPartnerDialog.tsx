@@ -44,6 +44,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
     min_stock_alert: "3",
     notes: "",
     payment_receiver: "partner" as "partner" | "seller",
+    cpf_cnpj: "",
   });
 
   const set = (field: string, value: string | boolean) =>
@@ -96,6 +97,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
       name: form.name.trim(),
       contact_name: form.contact_name || null,
       contact_phone: form.contact_phone || null,
+      cpf_cnpj: form.cpf_cnpj.trim() || null,
       address: form.address || null,
       rack_commission_pct: Number(form.rack_commission_pct) || 0,
       pickup_commission_pct: Number(form.pickup_commission_pct) || 0,
@@ -119,7 +121,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
       name: "", contact_name: "", contact_phone: "", address: "",
       rack_commission_pct: "10", pickup_commission_pct: "5", payment_fee_pct: "2",
       loss_risk_enabled: false, replenishment_cycle_days: "30", min_stock_alert: "3",
-      notes: "", payment_receiver: "partner",
+      notes: "", payment_receiver: "partner", cpf_cnpj: "",
     });
     setSelectedMethodIds([]);
     setMethodMinAmounts({});
@@ -147,6 +149,17 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
               <Label>Telefone do contato</Label>
               <Input placeholder="(11) 99999-9999" value={form.contact_phone} onChange={e => set("contact_phone", e.target.value)} />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label>CPF / CNPJ</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="000.000.000-00 ou 00.000.000/0001-00"
+              value={form.cpf_cnpj}
+              onChange={e => set("cpf_cnpj", e.target.value)}
+            />
           </div>
 
           <div className="space-y-1">
