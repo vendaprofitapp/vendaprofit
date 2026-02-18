@@ -470,19 +470,13 @@ export default function PartnerPointDetail() {
       {/* QR Code Printable Dialog */}
       <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
         <DialogContent className="max-w-xs sm:max-w-sm">
-          <style>{`
-            @media print {
-              body > *:not([data-qr-print-root]) { display: none !important; }
-              [data-qr-print-root] * { display: flex !important; }
-            }
-          `}</style>
           <div className="flex flex-col items-center gap-4 py-2">
             <DialogHeader className="items-center text-center w-full">
               <DialogTitle className="text-lg font-bold leading-tight">{partner.name}</DialogTitle>
               <p className="text-sm text-muted-foreground">Escaneie para ver o catálogo</p>
             </DialogHeader>
 
-            <div className="border-2 border-border rounded-xl p-3 bg-white">
+            <div id="qr-print-area" className="border-2 border-border rounded-xl p-3 bg-white">
               <QRCodeSVG
                 value={`${window.location.origin}/p/${partner.access_token}`}
                 size={260}
@@ -498,7 +492,38 @@ export default function PartnerPointDetail() {
           </div>
 
           <DialogFooter className="flex-row gap-2 sm:justify-center">
-            <Button onClick={() => window.print()} className="gap-2">
+            <Button
+              onClick={() => {
+                const catalogUrl = `${window.location.origin}/p/${partner.access_token}`;
+                const svgEl = document.querySelector('#qr-print-area svg');
+                const svgHtml = svgEl ? svgEl.outerHTML : '';
+                const printWindow = window.open('', '_blank', 'width=600,height=700');
+                if (!printWindow) return;
+                printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <title>QR Code - ${partner.name}</title>
+    <style>
+      body { font-family: sans-serif; text-align: center; padding: 40px; margin: 0; }
+      h2 { margin-bottom: 4px; font-size: 22px; }
+      p { color: #666; margin-bottom: 24px; font-size: 14px; }
+      .url { font-size: 11px; color: #999; margin-top: 16px; word-break: break-all; }
+      svg { display: block; margin: 0 auto; }
+      @media print { body { padding: 20px; } }
+    </style>
+  </head>
+  <body>
+    <h2>${partner.name}</h2>
+    <p>Escaneie para ver o catálogo</p>
+    ${svgHtml}
+    <div class="url">${catalogUrl}</div>
+    <script>window.onload = function() { window.print(); window.close(); };<\/script>
+  </body>
+</html>`);
+                printWindow.document.close();
+              }}
+              className="gap-2"
+            >
               <Printer className="h-4 w-4" />
               Imprimir
             </Button>
