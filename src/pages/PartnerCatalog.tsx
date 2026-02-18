@@ -711,6 +711,11 @@ export default function PartnerCatalog() {
               partnerPoint={partnerPoint}
               pixKey={undefined}
               whatsappNumber={store?.whatsapp_number ?? undefined}
+              initialName={getStoredLead()?.name}
+              initialPhone={getStoredLead()?.whatsapp}
+              onCustomerCaptured={async (name, phone) => {
+                await saveLeadData({ name, whatsapp: phone });
+              }}
               onCheckoutComplete={() => {
                 setCart([]);
                 setCheckoutOpen(false);

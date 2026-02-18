@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,9 @@ interface PartnerCheckoutPassesProps {
   partnerPoint: PartnerPoint;
   pixKey?: string;
   whatsappNumber?: string;
+  initialName?: string;
+  initialPhone?: string;
+  onCustomerCaptured?: (name: string, phone: string) => void;
   onCheckoutComplete: () => void;
 }
 
@@ -48,20 +51,33 @@ const PASS_CONFIG: Record<string, { colorClass: string; label: string }> = {
 };
 
 export function PartnerCheckoutPasses({
-  cartItems, partnerPoint, pixKey, whatsappNumber, onCheckoutComplete
+  cartItems, partnerPoint, pixKey, whatsappNumber, initialName, initialPhone, onCustomerCaptured, onCheckoutComplete
 }: PartnerCheckoutPassesProps) {
   const paymentReceiver = partnerPoint.payment_receiver ?? "partner";
   const allowedMethods = partnerPoint.allowed_payment_methods ?? [];
 
-  const [step, setStep] = useState<"info" | "method" | "pass">("info");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const hasPrefilledData = !!(initialName && initialPhone);
+
+  // If data is prefilled: seller → "method", partner → "info" (will be skipped via useEffect)
+  const initialStep = hasPrefilledData && paymentReceiver !== "partner" ? "method" : "info";
+
+  const [step, setStep] = useState<"info" | "method" | "pass">(initialStep);
+  const [customerName, setCustomerName] = useState(initialName ?? "");
+  const [customerPhone, setCustomerPhone] = useState(initialPhone ?? "");
   // For seller mode: id of selected AllowedMethod; for partner mode: "pay_at_partner"
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [termAccepted, setTermAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [passData, setPassData] = useState<{ code: string; passKey: string; methodName: string; isDeferred: boolean } | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
+
+  // If data is prefilled and mode is partner, skip info step and confirm sale immediately
+  useEffect(() => {
+    if (hasPrefilledData && paymentReceiver === "partner") {
+      handleConfirmSale("pay_at_partner", 0, null, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalGross = cartItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
   const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -71,6 +87,8 @@ export function PartnerCheckoutPasses({
       toast.error("Preencha seu nome e WhatsApp.");
       return;
     }
+    // Notify parent to save the lead if not already captured
+    onCustomerCaptured?.(customerName.trim(), customerPhone.trim());
     if (paymentReceiver === "partner") {
       // Skip method selection for partner-pays mode
       setSelectedMethodId("pay_at_partner");
