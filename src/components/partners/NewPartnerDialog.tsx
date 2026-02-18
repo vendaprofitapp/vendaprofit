@@ -30,6 +30,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
   const [loading, setLoading] = useState(false);
   const [customMethods, setCustomMethods] = useState<CustomPaymentMethod[]>([]);
   const [selectedMethodIds, setSelectedMethodIds] = useState<string[]>([]);
+  const [methodMinAmounts, setMethodMinAmounts] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     name: "",
     contact_name: "",
@@ -81,7 +82,13 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
     const allowedMethods = form.payment_receiver === "seller"
       ? customMethods
           .filter(m => selectedMethodIds.includes(m.id))
-          .map(m => ({ id: m.id, name: m.name, fee_percent: m.fee_percent, is_deferred: m.is_deferred }))
+          .map(m => ({
+            id: m.id,
+            name: m.name,
+            fee_percent: m.fee_percent,
+            is_deferred: m.is_deferred,
+            min_amount: parseFloat((methodMinAmounts[m.id] ?? "").replace(",", ".")) || 0,
+          }))
       : [];
 
     const { error } = await supabase.from("partner_points").insert({
@@ -115,6 +122,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
       notes: "", payment_receiver: "partner",
     });
     setSelectedMethodIds([]);
+    setMethodMinAmounts({});
   };
 
   return (
@@ -206,32 +214,46 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {customMethods.map(method => (
-                      <label
-                        key={method.id}
-                        className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                          selectedMethodIds.includes(method.id)
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:bg-muted/40"
-                        }`}
-                      >
-                        <Checkbox
-                          checked={selectedMethodIds.includes(method.id)}
-                          onCheckedChange={() => toggleMethod(method.id)}
-                        />
-                        <div className="flex-1 flex items-center justify-between">
-                          <span className="text-sm font-medium">{method.name}</span>
-                          <div className="flex items-center gap-2">
-                            {method.is_deferred && (
-                              <Badge variant="outline" className="text-xs py-0">A prazo</Badge>
-                            )}
-                            <span className="text-xs text-muted-foreground">
-                              {method.fee_percent > 0 ? `${method.fee_percent}%` : "sem taxa"}
-                            </span>
-                          </div>
+                    {customMethods.map(method => {
+                      const isSelected = selectedMethodIds.includes(method.id);
+                      return (
+                        <div key={method.id} className={`rounded-lg border transition-colors ${isSelected ? "border-primary bg-primary/5" : "border-border"}`}>
+                          <label className="flex items-center gap-3 p-2.5 cursor-pointer">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleMethod(method.id)}
+                            />
+                            <div className="flex-1 flex items-center justify-between">
+                              <span className="text-sm font-medium">{method.name}</span>
+                              <div className="flex items-center gap-2">
+                                {method.is_deferred && (
+                                  <Badge variant="outline" className="text-xs py-0">A prazo</Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {method.fee_percent > 0 ? `${method.fee_percent}%` : "sem taxa"}
+                                </span>
+                              </div>
+                            </div>
+                          </label>
+                          {isSelected && (
+                            <div className="px-2.5 pb-2.5 flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground shrink-0">Valor mínimo (opcional):</span>
+                              <div className="flex items-center border rounded-md overflow-hidden bg-background flex-1 max-w-[140px]">
+                                <span className="text-xs text-muted-foreground px-2 bg-muted border-r h-full flex items-center py-1.5">R$</span>
+                                <Input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0,00"
+                                  className="border-0 text-xs h-auto py-1.5 focus-visible:ring-0"
+                                  value={methodMinAmounts[method.id] ?? ""}
+                                  onChange={e => setMethodMinAmounts(prev => ({ ...prev, [method.id]: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

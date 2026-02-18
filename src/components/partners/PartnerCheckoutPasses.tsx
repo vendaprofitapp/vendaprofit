@@ -20,6 +20,7 @@ interface AllowedMethod {
   name: string;
   fee_percent: number;
   is_deferred: boolean;
+  min_amount?: number;
 }
 
 interface PartnerPoint {
@@ -82,6 +83,11 @@ export function PartnerCheckoutPasses({
   const handleConfirmMethod = () => {
     if (!selectedMethodId) { toast.error("Escolha uma forma de pagamento."); return; }
     const method = allowedMethods.find(m => m.id === selectedMethodId);
+    const minAmount = method?.min_amount ?? 0;
+    if (minAmount > 0 && totalGross < minAmount) {
+      toast.error(`Valor mínimo para esta forma é ${fmtBRL(minAmount)}.`);
+      return;
+    }
     const isDeferred = method?.is_deferred ?? false;
     if (isDeferred && !termAccepted) { toast.error("Aceite o termo de responsabilidade."); return; }
     handleConfirmSale(selectedMethodId, method?.fee_percent ?? 0, selectedMethodId, isDeferred);
@@ -215,6 +221,8 @@ export function PartnerCheckoutPasses({
         <div className="grid gap-2">
           {allowedMethods.map(method => {
             const isSelected = selectedMethodId === method.id;
+            const minAmount = method.min_amount ?? 0;
+            const isDisabled = minAmount > 0 && totalGross < minAmount;
             let colorBg = "bg-yellow-500";
             let emoji = "💳";
             if (method.is_deferred) { colorBg = "bg-blue-600"; emoji = "🏠"; }
@@ -223,8 +231,14 @@ export function PartnerCheckoutPasses({
             return (
               <Card
                 key={method.id}
-                className={`cursor-pointer transition-all border-2 ${isSelected ? "border-primary bg-primary/5" : "border-transparent"}`}
-                onClick={() => setSelectedMethodId(method.id)}
+                className={`transition-all border-2 ${
+                  isDisabled
+                    ? "opacity-50 cursor-not-allowed border-transparent"
+                    : isSelected
+                      ? "border-primary bg-primary/5 cursor-pointer"
+                      : "border-transparent cursor-pointer"
+                }`}
+                onClick={() => { if (!isDisabled) setSelectedMethodId(method.id); }}
               >
                 <CardContent className="p-3 flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full ${colorBg} flex items-center justify-center text-white text-sm shrink-0`}>
@@ -234,7 +248,13 @@ export function PartnerCheckoutPasses({
                     <p className="font-medium text-sm">{method.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {method.is_deferred ? "Leve agora, pague depois" : method.fee_percent > 0 ? `Taxa: ${method.fee_percent}%` : "Sem taxa"}
+                      {minAmount > 0 && <span className="ml-1">• Mínimo: {fmtBRL(minAmount)}</span>}
                     </p>
+                    {isDisabled && (
+                      <p className="text-xs text-destructive mt-0.5">
+                        ⚠️ Seu pedido ({fmtBRL(totalGross)}) não atinge o valor mínimo
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
