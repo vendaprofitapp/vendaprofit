@@ -1,187 +1,136 @@
 
-# Módulo "Pontos Parceiros" — Implementação em 3 Fases (Zero Impacto no Sistema Atual)
+# Configuração de Pagamento por Ponto Parceiro — Plano de Implementação
 
-## Princípio Fundamental de Todas as Fases
+## Contexto e Análise do Estado Atual
 
-**Regra de Ouro:** Cada fase é completamente aditiva. Nenhuma linha de código existente em `StockControl.tsx`, `StoreCatalog.tsx`, `profitEngine.ts`, `ProductFormDialog.tsx`, `consignments` ou qualquer outra feature atual será modificada. O sistema existente opera exatamente igual para quem não usa Pontos Parceiros.
+Hoje, o cadastro de um Ponto Parceiro tem apenas um campo genérico `payment_fee_pct` (taxa da maquininha) e nenhuma configuração sobre **quem recebe o pagamento** nem **quais formas de pagamento estão disponíveis** no catálogo do QR Code.
 
----
+A nova funcionalidade exige:
 
-## Fase 1 — Infraestrutura e Gerenciamento de Locais (Entrega Isolada)
-
-### O que será entregue
-A Fase 1 cria apenas a estrutura de dados e a tela de gerenciamento de parceiros. Nenhum produto existente é tocado. Nenhuma tela existente é modificada.
-
-### Banco de Dados — 2 Novas Tabelas
-
-**Tabela `partner_points`** — Cadastro dos locais parceiros:
-```
-id, owner_id, name, contact_name, contact_phone, address,
-rack_commission_pct (%), pickup_commission_pct (%),
-payment_fee_pct (taxa maquininha do parceiro),
-loss_risk_enabled (boolean),
-replenishment_cycle_days, min_stock_alert,
-access_token (para QR Code — gerado automaticamente),
-is_active, created_at, updated_at
-```
-
-**Tabela `partner_point_items`** — "Etiqueta de localização" de cada peça:
-```
-id, partner_point_id, product_id, variant_id (nullable),
-owner_id, quantity (int),
-status: allocated | sold_online | sold_at_location | returning | returned | lost,
-allocated_at, returned_at, notes, updated_at
-```
-
-**RLS de todas as tabelas:**
-- `owner_id = auth.uid()` para operações da vendedora
-- Leitura pública por `access_token` (para o catálogo do QR Code na Fase 2)
-
-**Sem triggers, sem modificações em tabelas existentes.**
-
-### Telas a Criar (Fase 1)
-
-**`/partner-points`** — Listagem e gestão de parceiros:
-- Cards com nome do parceiro, quantidade de peças alocadas, status
-- Botão "Novo Parceiro" → formulário de cadastro (nome, contato, endereço, comissões, taxa, ciclo de reposição)
-- Botão de copiar link do QR Code (para uso na Fase 2)
-
-**`/partner-points/:id`** — Detalhe de um parceiro:
-- Lista de peças atualmente alocadas com status visual
-- Aba "Enviar Peças" → seleção do estoque central com busca por nome, filtragem por categoria
-  - Seleciona produto/variante + quantidade → gera registro em `partner_point_items`
-  - Gera mensagem pré-formatada para WhatsApp de confirmação ao parceiro
-- Aba "Recolher Peças" → lista de itens alocados + seleção para devolver
-  - Ao confirmar devolução: `status → returned` em `partner_point_items`
-- Aba "Vendas" → histórico de vendas registradas no ponto (Fase 2)
-- Botão "Extrato de Acerto" → relatório simples em tela (Fase 2)
-
-### Arquivos Criados na Fase 1
-
-| Arquivo | Tipo | Impacto em código existente |
-|---------|------|----------------------------|
-| `src/pages/PartnerPoints.tsx` | Criar | Nenhum |
-| `src/pages/PartnerPointDetail.tsx` | Criar | Nenhum |
-| `src/components/partners/PartnerPointCard.tsx` | Criar | Nenhum |
-| `src/components/partners/TransferItemsDialog.tsx` | Criar | Nenhum |
-| `src/components/partners/ReturnItemsDialog.tsx` | Criar | Nenhum |
-| `src/components/layout/Sidebar.tsx` | Modificar | **Apenas adiciona** um item `MapPin` "Pontos Parceiros" no grupo "Estratégias" — zero risco |
-| `src/App.tsx` | Modificar | **Apenas adiciona** 2 rotas (`/partner-points` e `/partner-points/:id`) — zero risco |
-| migração SQL | Criar | Tabelas novas, RLS novas — sem alterar tabelas existentes |
-
-### O que a Fase 1 NÃO faz
-- Não altera `stock_quantity` de nenhum produto (a "etiqueta" é informativa)
-- Não modifica `StoreCatalog.tsx`, `StockControl.tsx`, `ProductFormDialog.tsx`
-- Não cria catálogo público ainda (Fase 2)
-- Não registra vendas ainda (Fase 2)
-- Não calcula comissões ainda (Fase 3)
+1. **Nova configuração no cadastro do parceiro:** quem recebe o pagamento — "Ponto Parceiro" ou "Vendedora"
+2. **Se for a vendedora:** quais formas de pagamento (das personalizadas já cadastradas no sistema) estarão disponíveis naquele ponto, com as taxas de cada uma aplicadas automaticamente
+3. **No catálogo do QR Code (`/p/:token`):** o checkout exibe apenas as formas de pagamento habilitadas para aquele ponto
+4. **Nos relatórios e acertos:** o pagamento via forma selecionada aparece com a taxa correta nos cálculos
 
 ---
 
-## Fase 2 — Catálogo Localizado e Self-Checkout (QR Code)
+## O que Muda e o que NÃO Muda
 
-### Pré-requisito: Fase 1 finalizada e testada
-
-### O que será entregue
-A Fase 2 cria a experiência do cliente no QR Code: catálogo restrito ao local, sacola e os 4 passes coloridos. Continua sem modificar nada existente.
-
-### Nova Rota Pública: `/p/:token`
-
-Funciona com a mesma lógica de `/bag/:token` (PublicBag) mas para Pontos Parceiros:
-- Lê `access_token` da URL → busca o `partner_point` correspondente
-- Busca `partner_point_items` com `status = allocated` para esse ponto
-- Cruza com `products` e `product_variants` para obter fotos, preços, tamanhos
-- Exibe **somente** as peças daquele local com banner: "Você está vendo o estoque disponível em [Nome do Parceiro]"
-
-### Os 4 Passes Coloridos
-
-| Opção | Passe | Comportamento |
-|-------|-------|---------------|
-| Pagar Agora (PIX) | 🟢 Verde | Exibe chave Pix + aviso; registra venda em `partner_point_sales` com `pass_status = pending`; envia WhatsApp à vendedora |
-| Pagar no Cartão | 🟡 Amarelo | Registra venda com `pass_status = pending`; dispara WhatsApp à vendedora para enviar link |
-| Provar em Casa 24h | 🔵 Azul | Exibe termo de responsabilidade; registra com contador de 24h |
-| Encomenda (Prateleira Infinita) | 🟣 Roxo | Reserva sem estoque no local; integra com `customer_orders` existente (só leitura) |
-
-### Tabela Nova: `partner_point_sales`
-```
-id, partner_point_id, owner_id,
-customer_name, customer_phone,
-items (jsonb: [{product_id, variant_id, product_name, quantity, unit_price}]),
-total_gross,
-payment_method (pix | card | try_home | infinite_shelf),
-pass_color (green | yellow | blue | purple),
-pass_status (pending | validated | completed | returned),
-payment_proof_url (nullable), notes,
-created_at, updated_at
-```
-
-### Trava de Venda Online (Lógica Isolada)
-
-Uma função utilitária nova `src/utils/partnerPointUtils.ts` que, após uma venda registrada no `StoreCatalog.tsx`, verifica se o produto estava alocado em algum parceiro e atualiza o status para `sold_online`. Isso **não modifica** `StoreCatalog.tsx` — é um hook adicional opcional `usePartnerPointSync` que pode ser chamado por fora.
-
-> Nota: A forma exata de integrar esta sincronização com o fluxo de venda do `StoreCatalog.tsx` (que tem ~3000 linhas) será avaliada na Fase 2 com cuidado, podendo usar um trigger no banco de dados em vez de código frontend, para não tocar nenhuma linha existente.
-
-### Arquivos Criados/Modificados na Fase 2
-
-| Arquivo | Tipo | Impacto |
-|---------|------|---------|
-| `src/pages/PartnerCatalog.tsx` | Criar | Nenhum |
-| `src/components/partners/PartnerCheckoutPasses.tsx` | Criar | Nenhum |
-| `src/components/partners/PartnerSalesQueue.tsx` | Criar | Nenhum |
-| `src/utils/partnerPointUtils.ts` | Criar | Nenhum |
-| `src/App.tsx` | Modificar | Apenas adiciona rota `/p/:token` |
-| migração SQL | Criar | Tabela `partner_point_sales` nova |
+| Componente | O que muda |
+|---|---|
+| `partner_points` (tabela) | Adiciona `payment_receiver` (`seller` ou `partner`) e `allowed_payment_methods` (jsonb com ids das formas habilitadas) |
+| `partner_point_sales` (tabela) | Já tem `payment_method` — passa a armazenar o `custom_payment_method_id` quando aplicável |
+| `NewPartnerDialog.tsx` | Adiciona seção "Como o cliente paga?" com toggle e seletor de formas de pagamento |
+| `PartnerCheckoutPasses.tsx` | Quando `payment_receiver = seller`, exibe as formas de pagamento configuradas (personalizadas) no lugar do menu fixo PIX/Cartão/Casa 24h |
+| `PartnerSettlementTab.tsx` | Usa a taxa da forma de pagamento selecionada em vez do `payment_fee_pct` fixo |
+| `PartnerCatalog.tsx` | Busca as formas de pagamento habilitadas e as passa para o checkout |
+| `StoreCatalog.tsx`, `profitEngine.ts`, `consignments`, qualquer outra tela | **Nada muda** |
 
 ---
 
-## Fase 3 — Motor de Lucro para Parceiros e Acerto de Contas
+## Banco de Dados — Migração Aditiva
 
-### Pré-requisito: Fases 1 e 2 finalizadas e testadas
+### Alteração em `partner_points`:
 
-### O que será entregue
-A Fase 3 adiciona o cálculo de comissão e o extrato de acerto. O `profitEngine.ts` ganha a função `calculatePartnerPointSplit` como uma **exportação adicional** sem alterar nenhuma das funções existentes (`calculateSaleSplits` continua inalterado).
-
-### Novo Cálculo (Cenário P — Partner Point)
-
-```typescript
-// NOVA função, não altera calculateSaleSplits existente
-export function calculatePartnerPointSplit(input: PartnerPointSplitInput): PartnerPointSplitResult {
-  const paymentFeeAmount = grossPrice × (payment_fee_pct / 100);
-  const netRevenue = grossPrice - paymentFeeAmount;
-  const partnerCommission = netRevenue × rack_commission_pct;
-  const sellerNet = netRevenue - partnerCommission - costPrice;
-  // ...
-}
+```sql
+ALTER TABLE partner_points
+  ADD COLUMN payment_receiver text NOT NULL DEFAULT 'partner',
+  ADD COLUMN allowed_payment_methods jsonb DEFAULT '[]'::jsonb;
 ```
 
-### Tela de Acerto (dentro de `/partner-points/:id`)
+- `payment_receiver`: `'seller'` = pagamento vai para a vendedora (formas personalizadas); `'partner'` = parceiro gerencia o pagamento como quiser
+- `allowed_payment_methods`: array de objetos `{ id: string, name: string, fee_percent: number }` — snapshot das formas habilitadas no momento do cadastro/edição
 
-Nova aba "Extrato de Acerto" que exibe:
-- Período do ciclo
-- Todas as vendas validadas
-- Total bruto, taxas, comissão do parceiro, líquido da vendedora
-- Botão "Gerar Extrato" → exporta para PDF/WhatsApp
+### Alteração em `partner_point_sales`:
 
-### Fila de Validação (na tela de detalhe do parceiro)
+```sql
+ALTER TABLE partner_point_sales
+  ADD COLUMN payment_fee_applied numeric DEFAULT 0,
+  ADD COLUMN custom_payment_method_id text DEFAULT NULL;
+```
 
-- Vendas com `pass_status = pending` aparecem para ação da vendedora
-- Passe Verde (Pix): campo para marcar como recebido + upload do comprovante
-- Passe Amarelo (Cartão): botão para gerar link de pagamento
-- Passe Azul (24h): contador regressivo + botão "Confirmar devolução"
+- `payment_fee_applied`: taxa percentual efetivamente aplicada na venda (vem da forma de pagamento escolhida, não do valor genérico do parceiro)
+- `custom_payment_method_id`: referência ao id da forma de pagamento personalizada usada
+
+**Nenhuma tabela existente é modificada além de `partner_points` e `partner_point_sales`, que são novas.**
 
 ---
 
-## Resumo das Garantias de Segurança
+## Arquivos a Criar/Modificar
 
-| Risco | Mitigação |
-|-------|-----------|
-| Quebrar fluxo de vendas existente | `StoreCatalog.tsx` nunca é modificado na Fase 1 e 2 |
-| Duplicar lógica de consignações | Entidade `partner_points` completamente separada de `consignments` |
-| Alterar estoque de produtos existentes | `partner_point_items` é apenas uma "etiqueta" — `stock_quantity` nos produtos não muda |
-| Quebrar motor de lucro atual | `calculateSaleSplits` nunca é alterado; nova função é adicionada separadamente |
-| Quebrar catálogo público atual | Nova rota `/p/:token` é independente de `/:slug` e `/bag/:token` |
-| Regressão no Sidebar | Apenas um `NavItem` é adicionado ao array `navGroups` |
+### 1. `NewPartnerDialog.tsx` — Nova seção de pagamento
 
-## Proposta de Execução
+Após a seção "Comissões e Taxas", adicionar nova seção "Como o cliente paga?":
 
-Implementar a **Fase 1** agora, com commit separado e testável de forma independente. As Fases 2 e 3 ficam para aprovação posterior, após a Fase 1 estar funcionando em produção.
+**Toggle "Quem recebe o pagamento?":**
+- Opção A — **Ponto Parceiro** (padrão): o parceiro usa sua própria maquininha/dinheiro. O campo `payment_fee_pct` atual continua sendo usado para calcular o acerto. O cliente no QR Code vê apenas um aviso para pagar no local.
+- Opção B — **Vendedora**: o pagamento vem direto para a vendedora. Exibe multi-seletor das formas de pagamento personalizadas ativas da vendedora (busca da tabela `custom_payment_methods` filtrando por `owner_id` + `is_active = true`). A vendedora marca quais formas quer disponibilizar naquele ponto.
+
+**UX do seletor:** checkboxes com nome da forma + taxa (ex: "✓ PIX — 0%" / "✓ Cartão Crédito 3x — 3.5%"). Mínimo 1 deve ser selecionado se `payment_receiver = seller`.
+
+A taxa genérica `payment_fee_pct` fica visível somente quando `payment_receiver = partner` (para o acerto). Quando `payment_receiver = seller`, a taxa vem automaticamente de cada forma de pagamento.
+
+### 2. `PartnerCatalog.tsx` — Buscar e repassar configuração de pagamento
+
+Na query de carregamento do `partner_point`, adicionar os campos novos:
+```
+payment_receiver, allowed_payment_methods
+```
+
+Passar essas informações para `PartnerCheckoutPasses`.
+
+### 3. `PartnerCheckoutPasses.tsx` — Checkout adaptável
+
+**Cenário A — `payment_receiver = partner`:**
+- Exibe uma única opção "Pagar no Local" com instrução genérica
+- Gera um passe simples para o cliente mostrar na recepção
+- O parceiro cuida do pagamento como bem entender
+- O status da venda entra como `pass_status = 'validated'` automaticamente (responsabilidade do parceiro)
+
+**Cenário B — `payment_receiver = seller`:**
+- Exibe a lista das formas de pagamento habilitadas (`allowed_payment_methods`) como cards selecionáveis
+- Cada forma tem cor/ícone específico
+- Mantém o fluxo existente de PIX (com chave), Cartão (link), e o Passe Azul 24h se a forma for a prazo (`is_deferred = true`)
+- Ao confirmar, grava `payment_fee_applied` com a taxa da forma escolhida e `custom_payment_method_id`
+
+### 4. `PartnerSettlementTab.tsx` — Usar taxa real da venda
+
+Ao calcular o split de cada venda, usar `sale.payment_fee_applied` em vez do `partner.payment_fee_pct` fixo. Isso garante que cada venda seja calculada com a taxa correta da forma de pagamento que o cliente usou.
+
+### 5. `PartnerSalesQueue.tsx` — Exibir forma de pagamento real
+
+Na fila de validações, exibir o nome da forma de pagamento ao lado do status do passe para facilitar a conferência.
+
+---
+
+## Fluxo Completo por Cenário
+
+**Cenário Ponto Parceiro (payment_receiver = partner):**
+```text
+Cliente lê QR → Vê catálogo → Adiciona itens → Preenche nome/WhatsApp
+→ Tela "Pague no local com a recepção" → Passe único gerado
+→ Vendedora recebe notificação WhatsApp
+→ Na fila de validação: vendedora confirma que o parceiro pagou
+→ Acerto: usa payment_fee_pct do parceiro (taxa negociada)
+```
+
+**Cenário Vendedora (payment_receiver = seller):**
+```text
+Cliente lê QR → Vê catálogo → Adiciona itens → Preenche nome/WhatsApp
+→ Seleciona forma de pagamento da lista habilitada pela vendedora
+→ PIX: chave copia-e-cola + Passe Verde
+   Cartão: link enviado pela vendedora + Passe Amarelo
+   A prazo (is_deferred): Passe Azul 24h
+→ Venda gravada com payment_fee_applied = taxa da forma escolhida
+→ Relatório de acerto usa taxa real de cada venda individualmente
+```
+
+---
+
+## Garantias de Não-Regressão
+
+- `StoreCatalog.tsx`: não tocado
+- `consignments`: não tocado
+- `profitEngine.ts`: a função `calculatePartnerPointSplit` já aceita `paymentFeePct` como parâmetro — basta passar `sale.payment_fee_applied` em vez de `partner.payment_fee_pct`. Sem modificar a assinatura da função.
+- Parceiros já cadastrados: `payment_receiver` tem `DEFAULT 'partner'` → funcionamento atual preservado. `allowed_payment_methods` tem `DEFAULT '[]'` → sem quebra.
+- `PartnerCheckoutPasses` atual: o novo `payment_receiver` é opcional com fallback para o comportamento atual.
