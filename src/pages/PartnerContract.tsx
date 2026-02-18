@@ -152,19 +152,17 @@ export default function PartnerContract() {
 
   // Payment methods list
   const methods: any[] = Array.isArray(partner.allowed_payment_methods) ? partner.allowed_payment_methods : [];
-  const methodsWithMin = methods.filter((m) => m.min_amount && m.min_amount > 0);
 
   const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const fmtPct = (v: number) => `${v}%`;
 
   const storeName = store?.store_name ?? "—";
   const sellerDoc = profile?.cpf ?? "—";
   const partnerName = partner.name ?? "—";
   const partnerDoc = partner.cpf_cnpj ?? "—";
   const responsible = partner.contact_name ?? "—";
+  const fmtPct = (v: number) => `${v}%`;
   const rackPct = fmtPct(partner.rack_commission_pct);
   const pickupPct = fmtPct(partner.pickup_commission_pct);
-  const feePct = fmtPct(partner.payment_fee_pct);
   const cycle = partner.replenishment_cycle_days ?? 30;
   const lossRisk = partner.loss_risk_enabled;
 
@@ -242,28 +240,25 @@ export default function PartnerContract() {
             ) : (
               <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-3">
                 <p className="text-xs font-semibold text-primary uppercase tracking-wide">Pagamento à Vendedora (Self-Checkout)</p>
-                <p>As vendas realizadas neste local serão recebidas diretamente pela Fornecedora através do aplicativo/link de pagamento.</p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                  <li><strong>Taxas de Transação:</strong> A taxa do meio de pagamento fixada em <strong>{feePct}</strong> será descontada do valor bruto antes do cálculo da comissão.</li>
-                </ul>
+                <p>As vendas realizadas neste local serão recebidas diretamente pela Fornecedora através do aplicativo/link de pagamento. A taxa de cada método de pagamento será descontada do valor bruto antes do cálculo da comissão.</p>
                 {methods.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs font-medium">Métodos aceitos:</p>
-                    <div className="flex flex-wrap gap-1">
+                    <p className="text-xs font-medium">Métodos aceitos e taxas aplicáveis:</p>
+                    <div className="rounded-lg border overflow-hidden text-xs">
+                      <div className="grid grid-cols-3 bg-muted/60 px-3 py-2 font-semibold text-muted-foreground">
+                        <span>Método</span>
+                        <span className="text-center">Taxa</span>
+                        <span className="text-right">Valor Mínimo</span>
+                      </div>
                       {methods.map((m, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">{m.name}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {methodsWithMin.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium">Valores mínimos por método:</p>
-                    <div className="rounded-lg border divide-y overflow-hidden text-xs">
-                      {methodsWithMin.map((m, i) => (
-                        <div key={i} className="flex justify-between px-3 py-1.5">
-                          <span className="text-muted-foreground">{m.name}</span>
-                          <span className="font-medium">{fmtBRL(m.min_amount)}</span>
+                        <div key={i} className="grid grid-cols-3 px-3 py-2 border-t items-center">
+                          <span className="text-foreground font-medium">{m.name}</span>
+                          <span className="text-center font-bold text-primary">
+                            {m.fee_percent > 0 ? `${m.fee_percent}%` : "Sem taxa"}
+                          </span>
+                          <span className="text-right text-muted-foreground">
+                            {m.min_amount > 0 ? fmtBRL(m.min_amount) : "—"}
+                          </span>
                         </div>
                       ))}
                     </div>
