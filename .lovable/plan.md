@@ -1,68 +1,62 @@
 
-# Fix: Impressão do QR Code abrindo janela dedicada
+# Fix: Não solicitar dados do cliente 2x no Catálogo Parceiro
 
 ## Diagnóstico
 
-O problema é estrutural: o `Dialog` do Radix UI usa um **Portal** — ele renderiza o conteúdo do modal em um nó DOM separado, fora da hierarquia normal da página. Quando o CSS `@media print` tenta ocultar tudo e mostrar apenas o QR, os seletores não atingem corretamente o conteúdo do Portal, resultando em uma página de impressão em branco.
+O fluxo atual tem dois pontos de coleta de dados do cliente:
 
-## Solução: `window.open()` + `printWindow.print()`
+1. **Ao adicionar ao carrinho** → `addToCart` em `PartnerCatalog.tsx` verifica o localStorage. Se não há lead salvo, abre o `LeadCaptureSheet`. Os dados são salvos em `store_leads` e no localStorage (`partner_lead_${token}`).
 
-Em vez de tentar controlar o `@media print` da página atual, o botão "Imprimir" vai:
+2. **Ao finalizar compra** → `PartnerCheckoutPasses` sempre inicia no `step === "info"` e exibe os campos "Seu nome" e "Seu WhatsApp" novamente, sem checar se já existem dados salvos.
 
-1. Abrir uma **nova janela minimalista** (`window.open('')`)
-2. Escrever nela um HTML completo e auto-suficiente com:
-   - O QR Code em SVG (serializado do componente React usando `document.querySelector`)
-   - O nome do ponto parceiro
-   - O subtítulo "Escaneie para ver o catálogo"
-   - A URL do catálogo
-   - CSS de impressão inline
-3. Chamar `printWindow.print()` nessa janela
-4. Fechar a janela automaticamente após a impressão
+## Solução
 
-Isso garante que o print preview mostrará **exatamente** o conteúdo do QR, sem interferência do DOM principal.
+### 1. `PartnerCheckoutPasses` — Aceitar dados pré-preenchidos e pular o step "info"
 
-## Implementação técnica
+Adicionar duas novas props opcionais:
+- `initialName?: string`
+- `initialPhone?: string`
+
+**Lógica de inicialização do step:**
+- Se `initialName` e `initialPhone` forem fornecidos:
+  - Para modo `payment_receiver === "partner"`: ir direto para a confirmação da venda (chama `handleConfirmSale` via `useEffect`)
+  - Para modo `seller`: pular para `step === "method"` diretamente
+- Se não forem fornecidos: manter o comportamento atual, inicializando em `step === "info"`
+
+**Adicionalmente:** Quando o usuário preenche os dados no step "info" (caso não tenha lead), acionar um callback `onCustomerCaptured(name, phone)` para que o `PartnerCatalog` possa salvar o lead no banco.
+
+### 2. `PartnerCatalog.tsx` — Passar dados do lead armazenado
+
+Ao renderizar `PartnerCheckoutPasses`, ler o lead do localStorage e passar os dados:
 
 ```tsx
-const handlePrint = () => {
-  const svgEl = document.querySelector('#qr-print-area svg');
-  const svgHtml = svgEl ? svgEl.outerHTML : '';
-  const printWindow = window.open('', '_blank', 'width=600,height=700');
-  if (!printWindow) return;
-  
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>QR Code - ${partner.name}</title>
-        <style>
-          body { font-family: sans-serif; text-align: center; padding: 40px; }
-          h2 { margin-bottom: 4px; }
-          p { color: #666; margin-bottom: 24px; }
-          .url { font-size: 11px; color: #999; margin-top: 16px; word-break: break-all; }
-          svg { display: block; margin: 0 auto; }
-          @media print { body { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <h2>${partner.name}</h2>
-        <p>Escaneie para ver o catálogo</p>
-        ${svgHtml}
-        <div class="url">${catalogUrl}</div>
-        <script>window.onload = () => { window.print(); window.close(); }<\/script>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-};
+const storedLead = getStoredLead();
+
+<PartnerCheckoutPasses
+  cartItems={cart}
+  partnerPoint={partnerPoint}
+  initialName={storedLead?.name}
+  initialPhone={storedLead?.whatsapp}
+  onCustomerCaptured={async (name, phone) => {
+    await saveLeadData({ name, whatsapp: phone });
+  }}
+  ...
+/>
 ```
 
-O `<div id="qr-print-area">` envolverá o `<QRCodeSVG>` no Dialog para facilitar o `querySelector`.
+### 3. Casos cobertos
 
-## Arquivo alterado
+| Situação | Comportamento |
+|---|---|
+| Lead capturado ao adicionar ao carrinho | Checkout pula direto para método de pagamento (ou finaliza se modo parceiro) |
+| Usuário clicou "Continuar sem reservar" | Checkout mostra step de info normalmente; ao preencher, salva o lead |
+| Usuário abre checkout sem nenhum produto adicionado antes | Impossível (botão só aparece com items no carrinho, e o primeiro add sempre pede lead) |
+
+## Arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/pages/PartnerPointDetail.tsx` | Substitui lógica `window.print()` + `@media print` pela abordagem de janela dedicada |
+| `src/components/partners/PartnerCheckoutPasses.tsx` | Adicionar props `initialName`, `initialPhone`, `onCustomerCaptured`; ajustar lógica de step inicial |
+| `src/pages/PartnerCatalog.tsx` | Passar dados do lead salvo para `PartnerCheckoutPasses` e tratar `onCustomerCaptured` |
 
-Nenhuma migration, nenhuma dependência nova.
+Nenhuma migration de banco necessária.
