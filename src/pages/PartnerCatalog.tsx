@@ -706,21 +706,24 @@ export default function PartnerCatalog() {
             <SheetTitle>Finalizar Compra</SheetTitle>
           </SheetHeader>
           <ScrollArea className="flex-1 p-4">
-            <PartnerCheckoutPasses
-              cartItems={cart}
-              partnerPoint={partnerPoint}
-              pixKey={undefined}
-              whatsappNumber={store?.whatsapp_number ?? undefined}
-              initialName={getStoredLead()?.name}
-              initialPhone={getStoredLead()?.whatsapp}
-              onCustomerCaptured={async (name, phone) => {
-                await saveLeadData({ name, whatsapp: phone });
-              }}
-              onCheckoutComplete={() => {
-                setCart([]);
-                setCheckoutOpen(false);
-              }}
-            />
+            {checkoutOpen && (
+              <PartnerCheckoutPasses
+                key={checkoutOpen ? "open" : "closed"}
+                cartItems={cart}
+                partnerPoint={partnerPoint}
+                pixKey={undefined}
+                whatsappNumber={store?.whatsapp_number ?? undefined}
+                initialName={getStoredLead()?.name ?? undefined}
+                initialPhone={getStoredLead()?.whatsapp ?? undefined}
+                onCustomerCaptured={async (name, phone) => {
+                  await saveLeadData({ name, whatsapp: phone });
+                }}
+                onCheckoutComplete={() => {
+                  setCart([]);
+                  setCheckoutOpen(false);
+                }}
+              />
+            )}
           </ScrollArea>
         </SheetContent>
       </Sheet>
