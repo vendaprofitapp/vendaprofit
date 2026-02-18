@@ -41,6 +41,9 @@ import EventMode from "./pages/EventMode";
 import EventReconciliation from "./pages/EventReconciliation";
 import AdminCatalog from "./pages/AdminCatalog";
 import Analytics from "./pages/Analytics";
+import PartnerPoints from "./pages/PartnerPoints";
+import PartnerPointDetail from "./pages/PartnerPointDetail";
+import PartnerCatalog from "./pages/PartnerCatalog";
 
 const queryClient = new QueryClient();
 
@@ -125,6 +128,9 @@ const AppRoutes = () => (
     <Route path="/evento/conciliacao" element={<ProtectedRoute><EventReconciliation /></ProtectedRoute>} />
     <Route path="/admin/catalog" element={<ProtectedRoute><AdminCatalog /></ProtectedRoute>} />
     <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+    <Route path="/partner-points" element={<ProtectedRoute><PartnerPoints /></ProtectedRoute>} />
+    <Route path="/partner-points/:id" element={<ProtectedRoute><PartnerPointDetail /></ProtectedRoute>} />
+    <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/bag/:token" element={<PublicBag />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
