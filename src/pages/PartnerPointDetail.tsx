@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { useParams, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -482,12 +483,12 @@ export default function PartnerPointDetail() {
             </DialogHeader>
 
             <div className="border-2 border-border rounded-xl p-3 bg-white">
-              <img
-                src={`https://chart.googleapis.com/chart?cht=qr&chs=260x260&chl=${encodeURIComponent(`${window.location.origin}/p/${partner.access_token}`)}&choe=UTF-8`}
-                alt="QR Code do catálogo"
-                width={260}
-                height={260}
-                className="block"
+              <QRCodeSVG
+                value={`${window.location.origin}/p/${partner.access_token}`}
+                size={260}
+                bgColor="#ffffff"
+                fgColor="#000000"
+                level="M"
               />
             </div>
 
