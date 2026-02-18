@@ -1,112 +1,161 @@
 
+# Corrigir 3 Problemas do Wizard de Configuração Inicial
 
-# Estoque Zerado para Novos Usuarios + Toggle de Ativacao por Fornecedor
+## Resumo dos Problemas
 
-## Situacao Atual
+### Problema 1 — Aparece para quem já tem dados
+A condição `showOnboarding` no `Dashboard.tsx` está incorreta. Ela usa `!!profile && (!profile.store_name || !profile.phone || !profile.origin_zip)`, mas o `profile` começa como `undefined` durante o carregamento. Além disso, usuários com `store_settings` já criado (que passaram pelo wizard antes) continuam vendo o modal porque a lógica não verifica se já completaram a configuração.
 
-O trigger `copy_admin_defaults_to_new_user` copia **todos os 284 produtos do admin** para novos usuarios (com estoque 0), sem vincular `supplier_id`. O usuario recebe um estoque cheio de produtos de fornecedores que talvez nao queira revender.
+**Solução:** Adicionar `store_settings` à verificação. Se o usuário já tem `store_settings` criado, o wizard não deve aparecer. Também adicionar estado `dismissed` para fechar manualmente.
 
-## Nova Logica
+### Problema 2 — Não pode ser fechado
+O Dialog tem `onOpenChange={() => {}}` (função vazia que não faz nada), e bloqueia clique fora (`onPointerDownOutside`) e ESC (`onEscapeKeyDown`). Não há botão "X" funcional nem botão "Pular por agora".
 
-1. Novos usuarios comecam **sem nenhum produto** (trigger para de copiar produtos)
-2. Na aba **Fornecedores**, cada fornecedor tera um toggle **"Ativar Catalogo"**
-3. Ao ativar, o sistema puxa os produtos do admin (Central de Pecas) para aquele fornecedor especifico, com estoque zerado e `supplier_id` correto
-4. No **Wizard de Onboarding**, as marcas selecionadas ativam automaticamente o catalogo dos fornecedores correspondentes
+**Solução:** 
+- Permitir fechar via botão X nativo do Dialog (remover os bloqueios)
+- Adicionar um botão "Preencher depois" no rodapé do Step 1
+- Passar uma prop `onDismiss` que o Dashboard usa para marcar o wizard como dispensado (usando `localStorage` para não reabrir na mesma sessão)
 
----
+### Problema 3 — Campos aparecem vazios mesmo com dados existentes
+O wizard usa `useState("")` para todos os campos, ignorando os dados que o usuário já tem no perfil. Por exemplo, se o usuário já tem `phone` e `origin_zip` mas falta apenas `store_name`, todos os campos aparecem em branco.
 
-## Mudancas Necessarias
-
-### 1. Nova coluna no banco: `suppliers.catalog_synced`
-
-Adicionar coluna booleana para rastrear quais fornecedores ja tiveram o catalogo sincronizado:
-
-```sql
-ALTER TABLE suppliers ADD COLUMN catalog_synced boolean NOT NULL DEFAULT false;
-```
-
-### 2. Alterar trigger `copy_admin_defaults_to_new_user`
-
-Remover o bloco que copia produtos. O trigger continuara copiando apenas:
-- Fornecedores
-- Formas de pagamento customizadas
-
-Produtos serao adicionados sob demanda via toggle.
-
-### 3. Aba Fornecedores (`src/pages/Suppliers.tsx`)
-
-Adicionar nova coluna **"Catalogo"** na tabela com um toggle + badge:
-
-```text
-| Empresa | CNPJ | ... | Catalogo        | Acoes |
-|---------|------|-----|-----------------|-------|
-| BECHOSE | ...  | ... | [toggle] 127 pcs| ...   |
-| INMOOV  | ...  | ... | [toggle] -      | ...   |
-```
-
-Ao ativar o toggle:
-1. Buscar o fornecedor admin com nome igual (case-insensitive)
-2. Buscar todos os produtos do admin vinculados a esse fornecedor
-3. Inserir os que ainda nao existem no estoque do usuario (comparacao por nome, case-insensitive)
-4. Marcar `catalog_synced = true` no fornecedor do usuario
-5. Toast de sucesso com quantidade de produtos adicionados
-
-Ao desativar o toggle:
-- Apenas marca `catalog_synced = false` (nao remove produtos ja existentes)
-- Mostra aviso que produtos ja importados permanecem no estoque
-
-### 4. Wizard de Onboarding (`src/components/onboarding/OnboardingWizard.tsx`)
-
-Na Step 3 (selecao de marcas), ao clicar "Finalizar":
-1. Para cada marca selecionada, localizar o fornecedor do usuario pelo nome
-2. Executar a mesma logica de sync de produtos (buscar admin products -> inserir com stock 0)
-3. Marcar `catalog_synced = true` nos fornecedores correspondentes
+**Solução:** O `OnboardingWizard` receberá os dados do perfil via props e usará `useState` inicializado com esses valores. Os campos que já estão preenchidos aparecerão com o valor existente. A máscara será aplicada ao valor inicial usando as funções de formatação já existentes.
 
 ---
 
-## Detalhes Tecnicos
+## Arquivos a Modificar
 
-### Funcao de sync de catalogo (reutilizavel)
+| Arquivo | Mudanças |
+|---------|----------|
+| `src/pages/Dashboard.tsx` | Buscar `store_settings` + lógica de `dismissed` + passar `profile` como prop |
+| `src/components/onboarding/OnboardingWizard.tsx` | Props de dados existentes + fechar + pré-preencher campos |
 
-Criar funcao utilitaria `syncSupplierCatalog` usada tanto na pagina de Fornecedores quanto no Wizard:
+---
+
+## Detalhes Técnicos
+
+### Dashboard.tsx
+
+**Mudança na query:** Buscar também `store_settings` para verificar se o usuário já completou o onboarding:
 
 ```typescript
-async function syncSupplierCatalog(
-  userId: string,
-  userSupplierId: string,
-  supplierName: string
-): Promise<number>
+// Query que verifica se precisa de onboarding
+const { data: profile } = useQuery({
+  queryKey: ['onboarding-profile', user?.id],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('store_name, phone, origin_zip, cpf')
+      .eq('id', user?.id).single();
+    return data;
+  },
+  enabled: !!user?.id,
+});
+
+const { data: storeSettings } = useQuery({
+  queryKey: ['onboarding-store', user?.id],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('store_settings')
+      .select('id')
+      .eq('owner_id', user?.id)
+      .maybeSingle();
+    return data;
+  },
+  enabled: !!user?.id,
+});
 ```
 
-Logica interna:
-1. Buscar admin_id via `user_roles` (role = 'admin')
-2. Buscar fornecedor admin com `ilike` no nome
-3. Buscar produtos do admin com `supplier_id` do admin
-4. Buscar produtos existentes do usuario com `supplier_id` do usuario
-5. Filtrar produtos faltantes por nome (case-insensitive)
-6. Inserir com `owner_id = userId`, `supplier_id = userSupplierId`, `stock_quantity = 0`
-7. Atualizar `catalog_synced = true` no fornecedor do usuario
-8. Retornar quantidade de produtos inseridos
+**Nova lógica de exibição:**
+```typescript
+// Dispensado manualmente nesta sessão
+const [dismissed, setDismissed] = useState(
+  () => localStorage.getItem(`onboarding_dismissed_${user?.id}`) === 'true'
+);
 
-### Arquivos a criar/modificar
+// Só mostra se: perfil carregado + algum campo faltando + não dispensado
+const needsOnboarding = !!profile && (
+  !profile.store_name || !profile.phone || !profile.origin_zip
+);
+const showOnboarding = needsOnboarding && !dismissed && !storeSettings;
+```
 
-| Arquivo | Acao |
-|---------|------|
-| Migracao SQL | Adicionar coluna `catalog_synced` e atualizar trigger |
-| `src/utils/catalogSync.ts` | **CRIAR** — Funcao reutilizavel de sync |
-| `src/pages/Suppliers.tsx` | Adicionar coluna "Catalogo" com toggle de sync |
-| `src/components/onboarding/OnboardingWizard.tsx` | Chamar sync ao finalizar com marcas selecionadas |
+**Passar dados para o wizard:**
+```tsx
+<OnboardingWizard
+  open={showOnboarding}
+  existingProfile={profile}
+  onComplete={() => { refetchProfile(); }}
+  onDismiss={() => {
+    localStorage.setItem(`onboarding_dismissed_${user?.id}`, 'true');
+    setDismissed(true);
+  }}
+/>
+```
 
-### Interface do toggle na tabela de Fornecedores
+### OnboardingWizard.tsx
 
-O toggle "Catalogo" tera 3 estados visuais:
-- **Desativado**: Toggle off, sem badge
-- **Sincronizando**: Toggle desabilitado + spinner
-- **Ativado**: Toggle on + badge com quantidade de produtos (ex: "127 pecas")
+**Novas props:**
+```typescript
+interface OnboardingWizardProps {
+  open: boolean;
+  existingProfile?: {
+    store_name?: string | null;
+    phone?: string | null;
+    origin_zip?: string | null;
+    cpf?: string | null;
+  } | null;
+  onComplete: () => void;
+  onDismiss: () => void;
+}
+```
 
-### Tratamento de casos especiais
+**Inicializar campos com dados existentes:**
+```typescript
+// Pré-preencher com dados existentes, aplicando máscaras nos valores numéricos
+const [storeName, setStoreName] = useState(existingProfile?.store_name || "");
+const [phone, setPhone] = useState(
+  existingProfile?.phone ? maskPhone(existingProfile.phone) : ""
+);
+const [originZip, setOriginZip] = useState(
+  existingProfile?.origin_zip ? maskCEP(existingProfile.origin_zip) : ""
+);
+const [cpf, setCpf] = useState(
+  existingProfile?.cpf ? maskCPF(existingProfile.cpf) : ""
+);
+```
 
-- Se o fornecedor do usuario nao tiver correspondente no admin: toggle desabilitado com tooltip "Fornecedor nao encontrado no catalogo master"
-- Se ja estiver sincronizado e usuario ativar novamente: apenas insere produtos novos que ainda nao existam (idempotente)
-- Produtos removidos do admin nao sao removidos automaticamente do usuario
+**Remover bloqueios de fechamento + adicionar botão "Preencher depois":**
+```tsx
+// Dialog agora pode fechar
+<Dialog open={open} onOpenChange={(open) => { if (!open) onDismiss(); }}>
+  <DialogContent className="sm:max-w-lg">
+    {/* ... conteúdo ... */}
+    
+    {/* Rodapé com opção de dispensar */}
+    <div className="flex justify-between pt-2">
+      {step > 1 ? (
+        <Button variant="outline" onClick={() => setStep(step - 1)}>
+          <ArrowLeft /> Anterior
+        </Button>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={onDismiss} className="text-muted-foreground text-xs">
+          Preencher depois
+        </Button>
+      )}
+      {/* botão próximo/finalizar */}
+    </div>
+  </DialogContent>
+</Dialog>
+```
 
+**Validação do Step 1 revisada:** Se o usuário já tinha `phone` e `origin_zip`, o botão "Próximo" ficará habilitado mesmo que ele não reedite esses campos, pois os campos já estarão com valor válido.
+
+---
+
+## Comportamento Resultante
+
+- **Usuário com todos os dados preenchidos:** Wizard não aparece
+- **Usuário com dados parciais:** Wizard aparece com campos já preenchidos, em branco apenas os que faltam
+- **Usuário que fecha o wizard:** Wizard não reaparece na mesma sessão (localStorage), volta na próxima sessão se os dados ainda estiverem incompletos
+- **Usuário que completa o wizard:** Wizard não reaparece (tem `store_settings` agora)
