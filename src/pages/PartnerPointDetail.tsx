@@ -155,7 +155,7 @@ export default function PartnerPointDetail() {
         setPartner(prev => prev ? { ...prev, contract_token: newToken } : prev);
       }
 
-      const link = `https://vendaprofit.lovable.app/contrato/${token}`;
+      const link = `${window.location.origin}/contrato/${token}`;
       navigator.clipboard.writeText(link);
       setContractCopied(true);
       toast.success("Link do contrato copiado! Envie pelo WhatsApp para o parceiro.");
