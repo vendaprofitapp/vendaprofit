@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -27,31 +27,8 @@ function formatWhatsApp(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-/**
- * Hook that listens to visualViewport resize events to detect
- * virtual keyboard open/close and returns the available height.
- */
-function useVisualViewportHeight(enabled: boolean) {
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!enabled || typeof window === "undefined" || !window.visualViewport) return;
 
-    const vv = window.visualViewport;
-    const onResize = () => {
-      // When keyboard opens, visualViewport.height shrinks
-      setViewportHeight(vv.height);
-    };
-
-    vv.addEventListener("resize", onResize);
-    // Set initial value
-    setViewportHeight(vv.height);
-
-    return () => vv.removeEventListener("resize", onResize);
-  }, [enabled]);
-
-  return viewportHeight;
-}
 
 function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string; whatsapp: string }) => void; primaryColor: string }) {
   const [name, setName] = useState("");
@@ -124,29 +101,11 @@ function LeadForm({ onSubmit, primaryColor }: { onSubmit: (data: { name: string;
 
 export function LeadCaptureSheet({ open, onOpenChange, onSubmit, primaryColor }: LeadCaptureSheetProps) {
   const isMobile = useIsMobile();
-  const viewportHeight = useVisualViewportHeight(isMobile && open);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  // Dynamically adjust drawer max-height when keyboard opens
-  useEffect(() => {
-    if (!isMobile || !open || !contentRef.current) return;
-    
-    if (viewportHeight !== null) {
-      // Apply viewport height as max-height so drawer fits above keyboard
-      contentRef.current.style.maxHeight = `${viewportHeight}px`;
-    }
-    
-    return () => {
-      if (contentRef.current) {
-        contentRef.current.style.maxHeight = "";
-      }
-    };
-  }, [viewportHeight, isMobile, open]);
 
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent ref={contentRef} className="max-h-[85dvh]">
+      <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false} noBodyStyles>
+        <DrawerContent className="max-h-[90dvh]">
           <div className="overflow-y-auto flex-1 overscroll-contain">
             <DrawerHeader className="shrink-0">
               <DrawerTitle>Reservar suas peças 🛍️</DrawerTitle>
