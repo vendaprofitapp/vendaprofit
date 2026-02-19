@@ -4,7 +4,7 @@ import {
   Users, ShieldCheck, Store, UserCheck, Gift, Truck, ShoppingBag, Package,
   Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
   Megaphone, Award, DollarSign, CreditCard, Video, MessageCircle, Zap,
-  ExternalLink, BarChart3, MapPin,
+  ExternalLink, BarChart3, MapPin, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,6 +64,7 @@ const navGroups: NavGroup[] = [
       { icon: Truck, label: "Fornecedores", path: "/suppliers" },
       { icon: Package, label: "Pedidos B2B", path: "/b2b-orders" },
       { icon: ClipboardList, label: "Encomendas", path: "/orders" },
+      { icon: Layers, label: "Detector de Conjuntos", path: "/stock/conjuntos" },
     ],
   },
   {
