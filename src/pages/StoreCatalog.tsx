@@ -308,12 +308,17 @@ export default function StoreCatalog() {
     if (!store) return { leadId: "", isReturning: false };
 
     // 1. Check if a lead already exists for this WhatsApp + store
-    const { data: existingLead } = await supabase
+    // NOTE: Public SELECT policy now allows anonymous visitors to query by store_id + whatsapp
+    const { data: existingLead, error: selectErr } = await supabase
       .from("store_leads")
       .select("id, name")
       .eq("store_id", store.id)
       .eq("whatsapp", data.whatsapp)
       .maybeSingle();
+
+    if (selectErr) {
+      console.error("[LeadCapture] Erro ao buscar lead existente:", selectErr);
+    }
 
     let leadId = "";
     let isReturning = false;
@@ -322,6 +327,7 @@ export default function StoreCatalog() {
       // Returning customer — reuse existing lead, update last_seen
       leadId = existingLead.id;
       isReturning = true;
+      // UPDATE now allowed by public policy — not critical if it fails
       await supabase
         .from("store_leads")
         .update({ last_seen_at: new Date().toISOString(), name: data.name })
@@ -329,7 +335,7 @@ export default function StoreCatalog() {
     } else {
       // New customer — insert new lead
       const deviceId = `${slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const { data: leadRow } = await supabase
+      const { data: leadRow, error: insertErr } = await supabase
         .from("store_leads")
         .insert({
           store_id: store.id,
@@ -341,10 +347,14 @@ export default function StoreCatalog() {
         })
         .select("id")
         .single();
+
+      if (insertErr) {
+        console.error("[LeadCapture] Erro ao salvar lead:", insertErr);
+      }
       leadId = leadRow?.id || "";
     }
 
-    // Save to localStorage
+    // Save to localStorage regardless of DB result
     localStorage.setItem(`store_lead_${slug}`, JSON.stringify({
       name: data.name,
       whatsapp: data.whatsapp,
@@ -1522,6 +1532,26 @@ export default function StoreCatalog() {
     }
     
     const shortCode = generateShortCode();
+
+    // Resolve lead_id — storedLead.lead_id may be "" if a previous INSERT failed
+    // Re-fetch from DB if needed so the saved_cart is always linked to a lead
+    let resolvedLeadId: string | null = storedLead?.lead_id || null;
+    if (!resolvedLeadId && storedLead?.whatsapp) {
+      const { data: refetched } = await supabase
+        .from("store_leads")
+        .select("id")
+        .eq("store_id", store.id)
+        .eq("whatsapp", storedLead.whatsapp)
+        .maybeSingle();
+      if (refetched?.id) {
+        resolvedLeadId = refetched.id;
+        // Update localStorage with recovered lead_id
+        localStorage.setItem(`store_lead_${slug}`, JSON.stringify({
+          ...storedLead,
+          lead_id: resolvedLeadId,
+        }));
+      }
+    }
     
     // Save cart to database
     try {
@@ -1531,7 +1561,7 @@ export default function StoreCatalog() {
           short_code: shortCode,
           store_id: store.id,
           owner_id: store.owner_id,
-          lead_id: storedLead?.lead_id || null,
+          lead_id: resolvedLeadId,
           customer_name: storedLead?.name || "Cliente",
           customer_phone: storedLead?.whatsapp || "",
           total: cartTotal,
