@@ -1,136 +1,115 @@
 
-# 4 Melhorias no Catálogo do Ponto Parceiro
+# Busca Automática de Conjuntos no Detector
 
-## Visão geral das mudanças
+## Objetivo
 
-1. Remover captura de lead ao adicionar ao carrinho; pedir dados apenas na finalização da compra
-2. Exibir layout completo da loja (banner, categorias, filtros) com apenas os produtos do parceiro
-3. Novo botão "Acesso ao estoque completo" na área de filtros de marketing
-4. Ao clicar no botão, redirecionar para "Minha Loja" com opção de Bolsa Consignada
+Adicionar um modo de **varredura automática** que detecta *todas* as correspondências entre o estoque próprio e o estoque do parceiro — sem precisar que o usuário selecione peças manualmente uma a uma.
 
 ---
 
-## 1. Remover lead ao adicionar ao carrinho
+## Fluxo atual vs. novo
 
-### Problema atual
+**Atual (manual):**
+Escolher modo → Selecionar peças do estoque próprio → Clicar "Detectar Conjuntos" → Ver resultados
 
-A função `addToCart` em `PartnerCatalog.tsx` verifica o localStorage e, se não houver lead salvo, bloqueia a adição e abre o `LeadCaptureSheet`. Isso ocorre antes de qualquer compra.
+**Novo (automático):**
+Escolher modo → Clicar "Varredura Automática" → Ver **todas** as correspondências de uma vez → Selecionar quais solicitar
 
-### Solução
-
-- Remover toda a verificação de lead no `addToCart` — chamar sempre `doAddToCart` diretamente, sem verificar `getStoredLead()`.
-- Remover os estados `showLeadCapture` e `pendingAdd`, bem como o componente `<LeadCaptureSheet>` da página.
-- Remover o import do `LeadCaptureSheet`.
-- O `PartnerCheckoutPasses` já solicita os dados na tela de finalização se não houver lead. O callback `onCustomerCaptured` permanece para salvar o lead nesse momento.
+Ambos os modos coexistem na mesma página — o usuário escolhe qual prefere usar.
 
 ---
 
-## 2. Layout completo da loja no Catálogo do Ponto Parceiro
+## Mudanças no `src/pages/StockSetDetector.tsx`
 
-### Problema atual
+### 1. Novo estado e modo de busca
 
-O `PartnerCatalog.tsx` tem um header minimalista simples, sem banner proporcional, sem categorias, sem filtros de marketing, sem nome da loja/logo em destaque — diferente do visual rico do `StoreCatalog`.
+Adicionar um estado `scanMode: "manual" | "auto"` (padrão `"manual"`).
 
-### Solução
+Quando `scanMode === "auto"`:
+- Ignorar a seleção manual de peças (`selectedOwnItems`)
+- Usar **todo** o `ownProducts` expandido como fonte de comparação
+- O cálculo de matches já existente (`useMemo`) roda igual — apenas a entrada muda
 
-Recriar o header e a seção de navegação do `PartnerCatalog.tsx` seguindo o padrão do `StoreCatalog`:
+### 2. Switcher visual entre modos
 
-**Header completo:**
-- Logo com tamanho e posição configuráveis (`logo_position`, `logo_size`)
-- Nome da loja se não houver logo
-- Carrinho flutuante no canto
-
-**Banner:**
-- Banner responsivo (mobile/desktop) com altura configurável
-- Exibido apenas se `is_banner_visible === true`
-- Badge informativo do ponto parceiro logo abaixo do banner
-
-**Filtros de categorias:**
-- Carregar `main_categories` e `subcategories` da base
-- Exibir pills de Categoria Principal (Todos + cada categoria)
-- Ao selecionar uma categoria, revelar subcategorias
-- Filtrar os `products` do parceiro por `main_category` / `subcategory`
-
-**Barra de busca:**
-- Manter a busca atual por nome
-
-Os produtos exibidos continuam sendo **apenas os itens alocados no ponto parceiro** — a diferença é visual, não de dados.
-
----
-
-## 3. Botão "Acesso ao estoque completo"
-
-### Onde aparece
-
-Na linha de filtros de marketing do `StoreCatalog`, os botões são: "Todos", "Oportunidades", "Pré-venda", "Lançamentos", "Área VIP".
-
-No `PartnerCatalog`, no lugar desses filtros de marketing (que não fazem sentido aqui, pois não há dados de marketing nos itens do parceiro), será exibido um único botão estilizado:
+Logo abaixo do Passo 1 (Escolha de estoques), adicionar dois botões de alternância (Tab Pills):
 
 ```
-🏪 Ver estoque completo
+┌───────────────────────────────────────────────────────┐
+│  [ 🔍 Busca Manual ]   [ ⚡ Varredura Automática ]    │
+└───────────────────────────────────────────────────────┘
 ```
 
-Com estilo de badge chamativo (cor primária, ícone `Store` ou `Package`).
+- **Busca Manual**: comportamento atual (Passo 2 aparece, usuário seleciona peças)
+- **Varredura Automática**: Passo 2 some; um botão "Iniciar Varredura" aparece diretamente
+
+### 3. UI do modo automático
+
+Quando `scanMode === "auto"`, o Passo 2 (seleção manual) é ocultado e substituído por:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ⚡ Varredura Automática                                          │
+│  Compara todas as X peças do seu estoque com o estoque parceiro  │
+│                                                                   │
+│  [  ⚡ Iniciar Varredura Completa  ]                             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Ao clicar em "Iniciar Varredura", define `resultsVisible = true`. Os resultados são calculados instantaneamente via o `useMemo` já existente (agora alimentado por todo `ownProducts`).
+
+### 4. Sumário dos resultados (modo automático)
+
+No topo do Passo 3 (Resultados), exibir um resumo estatístico quando em modo automático:
+
+```
+┌──────────────────────────────────────────────────┐
+│  Varredura concluída                              │
+│  🎭 X conjuntos complementares encontrados        │
+│  🔄 Y peças com mesma cor e tamanho               │
+│  Total: Z correspondências em todo o estoque     │
+└──────────────────────────────────────────────────┘
+```
+
+### 5. Seleção em massa nos resultados
+
+Adicionar botões de conveniência no cabeçalho do Passo 3:
+- **"Selecionar Todos"** — marca todos os matches
+- **"Limpar Seleção"** — desmarca todos
 
 ---
 
-## 4. Redirecionar para "Minha Loja" com opção de Bolsa Consignada
+## Lógica técnica
 
-### Fluxo ao clicar em "Acesso ao estoque completo"
+A mudança é cirúrgica — apenas a entrada do `useMemo` de matches muda:
 
-O `PartnerCatalog` já conhece o `store_slug` da loja dona (via `store_settings`). O botão irá:
+```ts
+// Antes (manual):
+const selectedOwnExpanded = useMemo(() => {
+  return ownProducts
+    .filter((p) => selectedOwnItems.has(p.id))
+    .flatMap(expandProduct);
+}, [ownProducts, selectedOwnItems]);
 
-1. Buscar o `store_slug` da `store_settings` do `owner_id` do ponto parceiro (já está carregado na query da página)
-2. Abrir um **Dialog** de transição com a mensagem:
-
+// Depois (com modo automático):
+const selectedOwnExpanded = useMemo(() => {
+  if (scanMode === "auto") {
+    return ownProducts.flatMap(expandProduct); // TODOS os produtos próprios
+  }
+  return ownProducts
+    .filter((p) => selectedOwnItems.has(p.id))
+    .flatMap(expandProduct);
+}, [ownProducts, selectedOwnItems, scanMode]);
 ```
-Você está prestes a acessar o estoque completo de [Nome da Loja].
 
-Deseja solicitar uma Malinha Consignada para deixar no [Nome do Ponto Parceiro]?
-```
-
-Dois botões:
-- **"Ver catálogo completo"** → navegar para `/{store_slug}` (nova aba ou mesma)
-- **"Solicitar Malinha Consignada"** → navegar para `/{store_slug}?modo=consignado&ponto={partnerPoint.name}` (a loja principal pode exibir um aviso especial nesse modo — implementação mínima por ora: leva ao catálogo com a mensagem no URL para futura integração)
-
-> Nota: a integração completa de Bolsa Consignada via Ponto Parceiro é complexa (exige criar a consignação com endereço do ponto, não do cliente). Por ora, o botão de "Malinha" leva ao catálogo com um parâmetro de URL `?consignado=1&ponto=NomeDoPonto` que futuramente pode ser usado para pré-preencher os dados. O comportamento atual do catálogo não muda.
+O `matches` `useMemo` não muda nada — continua recebendo `selectedOwnExpanded` e comparando com `partnerExpanded`.
 
 ---
 
-## Arquivos alterados
+## Arquivo alterado
 
 | Arquivo | Mudança |
 |---|---|
-| `src/pages/PartnerCatalog.tsx` | (1) Remover lead ao adicionar; (2) Adicionar layout completo (banner, header, categorias); (3+4) Adicionar botão e dialog de acesso ao estoque completo |
+| `src/pages/StockSetDetector.tsx` | Adicionar estado `scanMode`, switcher de modo, UI do modo automático, sumário de resultados, botões de seleção em massa |
 
-Nenhuma migration de banco necessária. O `store_slug` já é carregado via `store_settings`.
-
----
-
-## Detalhes técnicos
-
-**Carregar store_slug:**
-```ts
-// Na query de store_settings, adicionar store_slug ao select
-const { data: storeData } = await supabase
-  .from("store_settings")
-  .select("id, owner_id, store_name, store_slug, whatsapp_number, logo_url, banner_url, ...")
-  .eq("owner_id", pp.owner_id)
-  .maybeSingle();
-```
-
-**Filtro de categorias nos produtos do parceiro:**
-Os produtos já possuem o campo `main_category` (ou `category`). A query de produtos precisa incluir `main_category` e `subcategory`:
-```ts
-.select("id, name, price, image_url, image_url_2, image_url_3, video_url, category, description, size, main_category, subcategory")
-```
-
-**Lógica de filtro:**
-```ts
-const filtered = products.filter(p => {
-  const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-  const matchMain = !selectedMain || p.main_category === selectedMain;
-  const matchSub = !selectedSub || p.subcategory === selectedSub;
-  return matchSearch && matchMain && matchSub;
-});
-```
+Nenhuma migration necessária. Nenhum novo endpoint. Toda a lógica é client-side.
