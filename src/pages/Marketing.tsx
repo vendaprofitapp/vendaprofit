@@ -5,10 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Users, Megaphone, Sparkles, Search, RefreshCw, UserPlus, Zap, Store } from "lucide-react";
+import { Users, Megaphone, Sparkles, Search, RefreshCw, Zap, Store } from "lucide-react";
 import { toast } from "sonner";
 import { ContentTaskCard } from "@/components/marketing/ContentTaskCard";
 import { SearchDemandCard } from "@/components/marketing/SearchDemandCard";
@@ -22,35 +19,6 @@ export default function Marketing() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("content");
-
-  const { data: storeSettings } = useQuery({
-    queryKey: ["my-store-settings", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("store_settings")
-        .select("store_name, store_slug, id, lead_capture_enabled")
-        .eq("owner_id", user!.id)
-        .maybeSingle();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
-
-  const toggleLeadCapture = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      if (!storeSettings?.id) throw new Error("Loja não encontrada");
-      const { error } = await supabase
-        .from("store_settings")
-        .update({ lead_capture_enabled: enabled } as any)
-        .eq("id", storeSettings.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
-      toast.success("Configuração atualizada!");
-    },
-    onError: () => toast.error("Erro ao atualizar configuração"),
-  });
 
   // Fetch marketing tasks
   const { data: marketingTasks = [], isLoading: tasksLoading } = useQuery({
@@ -172,23 +140,6 @@ export default function Marketing() {
             </Button>
           )}
         </div>
-        <Card className="border-dashed">
-          <CardContent className="flex items-center justify-between py-3 px-4">
-            <div className="flex items-center gap-3">
-              <UserPlus className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <Label htmlFor="lead-capture-toggle" className="text-sm font-medium cursor-pointer">Captura de Leads</Label>
-                <p className="text-xs text-muted-foreground">Solicitar nome e WhatsApp ao adicionar itens ao carrinho</p>
-              </div>
-            </div>
-            <Switch
-              id="lead-capture-toggle"
-              checked={(storeSettings as any)?.lead_capture_enabled !== false}
-              onCheckedChange={(checked) => toggleLeadCapture.mutate(checked)}
-              disabled={toggleLeadCapture.isPending || !storeSettings}
-            />
-          </CardContent>
-        </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full max-w-2xl grid-cols-5">

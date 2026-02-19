@@ -247,6 +247,7 @@ export default function StoreCatalog() {
   const [showLeadCapture, setShowLeadCapture] = useState(false);
   const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
   const [pendingCartAdd, setPendingCartAdd] = useState<{ item: CatalogDisplayItem; size: string; effectivePrice: number } | null>(null);
+  const [pendingCheckout, setPendingCheckout] = useState(false);
 
   // Session persistence for secret area
   useEffect(() => {
@@ -380,17 +381,16 @@ export default function StoreCatalog() {
   };
 
   const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
-    // Check if lead capture is enabled and we need it
+    // Always add the item first
+    doAddToCart(item, size, effectivePrice);
+
+    // If lead_capture_enabled and no lead stored yet, ask for data right after adding
     const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
     const storedLead = getStoredLead();
     if (leadCaptureEnabled && !storedLead) {
-      // Store pending add and show capture sheet
-      setPendingCartAdd({ item, size, effectivePrice });
+      setPendingCartAdd(null);
       setShowLeadCapture(true);
-      return;
     }
-
-    doAddToCart(item, size, effectivePrice);
   };
 
   const handleLeadSubmit = async (data: { name: string; whatsapp: string }) => {
@@ -403,10 +403,17 @@ export default function StoreCatalog() {
       toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
     }
 
-    // Complete the pending add
+    // Complete the pending add (legacy path, may be null now)
     if (pendingCartAdd) {
       doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
       setPendingCartAdd(null);
+    }
+
+    // If user was trying to checkout, proceed now
+    if (pendingCheckout) {
+      setPendingCheckout(false);
+      // Small delay to allow state to settle
+      setTimeout(() => sendCartViaWhatsApp(), 50);
     }
   };
 
@@ -1505,9 +1512,16 @@ export default function StoreCatalog() {
 
   const sendCartViaWhatsApp = async () => {
     if (!store?.whatsapp_number || cart.length === 0) return;
+
+    // Always require lead data before sending — gate checkout here
+    const storedLead = getStoredLead();
+    if (!storedLead) {
+      setPendingCheckout(true);
+      setShowLeadCapture(true);
+      return;
+    }
     
     const shortCode = generateShortCode();
-    const storedLead = getStoredLead();
     
     // Save cart to database
     try {
