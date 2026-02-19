@@ -290,12 +290,13 @@ export default function StoreSettings() {
 
       setBannerUrl(publicUrl.publicUrl);
 
-      // Update in database if store exists
+      // Update in database if store exists — also auto-enable banner visibility
       if (storeSettings?.id) {
         await supabase
           .from("store_settings")
-          .update({ banner_url: publicUrl.publicUrl })
+          .update({ banner_url: publicUrl.publicUrl, is_banner_visible: true })
           .eq("id", storeSettings.id);
+        setFormData(prev => ({ ...prev, is_banner_visible: true }));
         queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
       }
 
@@ -352,12 +353,13 @@ export default function StoreSettings() {
 
       setBannerUrlMobile(publicUrl.publicUrl);
 
-      // Update in database if store exists
+      // Update in database if store exists — also auto-enable banner visibility
       if (storeSettings?.id) {
         await supabase
           .from("store_settings")
-          .update({ banner_url_mobile: publicUrl.publicUrl })
+          .update({ banner_url_mobile: publicUrl.publicUrl, is_banner_visible: true })
           .eq("id", storeSettings.id);
+        setFormData(prev => ({ ...prev, is_banner_visible: true }));
         queryClient.invalidateQueries({ queryKey: ["my-store-settings"] });
       }
 
