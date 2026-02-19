@@ -1,115 +1,94 @@
 
-# Busca Automática de Conjuntos no Detector
+# Correções: Captura de Dados do Cliente e Posição do Toggle
 
-## Objetivo
+## Problema 1 — Dados do cliente não capturados ao finalizar pelo WhatsApp
 
-Adicionar um modo de **varredura automática** que detecta *todas* as correspondências entre o estoque próprio e o estoque do parceiro — sem precisar que o usuário selecione peças manualmente uma a uma.
+### Causa raiz
 
----
+Em `StoreCatalog.tsx`, o botão "Finalizar pelo WhatsApp" chama `sendCartViaWhatsApp` diretamente, sem verificar se os dados do cliente (nome e WhatsApp) já foram coletados. O `LeadCaptureSheet` só é exibido **ao adicionar uma peça ao carrinho** — e apenas se `lead_capture_enabled` estiver ligado.
 
-## Fluxo atual vs. novo
+Consequência: qualquer cliente que tenha o toggle desligado, ou que ignore a captura ao adicionar, finaliza o pedido sem deixar seus dados. O carrinho é salvo com `customer_name: "Cliente"` e `customer_phone: ""`.
 
-**Atual (manual):**
-Escolher modo → Selecionar peças do estoque próprio → Clicar "Detectar Conjuntos" → Ver resultados
+### Solução
 
-**Novo (automático):**
-Escolher modo → Clicar "Varredura Automática" → Ver **todas** as correspondências de uma vez → Selecionar quais solicitar
+Mover a captura de dados para o momento do **checkout** (ao clicar em "Finalizar pelo WhatsApp"), independentemente do toggle `lead_capture_enabled`.
 
-Ambos os modos coexistem na mesma página — o usuário escolhe qual prefere usar.
+**Mudanças em `StoreCatalog.tsx`:**
 
----
+1. Modificar `sendCartViaWhatsApp` para verificar se `getStoredLead()` existe antes de prosseguir.
+2. Se não houver lead salvo, abrir o `LeadCaptureSheet` e armazenar a intenção de finalizar (`pendingCheckout = true`).
+3. Quando o lead for submetido via `handleLeadSubmit`, verificar se havia uma intenção de checkout pendente e então chamar `sendCartViaWhatsApp` após salvar os dados.
+4. Remover a verificação de lead do `addToCart` — deixar sempre livre para adicionar itens ao carrinho (o `lead_capture_enabled` passa a controlar apenas se o lead é pedido no momento do checkout versus no momento de adicionar).
 
-## Mudanças no `src/pages/StockSetDetector.tsx`
+> Nota: o toggle `lead_capture_enabled` muda *quando* o dado é pedido — se ligado, pergunta ao adicionar; se desligado, pergunta ao finalizar. Em ambos os casos, o dado sempre é capturado antes de enviar o WhatsApp.
 
-### 1. Novo estado e modo de busca
-
-Adicionar um estado `scanMode: "manual" | "auto"` (padrão `"manual"`).
-
-Quando `scanMode === "auto"`:
-- Ignorar a seleção manual de peças (`selectedOwnItems`)
-- Usar **todo** o `ownProducts` expandido como fonte de comparação
-- O cálculo de matches já existente (`useMemo`) roda igual — apenas a entrada muda
-
-### 2. Switcher visual entre modos
-
-Logo abaixo do Passo 1 (Escolha de estoques), adicionar dois botões de alternância (Tab Pills):
-
-```
-┌───────────────────────────────────────────────────────┐
-│  [ 🔍 Busca Manual ]   [ ⚡ Varredura Automática ]    │
-└───────────────────────────────────────────────────────┘
-```
-
-- **Busca Manual**: comportamento atual (Passo 2 aparece, usuário seleciona peças)
-- **Varredura Automática**: Passo 2 some; um botão "Iniciar Varredura" aparece diretamente
-
-### 3. UI do modo automático
-
-Quando `scanMode === "auto"`, o Passo 2 (seleção manual) é ocultado e substituído por:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  ⚡ Varredura Automática                                          │
-│  Compara todas as X peças do seu estoque com o estoque parceiro  │
-│                                                                   │
-│  [  ⚡ Iniciar Varredura Completa  ]                             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Ao clicar em "Iniciar Varredura", define `resultsVisible = true`. Os resultados são calculados instantaneamente via o `useMemo` já existente (agora alimentado por todo `ownProducts`).
-
-### 4. Sumário dos resultados (modo automático)
-
-No topo do Passo 3 (Resultados), exibir um resumo estatístico quando em modo automático:
-
-```
-┌──────────────────────────────────────────────────┐
-│  Varredura concluída                              │
-│  🎭 X conjuntos complementares encontrados        │
-│  🔄 Y peças com mesma cor e tamanho               │
-│  Total: Z correspondências em todo o estoque     │
-└──────────────────────────────────────────────────┘
-```
-
-### 5. Seleção em massa nos resultados
-
-Adicionar botões de conveniência no cabeçalho do Passo 3:
-- **"Selecionar Todos"** — marca todos os matches
-- **"Limpar Seleção"** — desmarca todos
-
----
-
-## Lógica técnica
-
-A mudança é cirúrgica — apenas a entrada do `useMemo` de matches muda:
+**Lógica revisada:**
 
 ```ts
-// Antes (manual):
-const selectedOwnExpanded = useMemo(() => {
-  return ownProducts
-    .filter((p) => selectedOwnItems.has(p.id))
-    .flatMap(expandProduct);
-}, [ownProducts, selectedOwnItems]);
-
-// Depois (com modo automático):
-const selectedOwnExpanded = useMemo(() => {
-  if (scanMode === "auto") {
-    return ownProducts.flatMap(expandProduct); // TODOS os produtos próprios
+// addToCart — sempre adiciona sem bloquear
+const addToCart = (...) => {
+  doAddToCart(item, size, effectivePrice);
+  // Se lead_capture_enabled e não há lead salvo: pede logo
+  if (leadCaptureEnabled && !getStoredLead()) {
+    setShowLeadCapture(true);
+    // mas o item JÁ foi adicionado
   }
-  return ownProducts
-    .filter((p) => selectedOwnItems.has(p.id))
-    .flatMap(expandProduct);
-}, [ownProducts, selectedOwnItems, scanMode]);
+};
+
+// sendCartViaWhatsApp — bloqueia até ter lead
+const sendCartViaWhatsApp = async () => {
+  const storedLead = getStoredLead();
+  if (!storedLead) {
+    setPendingCheckout(true);
+    setShowLeadCapture(true);
+    return;
+  }
+  // prossegue com o envio normal...
+};
+
+// handleLeadSubmit — se havia checkout pendente, dispara o envio
+const handleLeadSubmit = async (data) => {
+  setShowLeadCapture(false);
+  await saveLeadData(data);
+  if (pendingCheckout) {
+    setPendingCheckout(false);
+    await sendCartViaWhatsApp();
+  }
+};
 ```
 
-O `matches` `useMemo` não muda nada — continua recebendo `selectedOwnExpanded` e comparando com `partnerExpanded`.
+Isso garante que **sempre** haverá nome e telefone antes de enviar o pedido, salvando corretamente `customer_name` e `customer_phone` no banco de dados e alimentando o CRM de WhatsApp.
 
 ---
 
-## Arquivo alterado
+## Problema 2 — Toggle "Captura de Leads" na aba errada
+
+### Causa raiz
+
+O toggle está renderizado em `Marketing.tsx` (página "Redes Sociais / Google"), mas deveria estar em `WhatsAppCRM.tsx` (página "WhatsApp").
+
+### Solução
+
+1. **Remover** o `Card` com o toggle de `Marketing.tsx`, incluindo:
+   - O `useQuery` de `store_settings` (ou reduzir o select removendo `lead_capture_enabled`)
+   - A `useMutation` `toggleLeadCapture`
+   - O componente `Switch` e `Card` associados
+   - Os imports de `Switch`, `Label`, `UserPlus` se não forem usados em outro lugar
+
+2. **Adicionar** o mesmo toggle em `WhatsAppCRM.tsx`:
+   - Novo `useQuery` para buscar `store_settings` com `id` e `lead_capture_enabled`
+   - Nova `useMutation` `toggleLeadCapture` para atualizar o campo
+   - Card com Switch idêntico ao atual, posicionado no topo da página de WhatsApp
+   - Atualizar a descrição para refletir o novo comportamento: *"Solicitar nome e WhatsApp ao adicionar itens ao carrinho"*
+
+---
+
+## Arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/pages/StockSetDetector.tsx` | Adicionar estado `scanMode`, switcher de modo, UI do modo automático, sumário de resultados, botões de seleção em massa |
+| `src/pages/StoreCatalog.tsx` | Mover captura de lead para o checkout; adicionar `pendingCheckout` state; ajustar `addToCart`, `handleLeadSubmit` e `sendCartViaWhatsApp` |
+| `src/pages/Marketing.tsx` | Remover toggle de Captura de Leads e toda lógica associada |
+| `src/pages/WhatsAppCRM.tsx` | Adicionar toggle de Captura de Leads com query e mutation próprias |
 
-Nenhuma migration necessária. Nenhum novo endpoint. Toda a lógica é client-side.
+Nenhuma migration de banco de dados necessária.
