@@ -2,15 +2,17 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PartnerCheckoutPasses } from "@/components/partners/PartnerCheckoutPasses";
-import { LeadCaptureSheet } from "@/components/catalog/LeadCaptureSheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from "@/components/ui/dialog";
+import {
   ShoppingBag, Search, Package, MapPin, X, Plus, Minus, Trash2,
-  ChevronLeft, ChevronRight, Play, Video
+  ChevronLeft, ChevronRight, Play, Video, Store
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -39,6 +41,7 @@ interface StoreSettings {
   id: string;
   owner_id: string;
   store_name: string;
+  store_slug: string | null;
   whatsapp_number: string | null;
   logo_url: string | null;
   banner_url: string | null;
@@ -52,6 +55,7 @@ interface StoreSettings {
   banner_height_mobile: string | null;
   logo_position: string | null;
   logo_size: string | null;
+  banner_link: string | null;
 }
 
 interface PartnerProduct {
@@ -64,6 +68,8 @@ interface PartnerProduct {
   image_url_3: string | null;
   video_url: string | null;
   category: string | null;
+  main_category: string | null;
+  subcategory: string | null;
   description: string | null;
   sizes: string[]; // variants alocados
   variantMap: Record<string, string>; // size → partner_item_id
@@ -78,8 +84,22 @@ interface CartItem {
   selected_size: string;
 }
 
+interface MainCategory {
+  id: string;
+  name: string;
+  has_subcategories: boolean;
+  display_order: number;
+}
+
+interface Subcategory {
+  id: string;
+  name: string;
+  main_category_id: string;
+  display_order: number;
+}
+
 // ─────────────────────────────────────────────
-// BoutiqueCard – card visual idêntico ao StoreCatalog
+// BoutiqueCard
 // ─────────────────────────────────────────────
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
 function sortSizes(sizes: string[]) {
@@ -184,7 +204,6 @@ function BoutiqueCard({ product, primaryColor, onAddToCart, cartItems, observerR
         <p className="text-sm font-semibold leading-tight line-clamp-2 text-card-foreground">{product.name}</p>
         <p className="text-base font-bold" style={{ color: primaryColor }}>{fmtBRL(product.price)}</p>
 
-        {/* Size selector */}
         {sorted.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {sorted.map(size => (
@@ -207,7 +226,6 @@ function BoutiqueCard({ product, primaryColor, onAddToCart, cartItems, observerR
           </div>
         )}
 
-        {/* Add / feedback button */}
         <Button
           size="sm"
           className="w-full mt-auto text-xs gap-1 rounded-lg"
@@ -246,10 +264,13 @@ export default function PartnerCatalog() {
   const [notFound, setNotFound] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [showFullStockDialog, setShowFullStockDialog] = useState(false);
 
-  // Lead capture
-  const [showLeadCapture, setShowLeadCapture] = useState(false);
-  const [pendingAdd, setPendingAdd] = useState<{ product: PartnerProduct; size: string } | null>(null);
+  // Category filters
+  const [mainCategories, setMainCategories] = useState<MainCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
 
   // Analytics tracking
   const viewedRef = useRef<Set<string>>(new Set());
@@ -385,15 +406,23 @@ export default function PartnerCatalog() {
         allowed_payment_methods: ((pp as any).allowed_payment_methods ?? []) as AllowedMethod[],
       });
 
-      // 2. Load store settings
+      // 2. Load store settings (including store_slug)
       const { data: storeData } = await supabase
         .from("store_settings")
-        .select("id, owner_id, store_name, whatsapp_number, logo_url, banner_url, banner_url_mobile, primary_color, background_color, card_background_color, font_heading, font_body, is_banner_visible, banner_height_mobile, logo_position, logo_size")
+        .select("id, owner_id, store_name, store_slug, whatsapp_number, logo_url, banner_url, banner_url_mobile, primary_color, background_color, card_background_color, font_heading, font_body, is_banner_visible, banner_height_mobile, logo_position, logo_size, banner_link")
         .eq("owner_id", pp.owner_id)
         .maybeSingle();
       setStore(storeData as StoreSettings ?? null);
 
-      // 3. Load allocated partner_point_items
+      // 3. Load categories in parallel
+      const [{ data: mainCats }, { data: subCats }] = await Promise.all([
+        supabase.from("main_categories").select("*").eq("is_active", true).order("display_order"),
+        supabase.from("subcategories").select("*").eq("is_active", true).order("display_order"),
+      ]);
+      setMainCategories((mainCats ?? []) as MainCategory[]);
+      setSubcategories((subCats ?? []) as Subcategory[]);
+
+      // 4. Load allocated partner_point_items
       const { data: rawItems } = await supabase
         .from("partner_point_items")
         .select("id, product_id, quantity, variant_id")
@@ -404,14 +433,14 @@ export default function PartnerCatalog() {
 
       const productIds = [...new Set((rawItems as any[]).map(i => i.product_id))];
 
-      // 4. Load products
+      // 5. Load products — now includes main_category and subcategory
       const { data: productsData } = await supabase
         .from("products")
-        .select("id, name, price, image_url, image_url_2, image_url_3, video_url, category, description, size")
+        .select("id, name, price, image_url, image_url_2, image_url_3, video_url, category, description, size, main_category, subcategory")
         .in("id", productIds)
         .eq("is_active", true);
 
-      // 5. Load variants for size info
+      // 6. Load variants for size info
       const variantIds = (rawItems as any[]).filter(i => i.variant_id).map(i => i.variant_id);
       let variantsData: any[] = [];
       if (variantIds.length > 0) {
@@ -445,6 +474,8 @@ export default function PartnerCatalog() {
             image_url_3: (p as any).image_url_3 ?? null,
             video_url: (p as any).video_url ?? null,
             category: p.category,
+            main_category: (p as any).main_category ?? null,
+            subcategory: (p as any).subcategory ?? null,
             description: p.description,
             sizes: [size],
             variantMap: { [size]: item.id },
@@ -466,19 +497,10 @@ export default function PartnerCatalog() {
 
   // Primary color
   const primaryColor = store?.primary_color ?? "#8B5CF6";
+  const backgroundColor = store?.background_color ?? "#fafaf9";
 
-  // Cart helpers
+  // Cart helpers — sem verificação de lead
   const addToCart = (product: PartnerProduct, size: string) => {
-    const storedLead = getStoredLead();
-    if (!storedLead) {
-      setPendingAdd({ product, size });
-      setShowLeadCapture(true);
-      return;
-    }
-    doAddToCart(product, size);
-  };
-
-  const doAddToCart = (product: PartnerProduct, size: string) => {
     const partner_item_id = product.variantMap[size] ?? product.id;
     setCart(prev => {
       const exists = prev.find(c => c.partner_item_id === partner_item_id);
@@ -495,43 +517,28 @@ export default function PartnerCatalog() {
     toast.success(`${product.name} adicionado à sacola`);
   };
 
-  const handleLeadSubmit = async (data: { name: string; whatsapp: string }) => {
-    setShowLeadCapture(false);
-    const leadId = await saveLeadData(data);
-    toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
-    if (pendingAdd) {
-      doAddToCart(pendingAdd.product, pendingAdd.size);
-      setPendingAdd(null);
-    }
-    // Save abandoned cart
-    if (leadId && cart.length > 0) saveAbandonedCart(leadId, cart);
-  };
-
-  const saveAbandonedCart = async (leadId: string, cartItems: CartItem[]) => {
-    if (!leadId || cartItems.length === 0) return;
-    await supabase.from("lead_cart_items").delete().eq("lead_id", leadId).eq("status", "abandoned");
-    await supabase.from("lead_cart_items").insert(cartItems.map(ci => ({
-      lead_id: leadId,
-      product_id: ci.product_id,
-      product_name: ci.product_name,
-      selected_size: ci.selected_size,
-      quantity: ci.quantity,
-      unit_price: ci.unit_price,
-      status: "abandoned",
-      source: "partner_point",
-    })));
-  };
-
   const removeFromCart = (partner_item_id: string) => setCart(prev => prev.filter(c => c.partner_item_id !== partner_item_id));
 
   const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const cartTotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.category ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter products
+  const filtered = products.filter(p => {
+    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.category ?? "").toLowerCase().includes(search.toLowerCase());
+    const matchMain = !selectedMainCategory || p.main_category === selectedMainCategory;
+    const matchSub = !selectedSubcategory || p.subcategory === selectedSubcategory;
+    return matchSearch && matchMain && matchSub;
+  });
+
+  // Subcategories for selected main category
+  const subcatsForSelected = selectedMainCategory
+    ? (() => {
+        const mainCat = mainCategories.find(mc => mc.name === selectedMainCategory);
+        return mainCat ? subcategories.filter(sc => (sc as any).main_category_id === mainCat.id) : [];
+      })()
+    : [];
 
   // Loading
   if (loading) {
@@ -552,45 +559,88 @@ export default function PartnerCatalog() {
     );
   }
 
-  const isMobile = window.innerWidth < 640;
-  const bannerUrl = isMobile ? (store?.banner_url_mobile || store?.banner_url) : store?.banner_url;
-  const bannerHeight = store?.banner_height_mobile ?? "150px";
+  // Banner URLs (responsive)
+  const mobileBannerUrl = store?.banner_url_mobile || store?.banner_url;
+  const desktopBannerUrl = store?.banner_url || store?.banner_url_mobile;
+  const showBanner = store?.is_banner_visible && (store?.banner_url || store?.banner_url_mobile);
+
+  // Logo sizing classes (same as StoreCatalog)
+  const logoSizeClasses: Record<string, string> = {
+    small: 'h-10 md:h-[60px]',
+    medium: 'h-[50px] md:h-20',
+    large: 'h-[60px] md:h-[100px]',
+  };
+  const alignClasses: Record<string, string> = {
+    left: 'items-start text-left',
+    center: 'items-center text-center',
+    right: 'items-end text-right',
+  };
+  const logoPosition = store?.logo_position || 'center';
+  const logoSize = store?.logo_size || 'medium';
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: store?.background_color ?? "#fafaf9" }}>
+    <div className="min-h-screen" style={{ backgroundColor, fontFamily: store?.font_body || undefined }}>
 
-      {/* ── Header white-label ── */}
-      <header className="bg-card border-b shadow-sm sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          {store?.logo_url ? (
-            <img src={store.logo_url} alt={store.store_name} className="h-8 object-contain max-w-[120px]" />
-          ) : (
-            <span className="font-bold text-foreground text-lg">{store?.store_name}</span>
-          )}
-          <button
-            className="relative p-2 rounded-full"
-            style={{ backgroundColor: `${primaryColor}15` }}
-            onClick={() => setCartOpen(true)}
-          >
-            <ShoppingBag className="h-5 w-5" style={{ color: primaryColor }} />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 text-[10px] font-bold text-white rounded-full flex items-center justify-center"
-                style={{ backgroundColor: primaryColor }}>
-                {cartCount}
-              </span>
+      {/* ── Header white-label (mesmo padrão do StoreCatalog) ── */}
+      <header className="sticky top-0 z-50 backdrop-blur-sm border-b border-gray-100 relative"
+        style={{ backgroundColor: `${backgroundColor}f5` }}>
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          {/* Carrinho flutuante no canto */}
+          <div className="absolute right-4 top-4 z-10">
+            <button
+              className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+              onClick={() => setCartOpen(true)}
+              aria-label="Abrir sacola"
+            >
+              <ShoppingBag className="h-6 w-6 text-gray-700" />
+              {cartCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full text-[10px] flex items-center justify-center text-white font-semibold"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Logo/nome posicionado igual ao StoreCatalog */}
+          <div className={cn(
+            "flex flex-col w-full pr-12",
+            alignClasses[logoPosition] || 'items-center text-center',
+          )}>
+            {store?.logo_url ? (
+              <img
+                src={store.logo_url}
+                alt={store.store_name || "Logo"}
+                className={cn("object-contain w-auto", logoSizeClasses[logoSize] || logoSizeClasses.medium)}
+              />
+            ) : (
+              <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900"
+                style={{ fontFamily: store?.font_heading || undefined }}>
+                {store?.store_name}
+              </h1>
             )}
-          </button>
+          </div>
         </div>
       </header>
 
-      {/* ── Banner ── */}
-      {store?.is_banner_visible && bannerUrl && (
-        <div className="w-full overflow-hidden" style={{ height: bannerHeight }}>
-          <img src={bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-        </div>
+      {/* ── Banner responsivo ── */}
+      {showBanner && (
+        store?.banner_link ? (
+          <a href={store.banner_link} target="_blank" rel="noopener noreferrer" className="block w-full cursor-pointer hover:opacity-95 transition-opacity">
+            {desktopBannerUrl && <img src={desktopBannerUrl} alt="Banner" className="hidden md:block w-full h-auto object-contain" />}
+            {mobileBannerUrl && <img src={mobileBannerUrl} alt="Banner" className="block md:hidden w-full h-auto object-contain" />}
+          </a>
+        ) : (
+          <div className="w-full">
+            {desktopBannerUrl && <img src={desktopBannerUrl} alt="Banner" className="hidden md:block w-full h-auto object-contain" />}
+            {mobileBannerUrl && <img src={mobileBannerUrl} alt="Banner" className="block md:hidden w-full h-auto object-contain" />}
+          </div>
+        )
       )}
 
-      {/* ── Partner point badge ── */}
+      {/* ── Badge do Ponto Parceiro ── */}
       <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: `${primaryColor}18` }}>
         <MapPin className="h-4 w-4 shrink-0" style={{ color: primaryColor }} />
         <p className="text-sm font-semibold" style={{ color: primaryColor }}>
@@ -598,21 +648,90 @@ export default function PartnerCatalog() {
         </p>
       </div>
 
-      {/* ── Search bar ── */}
-      <div className="max-w-4xl mx-auto px-4 pt-4 pb-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      {/* ── Filtros e busca ── */}
+      <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+
+        {/* Linha 1: Botão "Ver estoque completo" (no lugar dos filtros de marketing) */}
+        <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <div className="flex gap-2 min-w-max">
+            <button
+              className="px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 text-white shadow"
+              style={{ backgroundColor: primaryColor }}
+              onClick={() => setShowFullStockDialog(true)}
+            >
+              <Store className="h-3.5 w-3.5" />
+              Ver estoque completo
+            </button>
+          </div>
+        </div>
+
+        {/* Linha 2: Busca */}
+        <div className="relative max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Buscar produto..."
-            className="pl-9 bg-card"
+            className="pl-11 h-12 rounded-full border-gray-200 bg-gray-50 focus:bg-white transition-colors"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
+        {/* Linha 3: Categorias principais */}
+        {mainCategories.length > 0 && (
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+            <div className="flex gap-2 min-w-max">
+              {mainCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  className="px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
+                  style={{
+                    backgroundColor: selectedMainCategory === cat.name ? primaryColor : '#f3f4f6',
+                    color: selectedMainCategory === cat.name ? 'white' : '#4b5563',
+                  }}
+                  onClick={() => {
+                    if (selectedMainCategory === cat.name) {
+                      setSelectedMainCategory(null);
+                      setSelectedSubcategory(null);
+                    } else {
+                      setSelectedMainCategory(cat.name);
+                      setSelectedSubcategory(null);
+                    }
+                  }}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Linha 4: Subcategorias (quando uma categoria principal está selecionada) */}
+        {subcatsForSelected.length > 0 && (
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+            <div className="flex gap-2 min-w-max">
+              {subcatsForSelected.map((sc: any) => (
+                <button
+                  key={sc.id}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80 border"
+                  style={{
+                    backgroundColor: selectedSubcategory === sc.name ? primaryColor : 'transparent',
+                    color: selectedSubcategory === sc.name ? 'white' : primaryColor,
+                    borderColor: primaryColor,
+                  }}
+                  onClick={() => {
+                    setSelectedSubcategory(selectedSubcategory === sc.name ? null : sc.name);
+                  }}
+                >
+                  {sc.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Product grid ── */}
-      <div className="max-w-4xl mx-auto px-4 pb-28">
+      <div className="max-w-7xl mx-auto px-4 pb-28">
         {filtered.length === 0 ? (
           <div className="text-center py-16">
             <Package className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
@@ -638,7 +757,7 @@ export default function PartnerCatalog() {
       {cartCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 border-t backdrop-blur-sm z-40">
           <Button
-            className="w-full max-w-4xl mx-auto flex gap-3 h-12 text-base font-semibold"
+            className="w-full max-w-7xl mx-auto flex gap-3 h-12 text-base font-semibold"
             style={{ backgroundColor: primaryColor }}
             onClick={() => setCartOpen(true)}
           >
@@ -708,7 +827,7 @@ export default function PartnerCatalog() {
           <ScrollArea className="flex-1 p-4">
             {checkoutOpen && (
               <PartnerCheckoutPasses
-                key={checkoutOpen ? "open" : "closed"}
+                key="checkout"
                 cartItems={cart}
                 partnerPoint={partnerPoint}
                 pixKey={undefined}
@@ -728,13 +847,68 @@ export default function PartnerCatalog() {
         </SheetContent>
       </Sheet>
 
-      {/* ── Lead Capture ── */}
-      <LeadCaptureSheet
-        open={showLeadCapture}
-        onOpenChange={setShowLeadCapture}
-        onSubmit={handleLeadSubmit}
-        primaryColor={primaryColor}
-      />
+      {/* ── Dialog: Acesso ao estoque completo ── */}
+      <Dialog open={showFullStockDialog} onOpenChange={setShowFullStockDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Store className="h-5 w-5" style={{ color: primaryColor }} />
+              Estoque completo
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-1">
+              Você está prestes a acessar o estoque completo de{" "}
+              <strong className="text-foreground">{store?.store_name}</strong>.
+              <br /><br />
+              Deseja solicitar uma <strong className="text-foreground">Malinha Consignada</strong> para deixar aqui em{" "}
+              <strong className="text-foreground">{partnerPoint.name}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 pt-2">
+            {store?.store_slug && (
+              <>
+                <Button
+                  className="w-full gap-2"
+                  style={{ backgroundColor: primaryColor }}
+                  onClick={() => {
+                    window.open(`/${store.store_slug}`, "_blank");
+                    setShowFullStockDialog(false);
+                  }}
+                >
+                  <Store className="h-4 w-4" />
+                  Ver catálogo completo
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  style={{ borderColor: primaryColor, color: primaryColor }}
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      modo: "consignado",
+                      ponto: partnerPoint.name,
+                    });
+                    window.open(`/${store.store_slug}?${params.toString()}`, "_blank");
+                    setShowFullStockDialog(false);
+                  }}
+                >
+                  🎒 Solicitar Malinha Consignada
+                </Button>
+              </>
+            )}
+            {!store?.store_slug && (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                O link do catálogo completo não está disponível no momento.
+              </p>
+            )}
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowFullStockDialog(false)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
