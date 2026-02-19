@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Layers, Search, ArrowRight, CheckSquare, Square, ChevronDown,
-  ChevronUp, Package, Users, RefreshCw, Send, Sparkles, Info,
-  ShoppingCart, ArrowLeftRight, Filter
+  Search, ArrowRight, CheckSquare, Square, ChevronDown,
+  Package, Users, RefreshCw, Send, Sparkles, Info,
+  ArrowLeftRight, Zap, ScanSearch, CheckCheck, X
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,7 @@ interface SetMatch {
 }
 
 type CompareMode = "own_vs_direct" | "own_vs_group";
+type ScanMode = "manual" | "auto";
 
 // Complementary subcategory pairs (sets)
 const COMPLEMENTARY_PAIRS: Array<[string, string]> = [
@@ -107,6 +108,7 @@ export default function StockSetDetector() {
   const navigate = useNavigate();
 
   const [compareMode, setCompareMode] = useState<CompareMode>("own_vs_direct");
+  const [scanMode, setScanMode] = useState<ScanMode>("manual");
   const [searchOwn, setSearchOwn] = useState("");
   const [searchPartner, setSearchPartner] = useState("");
   const [selectedOwnItems, setSelectedOwnItems] = useState<Set<string>>(new Set());
@@ -208,10 +210,13 @@ export default function StockSetDetector() {
 
   // --- Selected own products (expanded) ---
   const selectedOwnExpanded = useMemo(() => {
+    if (scanMode === "auto") {
+      return ownProducts.flatMap(expandProduct); // ALL products in auto mode
+    }
     return ownProducts
       .filter((p) => selectedOwnItems.has(p.id))
       .flatMap(expandProduct);
-  }, [ownProducts, selectedOwnItems]);
+  }, [ownProducts, selectedOwnItems, scanMode]);
 
   // --- Detect matches ---
   const matches = useMemo((): SetMatch[] => {
@@ -348,7 +353,7 @@ export default function StockSetDetector() {
           <CardDescription>Seu estoque próprio será comparado com o estoque selecionado abaixo</CardDescription>
         </CardHeader>
         <CardContent>
-          <Select value={compareMode} onValueChange={(v) => { setCompareMode(v as CompareMode); setSelectedOwnItems(new Set()); setResultsVisible(false); }}>
+          <Select value={compareMode} onValueChange={(v) => { setCompareMode(v as CompareMode); setSelectedOwnItems(new Set()); setResultsVisible(false); setSelectedMatches(new Set()); }}>
             <SelectTrigger className="w-full sm:w-80">
               <SelectValue />
             </SelectTrigger>
@@ -367,121 +372,247 @@ export default function StockSetDetector() {
               </SelectItem>
             </SelectContent>
           </Select>
-        </CardContent>
-      </Card>
 
-      {/* Step 2: Select own products */}
-      <Card className="mb-6">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
-            Selecione as peças do seu estoque
-          </CardTitle>
-          <CardDescription>
-            Escolha as peças que deseja comparar. O sistema buscará correspondências no outro estoque.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome ou cor..."
-                className="pl-9"
-                value={searchOwn}
-                onChange={(e) => setSearchOwn(e.target.value)}
-              />
+          {/* Mode switcher */}
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground font-medium">Modo de busca:</span>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <button
+                onClick={() => { setScanMode("manual"); setResultsVisible(false); setSelectedMatches(new Set()); }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
+                  scanMode === "manual"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                )}
+              >
+                <Search className="h-3.5 w-3.5" />
+                Busca Manual
+              </button>
+              <button
+                onClick={() => { setScanMode("auto"); setResultsVisible(false); setSelectedMatches(new Set()); }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
+                  scanMode === "auto"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                )}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Varredura Automática
+              </button>
             </div>
           </div>
-
-          {loadingOwn ? (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredOwn.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Package className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              <p>Nenhum produto encontrado no estoque próprio</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto pr-1">
-              {filteredOwn.map((p) => {
-                const isSelected = selectedOwnItems.has(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => toggleOwnItem(p.id)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg border p-3 text-left transition-all hover:border-primary/50",
-                      isSelected
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border bg-card"
-                    )}
-                  >
-                    <div className="flex-shrink-0">
-                      {isSelected ? (
-                        <CheckSquare className="h-5 w-5 text-primary" />
-                      ) : (
-                        <Square className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{p.name}</p>
-                      <div className="flex flex-wrap gap-1 mt-0.5">
-                        {p.color_label && (
-                          <span className="text-xs text-muted-foreground">{p.color_label}</span>
-                        )}
-                        {p.color_label && p.size && <span className="text-xs text-muted-foreground">·</span>}
-                        {p.size && (
-                          <span className="text-xs text-muted-foreground">{p.size}</span>
-                        )}
-                        {p.subcategory && (
-                          <Badge variant="outline" className="text-xs h-4 px-1">{p.subcategory}</Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Estoque: {p.stock_quantity} · R$ {p.price.toFixed(2).replace(".", ",")}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedOwnItems.size > 0 && (
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {selectedOwnItems.size} peça(s) selecionada(s)
-              </p>
-              <Button
-                onClick={() => setResultsVisible(true)}
-                disabled={loading}
-                className="gap-2"
-              >
-                {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Detectar Conjuntos
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Step 2: Manual selection or Auto scan */}
+      {scanMode === "manual" ? (
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
+              Selecione as peças do seu estoque
+            </CardTitle>
+            <CardDescription>
+              Escolha as peças que deseja comparar. O sistema buscará correspondências no outro estoque.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome ou cor..."
+                  className="pl-9"
+                  value={searchOwn}
+                  onChange={(e) => setSearchOwn(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {loadingOwn ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredOwn.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Package className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                <p>Nenhum produto encontrado no estoque próprio</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto pr-1">
+                {filteredOwn.map((p) => {
+                  const isSelected = selectedOwnItems.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => toggleOwnItem(p.id)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border p-3 text-left transition-all hover:border-primary/50",
+                        isSelected
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-border bg-card"
+                      )}
+                    >
+                      <div className="flex-shrink-0">
+                        {isSelected ? (
+                          <CheckSquare className="h-5 w-5 text-primary" />
+                        ) : (
+                          <Square className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{p.name}</p>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {p.color_label && (
+                            <span className="text-xs text-muted-foreground">{p.color_label}</span>
+                          )}
+                          {p.color_label && p.size && <span className="text-xs text-muted-foreground">·</span>}
+                          {p.size && (
+                            <span className="text-xs text-muted-foreground">{p.size}</span>
+                          )}
+                          {p.subcategory && (
+                            <Badge variant="outline" className="text-xs h-4 px-1">{p.subcategory}</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Estoque: {p.stock_quantity} · R$ {p.price.toFixed(2).replace(".", ",")}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedOwnItems.size > 0 && (
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {selectedOwnItems.size} peça(s) selecionada(s)
+                </p>
+                <Button
+                  onClick={() => setResultsVisible(true)}
+                  disabled={loading}
+                  className="gap-2"
+                >
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Detectar Conjuntos
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        /* Auto scan card */
+        <Card className="mb-6 border-primary/30 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
+              <Zap className="h-4 w-4 text-primary" />
+              Varredura Automática
+            </CardTitle>
+            <CardDescription>
+              Compara <strong>todas as {ownProducts.length} peça{ownProducts.length !== 1 ? "s" : ""}</strong> do seu estoque com o estoque parceiro de uma só vez
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3 text-sm text-muted-foreground">
+                <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+                <p>
+                  A varredura detecta <strong>todos os conjuntos possíveis</strong>: peças complementares (Top + Shorts, Blusa + Calça, etc.) e peças com mesma cor e tamanho.
+                </p>
+              </div>
+              <Button
+                onClick={() => { setResultsVisible(true); setSelectedMatches(new Set()); }}
+                disabled={loading || ownProducts.length === 0}
+                size="lg"
+                className="gap-2 flex-shrink-0"
+              >
+                {loading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ScanSearch className="h-4 w-4" />
+                )}
+                Iniciar Varredura Completa
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Step 3: Results */}
       {resultsVisible && (
         <Card className="mb-6 border-primary/30">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">3</span>
-              Conjuntos encontrados
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">3</span>
+                  Conjuntos encontrados
+                  {matches.length > 0 && (
+                    <Badge className="ml-2">{matches.length}</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Selecione as peças do outro estoque que deseja solicitar
+                </CardDescription>
+              </div>
+              {/* Bulk select buttons */}
               {matches.length > 0 && (
-                <Badge className="ml-2">{matches.length}</Badge>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    onClick={() => setSelectedMatches(new Set(matches.map(getMatchKey)))}
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    Selecionar Todos
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    onClick={() => setSelectedMatches(new Set())}
+                    disabled={selectedMatches.size === 0}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpar
+                  </Button>
+                </div>
               )}
-            </CardTitle>
-            <CardDescription>
-              Selecione as peças do outro estoque que deseja solicitar
-            </CardDescription>
+            </div>
+
+            {/* Auto scan summary */}
+            {scanMode === "auto" && matches.length > 0 && (
+              <div className="mt-3 rounded-lg bg-primary/5 border border-primary/20 p-3">
+                <p className="text-sm font-semibold text-primary mb-1.5 flex items-center gap-1.5">
+                  <ScanSearch className="h-4 w-4" />
+                  Varredura concluída
+                </p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <p className="text-lg font-bold text-foreground">
+                      {matches.filter(m => m.matchType === "complementary_set").length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">🎭 Conjuntos complementares</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-foreground">
+                      {matches.filter(m => m.matchType === "same_color_size").length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">🔄 Mesma cor e tamanho</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-foreground">{matches.length}</p>
+                    <p className="text-xs text-muted-foreground">Total de correspondências</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {loadingPartner ? (
@@ -503,11 +634,13 @@ export default function StockSetDetector() {
                 <Sparkles className="h-10 w-10 mx-auto mb-2 opacity-40" />
                 <p className="font-medium">Nenhum conjunto detectado</p>
                 <p className="text-sm mt-2 max-w-md mx-auto">
-                  Nenhuma peça do parceiro tem mesma cor + tamanho ou forma um conjunto complementar (Top+Shorts, Blusa+Calça, etc.) com as peças selecionadas.
+                  {scanMode === "auto"
+                    ? "Nenhuma correspondência encontrada em todo o estoque. Verifique se os produtos têm cores, tamanhos e subcategorias preenchidas."
+                    : "Nenhuma peça do parceiro tem mesma cor + tamanho ou forma um conjunto complementar (Top+Shorts, Blusa+Calça, etc.) com as peças selecionadas."}
                 </p>
                 <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
                   <Info className="h-3.5 w-3.5" />
-                  <span>Tente selecionar mais peças ou trocar o modo de comparação</span>
+                  <span>{scanMode === "auto" ? "Verifique se os produtos estão com subcategorias configuradas" : "Tente selecionar mais peças ou trocar o modo de comparação"}</span>
                 </div>
               </div>
             ) : (
