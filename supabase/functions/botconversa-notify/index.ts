@@ -6,100 +6,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const BOTCONVERSA_API_URL =
-  "https://backend.botconversa.com.br/api/v1/webhook/subscriber/send-message/";
-
-function formatBRL(value: number): string {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const EVENT_LABELS: Record<string, string> = {
-  new_lead: "Novo Lead",
-  cart_created: "Carrinho Criado",
-  catalog_sale: "Venda pelo Catálogo",
-  consignment_finalized: "Bolsa Finalizada",
+// Maps event_type to the system_settings key that holds the webhook URL
+const WEBHOOK_KEY_MAP: Record<string, string> = {
+  new_lead: "botconversa_webhook_new_lead",
+  cart_created: "botconversa_webhook_cart_created",
+  catalog_sale: "botconversa_webhook_catalog_sale",
+  consignment_finalized: "botconversa_webhook_consignment_finalized",
 };
-
-function buildMessage(eventType: string, payload: Record<string, unknown>): string {
-  switch (eventType) {
-    case "new_lead": {
-      const name = payload.name || "Cliente";
-      const phone = payload.phone || "—";
-      const createdAt = payload.created_at ? formatDateTime(payload.created_at as string) : "";
-      return (
-        `🆕 *Novo lead na sua loja!*\n\n` +
-        `👤 Nome: ${name}\n` +
-        `📱 WhatsApp: ${phone}\n` +
-        (createdAt ? `🕐 Horário: ${createdAt}\n` : "") +
-        `\nAcesse o CRM para acompanhar:\nhttps://vendaprofit.lovable.app/marketing/whatsapp`
-      );
-    }
-    case "cart_created": {
-      const leadName = payload.lead_name || "Cliente";
-      const productName = payload.product_name || "Produto";
-      const qty = payload.quantity || 1;
-      const unitPrice = Number(payload.unit_price || 0);
-      const size = payload.selected_size ? ` | Tam: ${payload.selected_size}` : "";
-      const color = payload.variant_color ? ` | Cor: ${payload.variant_color}` : "";
-      const total = formatBRL(unitPrice * Number(qty));
-      return (
-        `🛒 *Carrinho criado na sua loja!*\n\n` +
-        `👤 Cliente: ${leadName}\n` +
-        `📦 Produto: ${productName}${size}${color}\n` +
-        `   Qtd: ${qty} × ${formatBRL(unitPrice)}\n\n` +
-        `💰 Total estimado: ${total}\n\n` +
-        `Entre em contato para fechar a venda:\nhttps://vendaprofit.lovable.app/marketing/whatsapp`
-      );
-    }
-    case "catalog_sale": {
-      const customerName = payload.customer_name || "Cliente";
-      const customerPhone = payload.customer_phone || "—";
-      const total = formatBRL(Number(payload.total || 0));
-      const payment = payload.payment_method || "—";
-      let itemsText = "";
-      if (Array.isArray(payload.items) && payload.items.length > 0) {
-        itemsText =
-          "\n\n📦 Itens:\n" +
-          (payload.items as Array<{ product_name?: string; quantity?: number; unit_price?: number }>)
-            .map((item) => `• ${item.quantity || 1}× ${item.product_name || "Produto"} — ${formatBRL(Number(item.unit_price || 0))}`)
-            .join("\n");
-      }
-      return (
-        `🎉 *Nova venda pelo catálogo!*\n\n` +
-        `👤 Cliente: ${customerName}\n` +
-        `📱 WhatsApp: ${customerPhone}\n` +
-        `💳 Pagamento: ${payment}\n` +
-        `💰 Total: ${total}` +
-        itemsText +
-        `\n\nAcesse para confirmar:\nhttps://vendaprofit.lovable.app/sales`
-      );
-    }
-    case "consignment_finalized": {
-      const customerName = payload.customer_name ? `👤 Cliente: ${payload.customer_name}\n` : "";
-      const customerPhone = payload.customer_phone ? `📱 WhatsApp: ${payload.customer_phone}\n` : "";
-      return (
-        `👜 *Cliente finalizou escolhas na Bolsa!*\n\n` +
-        customerName +
-        customerPhone +
-        `\nAcesse para conciliar a bolsa:\nhttps://vendaprofit.lovable.app/consignments`
-      );
-    }
-    default:
-      return `📬 Novo evento no sistema: ${eventType}`;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -128,15 +41,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("BOTCONVERSA_API_KEY");
-    if (!apiKey) {
-      console.log("BOTCONVERSA_API_KEY not configured — skipping notification");
-      return new Response(JSON.stringify({ skipped: true, reason: "no_api_key" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const body = await req.json();
     const { event_type, owner_id, payload, test_phone } = body;
 
@@ -147,31 +51,59 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 1. Determine the webhook URL key for this event
+    const settingKey = WEBHOOK_KEY_MAP[event_type];
+    if (!settingKey) {
+      await saveLog({ event_type, owner_id, status: "skipped", error_message: `Tipo de evento desconhecido: ${event_type}` });
+      return new Response(JSON.stringify({ skipped: true, reason: "unknown_event_type" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 2. Check if botconversa is enabled and fetch webhook URL
+    const { data: settings } = await supabase
+      .from("system_settings")
+      .select("key, value")
+      .in("key", ["botconversa_enabled", settingKey]);
+
+    const enabledRow = settings?.find((s: { key: string; value: string | null }) => s.key === "botconversa_enabled");
+    if (enabledRow?.value !== "true") {
+      console.log("Botconversa disabled — skipping");
+      return new Response(JSON.stringify({ skipped: true, reason: "disabled" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const webhookRow = settings?.find((s: { key: string; value: string | null }) => s.key === settingKey);
+    const webhookUrl = webhookRow?.value?.trim();
+
+    if (!webhookUrl) {
+      console.log(`Webhook URL not configured for ${event_type} (key: ${settingKey}) — skipping`);
+      await saveLog({ event_type, owner_id, status: "skipped", error_message: `Webhook não configurado para ${event_type}` });
+      return new Response(JSON.stringify({ skipped: true, reason: "no_webhook_url" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 3. Resolve the phone number
     let phone: string;
 
     if (test_phone) {
-      // Use manually provided phone for test — skip profile lookup
       phone = test_phone.replace(/\D/g, "");
-      if (!phone.startsWith("55")) {
-        phone = "55" + phone;
-      }
+      if (!phone.startsWith("55")) phone = "55" + phone;
     } else {
-      // Fetch seller phone from profiles (production flow)
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("phone, full_name")
+        .select("phone")
         .eq("id", owner_id)
         .single();
 
       if (profileError || !profile?.phone) {
         console.log(`No phone found for owner ${owner_id} — skipping`);
-        await saveLog({
-          event_type,
-          owner_id,
-          phone: null,
-          status: "skipped",
-          error_message: "Vendedora sem telefone cadastrado no perfil",
-        });
+        await saveLog({ event_type, owner_id, phone: null, status: "skipped", error_message: "Vendedora sem telefone cadastrado no perfil" });
         return new Response(JSON.stringify({ skipped: true, reason: "no_phone" }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -179,12 +111,10 @@ Deno.serve(async (req) => {
       }
 
       phone = profile.phone.replace(/\D/g, "");
-      if (!phone.startsWith("55")) {
-        phone = "55" + phone;
-      }
+      if (!phone.startsWith("55")) phone = "55" + phone;
     }
 
-    // Enrich consignment_finalized with customer info
+    // 4. Enrich consignment_finalized with customer info
     let enrichedPayload = payload || {};
     if (event_type === "consignment_finalized" && enrichedPayload?.customer_id) {
       const { data: customer } = await supabase
@@ -197,40 +127,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    const message = buildMessage(event_type, enrichedPayload);
+    // 5. Build webhook payload — phone + all event data (flat)
+    const webhookPayload = { phone, ...enrichedPayload };
 
-    // Send via Botconversa API
-    const botResp = await fetch(BOTCONVERSA_API_URL, {
+    // 6. POST to the webhook URL
+    const botResp = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify({ phone, message }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(webhookPayload),
     });
 
     const botBody = await botResp.text();
-    console.log(`Botconversa [${event_type}] → ${phone} | HTTP ${botResp.status}:`, botBody);
+    console.log(`Botconversa webhook [${event_type}] → ${phone} | HTTP ${botResp.status}:`, botBody);
+
+    const payloadSummary = JSON.stringify(webhookPayload).slice(0, 500);
 
     if (botResp.ok) {
-      await saveLog({
-        event_type,
-        owner_id,
-        phone,
-        message,
-        status: "success",
-        botconversa_status: botResp.status,
-      });
+      await saveLog({ event_type, owner_id, phone, message: payloadSummary, status: "success", botconversa_status: botResp.status });
     } else {
-      await saveLog({
-        event_type,
-        owner_id,
-        phone,
-        message,
-        status: "failed",
-        error_message: botBody,
-        botconversa_status: botResp.status,
-      });
+      await saveLog({ event_type, owner_id, phone, message: payloadSummary, status: "failed", error_message: botBody, botconversa_status: botResp.status });
     }
 
     return new Response(

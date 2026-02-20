@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, Key, Send, CheckCircle, AlertCircle, Info, RefreshCw, XCircle, SkipForward, Clock } from "lucide-react";
+import { MessageCircle, Send, CheckCircle, AlertCircle, Info, RefreshCw, XCircle, SkipForward, Clock, Link2, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +39,37 @@ const EVENT_ICONS: Record<string, string> = {
   consignment_finalized: "👜",
 };
 
+const WEBHOOK_EVENTS = [
+  {
+    key: "botconversa_webhook_new_lead",
+    label: "Webhook: Novo Lead",
+    icon: "🆕",
+    description: "Disparado quando um novo lead se cadastra pelo catálogo.",
+    variables: "{{phone}}, {{name}}, {{created_at}}",
+  },
+  {
+    key: "botconversa_webhook_cart_created",
+    label: "Webhook: Carrinho Criado",
+    icon: "🛒",
+    description: "Disparado quando um lead adiciona um produto ao carrinho.",
+    variables: "{{phone}}, {{lead_name}}, {{product_name}}, {{quantity}}, {{unit_price}}, {{selected_size}}, {{variant_color}}",
+  },
+  {
+    key: "botconversa_webhook_catalog_sale",
+    label: "Webhook: Venda pelo Catálogo",
+    icon: "🎉",
+    description: "Disparado quando uma venda é finalizada pelo catálogo.",
+    variables: "{{phone}}, {{customer_name}}, {{customer_phone}}, {{total}}, {{payment_method}}",
+  },
+  {
+    key: "botconversa_webhook_consignment_finalized",
+    label: "Webhook: Bolsa Finalizada",
+    icon: "👜",
+    description: "Disparado quando uma cliente finaliza as escolhas na bolsa.",
+    variables: "{{phone}}, {{customer_name}}, {{customer_phone}}",
+  },
+];
+
 function StatusBadge({ status }: { status: string }) {
   if (status === "success") return (
     <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
@@ -67,11 +98,12 @@ export function BotconversaAdminSection() {
   const [enabled, setEnabled] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
-  const [adminPhone, setAdminPhone] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [logs, setLogs] = useState<BotconversaLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [webhookUrls, setWebhookUrls] = useState<Record<string, string>>({});
+  const [savingWebhooks, setSavingWebhooks] = useState(false);
 
   const loadLogs = useCallback(async () => {
     setLoadingLogs(true);
@@ -97,14 +129,22 @@ export function BotconversaAdminSection() {
   async function loadSettings() {
     setLoadingSettings(true);
     try {
+      const allKeys = ["botconversa_enabled", ...WEBHOOK_EVENTS.map((e) => e.key)];
       const { data: settings } = await supabase
         .from("system_settings" as "system_settings")
         .select("key, value")
-        .in("key", ["botconversa_enabled"]);
+        .in("key", allKeys);
 
       if (settings) {
         const enabledRow = settings.find((s: { key: string; value: string | null }) => s.key === "botconversa_enabled");
         setEnabled(enabledRow?.value === "true");
+
+        const urls: Record<string, string> = {};
+        for (const evt of WEBHOOK_EVENTS) {
+          const row = settings.find((s: { key: string; value: string | null }) => s.key === evt.key);
+          urls[evt.key] = row?.value || "";
+        }
+        setWebhookUrls(urls);
       }
 
       if (user) {
@@ -113,9 +153,7 @@ export function BotconversaAdminSection() {
           .select("phone")
           .eq("id", user.id)
           .single();
-        const phone = profile?.phone || "";
-        setAdminPhone(phone || null);
-        setTestPhone(phone);
+        setTestPhone(profile?.phone || "");
       }
     } catch (err) {
       console.error("Error loading botconversa settings:", err);
@@ -125,7 +163,6 @@ export function BotconversaAdminSection() {
   }
 
   async function toggleEnabled(value: boolean) {
-
     setEnabled(value);
     try {
       await supabase
@@ -136,6 +173,30 @@ export function BotconversaAdminSection() {
       console.error("Error toggling botconversa:", err);
       toast.error("Erro ao atualizar configuração.");
       setEnabled(!value);
+    }
+  }
+
+  async function saveWebhookUrls() {
+    setSavingWebhooks(true);
+    try {
+      const upserts = WEBHOOK_EVENTS.map((evt) => ({
+        key: evt.key,
+        value: webhookUrls[evt.key]?.trim() || "",
+        updated_at: new Date().toISOString(),
+      }));
+
+      for (const row of upserts) {
+        await supabase
+          .from("system_settings" as "system_settings")
+          .upsert(row);
+      }
+
+      toast.success("URLs dos webhooks salvas com sucesso!");
+    } catch (err) {
+      console.error("Error saving webhook URLs:", err);
+      toast.error("Erro ao salvar URLs dos webhooks.");
+    } finally {
+      setSavingWebhooks(false);
     }
   }
 
@@ -162,11 +223,11 @@ export function BotconversaAdminSection() {
       });
 
       if (error) throw error;
-      toast.success("Mensagem de teste enviada! Verifique o WhatsApp.");
+      toast.success("Teste enviado! Verifique se o fluxo foi disparado no Botconversa.");
       setTimeout(() => loadLogs(), 1500);
     } catch (err) {
       console.error("Error sending test message:", err);
-      toast.error("Erro ao enviar mensagem de teste.");
+      toast.error("Erro ao enviar teste.");
     } finally {
       setTesting(false);
     }
@@ -185,6 +246,7 @@ export function BotconversaAdminSection() {
   const successCount = logs.filter((l) => l.status === "success").length;
   const failedCount = logs.filter((l) => l.status === "failed").length;
   const skippedCount = logs.filter((l) => l.status === "skipped").length;
+  const configuredCount = WEBHOOK_EVENTS.filter((e) => webhookUrls[e.key]?.trim()).length;
 
   return (
     <div className="space-y-4">
@@ -203,7 +265,7 @@ export function BotconversaAdminSection() {
                 </Badge>
               </CardTitle>
               <CardDescription>
-                Envia notificações automáticas via WhatsApp para as vendedoras quando eventos importantes acontecem.
+                Envia notificações automáticas via WhatsApp usando webhooks do Botconversa.
               </CardDescription>
             </div>
           </div>
@@ -215,60 +277,66 @@ export function BotconversaAdminSection() {
             <div>
               <p className="text-sm font-medium text-foreground">Ativar notificações WhatsApp</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Quando ativo, todas as vendedoras com telefone cadastrado receberão as notificações.
+                Quando ativo, os webhooks configurados abaixo serão chamados a cada evento.
               </p>
             </div>
             <Switch checked={enabled} onCheckedChange={toggleEnabled} />
           </div>
 
-          {/* API Key section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Key className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm font-medium">API Key do Botconversa</Label>
-            </div>
-
-            <div className="rounded-lg border bg-muted/40 p-3">
-              <div className="flex gap-2">
-                <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="text-xs space-y-1">
-                  <p className="font-medium text-foreground">Como configurar a API Key:</p>
-                  <ol className="list-decimal ml-3 space-y-1 text-muted-foreground">
-                    <li>Acesse o painel do Botconversa</li>
-                    <li>Vá em <strong>Integrações → API</strong> e copie a API Key</li>
-                    <li>No Lovable, acesse <strong>Cloud → Secrets</strong></li>
-                    <li>Edite o secret <strong>BOTCONVERSA_API_KEY</strong> e cole o valor</li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5 bg-background">
-              <CheckCircle className="h-4 w-4 text-primary shrink-0" />
-              <div className="flex-1">
-                <p className="text-xs font-medium text-foreground">Secret <code className="bg-muted px-1 rounded text-xs">BOTCONVERSA_API_KEY</code> configurado</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Para alterar o valor, edite o secret em Cloud → Secrets.</p>
+          {/* Setup instructions */}
+          <div className="rounded-lg border bg-muted/40 p-3">
+            <div className="flex gap-2">
+              <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <p className="font-medium text-foreground">Como configurar:</p>
+                <ol className="list-decimal ml-3 space-y-1 text-muted-foreground">
+                  <li>No Botconversa, crie um <strong>Fluxo</strong> para cada evento (ex: "Notificação Novo Lead")</li>
+                  <li>Adicione um bloco de entrada tipo <strong>"Webhook"</strong> no fluxo</li>
+                  <li>Copie a <strong>URL gerada</strong> e cole no campo correspondente abaixo</li>
+                  <li>Configure as mensagens no fluxo usando as variáveis recebidas (ex: {"{{name}}"}, {"{{phone}}"})</li>
+                </ol>
               </div>
             </div>
           </div>
 
-          {/* Events list */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-foreground">Eventos monitorados</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {[
-                { label: "Novo lead cadastrado", icon: "🆕" },
-                { label: "Carrinho criado no catálogo", icon: "🛒" },
-                { label: "Venda finalizada pelo catálogo", icon: "🎉" },
-                { label: "Bolsa consignada finalizada", icon: "👜" },
-              ].map((evt) => (
-                <div key={evt.label} className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs text-foreground bg-background">
-                  <span>{evt.icon}</span>
-                  <span>{evt.label}</span>
-                  <CheckCircle className="h-3.5 w-3.5 text-primary ml-auto" />
-                </div>
-              ))}
+          {/* Webhook URL fields */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">URLs dos Webhooks</Label>
+              </div>
+              <Badge variant="secondary" className="text-xs">
+                {configuredCount}/{WEBHOOK_EVENTS.length} configurados
+              </Badge>
             </div>
+
+            {WEBHOOK_EVENTS.map((evt) => (
+              <div key={evt.key} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{evt.icon}</span>
+                  <Label className="text-xs font-medium">{evt.label}</Label>
+                  {webhookUrls[evt.key]?.trim() && (
+                    <CheckCircle className="h-3 w-3 text-primary" />
+                  )}
+                </div>
+                <Input
+                  type="url"
+                  placeholder="https://backend.botconversa.com.br/api/v1/webhook/..."
+                  value={webhookUrls[evt.key] || ""}
+                  onChange={(e) => setWebhookUrls((prev) => ({ ...prev, [evt.key]: e.target.value }))}
+                  className="text-xs"
+                />
+                <p className="text-xs text-muted-foreground pl-1">
+                  {evt.description} — Variáveis: <code className="bg-muted px-1 rounded text-xs">{evt.variables}</code>
+                </p>
+              </div>
+            ))}
+
+            <Button onClick={saveWebhookUrls} disabled={savingWebhooks} size="sm" className="w-full sm:w-auto">
+              <Save className="h-3.5 w-3.5 mr-1.5" />
+              {savingWebhooks ? "Salvando..." : "Salvar URLs"}
+            </Button>
           </div>
 
           {/* Prerequisites */}
@@ -287,9 +355,9 @@ export function BotconversaAdminSection() {
 
           {/* Test message */}
           <div className="border-t pt-4 space-y-3">
-            <p className="text-sm font-medium text-foreground">Enviar mensagem de teste</p>
+            <p className="text-sm font-medium text-foreground">Enviar teste (webhook Novo Lead)</p>
             <p className="text-xs text-muted-foreground">
-              Digite o número de WhatsApp que receberá a mensagem de teste (com DDD). Pode ser diferente do cadastrado no perfil.
+              Dispara o webhook de "Novo Lead" com o número abaixo para validar se o fluxo está funcionando.
             </p>
             <div className="flex gap-2">
               <Input
@@ -326,7 +394,6 @@ export function BotconversaAdminSection() {
               <CardDescription className="mt-0.5">Últimos 50 disparos registrados pelo sistema</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              {/* Summary counters */}
               {logs.length > 0 && (
                 <div className="hidden sm:flex items-center gap-3 text-xs mr-2">
                   <span className="text-primary font-medium">{successCount} enviados</span>
@@ -379,7 +446,6 @@ export function BotconversaAdminSection() {
                     </div>
                   </button>
 
-                  {/* Expanded detail */}
                   {expandedLog === log.id && (
                     <div className="mx-1 mb-1 rounded-b-lg border border-t-0 bg-muted/20 px-3 py-2.5 space-y-2">
                       {log.botconversa_status && (
@@ -397,8 +463,8 @@ export function BotconversaAdminSection() {
                       )}
                       {log.message && (
                         <div>
-                          <p className="text-xs font-medium text-foreground mb-0.5">Mensagem enviada:</p>
-                          <pre className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 whitespace-pre-wrap font-sans">
+                          <p className="text-xs font-medium text-foreground mb-0.5">Payload enviado:</p>
+                          <pre className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 whitespace-pre-wrap font-mono break-all">
                             {log.message}
                           </pre>
                         </div>
