@@ -1,96 +1,131 @@
 
-# 3 Correções no Detector de Conjuntos
+# Notificações: Sininho Funcional + Dashboard Completo
 
-## Diagnóstico dos 3 problemas
+## Diagnóstico atual
 
-### Problema 1 — Aparecendo peças com tamanhos diferentes
+### Sininho (Header)
+O botão do sininho em `src/components/layout/Header.tsx` está **decorativo** — hardcoded com o número "3" e sem nenhuma ação ao clicar. Precisa ser conectado a dados reais e abrir um painel de notificações.
 
-Olhando o código de matching (linhas 290-326), o sistema faz **dois tipos** de match:
-
-- `same_color_size`: mesma cor **E** mesmo tamanho ✅ (correto)
-- `complementary_set`: mesma cor + subcategorias complementares (Top+Shorts, etc.) — **sem exigir mesmo tamanho** ❌
-
-A seção "🔄 Mesma Cor e Tamanho" está correta, mas a seção "🎭 Conjuntos Complementares" está encontrando pares onde o Top é M e o Shorts é G, por exemplo — o que não forma um conjunto real.
-
-**Correção:** Adicionar a exigência de `sameSize` também no `complementary_set`:
-```typescript
-// ANTES
-if (sameColor && areComplementary(own.subcategory, partner.subcategory)) {
-
-// DEPOIS
-if (sameColor && sameSize && areComplementary(own.subcategory, partner.subcategory)) {
-```
-
-E atualizar o `matchLabel` para refletir que o tamanho é sempre o mesmo.
+### Dashboard - notificações faltantes
+O `SystemAlerts.tsx` já cobre: aniversariantes, consórcio (vencimento/atraso), vendas a prazo. Mas **faltam**:
+1. **Modo Evento** — rascunhos de evento pendentes (existe como banner separado `EventDraftsBanner`, mas não como alerta no painel)
+2. **Bolsa Consignada** — quando o cliente finaliza suas escolhas (status `finalized_by_client`), a lojista deve ser notificada
+3. **Bazar VIP** — novos itens `pending` para curadoria + itens `sold`
+4. **Pontos Parceiros** — atualizações nos itens dos pontos parceiros
 
 ---
 
-### Problema 2 — Adicionar filtro de fornecedor nos filtros da Varredura
+## O que será implementado
 
-O campo `supplier_id` existe na tabela `products`. A usuária tem fornecedores como YOPP, BECHOSE, INMOOV, etc.
+### 1. Hook centralizado de notificações: `useNotifications`
 
-**Plano:**
-1. Adicionar `supplier_id` e join com `suppliers(name)` na query de produtos próprios
-2. Adicionar `supplier_id` e join com `suppliers(name)` na query de produtos parceiros
-3. Adicionar estado `ownSupplierFilter` e `partnerSupplierFilter`
-4. Derivar listas de fornecedores disponíveis com `useMemo`
-5. Adicionar o terceiro `<select>` de fornecedor em cada coluna do painel de filtros
-6. Aplicar filtro no `selectedOwnExpanded` e no matching de parceiros
-
----
-
-### Problema 3 — Parceira deve mostrar apenas peças que a própria NÃO tem
-
-Atualmente o sistema mostra peças da parceira mesmo que sejam **idênticas** ao que a usuária já tem no próprio estoque. A lógica correta é: a parceira complementa o que a usuária **não tem**.
-
-**Regra de exclusão:** Uma peça da parceira é excluída se a usuária **já tem** um produto com o mesmo `color_label` normalizado **e** mesmo `size` (ou variante de mesmo size). Isso evita duplicação.
-
-**Implementação:** Criar um `Set` de chaves `"${normalizeStr(color)}|${normalizeStr(size)}"` com todas as peças próprias, e filtrar os produtos da parceira que não estejam nesse conjunto:
+Criar `src/hooks/useNotifications.tsx` que agrega **todas** as fontes de notificação:
 
 ```typescript
-// Criar set de peças próprias por cor+tamanho
-const ownColorSizeKeys = useMemo(() => {
-  const keys = new Set<string>();
-  ownProducts.flatMap(expandProduct).forEach(p => {
-    const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
-    keys.add(key);
-  });
-  return keys;
-}, [ownProducts]);
+// Agrega contagens de:
+- event_sale_drafts (status = 'pending') → Modo Evento
+- consignments (status = 'finalized_by_client') → Bolsa Consignada  
+- bazar_items (status = 'pending', owner_id = user.id) → Bazar VIP novos
+- bazar_items (status = 'sold', updated_at > last 7 days) → Bazar VIP vendas
+- partner_point_items (updated_at > last 24h, status IN ['returned','sold']) → Pontos Parceiros
+- waitlist_notifications (status = 'pending') → Consignação (fila de espera)
 
-// Na query de matches, filtrar parceiros que a usuária já tem
-const partnerExpanded = filteredForMatch
-  .flatMap(expandProduct)
-  .filter(p => {
-    const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
-    return !ownColorSizeKeys.has(key);
-  });
+// Retorna:
+{
+  totalCount: number,  // soma de tudo → badge no sininho
+  sections: [
+    { key, label, count, icon, route, color, items[] }
+  ]
+}
 ```
 
-**Importante:** Este filtro de exclusão se aplica no contexto do matching — a parceira só aparece em resultados se a usuária **não tiver** aquela cor+tamanho no próprio estoque, garantindo que o conjunto é de fato complementar.
+### 2. Sininho funcional no Header
+
+Transformar o botão do sininho em `Header.tsx` num `Popover` que abre um painel de notificações:
+
+```
+┌─────────────────────────────────────┐
+│  🔔 Notificações              [X]   │
+├─────────────────────────────────────┤
+│  ⚡ Modo Evento                     │
+│  3 rascunhos pendentes de conciliar │
+│                          [Ver →]    │
+├─────────────────────────────────────┤
+│  👜 Bolsa Consignada                │
+│  2 clientes finalizaram escolhas    │
+│                          [Ver →]    │
+├─────────────────────────────────────┤
+│  🛍️ Bazar VIP                      │
+│  1 novo item para curadoria         │
+│                          [Ver →]    │
+├─────────────────────────────────────┤
+│  📍 Pontos Parceiros                │
+│  5 movimentações recentes           │
+│                          [Ver →]    │
+└─────────────────────────────────────┘
+```
+
+- Badge com número real (soma de todos os itens de atenção)
+- Cada seção tem ícone, descrição e botão "Ver →" que navega para a rota correta
+- Seções com zero itens são omitidas
+- Se nenhuma notificação, exibe "Tudo em dia ✓"
+
+### 3. Cards de alerta no Dashboard (SystemAlerts)
+
+Adicionar ao `SystemAlerts.tsx` quatro novos cards:
+
+**Bolsa Consignada — Cliente escolheu peças**
+- Consulta: `consignments WHERE status = 'finalized_by_client'`
+- Card cor: roxo (`purple-500`)
+- Texto: "X bolsas prontas para conciliar" → botão "Ver bolsas" → `/bolsa-consignada`
+
+**Modo Evento — Rascunhos pendentes**
+- Já existe como banner separado; adicionar também como card no grid de alertas para consistência visual
+- Card cor: primary/rosa
+- Já tem query em `EventDraftsBanner`, reaproveitar
+
+**Bazar VIP — Novos itens para curadoria**
+- Consulta: `bazar_items WHERE owner_id = user.id AND status = 'pending'`
+- Card cor: indigo (`indigo-500`)
+- Texto: "X itens aguardando aprovação" → botão "Gerenciar" → `/bazar-admin`
+
+**Bazar VIP — Vendas realizadas (últimos 7 dias)**
+- Consulta: `bazar_items WHERE owner_id = user.id AND status = 'sold' AND sold_at > now() - 7 days`
+- Card cor: verde (`green-500`)
+- Texto: "X vendas no Bazar VIP esta semana"
+
+**Pontos Parceiros — Movimentações**
+- Consulta: `partner_point_items WHERE owner_id = user.id AND updated_at > now() - 24h AND status != 'allocated'`
+- Card cor: azul (`blue-500`)
+- Texto: "X movimentações em pontos parceiros" → botão "Ver" → `/pontos-parceiros`
 
 ---
 
-## Resumo das mudanças técnicas
+## Arquivos a serem criados/editados
 
-| # | Mudança | Arquivo |
+| Arquivo | Ação | Descrição |
 |---|---|---|
-| 1 | Exigir mesmo tamanho em `complementary_set` | `StockSetDetector.tsx` linha ~314 |
-| 2a | Adicionar `supplier_id, suppliers(id, name)` nas queries | `StockSetDetector.tsx` linhas 130-136 e 164-174 |
-| 2b | Adicionar `StockProduct.supplier_id` e `supplier_name` no tipo | `StockSetDetector.tsx` linhas 42-58 |
-| 2c | Adicionar 2 estados de filtro de fornecedor + derivar listas | `StockSetDetector.tsx` ~linha 124 |
-| 2d | Aplicar filtro de fornecedor no `selectedOwnExpanded` e matching | `StockSetDetector.tsx` linhas 264-286 |
-| 2e | Adicionar `<select>` de fornecedor na UI do painel de filtros | `StockSetDetector.tsx` linhas 605-662 |
-| 2f | Adicionar `ownSupplierFilter` e `partnerSupplierFilter` no `hasActiveFilters` e `clearFilters` | `StockSetDetector.tsx` linhas 238-245 |
-| 3 | Criar `ownColorSizeKeys` e filtrar `partnerExpanded` para excluir peças que a usuária já tem | `StockSetDetector.tsx` linhas 276-329 |
-
-## Arquivo alterado
-
-Apenas `src/pages/StockSetDetector.tsx`.
+| `src/hooks/useNotifications.tsx` | Criar | Hook centralizado com todas as contagens |
+| `src/components/layout/Header.tsx` | Editar | Sininho → Popover com lista de notificações |
+| `src/components/dashboard/SystemAlerts.tsx` | Editar | Adicionar 4 novos cards de alerta |
 
 ## O que NÃO muda
+- Lógica existente de alertas (aniversariantes, consórcio, vendas a prazo, solicitações de estoque)
+- Demais páginas e componentes
+- Banco de dados (apenas leituras novas)
 
-- Lógica de envio de solicitações
-- Modo de Busca Manual
-- Queries de grupos/parcerias
-- Demais filtros de categoria e subcategoria já existentes
+## Detalhes técnicos
+
+**Query para Bolsa Consignada com nome do cliente:**
+```sql
+SELECT c.id, c.status, cu.name, cu.phone
+FROM consignments c
+JOIN customers cu ON cu.id = c.customer_id
+WHERE c.seller_id = user.id AND c.status = 'finalized_by_client'
+```
+
+**Badge do sininho:**
+```typescript
+const totalBadge = eventDrafts + consignmentsReady + bazarPending + bazarSold + partnerMovements;
+// Badge só aparece quando totalBadge > 0
+```
