@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard, Clock, CheckCircle, ShoppingCart } from "lucide-react";
+import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard, Clock, CheckCircle, ShoppingCart, Zap, ShoppingBag, Package, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -290,7 +290,86 @@ export function SystemAlerts() {
     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0;
+  // Bolsa Consignada — clientes finalizaram escolhas
+  const { data: consignmentsReady = [] } = useQuery({
+    queryKey: ["alerts-consignments-ready", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("consignments")
+        .select("id, customers(name)")
+        .eq("seller_id", user!.id)
+        .eq("status", "finalized_by_client");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Modo Evento — rascunhos pendentes
+  const { data: eventDrafts = [] } = useQuery({
+    queryKey: ["alerts-event-drafts", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("event_sale_drafts")
+        .select("id, estimated_total")
+        .eq("owner_id", user!.id)
+        .eq("status", "pending");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Bazar VIP — novos itens para curadoria
+  const { data: bazarPendingItems = [] } = useQuery({
+    queryKey: ["alerts-bazar-pending", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bazar_items")
+        .select("id, title")
+        .eq("owner_id", user!.id)
+        .eq("status", "pending");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Bazar VIP — vendas realizadas (últimos 7 dias)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: bazarSoldItems = [] } = useQuery({
+    queryKey: ["alerts-bazar-sold", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bazar_items")
+        .select("id, title, final_price")
+        .eq("owner_id", user!.id)
+        .eq("status", "sold")
+        .gte("sold_at", sevenDaysAgo);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Pontos Parceiros — movimentações recentes (24h)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: partnerMovements = [] } = useQuery({
+    queryKey: ["alerts-partner-movements", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partner_point_items")
+        .select("id, status")
+        .eq("owner_id", user!.id)
+        .in("status", ["returned", "sold"])
+        .gte("updated_at", oneDayAgo);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0 || consignmentsReady.length > 0 || eventDrafts.length > 0 || bazarPendingItems.length > 0 || bazarSoldItems.length > 0 || partnerMovements.length > 0;
 
   if (!hasAlerts) return null;
 
@@ -563,6 +642,116 @@ export function SystemAlerts() {
             <Button size="sm" className="w-full mt-2 bg-green-500 hover:bg-green-600" onClick={() => navigate("/stock-requests")}>
               <ShoppingCart className="h-4 w-4 mr-2" />
               Vender Agora
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bolsa Consignada — Clientes finalizaram escolhas */}
+      {consignmentsReady.length > 0 && (
+        <Card className="border-purple-500/30 bg-purple-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-purple-500">
+              <ShoppingBag className="h-4 w-4" />
+              Bolsa Consignada
+              <Badge variant="secondary" className="ml-auto bg-purple-500/20 text-purple-500">{consignmentsReady.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {consignmentsReady.length} cliente{consignmentsReady.length > 1 ? "s" : ""} finalizou as escolhas e aguarda conciliação
+            </p>
+            <Button size="sm" className="w-full mt-1 bg-purple-500 hover:bg-purple-600 text-white" onClick={() => navigate("/bolsa-consignada")}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Ver Bolsas
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modo Evento — Rascunhos pendentes */}
+      {eventDrafts.length > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-primary">
+              <Zap className="h-4 w-4" />
+              Modo Evento
+              <Badge className="ml-auto">{eventDrafts.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {eventDrafts.length} rascunho{eventDrafts.length > 1 ? "s" : ""} pendente{eventDrafts.length > 1 ? "s" : ""} de conciliar
+            </p>
+            <Button size="sm" className="w-full mt-1" onClick={() => navigate("/evento/conciliacao")}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Conciliar Vendas
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bazar VIP — Novos itens para curadoria */}
+      {bazarPendingItems.length > 0 && (
+        <Card className="border-indigo-500/30 bg-indigo-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-indigo-500">
+              <Package className="h-4 w-4" />
+              Bazar VIP — Curadoria
+              <Badge variant="secondary" className="ml-auto bg-indigo-500/20 text-indigo-500">{bazarPendingItems.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {bazarPendingItems.slice(0, 2).map((item) => (
+              <div key={item.id} className="text-xs text-muted-foreground truncate">• {item.title}</div>
+            ))}
+            <Button size="sm" className="w-full mt-1 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={() => navigate("/bazar-admin")}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Gerenciar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bazar VIP — Vendas recentes */}
+      {bazarSoldItems.length > 0 && (
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-4 w-4" />
+              Bazar VIP — Vendas
+              <Badge variant="secondary" className="ml-auto bg-green-500/20 text-green-600">{bazarSoldItems.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {bazarSoldItems.length} venda{bazarSoldItems.length > 1 ? "s" : ""} realizadas nos últimos 7 dias
+            </p>
+            <Button size="sm" variant="outline" className="w-full mt-1 border-green-500/30 text-green-600" onClick={() => navigate("/bazar-admin")}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Ver Bazar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pontos Parceiros — Movimentações recentes */}
+      {partnerMovements.length > 0 && (
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-500">
+              <MapPin className="h-4 w-4" />
+              Pontos Parceiros
+              <Badge variant="secondary" className="ml-auto bg-blue-500/20 text-blue-500">{partnerMovements.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {partnerMovements.length} movimentação{partnerMovements.length > 1 ? "ões" : ""} nas últimas 24h
+            </p>
+            <Button size="sm" className="w-full mt-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate("/pontos-parceiros")}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Ver Pontos
             </Button>
           </CardContent>
         </Card>
