@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +19,7 @@ import { ExternalShowcasesSection } from "@/components/marketing/ExternalShowcas
 export default function Marketing() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("content");
+  const [activeTab, setActiveTab] = useFormPersistence("marketing_activeTab", "content");
 
   // Fetch marketing tasks
   const { data: marketingTasks = [], isLoading: tasksLoading } = useQuery({

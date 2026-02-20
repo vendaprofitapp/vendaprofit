@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrderForm } from "@/components/orders/OrderForm";
@@ -7,7 +7,7 @@ import { ShoppingList } from "@/components/orders/ShoppingList";
 import { ClipboardList, ShoppingCart } from "lucide-react";
 
 export default function Orders() {
-  const [activeTab, setActiveTab] = useState("orders");
+  const [activeTab, setActiveTab] = useFormPersistence("orders_activeTab", "orders");
 
   return (
     <MainLayout>
