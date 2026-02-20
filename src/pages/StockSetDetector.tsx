@@ -153,25 +153,33 @@ export default function StockSetDetector() {
 
       if (groupIds.length === 0) return [];
 
-      const { data: partnerships } = await supabase
+      // Use product_partnerships as the main table to avoid URL length limits
+      // when there are hundreds of product IDs in an .in() filter
+      const { data: rawData, error } = await supabase
         .from("product_partnerships")
-        .select("product_id")
+        .select(`
+          products!inner(
+            id, name, color_label, size, price, stock_quantity,
+            image_url, main_category, subcategory, owner_id,
+            product_variants(id, size, stock_quantity)
+          )
+        `)
         .in("group_id", groupIds);
 
-      const productIds = Array.from(new Set((partnerships || []).map((p) => p.product_id)));
-      if (productIds.length === 0) return [];
-
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, color_label, size, price, stock_quantity, image_url, main_category, subcategory, owner_id, product_variants(id, size, stock_quantity)")
-        .in("id", productIds)
-        .neq("owner_id", user!.id)
-        .eq("is_active", true)
-        .gt("stock_quantity", 0)
-        .order("name");
-
       if (error) throw error;
-      return (data || []) as StockProduct[];
+
+      // Deduplicate and filter on client side (RLS already ensures authorization)
+      const seen = new Set<string>();
+      return (rawData || [])
+        .map((r: any) => r.products)
+        .filter((p: any) =>
+          p &&
+          p.owner_id !== user!.id &&
+          p.is_active &&
+          p.stock_quantity > 0 &&
+          !seen.has(p.id) &&
+          seen.add(p.id)
+        ) as StockProduct[];
     },
     enabled: !!user,
   });
