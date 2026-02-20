@@ -4,7 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { usePlan } from "@/hooks/usePlan";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
 import Index from "./pages/Index";
+import PlanExpired from "./pages/PlanExpired";
 
 import Sales from "./pages/Sales";
 import Reports from "./pages/Reports";
@@ -51,8 +55,19 @@ const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const { isExpired, loading: planLoading } = usePlan();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminChecked, setAdminChecked] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (!user) { setAdminChecked(true); return; }
+    supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }).then(({ data }) => {
+      setIsAdmin(!!data);
+      setAdminChecked(true);
+    });
+  }, [user]);
+
+  if (loading || planLoading || !adminChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -64,8 +79,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" replace />;
   }
 
+  if (isExpired && !isAdmin) {
+    return <Navigate to="/plano-expirado" replace />;
+  }
+
   return <>{children}</>;
 }
+
 
 // Componente para rota raiz - mostra landing page se não autenticado
 function RootRoute() {
@@ -133,6 +153,7 @@ const AppRoutes = () => (
     <Route path="/partner-points" element={<ProtectedRoute><PartnerPoints /></ProtectedRoute>} />
     <Route path="/partner-points/:id" element={<ProtectedRoute><PartnerPointDetail /></ProtectedRoute>} />
     <Route path="/stock/conjuntos" element={<ProtectedRoute><StockSetDetector /></ProtectedRoute>} />
+    <Route path="/plano-expirado" element={<PlanExpired />} />
     <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/contrato/:token" element={<PartnerContract />} />
     <Route path="/bag/:token" element={<PublicBag />} />

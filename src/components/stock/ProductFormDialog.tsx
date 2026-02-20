@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Plus, Trash2, Globe, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Trash2, Globe, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { usePlan } from "@/hooks/usePlan";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
  import { FixedCategorySelector } from "@/components/products/FixedCategorySelector";
@@ -38,6 +39,7 @@ import { MarketingStatusSelector, type MarketingStatus, type MarketingPrices } f
 import { ReorderableImageList } from "@/components/stock/ReorderableImageList";
 import { UrlProductImporter } from "@/components/stock/UrlProductImporter";
 import { SupplierImageScraper } from "@/components/stock/SupplierImageScraper";
+
 
 interface Product {
   id: string;
@@ -127,7 +129,10 @@ export function ProductFormDialog({
 }: ProductFormDialogProps) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { isTrial, productLimit } = usePlan();
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [productCount, setProductCount] = useState<number>(0);
+
   
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [saving, setSaving] = useState(false);
@@ -165,6 +170,10 @@ export function ProductFormDialog({
   useEffect(() => {
     if (user) {
       fetchSuppliers();
+      // Fetch current product count for trial limit check
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", user.id).then(({ count }) => {
+        setProductCount(count ?? 0);
+      });
     }
   }, [user]);
 
@@ -398,6 +407,16 @@ export function ProductFormDialog({
 
   const handleSave = async () => {
     if (!user) return;
+
+    // Trial limit: block new products if at/over limit (not when editing)
+    if (!editingProduct && isTrial && productLimit !== null && productCount >= productLimit) {
+      toast.error(
+        `Limite do trial atingido! Você pode cadastrar no máximo ${productLimit} produtos no plano de teste. Assine um plano para continuar.`,
+        { duration: 6000 }
+      );
+      return;
+    }
+
     if (!form.name.trim()) {
       toast.error("Nome do produto é obrigatório");
       return;
@@ -406,6 +425,7 @@ export function ProductFormDialog({
       toast.error("Categoria principal é obrigatória");
       return;
     }
+
     
     // Normalize variants - only keep rows with size
     const normalizedVariants = productVariants

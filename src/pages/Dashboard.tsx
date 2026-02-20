@@ -11,11 +11,14 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { usePlan } from "@/hooks/usePlan";
 import { useMemo, useState } from "react";
-import { startOfDay, startOfWeek, subDays, format } from "date-fns";
+import { startOfDay, startOfWeek, subDays } from "date-fns";
+
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { isTrial, onboardingCompleted, plan, refetch: refetchPlan } = usePlan();
 
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem(`onboarding_dismissed_${user?.id}`) === 'true'
@@ -48,8 +51,20 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
+  // Show onboarding for paid plans that haven't completed it yet
   const needsOnboarding = !!profile && (!profile.store_name || !profile.phone || !profile.origin_zip);
-  const showOnboarding = needsOnboarding && !dismissed && !storeSettings;
+  const showOnboardingForPaidPlan = !isTrial && !onboardingCompleted && !!plan;
+  const showOnboarding = (needsOnboarding && !dismissed && !storeSettings) || showOnboardingForPaidPlan;
+
+  const handleOnboardingComplete = async () => {
+    await refetchProfile();
+    // Mark onboarding_completed in user_subscriptions
+    if (plan && showOnboardingForPaidPlan) {
+      await supabase.from("user_subscriptions").update({ onboarding_completed: true }).eq("id", plan.id);
+      refetchPlan();
+    }
+  };
+
 
   const { data: sales = [] } = useQuery({
     queryKey: ['dashboard-sales', user?.id],
@@ -144,7 +159,7 @@ export default function Dashboard() {
       <OnboardingWizard
         open={showOnboarding}
         existingProfile={profile}
-        onComplete={refetchProfile}
+        onComplete={handleOnboardingComplete}
         onDismiss={() => {
           localStorage.setItem(`onboarding_dismissed_${user?.id}`, 'true');
           setDismissed(true);
