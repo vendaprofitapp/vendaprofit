@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { event_type, owner_id, payload } = body;
+    const { event_type, owner_id, payload, test_phone } = body;
 
     if (!event_type || !owner_id) {
       return new Response(JSON.stringify({ error: "Missing event_type or owner_id" }), {
@@ -147,26 +147,41 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch seller phone from profiles
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("phone, full_name")
-      .eq("id", owner_id)
-      .single();
+    let phone: string;
 
-    if (profileError || !profile?.phone) {
-      console.log(`No phone found for owner ${owner_id} — skipping`);
-      await saveLog({
-        event_type,
-        owner_id,
-        phone: null,
-        status: "skipped",
-        error_message: "Vendedora sem telefone cadastrado no perfil",
-      });
-      return new Response(JSON.stringify({ skipped: true, reason: "no_phone" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (test_phone) {
+      // Use manually provided phone for test — skip profile lookup
+      phone = test_phone.replace(/\D/g, "");
+      if (!phone.startsWith("55")) {
+        phone = "55" + phone;
+      }
+    } else {
+      // Fetch seller phone from profiles (production flow)
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("phone, full_name")
+        .eq("id", owner_id)
+        .single();
+
+      if (profileError || !profile?.phone) {
+        console.log(`No phone found for owner ${owner_id} — skipping`);
+        await saveLog({
+          event_type,
+          owner_id,
+          phone: null,
+          status: "skipped",
+          error_message: "Vendedora sem telefone cadastrado no perfil",
+        });
+        return new Response(JSON.stringify({ skipped: true, reason: "no_phone" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      phone = profile.phone.replace(/\D/g, "");
+      if (!phone.startsWith("55")) {
+        phone = "55" + phone;
+      }
     }
 
     // Enrich consignment_finalized with customer info
@@ -183,12 +198,6 @@ Deno.serve(async (req) => {
     }
 
     const message = buildMessage(event_type, enrichedPayload);
-
-    // Format phone: remove non-digits, ensure country code
-    let phone = profile.phone.replace(/\D/g, "");
-    if (!phone.startsWith("55")) {
-      phone = "55" + phone;
-    }
 
     // Send via Botconversa API
     const botResp = await fetch(BOTCONVERSA_API_URL, {
