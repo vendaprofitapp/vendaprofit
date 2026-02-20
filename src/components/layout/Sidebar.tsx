@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { usePlan } from "@/hooks/usePlan";
+import { PlanGate } from "@/components/PlanGate";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -100,10 +102,23 @@ const linkClasses = (isActive: boolean) =>
       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
   );
 
+// Paths that require Premium plan
+const PREMIUM_PATHS = new Set([
+  "/consortiums",
+  "/admin/bazar",
+  "/partner-points",
+  "/marketing",
+  "/admin/fidelidade",
+  "/marketing/incentivos",
+  "/marketing/area-secreta",
+  "/b2b-orders",
+]);
+
 export function Sidebar({ onNavigate }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isPremium } = usePlan();
   const [isAdmin, setIsAdmin] = useState(false);
   const [storeSlug, setStoreSlug] = useState<string | null>(null);
 
@@ -139,6 +154,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 mb-1 w-full",
     "bg-yellow-500/90 text-gray-900 hover:bg-yellow-500 hover:shadow-md"
   );
+
 
   return (
     <aside className="h-full w-64 bg-sidebar border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:z-40 md:h-screen">
@@ -219,17 +235,28 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               <p className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider px-4 pt-4 pb-1">
                 {group.label}
               </p>
-              {group.items.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={handleNavClick}
-                  className={linkClasses(location.pathname === item.path)}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              ))}
+              {group.items.map((item) => {
+                const isPremiumItem = PREMIUM_PATHS.has(item.path);
+                const linkEl = (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={handleNavClick}
+                    className={linkClasses(location.pathname === item.path)}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    {item.label}
+                  </Link>
+                );
+                if (isPremiumItem && !isPremium && !isAdmin) {
+                  return (
+                    <PlanGate key={item.path}>
+                      {linkEl}
+                    </PlanGate>
+                  );
+                }
+                return linkEl;
+              })}
             </div>
           ))}
 

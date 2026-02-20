@@ -3226,6 +3226,59 @@ export type Database = {
         }
         Relationships: []
       }
+      user_subscriptions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          notes: string | null
+          onboarding_completed: boolean
+          plan_type: string
+          product_count_limit: number | null
+          started_at: string
+          status: string
+          updated_at: string
+          updated_by_admin: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          notes?: string | null
+          onboarding_completed?: boolean
+          plan_type?: string
+          product_count_limit?: number | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+          updated_by_admin?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          notes?: string | null
+          onboarding_completed?: boolean
+          plan_type?: string
+          product_count_limit?: number | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+          updated_by_admin?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waitlist_notifications: {
         Row: {
           consignment_item_id: string
