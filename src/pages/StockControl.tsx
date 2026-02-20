@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { 
   Plus, Search, Edit, Trash2, 
   ArrowRightLeft, Upload, Package, Copy, Filter, Globe
@@ -93,7 +94,7 @@ export default function StockControl() {
   const [directPartnerProducts, setDirectPartnerProducts] = useState<Product[]>([]);
   const [groupPartnerProducts, setGroupPartnerProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useFormPersistence("stock_searchTerm", "");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   // Use fixed categories hook
@@ -101,7 +102,7 @@ export default function StockControl() {
   
   // Filter state
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [filters, setFilters] = useState<ProductFiltersState>({
+  const [filters, setFilters] = useFormPersistence<ProductFiltersState>("stock_filters", {
     mainCategory: "all",
     subcategory: "all",
     isNewRelease: "all",

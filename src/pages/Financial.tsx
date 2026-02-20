@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { DollarSign, TrendingUp, Wallet, Building2, Package, PieChart, Calendar, Receipt } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -42,7 +43,7 @@ const CHART_COLORS = ["#10b981", "#3b82f6", "#f59e0b"];
 
 export default function Financial() {
   const { user } = useAuth();
-  const [period, setPeriod] = useState("month");
+  const [period, setPeriod] = useFormPersistence("financial_period", "month");
 
   const dateRange = useMemo(() => {
     const now = new Date();
