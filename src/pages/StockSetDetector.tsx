@@ -50,6 +50,8 @@ interface StockProduct {
   main_category: string | null;
   subcategory: string | null;
   owner_id: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
   product_variants: Array<{
     id: string;
     size: string;
@@ -117,11 +119,13 @@ export default function StockSetDetector() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [resultsVisible, setResultsVisible] = useState(false);
 
-  // --- Category filters for auto scan ---
+  // --- Category + supplier filters for auto scan ---
   const [ownCategoryFilter, setOwnCategoryFilter] = useState("");
   const [ownSubcategoryFilter, setOwnSubcategoryFilter] = useState("");
+  const [ownSupplierFilter, setOwnSupplierFilter] = useState("");
   const [partnerCategoryFilter, setPartnerCategoryFilter] = useState("");
   const [partnerSubcategoryFilter, setPartnerSubcategoryFilter] = useState("");
+  const [partnerSupplierFilter, setPartnerSupplierFilter] = useState("");
 
   // --- Fetch my own products ---
   const { data: ownProducts = [], isLoading: loadingOwn } = useQuery({
@@ -129,13 +133,16 @@ export default function StockSetDetector() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, color_label, size, price, stock_quantity, image_url, main_category, subcategory, owner_id, product_variants(id, size, stock_quantity)")
+        .select("id, name, color_label, size, price, stock_quantity, image_url, main_category, subcategory, owner_id, supplier_id, suppliers(name), product_variants(id, size, stock_quantity)")
         .eq("owner_id", user!.id)
         .eq("is_active", true)
         .gt("stock_quantity", 0)
         .order("name");
       if (error) throw error;
-      return (data || []) as StockProduct[];
+      return (data || []).map((p: any) => ({
+        ...p,
+        supplier_name: p.suppliers?.name ?? null,
+      })) as StockProduct[];
     },
     enabled: !!user,
   });
@@ -167,6 +174,7 @@ export default function StockSetDetector() {
           products!inner(
             id, name, color_label, size, price, stock_quantity,
             image_url, main_category, subcategory, owner_id, is_active,
+            supplier_id, suppliers(name),
             product_variants(id, size, stock_quantity)
           )
         `)
@@ -186,7 +194,11 @@ export default function StockSetDetector() {
           p.stock_quantity > 0 &&
           !seen.has(p.id) &&
           seen.add(p.id)
-        ) as StockProduct[];
+        )
+        .map((p: any) => ({
+          ...p,
+          supplier_name: p.suppliers?.name ?? null,
+        })) as StockProduct[];
     },
     enabled: !!user,
   });
@@ -221,6 +233,10 @@ export default function StockSetDetector() {
     )].sort() as string[],
     [ownProducts, ownCategoryFilter]
   );
+  const ownSuppliers = useMemo(() =>
+    [...new Set(ownProducts.map(p => p.supplier_name).filter(Boolean))].sort() as string[],
+    [ownProducts]
+  );
   const partnerCategories = useMemo(() =>
     [...new Set(partnerProducts.map(p => p.main_category).filter(Boolean))].sort() as string[],
     [partnerProducts]
@@ -234,14 +250,20 @@ export default function StockSetDetector() {
     )].sort() as string[],
     [partnerProducts, partnerCategoryFilter]
   );
+  const partnerSuppliers = useMemo(() =>
+    [...new Set(partnerProducts.map(p => p.supplier_name).filter(Boolean))].sort() as string[],
+    [partnerProducts]
+  );
 
-  const hasActiveFilters = ownCategoryFilter || ownSubcategoryFilter || partnerCategoryFilter || partnerSubcategoryFilter;
+  const hasActiveFilters = ownCategoryFilter || ownSubcategoryFilter || ownSupplierFilter || partnerCategoryFilter || partnerSubcategoryFilter || partnerSupplierFilter;
 
   const clearFilters = () => {
     setOwnCategoryFilter("");
     setOwnSubcategoryFilter("");
+    setOwnSupplierFilter("");
     setPartnerCategoryFilter("");
     setPartnerSubcategoryFilter("");
+    setPartnerSupplierFilter("");
   };
 
   // --- Filter own products ---
@@ -260,30 +282,49 @@ export default function StockSetDetector() {
     );
   }, [partnerProducts, searchPartner]);
 
-  // --- Selected own products (expanded), with optional category filters in auto mode ---
+  // --- Set of own color+size keys (for filtering out partner duplicates) ---
+  const ownColorSizeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    ownProducts.flatMap(expandProduct).forEach(p => {
+      keys.add(`${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`);
+    });
+    return keys;
+  }, [ownProducts]);
+
+  // --- Selected own products (expanded), with optional category + supplier filters in auto mode ---
   const selectedOwnExpanded = useMemo(() => {
     if (scanMode === "auto") {
       let filtered = ownProducts;
       if (ownCategoryFilter) filtered = filtered.filter(p => p.main_category === ownCategoryFilter);
       if (ownSubcategoryFilter) filtered = filtered.filter(p => p.subcategory === ownSubcategoryFilter);
+      if (ownSupplierFilter) filtered = filtered.filter(p => p.supplier_name === ownSupplierFilter);
       return filtered.flatMap(expandProduct);
     }
     return ownProducts
       .filter((p) => selectedOwnItems.has(p.id))
       .flatMap(expandProduct);
-  }, [ownProducts, selectedOwnItems, scanMode, ownCategoryFilter, ownSubcategoryFilter]);
+  }, [ownProducts, selectedOwnItems, scanMode, ownCategoryFilter, ownSubcategoryFilter, ownSupplierFilter]);
 
   // --- Detect matches ---
   const matches = useMemo((): SetMatch[] => {
     if (selectedOwnExpanded.length === 0) return [];
 
-    // Apply partner category filters in auto mode
+    // Apply partner category + supplier filters in auto mode
     let filteredForMatch = partnerProducts;
     if (scanMode === "auto") {
       if (partnerCategoryFilter) filteredForMatch = filteredForMatch.filter(p => p.main_category === partnerCategoryFilter);
       if (partnerSubcategoryFilter) filteredForMatch = filteredForMatch.filter(p => p.subcategory === partnerSubcategoryFilter);
+      if (partnerSupplierFilter) filteredForMatch = filteredForMatch.filter(p => p.supplier_name === partnerSupplierFilter);
     }
-    const partnerExpanded = filteredForMatch.flatMap(expandProduct);
+
+    // Problema 3: exclude partner pieces that the user already has (same color + size)
+    const partnerExpanded = filteredForMatch
+      .flatMap(expandProduct)
+      .filter(p => {
+        const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
+        return !ownColorSizeKeys.has(key);
+      });
+
     const found: SetMatch[] = [];
     const seen = new Set<string>();
 
@@ -310,8 +351,8 @@ export default function StockSetDetector() {
           }
         }
 
-        // Match type 2: same color + complementary subcategories = conjunto
-        if (sameColor && areComplementary(own.subcategory, partner.subcategory)) {
+        // Match type 2: same color + same size + complementary subcategories = conjunto (Problema 1 fix)
+        if (sameColor && sameSize && areComplementary(own.subcategory, partner.subcategory)) {
           const key = `${own.id}-${own.variantId || ""}-${partner.id}-${partner.variantId || ""}-set`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -319,14 +360,14 @@ export default function StockSetDetector() {
               myProduct: own,
               partnerProduct: partner,
               matchType: "complementary_set",
-              matchLabel: `Conjunto: ${own.subcategory} + ${partner.subcategory} (cor ${own.color_label}${sameSize ? `, tam. ${own.size}` : ""})`,
+              matchLabel: `Conjunto: ${own.subcategory} + ${partner.subcategory} (cor ${own.color_label}, tam. ${own.size})`,
             });
           }
         }
       }
     }
     return found;
-  }, [selectedOwnExpanded, partnerProducts, scanMode, partnerCategoryFilter, partnerSubcategoryFilter]);
+  }, [selectedOwnExpanded, partnerProducts, scanMode, partnerCategoryFilter, partnerSubcategoryFilter, partnerSupplierFilter, ownColorSizeKeys]);
 
   const toggleOwnItem = (id: string) => {
     setSelectedOwnItems((prev) => {
@@ -628,6 +669,18 @@ export default function StockSetDetector() {
                       ))}
                     </select>
                   )}
+                  {ownSuppliers.length > 0 && (
+                    <select
+                      value={ownSupplierFilter}
+                      onChange={(e) => setOwnSupplierFilter(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Todos os fornecedores</option>
+                      {ownSuppliers.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 {/* Partner stock filters */}
                 <div className="space-y-2">
@@ -651,6 +704,18 @@ export default function StockSetDetector() {
                       <option value="">Todas as subcategorias</option>
                       {partnerSubcategories.map(sub => (
                         <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  )}
+                  {partnerSuppliers.length > 0 && (
+                    <select
+                      value={partnerSupplierFilter}
+                      onChange={(e) => setPartnerSupplierFilter(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Todos os fornecedores</option>
+                      {partnerSuppliers.map(s => (
+                        <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
                   )}
