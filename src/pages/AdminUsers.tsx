@@ -89,6 +89,15 @@ function PlanBadge({ planType }: { planType: string }) {
   );
 }
 
+function AdminFullAccessBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary border-primary/30">
+      <ShieldCheck className="h-3 w-3" />
+      Acesso Total
+    </span>
+  );
+}
+
 function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
   const now = new Date();
   const exp = new Date(expiresAt);
@@ -347,8 +356,13 @@ export default function AdminUsers() {
                           {sub ? <PlanBadge planType={sub.plan_type} /> : <span className="text-xs text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell>
-                          {sub ? <ExpiryBadge expiresAt={sub.expires_at} /> : <span className="text-xs text-muted-foreground">—</span>}
+                          {admin
+                            ? <AdminFullAccessBadge />
+                            : sub
+                              ? <ExpiryBadge expiresAt={sub.expires_at} />
+                              : <span className="text-xs text-muted-foreground">—</span>}
                         </TableCell>
+
                         <TableCell className="text-center">
                           <Switch
                             checked={admin}
