@@ -1509,10 +1509,11 @@ export default function StoreSettings() {
 
 
         {/* Save Button */}
-        <div className="flex justify-end">
+        <div className="sticky bottom-0 z-10 flex justify-end bg-background/95 backdrop-blur border-t border-border py-3 px-1 -mx-1">
           <Button 
             onClick={() => saveMutation.mutate()}
             disabled={!formData.store_slug || !formData.store_name || saveMutation.isPending}
+            size="lg"
           >
             {saveMutation.isPending ? "Salvando..." : "Salvar Configurações"}
           </Button>
