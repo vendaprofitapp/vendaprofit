@@ -1,124 +1,96 @@
 
-# Filtros de Categoria na Varredura Automática do Detector de Conjuntos
+# 3 Correções no Detector de Conjuntos
 
-## O que será feito
+## Diagnóstico dos 3 problemas
 
-Na aba "Varredura Automática", adicionar um painel de filtros de categoria que permite à usuária escolher:
-- **Categorias e subcategorias do seu estoque próprio** (peça A do conjunto)
-- **Categorias e subcategorias do estoque parceiro** (peça B do conjunto)
+### Problema 1 — Aparecendo peças com tamanhos diferentes
 
-O sistema então comparará apenas produtos que atendam aos filtros escolhidos, encontrando pares com mesma cor e tamanho.
+Olhando o código de matching (linhas 290-326), o sistema faz **dois tipos** de match:
 
-### Exemplo de uso (caso da usuária):
-1. Escolhe "Varredura Automática"
-2. No filtro "Meu estoque": seleciona **Feminino → Top**
-3. No filtro "Estoque parceiro": seleciona **Feminino → Shorts**
-4. Clica "Iniciar Varredura"
-5. O sistema mostra todos os conjuntos Top + Shorts com mesma cor e tamanho
+- `same_color_size`: mesma cor **E** mesmo tamanho ✅ (correto)
+- `complementary_set`: mesma cor + subcategorias complementares (Top+Shorts, etc.) — **sem exigir mesmo tamanho** ❌
+
+A seção "🔄 Mesma Cor e Tamanho" está correta, mas a seção "🎭 Conjuntos Complementares" está encontrando pares onde o Top é M e o Shorts é G, por exemplo — o que não forma um conjunto real.
+
+**Correção:** Adicionar a exigência de `sameSize` também no `complementary_set`:
+```typescript
+// ANTES
+if (sameColor && areComplementary(own.subcategory, partner.subcategory)) {
+
+// DEPOIS
+if (sameColor && sameSize && areComplementary(own.subcategory, partner.subcategory)) {
+```
+
+E atualizar o `matchLabel` para refletir que o tamanho é sempre o mesmo.
 
 ---
 
-## Lógica técnica
+### Problema 2 — Adicionar filtro de fornecedor nos filtros da Varredura
 
-### Estado adicionado (filtros de categoria)
+O campo `supplier_id` existe na tabela `products`. A usuária tem fornecedores como YOPP, BECHOSE, INMOOV, etc.
 
-```typescript
-const [ownCategoryFilter, setOwnCategoryFilter] = useState<string>(""); // ex: "Feminino"
-const [ownSubcategoryFilter, setOwnSubcategoryFilter] = useState<string>(""); // ex: "Top"
-const [partnerCategoryFilter, setPartnerCategoryFilter] = useState<string>("");
-const [partnerSubcategoryFilter, setPartnerSubcategoryFilter] = useState<string>("");
-```
-
-### Derivação dinâmica de categorias disponíveis
-
-As opções de categoria/subcategoria são derivadas diretamente dos dados já carregados (sem nova query ao banco):
-
-```typescript
-const ownCategories = useMemo(() =>
-  [...new Set(ownProducts.map(p => p.main_category).filter(Boolean))].sort(),
-  [ownProducts]
-);
-
-const ownSubcategories = useMemo(() =>
-  [...new Set(
-    ownProducts
-      .filter(p => !ownCategoryFilter || p.main_category === ownCategoryFilter)
-      .map(p => p.subcategory)
-      .filter(Boolean)
-  )].sort(),
-  [ownProducts, ownCategoryFilter]
-);
-// Mesmo padrão para partnerCategories / partnerSubcategories
-```
-
-### Aplicação dos filtros na varredura
-
-O `selectedOwnExpanded` (produtos próprios expandidos que entram na comparação) será filtrado:
-
-```typescript
-const selectedOwnExpanded = useMemo(() => {
-  if (scanMode === "auto") {
-    let filtered = ownProducts;
-    if (ownCategoryFilter) filtered = filtered.filter(p => p.main_category === ownCategoryFilter);
-    if (ownSubcategoryFilter) filtered = filtered.filter(p => p.subcategory === ownSubcategoryFilter);
-    return filtered.flatMap(expandProduct);
-  }
-  // modo manual: sem mudanças
-  return ownProducts.filter(p => selectedOwnItems.has(p.id)).flatMap(expandProduct);
-}, [ownProducts, selectedOwnItems, scanMode, ownCategoryFilter, ownSubcategoryFilter]);
-```
-
-O mesmo para `partnerExpanded` dentro do `useMemo` de `matches`:
-
-```typescript
-let filteredPartner = partnerProducts;
-if (partnerCategoryFilter) filteredPartner = filteredPartner.filter(p => p.main_category === partnerCategoryFilter);
-if (partnerSubcategoryFilter) filteredPartner = filteredPartner.filter(p => p.subcategory === partnerSubcategoryFilter);
-const partnerExpanded = filteredPartner.flatMap(expandProduct);
-```
+**Plano:**
+1. Adicionar `supplier_id` e join com `suppliers(name)` na query de produtos próprios
+2. Adicionar `supplier_id` e join com `suppliers(name)` na query de produtos parceiros
+3. Adicionar estado `ownSupplierFilter` e `partnerSupplierFilter`
+4. Derivar listas de fornecedores disponíveis com `useMemo`
+5. Adicionar o terceiro `<select>` de fornecedor em cada coluna do painel de filtros
+6. Aplicar filtro no `selectedOwnExpanded` e no matching de parceiros
 
 ---
 
-## Interface dos filtros
+### Problema 3 — Parceira deve mostrar apenas peças que a própria NÃO tem
 
-Na seção "Varredura Automática" (Step 2), antes do botão "Iniciar Varredura", será exibido um painel de filtros com dois grupos lado a lado:
+Atualmente o sistema mostra peças da parceira mesmo que sejam **idênticas** ao que a usuária já tem no próprio estoque. A lógica correta é: a parceira complementa o que a usuária **não tem**.
 
+**Regra de exclusão:** Uma peça da parceira é excluída se a usuária **já tem** um produto com o mesmo `color_label` normalizado **e** mesmo `size` (ou variante de mesmo size). Isso evita duplicação.
+
+**Implementação:** Criar um `Set` de chaves `"${normalizeStr(color)}|${normalizeStr(size)}"` com todas as peças próprias, e filtrar os produtos da parceira que não estejam nesse conjunto:
+
+```typescript
+// Criar set de peças próprias por cor+tamanho
+const ownColorSizeKeys = useMemo(() => {
+  const keys = new Set<string>();
+  ownProducts.flatMap(expandProduct).forEach(p => {
+    const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
+    keys.add(key);
+  });
+  return keys;
+}, [ownProducts]);
+
+// Na query de matches, filtrar parceiros que a usuária já tem
+const partnerExpanded = filteredForMatch
+  .flatMap(expandProduct)
+  .filter(p => {
+    const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
+    return !ownColorSizeKeys.has(key);
+  });
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Filtrar peças da varredura (opcional)                   │
-│                                                         │
-│  MEU ESTOQUE              ESTOQUE PARCEIRO              │
-│  [Categoria ▼]            [Categoria ▼]                  │
-│  [Subcategoria ▼]         [Subcategoria ▼]               │
-│                                                         │
-│  ℹ️ Deixe em branco para comparar tudo                   │
-└─────────────────────────────────────────────────────────┘
-```
 
-- Selects nativos simples (sem Radix) para evitar problemas de z-index dentro do Card
-- A subcategoria só aparece se a categoria tiver subcategorias disponíveis
-- Um botão "Limpar filtros" aparece se algum filtro estiver ativo
-- O contador no `CardDescription` é atualizado dinamicamente: "Compara **X peças filtradas** do seu estoque com..."
+**Importante:** Este filtro de exclusão se aplica no contexto do matching — a parceira só aparece em resultados se a usuária **não tiver** aquela cor+tamanho no próprio estoque, garantindo que o conjunto é de fato complementar.
 
 ---
 
-## Resumo da varredura atualizado
+## Resumo das mudanças técnicas
 
-O bloco de sumário após a varredura exibirá os filtros aplicados:
-```
-Filtros: Meu estoque: Feminino / Top  |  Parceiro: Feminino / Shorts
-```
-
----
+| # | Mudança | Arquivo |
+|---|---|---|
+| 1 | Exigir mesmo tamanho em `complementary_set` | `StockSetDetector.tsx` linha ~314 |
+| 2a | Adicionar `supplier_id, suppliers(id, name)` nas queries | `StockSetDetector.tsx` linhas 130-136 e 164-174 |
+| 2b | Adicionar `StockProduct.supplier_id` e `supplier_name` no tipo | `StockSetDetector.tsx` linhas 42-58 |
+| 2c | Adicionar 2 estados de filtro de fornecedor + derivar listas | `StockSetDetector.tsx` ~linha 124 |
+| 2d | Aplicar filtro de fornecedor no `selectedOwnExpanded` e matching | `StockSetDetector.tsx` linhas 264-286 |
+| 2e | Adicionar `<select>` de fornecedor na UI do painel de filtros | `StockSetDetector.tsx` linhas 605-662 |
+| 2f | Adicionar `ownSupplierFilter` e `partnerSupplierFilter` no `hasActiveFilters` e `clearFilters` | `StockSetDetector.tsx` linhas 238-245 |
+| 3 | Criar `ownColorSizeKeys` e filtrar `partnerExpanded` para excluir peças que a usuária já tem | `StockSetDetector.tsx` linhas 276-329 |
 
 ## Arquivo alterado
 
-| Arquivo | Mudanças |
-|---|---|
-| `src/pages/StockSetDetector.tsx` | Adicionar 4 estados de filtro, derivar categorias disponíveis com `useMemo`, aplicar filtros no `selectedOwnExpanded` e no matching de parceiros, adicionar UI de filtros na seção "Varredura Automática" |
+Apenas `src/pages/StockSetDetector.tsx`.
 
 ## O que NÃO muda
-- Lógica de matching (mesma cor + tamanho, pares complementares)
+
+- Lógica de envio de solicitações
 - Modo de Busca Manual
-- Query ao banco de dados
-- Confirmação e envio de solicitações
+- Queries de grupos/parcerias
+- Demais filtros de categoria e subcategoria já existentes
