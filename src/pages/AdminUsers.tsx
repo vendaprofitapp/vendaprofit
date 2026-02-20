@@ -23,8 +23,10 @@ import {
   DrawerDescription,
   DrawerFooter,
 } from "@/components/ui/drawer";
-import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings } from "lucide-react";
+import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle } from "lucide-react";
 import { BackupSection } from "@/components/admin/BackupSection";
+import { BotconversaAdminSection } from "@/components/admin/BotconversaAdminSection";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -288,6 +290,19 @@ export default function AdminUsers() {
         <Badge variant="outline" className="text-xs">{profiles.length} usuário(s)</Badge>
       </div>
 
+      <Tabs defaultValue="users">
+        <TabsList className="mb-6">
+          <TabsTrigger value="users" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Usuários
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" />
+            Integrações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
@@ -390,6 +405,14 @@ export default function AdminUsers() {
       <div className="mt-6">
         <BackupSection />
       </div>
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <div className="space-y-6">
+            <BotconversaAdminSection />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Drawer Gerenciar Plano */}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
