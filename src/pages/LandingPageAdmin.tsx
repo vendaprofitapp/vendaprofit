@@ -768,7 +768,10 @@ export default function LandingPageAdmin() {
                   <Label>Features do CTA (separadas por vírgula)</Label>
                   <Input 
                     defaultValue={settings?.cta_features?.join(", ")}
-                    onChange={(e) => handleSettingsChange("cta_features", JSON.stringify(e.target.value.split(",").map(s => s.trim())))}
+                    onChange={(e) => {
+                      const arr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                      setLocalSettings(prev => ({ ...prev, cta_features: arr as unknown as string }));
+                    }}
                     placeholder="14 dias grátis, Sem cartão de crédito, Suporte incluso"
                   />
                 </div>
