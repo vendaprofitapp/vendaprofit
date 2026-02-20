@@ -1,85 +1,102 @@
 
-## Persistência de Formulários ao Trocar de Aba do Navegador
 
-### Causa do problema
+## Integração Botconversa via Webhook — Um Webhook por Evento
 
-Ao trocar para outra aba do Chrome ou Safari e voltar, alguns navegadores (especialmente Safari no iOS/macOS) **descarregam a aba da memória** para economizar recursos. Quando a usuária retorna, a página é recarregada do zero — e todo estado em `useState` é perdido.
+### Por que um webhook por evento?
 
-A solução é salvar os dados no `sessionStorage` do navegador. Ele persiste durante toda a sessão da aba (incluindo recarregamentos), e é limpo automaticamente quando a aba é fechada — sem acumular dados velhos.
+No Botconversa, cada URL de webhook dispara um **fluxo específico**. Como cada evento do sistema tem uma mensagem diferente (novo lead vs. venda vs. bolsa finalizada), o ideal é que cada um tenha seu próprio fluxo no Botconversa — com mensagens personalizadas pelo admin diretamente no painel do Botconversa.
 
-### Estratégia: hook `useFormPersistence`
+Se usássemos um único webhook, o admin precisaria configurar lógica condicional (if/else) dentro de um único fluxo no Botconversa, o que é mais complexo e difícil de manter.
 
-Será criado um único hook reutilizável que qualquer formulário pode usar com uma linha de código, substituindo `useState` por uma versão que salva automaticamente no `sessionStorage`.
+### Estrutura proposta
 
-```
-useState("") → useFormPersistence("chave_unica", "")
-```
+4 campos de webhook na configuração, um para cada evento:
 
-O hook:
-- Lê o valor inicial do `sessionStorage` (se houver) ou usa o padrão
-- Salva automaticamente toda vez que o valor muda
-- Retorna uma função `clearPersistence()` para limpar após o envio bem-sucedido
+| Evento | Chave no `system_settings` | Dados enviados no POST |
+|---|---|---|
+| Novo Lead | `botconversa_webhook_new_lead` | phone, name, created_at |
+| Carrinho Criado | `botconversa_webhook_cart_created` | phone, lead_name, product_name, quantity, unit_price, selected_size, variant_color |
+| Venda pelo Catálogo | `botconversa_webhook_catalog_sale` | phone, customer_name, customer_phone, total, payment_method, items |
+| Bolsa Finalizada | `botconversa_webhook_consignment_finalized` | phone, customer_name, customer_phone |
 
-### Formulários que serão persistidos
+### Fluxo de funcionamento
 
-| Página | Campos salvos |
-|---|---|
-| **Vendas** (`/sales`) | Carrinho completo, nome e telefone do cliente, Instagram, método de pagamento, tipo/valor de desconto, observações, parcelas, data de vencimento |
-| **Encomendas** (`/orders`) | Produto selecionado, fornecedor, nome do cliente, quantidade, observações |
-| **Relatórios** (`/reports`) | Período selecionado, filtros de pagamento, estoque, parceira, categoria, cor, desconto, aba ativa |
-| **Relatórios de Socias** (`/partner-reports`) | Período, grupo selecionado, parceira selecionada, aba ativa |
-| **Financeiro** (`/financial`) | Período selecionado |
-| **Clientes** (`/customers`) | Termo de busca |
-| **Estoque** (`/stock`) | Termo de busca, todos os filtros aplicados |
-
-### O que NÃO será persistido (intencional)
-
-- Modais e dialogs abertos — sempre iniciam fechados
-- Produto em edição — estado temporário de diálogos
-- Dados retornados pelo banco — já cacheados pelo React Query
-
-### Chaves únicas no sessionStorage
-
-Cada campo usa uma chave com namespace para evitar conflitos:
-
-```
-sales_cart, sales_customerName, sales_customerPhone, sales_instagram,
-sales_paymentMethodId, sales_discountType, sales_discountValue,
-sales_notes, sales_installments, sales_dueDate
-
-orders_formData, orders_searchValue, orders_selectedProduct
-
-reports_period, reports_activeTab, reports_paymentFilter,
-reports_stockFilter, reports_partnerFilter, reports_categoryFilter,
-reports_colorFilter, reports_discountFilter
-
-partnerReports_period, partnerReports_groupId,
-partnerReports_partnerId, partnerReports_activeTab
-
-financial_period
-
-customers_searchTerm
-
-stock_searchTerm, stock_filters
+```text
+Evento ocorre (ex: novo lead)
+         |
+Trigger de banco chama Edge Function botconversa-notify
+         |
+Edge Function busca a URL do webhook correspondente ao event_type
+  (ex: botconversa_webhook_new_lead) em system_settings
+         |
+Se URL não configurada -> registra log "skipped" e encerra
+         |
+POST para a URL com: { phone, name, created_at, ... }
+         |
+Botconversa recebe -> encontra/cria contato -> dispara o fluxo
+         |
+Log salvo em botconversa_logs
 ```
 
-### Limpeza após submissão
+### Alterações por arquivo
 
-Após cada envio bem-sucedido, as chaves são removidas do `sessionStorage` para que o formulário comece limpo na próxima vez:
+**1. Edge Function `supabase/functions/botconversa-notify/index.ts`**
 
-- Vendas: após `createSaleMutation.onSuccess`
-- Encomendas: após `createOrder.mutateAsync` no `handleSubmit`
-- Filtros/buscas: nunca limpam (é desejável que filtros sejam lembrados)
+- Remover o endpoint fixo da API e a montagem de mensagem interna (o Botconversa cuida da mensagem agora)
+- Buscar a URL do webhook correspondente ao `event_type` na tabela `system_settings`
+- Mapear: `event_type` -> chave `botconversa_webhook_{event_type}`
+- Se a URL não existir ou estiver vazia, registrar log como `skipped` com motivo "Webhook não configurado"
+- Fazer `POST` para a URL com o payload do evento (sem API key no header -- webhook passivo já é autenticado pela URL)
+- Para testes com `test_phone`: substituir o phone do payload pelo número informado
+- Manter o log em `botconversa_logs` com status success/failed/skipped
 
-### Arquivos criados/modificados
+**2. Admin UI `src/components/admin/BotconversaAdminSection.tsx`**
+
+- Remover a seção de "API Key" (não é mais necessária para webhook passivo)
+- Adicionar 4 campos de URL de webhook, um para cada evento, com labels claros:
+  - "Webhook: Novo Lead" 
+  - "Webhook: Carrinho Criado"
+  - "Webhook: Venda pelo Catálogo"
+  - "Webhook: Bolsa Finalizada"
+- Cada campo salva/carrega do `system_settings` com a chave correspondente
+- Atualizar as instruções de configuração:
+  1. No Botconversa, crie um Fluxo para cada evento (ex: "Notificação Novo Lead")
+  2. Adicione um bloco de entrada tipo "Webhook" no fluxo
+  3. Copie a URL gerada e cole no campo correspondente abaixo
+  4. Use as variáveis recebidas ({{name}}, {{phone}}, {{product_name}}, etc.) para montar a mensagem no fluxo
+- O campo de teste permanece, mas agora dispara um POST para o webhook de "Novo Lead" com o número digitado
+- Carregar todas as 4 URLs no `loadSettings` e salvar cada uma individualmente com botão ou auto-save
+
+### Payload enviado para cada webhook
+
+**Novo Lead:**
+```json
+{ "phone": "5511999990000", "name": "Maria Silva", "created_at": "2026-02-20T..." }
+```
+
+**Carrinho Criado:**
+```json
+{ "phone": "5511999990000", "lead_name": "Maria", "product_name": "Vestido", "quantity": 1, "unit_price": 150, "selected_size": "M", "variant_color": "Rosa" }
+```
+
+**Venda pelo Catálogo:**
+```json
+{ "phone": "5511999990000", "customer_name": "Maria", "total": 299.90, "payment_method": "PIX", "items": [...] }
+```
+
+**Bolsa Finalizada:**
+```json
+{ "phone": "5511999990000", "customer_name": "Maria", "customer_phone": "11999990000" }
+```
+
+### O que acontece com a API Key existente
+
+A `BOTCONVERSA_API_KEY` nos Secrets permanece armazenada mas não será mais usada pela Edge Function. A UI remove a referência visual. Se futuramente for necessária para outra integração com a API direta do Botconversa, ela já estará disponível.
+
+### Resumo de arquivos
 
 | Arquivo | Ação |
 |---|---|
-| `src/hooks/useFormPersistence.ts` | Criar hook reutilizável |
-| `src/pages/Sales.tsx` | Substituir `useState` por `useFormPersistence` nos campos do formulário de venda |
-| `src/components/orders/OrderForm.tsx` | Persistir `formData` e `searchValue` |
-| `src/pages/Reports.tsx` | Persistir período, filtros e aba ativa |
-| `src/pages/PartnerReports.tsx` | Persistir período, grupo, parceira e aba |
-| `src/pages/Financial.tsx` | Persistir período selecionado |
-| `src/pages/Customers.tsx` | Persistir `searchTerm` |
-| `src/pages/StockControl.tsx` | Persistir `searchTerm` e `filters` |
+| `supabase/functions/botconversa-notify/index.ts` | Reescrever: buscar webhook URL por evento em system_settings, POST direto para webhook, remover montagem de mensagem |
+| `src/components/admin/BotconversaAdminSection.tsx` | Adicionar 4 campos de webhook URL, remover seção de API Key, atualizar instruções |
+
