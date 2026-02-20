@@ -286,7 +286,7 @@ export default function StockSetDetector() {
   const ownColorSizeKeys = useMemo(() => {
     const keys = new Set<string>();
     ownProducts.flatMap(expandProduct).forEach(p => {
-      keys.add(`${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`);
+      keys.add(`${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`);
     });
     return keys;
   }, [ownProducts]);
@@ -321,7 +321,7 @@ export default function StockSetDetector() {
     const partnerExpanded = filteredForMatch
       .flatMap(expandProduct)
       .filter(p => {
-        const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}`;
+        const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`;
         return !ownColorSizeKeys.has(key);
       });
 
