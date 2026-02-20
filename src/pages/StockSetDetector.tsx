@@ -160,11 +160,12 @@ export default function StockSetDetector() {
         .select(`
           products!inner(
             id, name, color_label, size, price, stock_quantity,
-            image_url, main_category, subcategory, owner_id,
+            image_url, main_category, subcategory, owner_id, is_active,
             product_variants(id, size, stock_quantity)
           )
         `)
-        .in("group_id", groupIds);
+        .in("group_id", groupIds)
+        .limit(1000);
 
       if (error) throw error;
 
