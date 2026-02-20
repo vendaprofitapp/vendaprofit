@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Building2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -98,10 +99,10 @@ const periodOptions = [
 export default function PartnerReports() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [period, setPeriod] = useState("month");
-  const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState("all");
+  const [period, setPeriod] = useFormPersistence("partnerReports_period", "month");
+  const [selectedGroupId, setSelectedGroupId] = useFormPersistence("partnerReports_groupId", "all");
+  const [selectedPartnerId, setSelectedPartnerId] = useFormPersistence("partnerReports_partnerId", "all");
+  const [activeTab, setActiveTab] = useFormPersistence("partnerReports_activeTab", "all");
 
   const handleRefresh = async () => {
     await Promise.all([

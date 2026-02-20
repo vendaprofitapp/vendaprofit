@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrders, OrderFormData } from "@/hooks/useOrders";
 import { toast } from "sonner";
@@ -36,11 +37,11 @@ interface Product {
 export function OrderForm() {
   const { createOrder } = useOrders();
   const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
+  const [searchValue, setSearchValue, clearSearchValue] = useFormPersistence("orders_searchValue", "");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCustomProduct, setIsCustomProduct] = useState(false);
 
-  const [formData, setFormData] = useState<OrderFormData>({
+  const [formData, setFormData, clearFormData] = useFormPersistence<OrderFormData>("orders_formData", {
     customer_name: "",
     product_id: null,
     product_name: "",
@@ -115,7 +116,9 @@ export function OrderForm() {
 
     await createOrder.mutateAsync(formData);
 
-    // Reset form
+    // Reset form and clear persistence
+    clearFormData();
+    clearSearchValue();
     setFormData({
       customer_name: "",
       product_id: null,

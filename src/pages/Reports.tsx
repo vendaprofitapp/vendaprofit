@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -113,16 +114,16 @@ export default function Reports() {
   const { user } = useAuth();
   
   // Tab state
-  const [activeTab, setActiveTab] = useState("vendas");
+  const [activeTab, setActiveTab] = useFormPersistence("reports_activeTab", "vendas");
   
   // Filter states
-  const [period, setPeriod] = useState("month");
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
-  const [stockTypeFilter, setStockTypeFilter] = useState("all");
-  const [partnerFilter, setPartnerFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [colorFilter, setColorFilter] = useState("all");
-  const [discountFilter, setDiscountFilter] = useState("all");
+  const [period, setPeriod] = useFormPersistence("reports_period", "month");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useFormPersistence("reports_paymentFilter", "all");
+  const [stockTypeFilter, setStockTypeFilter] = useFormPersistence("reports_stockFilter", "all");
+  const [partnerFilter, setPartnerFilter] = useFormPersistence("reports_partnerFilter", "all");
+  const [categoryFilter, setCategoryFilter] = useFormPersistence("reports_categoryFilter", "all");
+  const [colorFilter, setColorFilter] = useFormPersistence("reports_colorFilter", "all");
+  const [discountFilter, setDiscountFilter] = useFormPersistence("reports_discountFilter", "all");
 
   // Calculate date range based on period
   const dateRange = useMemo(() => {

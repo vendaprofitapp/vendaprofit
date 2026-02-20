@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Plus, Search, Calendar, ShoppingCart, Eye, Trash2, X, Minus, Users, Clock, CheckCircle, XCircle, Mic, Instagram, Edit2, Truck, Download } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -147,18 +148,18 @@ export default function Sales() {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   
-  // New sale form state
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerInstagram, setCustomerInstagram] = useState("");
-  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>("");
-  const [discountType, setDiscountType] = useState("fixed");
-  const [discountValue, setDiscountValue] = useState(0);
-  const [notes, setNotes] = useState("");
+  // New sale form state — persisted in sessionStorage to survive tab switches
+  const [cart, setCart, clearCart] = useFormPersistence<CartItem[]>("sales_cart", []);
+  const [customerName, setCustomerName, clearCustomerName] = useFormPersistence("sales_customerName", "");
+  const [customerPhone, setCustomerPhone, clearCustomerPhone] = useFormPersistence("sales_customerPhone", "");
+  const [customerInstagram, setCustomerInstagram, clearCustomerInstagram] = useFormPersistence("sales_instagram", "");
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId, clearPaymentMethodId] = useFormPersistence("sales_paymentMethodId", "");
+  const [discountType, setDiscountType, clearDiscountType] = useFormPersistence("sales_discountType", "fixed");
+  const [discountValue, setDiscountValue, clearDiscountValue] = useFormPersistence("sales_discountValue", 0);
+  const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
   const [productSearch, setProductSearch] = useState("");
-  const [dueDate, setDueDate] = useState<string>("");
-  const [installments, setInstallments] = useState(1);
+  const [dueDate, setDueDate, clearDueDate] = useFormPersistence("sales_dueDate", "");
+  const [installments, setInstallments, clearInstallments] = useFormPersistence("sales_installments", 1);
   const [shippingData, setShippingData] = useState<ShippingData>({
     method: "presencial",
     company: "",
@@ -1087,6 +1088,18 @@ export default function Sales() {
   });
 
   const resetForm = () => {
+    // Clear sessionStorage persistence first
+    clearCart();
+    clearCustomerName();
+    clearCustomerPhone();
+    clearCustomerInstagram();
+    clearPaymentMethodId();
+    clearDiscountType();
+    clearDiscountValue();
+    clearNotes();
+    clearDueDate();
+    clearInstallments();
+
     setCart([]);
     setCustomerName("");
     setCustomerPhone("");
