@@ -848,12 +848,32 @@ export default function StoreSettings() {
         </Card>
 
         {/* 2 - Informações Básicas (URL + WhatsApp) */}
+        {(!formData.store_slug || !formData.store_name) && (
+          <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/50 bg-destructive/5 text-destructive text-sm">
+            <span className="text-base">⚠️</span>
+            <div>
+              <p className="font-semibold">Campos obrigatórios não preenchidos</p>
+              <p className="text-muted-foreground mt-0.5">Preencha o <strong>Nome da Loja</strong> e a <strong>URL da Loja</strong> abaixo para habilitar o botão "Salvar Configurações".</p>
+            </div>
+          </div>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>Informações Básicas</CardTitle>
-            <CardDescription>URL da loja e contato</CardDescription>
+            <CardDescription>Nome, URL da loja e contato</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="store_name">Nome da Loja *</Label>
+              <Input
+                id="store_name"
+                value={formData.store_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, store_name: e.target.value }))}
+                placeholder="Ex: Loja da Maria"
+                className={!formData.store_name ? "border-destructive" : ""}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="store_slug">URL da Loja *</Label>
               <div className="flex items-center gap-1">
@@ -866,8 +886,10 @@ export default function StoreSettings() {
                     store_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") 
                   }))}
                   placeholder="minha-loja"
+                  className={!formData.store_slug ? "border-destructive" : ""}
                 />
               </div>
+              <p className="text-xs text-muted-foreground">Apenas letras minúsculas, números e hífens</p>
             </div>
 
             <div className="space-y-2">
