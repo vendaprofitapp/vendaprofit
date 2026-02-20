@@ -117,6 +117,12 @@ export default function StockSetDetector() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [resultsVisible, setResultsVisible] = useState(false);
 
+  // --- Category filters for auto scan ---
+  const [ownCategoryFilter, setOwnCategoryFilter] = useState("");
+  const [ownSubcategoryFilter, setOwnSubcategoryFilter] = useState("");
+  const [partnerCategoryFilter, setPartnerCategoryFilter] = useState("");
+  const [partnerSubcategoryFilter, setPartnerSubcategoryFilter] = useState("");
+
   // --- Fetch my own products ---
   const { data: ownProducts = [], isLoading: loadingOwn } = useQuery({
     queryKey: ["set-detector-own", user?.id],
@@ -201,6 +207,43 @@ export default function StockSetDetector() {
     return [{ ...p }];
   }
 
+  // --- Derive available categories from loaded products ---
+  const ownCategories = useMemo(() =>
+    [...new Set(ownProducts.map(p => p.main_category).filter(Boolean))].sort() as string[],
+    [ownProducts]
+  );
+  const ownSubcategories = useMemo(() =>
+    [...new Set(
+      ownProducts
+        .filter(p => !ownCategoryFilter || p.main_category === ownCategoryFilter)
+        .map(p => p.subcategory)
+        .filter(Boolean)
+    )].sort() as string[],
+    [ownProducts, ownCategoryFilter]
+  );
+  const partnerCategories = useMemo(() =>
+    [...new Set(partnerProducts.map(p => p.main_category).filter(Boolean))].sort() as string[],
+    [partnerProducts]
+  );
+  const partnerSubcategories = useMemo(() =>
+    [...new Set(
+      partnerProducts
+        .filter(p => !partnerCategoryFilter || p.main_category === partnerCategoryFilter)
+        .map(p => p.subcategory)
+        .filter(Boolean)
+    )].sort() as string[],
+    [partnerProducts, partnerCategoryFilter]
+  );
+
+  const hasActiveFilters = ownCategoryFilter || ownSubcategoryFilter || partnerCategoryFilter || partnerSubcategoryFilter;
+
+  const clearFilters = () => {
+    setOwnCategoryFilter("");
+    setOwnSubcategoryFilter("");
+    setPartnerCategoryFilter("");
+    setPartnerSubcategoryFilter("");
+  };
+
   // --- Filter own products ---
   const filteredOwn = useMemo(() => {
     const term = normalizeStr(searchOwn);
@@ -217,21 +260,30 @@ export default function StockSetDetector() {
     );
   }, [partnerProducts, searchPartner]);
 
-  // --- Selected own products (expanded) ---
+  // --- Selected own products (expanded), with optional category filters in auto mode ---
   const selectedOwnExpanded = useMemo(() => {
     if (scanMode === "auto") {
-      return ownProducts.flatMap(expandProduct); // ALL products in auto mode
+      let filtered = ownProducts;
+      if (ownCategoryFilter) filtered = filtered.filter(p => p.main_category === ownCategoryFilter);
+      if (ownSubcategoryFilter) filtered = filtered.filter(p => p.subcategory === ownSubcategoryFilter);
+      return filtered.flatMap(expandProduct);
     }
     return ownProducts
       .filter((p) => selectedOwnItems.has(p.id))
       .flatMap(expandProduct);
-  }, [ownProducts, selectedOwnItems, scanMode]);
+  }, [ownProducts, selectedOwnItems, scanMode, ownCategoryFilter, ownSubcategoryFilter]);
 
   // --- Detect matches ---
   const matches = useMemo((): SetMatch[] => {
     if (selectedOwnExpanded.length === 0) return [];
 
-    const partnerExpanded = partnerProducts.flatMap(expandProduct);
+    // Apply partner category filters in auto mode
+    let filteredForMatch = partnerProducts;
+    if (scanMode === "auto") {
+      if (partnerCategoryFilter) filteredForMatch = filteredForMatch.filter(p => p.main_category === partnerCategoryFilter);
+      if (partnerSubcategoryFilter) filteredForMatch = filteredForMatch.filter(p => p.subcategory === partnerSubcategoryFilter);
+    }
+    const partnerExpanded = filteredForMatch.flatMap(expandProduct);
     const found: SetMatch[] = [];
     const seen = new Set<string>();
 
@@ -274,7 +326,7 @@ export default function StockSetDetector() {
       }
     }
     return found;
-  }, [selectedOwnExpanded, partnerProducts]);
+  }, [selectedOwnExpanded, partnerProducts, scanMode, partnerCategoryFilter, partnerSubcategoryFilter]);
 
   const toggleOwnItem = (id: string) => {
     setSelectedOwnItems((prev) => {
@@ -523,10 +575,93 @@ export default function StockSetDetector() {
               Varredura Automática
             </CardTitle>
             <CardDescription>
-              Compara <strong>todas as {ownProducts.length} peça{ownProducts.length !== 1 ? "s" : ""}</strong> do seu estoque com o estoque parceiro de uma só vez
+              Compara{" "}
+              <strong>
+                {(() => {
+                  let count = ownProducts.length;
+                  if (ownCategoryFilter) count = ownProducts.filter(p => p.main_category === ownCategoryFilter && (!ownSubcategoryFilter || p.subcategory === ownSubcategoryFilter)).length;
+                  else if (ownSubcategoryFilter) count = ownProducts.filter(p => p.subcategory === ownSubcategoryFilter).length;
+                  return `${count} peça${count !== 1 ? "s" : ""} filtrada${count !== 1 ? "s" : ""}`;
+                })()}
+              </strong>{" "}
+              do seu estoque com o estoque parceiro
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Category filters panel */}
+            <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">Filtrar peças da varredura <span className="text-muted-foreground font-normal">(opcional)</span></p>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    <X className="h-3 w-3" />
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Own stock filters */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Meu estoque (Peça A)</p>
+                  <select
+                    value={ownCategoryFilter}
+                    onChange={(e) => { setOwnCategoryFilter(e.target.value); setOwnSubcategoryFilter(""); }}
+                    className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">Todas as categorias</option>
+                    {ownCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  {ownSubcategories.length > 0 && (
+                    <select
+                      value={ownSubcategoryFilter}
+                      onChange={(e) => setOwnSubcategoryFilter(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Todas as subcategorias</option>
+                      {ownSubcategories.map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {/* Partner stock filters */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estoque parceiro (Peça B)</p>
+                  <select
+                    value={partnerCategoryFilter}
+                    onChange={(e) => { setPartnerCategoryFilter(e.target.value); setPartnerSubcategoryFilter(""); }}
+                    className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">Todas as categorias</option>
+                    {partnerCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  {partnerSubcategories.length > 0 && (
+                    <select
+                      value={partnerSubcategoryFilter}
+                      onChange={(e) => setPartnerSubcategoryFilter(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Todas as subcategorias</option>
+                      {partnerSubcategories.map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>Deixe em branco para comparar todo o estoque</span>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3 text-sm text-muted-foreground">
                 <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
@@ -545,7 +680,7 @@ export default function StockSetDetector() {
                 ) : (
                   <ScanSearch className="h-4 w-4" />
                 )}
-                Iniciar Varredura Completa
+                Iniciar Varredura
               </Button>
             </div>
           </CardContent>
@@ -602,6 +737,20 @@ export default function StockSetDetector() {
                   <ScanSearch className="h-4 w-4" />
                   Varredura concluída
                 </p>
+                {hasActiveFilters && (
+                  <div className="mb-2 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                    <span className="font-medium">Filtros: </span>
+                    {(ownCategoryFilter || ownSubcategoryFilter) && (
+                      <span>Meu estoque: {[ownCategoryFilter, ownSubcategoryFilter].filter(Boolean).join(" / ")}</span>
+                    )}
+                    {(ownCategoryFilter || ownSubcategoryFilter) && (partnerCategoryFilter || partnerSubcategoryFilter) && (
+                      <span> &nbsp;|&nbsp; </span>
+                    )}
+                    {(partnerCategoryFilter || partnerSubcategoryFilter) && (
+                      <span>Parceiro: {[partnerCategoryFilter, partnerSubcategoryFilter].filter(Boolean).join(" / ")}</span>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
                     <p className="text-lg font-bold text-foreground">
