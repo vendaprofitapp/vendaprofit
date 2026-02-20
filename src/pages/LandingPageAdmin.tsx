@@ -33,6 +33,8 @@ import {
   Smartphone,
   GripVertical,
   BookOpen,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { TutorialTab } from "@/components/admin/TutorialTab";
 import { VideoUploader } from "@/components/admin/VideoUploader";
@@ -48,6 +50,7 @@ import {
   useManageLandingPageTestimonial,
   useManageLandingPagePricing,
   useManageLandingPageFAQ,
+  useReorderLandingPagePricing,
   LandingPageFeature,
   LandingPageTestimonial,
   LandingPagePricing,
@@ -79,6 +82,7 @@ export default function LandingPageAdmin() {
   const manageFeature = useManageLandingPageFeature();
   const manageTestimonial = useManageLandingPageTestimonial();
   const managePricing = useManageLandingPagePricing();
+  const reorderPricing = useReorderLandingPagePricing();
   const manageFAQ = useManageLandingPageFAQ();
 
   // Form states
@@ -579,34 +583,69 @@ export default function LandingPageAdmin() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 md:grid-cols-3">
-                    {pricing?.map((plan) => (
+                    {pricing?.map((plan, index) => (
                       <div key={plan.id} className={`p-4 border rounded-lg space-y-3 ${plan.is_popular ? "border-primary" : ""}`}>
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{plan.plan_name}</span>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="font-bold truncate">{plan.plan_name}</span>
                             {plan.is_popular && <Badge>Popular</Badge>}
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 flex-shrink-0">
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => setPricingDialog({ open: true, pricing: plan })}
+                              className="h-7 w-7"
+                              disabled={index === 0 || plan.id.startsWith("default-")}
+                              onClick={() => {
+                                if (!pricing) return;
+                                const newOrder = pricing.map((p, i) => ({
+                                  id: p.id,
+                                  display_order: i === index ? index - 1 : i === index - 1 ? index : i,
+                                }));
+                                reorderPricing.mutate(newOrder);
+                              }}
+                              title="Mover para cima"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <ChevronUp className="w-3.5 h-3.5" />
                             </Button>
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8 text-destructive"
+                              className="h-7 w-7"
+                              disabled={index === (pricing?.length ?? 0) - 1 || plan.id.startsWith("default-")}
+                              onClick={() => {
+                                if (!pricing) return;
+                                const newOrder = pricing.map((p, i) => ({
+                                  id: p.id,
+                                  display_order: i === index ? index + 1 : i === index + 1 ? index : i,
+                                }));
+                                reorderPricing.mutate(newOrder);
+                              }}
+                              title="Mover para baixo"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-7 w-7"
+                              onClick={() => setPricingDialog({ open: true, pricing: plan })}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-7 w-7 text-destructive"
                               onClick={() => managePricing.mutate({ action: "delete", pricing: plan })}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
                         </div>
                         <p className="text-sm text-muted-foreground">{plan.plan_subtitle}</p>
                         <p className="text-2xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.price_period}</span></p>
+                        <div className="text-xs text-muted-foreground">Ordem: {index + 1}</div>
                         <ul className="text-sm space-y-1">
                           {plan.features.map((f: string, i: number) => (
                             <li key={i} className="flex items-center gap-1">
