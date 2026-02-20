@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +8,7 @@ import { MessageCircle, Key, Send, CheckCircle, AlertCircle, Info, RefreshCw, XC
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -64,8 +64,6 @@ function StatusBadge({ status }: { status: string }) {
 export function BotconversaAdminSection() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
@@ -122,37 +120,8 @@ export function BotconversaAdminSection() {
     }
   }
 
-  async function saveSettings() {
-    setSaving(true);
-    try {
-      const { error: enabledError } = await supabase
-        .from("system_settings" as "system_settings")
-        .upsert({ key: "botconversa_enabled", value: enabled ? "true" : "false", updated_at: new Date().toISOString() });
-
-      if (enabledError) throw enabledError;
-
-      if (apiKey.trim()) {
-        const { error: fnError } = await supabase.functions.invoke("botconversa-save-key", {
-          body: { api_key: apiKey.trim() },
-        });
-        if (fnError) {
-          toast.info("Configure a API Key nas configurações do servidor (BOTCONVERSA_API_KEY secret).");
-        } else {
-          setApiKey("");
-          toast.success("API Key salva com segurança!");
-        }
-      } else {
-        toast.success("Configurações salvas!");
-      }
-    } catch (err) {
-      console.error("Error saving settings:", err);
-      toast.error("Erro ao salvar configurações.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function toggleEnabled(value: boolean) {
+
     setEnabled(value);
     try {
       await supabase
@@ -262,29 +231,21 @@ export function BotconversaAdminSection() {
                   <p className="font-medium text-foreground">Como configurar a API Key:</p>
                   <ol className="list-decimal ml-3 space-y-1 text-muted-foreground">
                     <li>Acesse o painel do Botconversa</li>
-                    <li>Vá em <strong>Integrações → API</strong></li>
-                    <li>Copie a sua API Key</li>
-                    <li>Cole no campo abaixo e salve</li>
+                    <li>Vá em <strong>Integrações → API</strong> e copie a API Key</li>
+                    <li>No Lovable, acesse <strong>Cloud → Secrets</strong></li>
+                    <li>Edite o secret <strong>BOTCONVERSA_API_KEY</strong> e cole o valor</li>
                   </ol>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                placeholder="Cole aqui a API Key do Botconversa..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="flex-1"
-              />
-              <Button onClick={saveSettings} disabled={saving} variant="outline">
-                {saving ? "Salvando..." : "Salvar"}
-              </Button>
+            <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5 bg-background">
+              <CheckCircle className="h-4 w-4 text-primary shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-medium text-foreground">Secret <code className="bg-muted px-1 rounded text-xs">BOTCONVERSA_API_KEY</code> configurado</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Para alterar o valor, edite o secret em Cloud → Secrets.</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              A chave é armazenada de forma segura e nunca fica exposta no código.
-            </p>
           </div>
 
           {/* Events list */}
