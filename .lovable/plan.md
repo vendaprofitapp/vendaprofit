@@ -1,131 +1,123 @@
+# Notificações do Catálogo + Push Notifications (AppWeb)
 
-# Notificações: Sininho Funcional + Dashboard Completo
+## O que será feito
 
-## Diagnóstico atual
+### Parte 1 — Notificações do Catálogo no Sininho e Dashboard
 
-### Sininho (Header)
-O botão do sininho em `src/components/layout/Header.tsx` está **decorativo** — hardcoded com o número "3" e sem nenhuma ação ao clicar. Precisa ser conectado a dados reais e abrir um painel de notificações.
+Atualmente o `useNotifications` e o `SystemAlerts` monitoram: Modo Evento, Bolsa Consignada, Bazar VIP e Pontos Parceiros. Faltam os três eventos do Catálogo (Minha Loja):
 
-### Dashboard - notificações faltantes
-O `SystemAlerts.tsx` já cobre: aniversariantes, consórcio (vencimento/atraso), vendas a prazo. Mas **faltam**:
-1. **Modo Evento** — rascunhos de evento pendentes (existe como banner separado `EventDraftsBanner`, mas não como alerta no painel)
-2. **Bolsa Consignada** — quando o cliente finaliza suas escolhas (status `finalized_by_client`), a lojista deve ser notificada
-3. **Bazar VIP** — novos itens `pending` para curadoria + itens `sold`
-4. **Pontos Parceiros** — atualizações nos itens dos pontos parceiros
+1. **Novo Lead cadastrado** — cliente preencheu nome + WhatsApp no catálogo (`store_leads` INSERT)
+2. **Carrinho criado** — cliente adicionou itens ao carrinho (`lead_cart_items` INSERT, status `waiting`)
+3. **Venda finalizada pelo catálogo** — venda com `source = 'catalog'` concluída na tabela `sales`
 
----
+Todos os três usarão uma janela de tempo (últimas 24h para leads e carrinhos, últimos 3 dias para vendas) para evitar listas infinitas.
 
-## O que será implementado
+#### Mudanças em `src/hooks/useNotifications.tsx`
 
-### 1. Hook centralizado de notificações: `useNotifications`
-
-Criar `src/hooks/useNotifications.tsx` que agrega **todas** as fontes de notificação:
+Adicionar 3 novas queries:
 
 ```typescript
-// Agrega contagens de:
-- event_sale_drafts (status = 'pending') → Modo Evento
-- consignments (status = 'finalized_by_client') → Bolsa Consignada  
-- bazar_items (status = 'pending', owner_id = user.id) → Bazar VIP novos
-- bazar_items (status = 'sold', updated_at > last 7 days) → Bazar VIP vendas
-- partner_point_items (updated_at > last 24h, status IN ['returned','sold']) → Pontos Parceiros
-- waitlist_notifications (status = 'pending') → Consignação (fila de espera)
+// Novos leads (últimas 24h)
+store_leads WHERE owner_id = user.id AND created_at > now() - 24h
 
-// Retorna:
-{
-  totalCount: number,  // soma de tudo → badge no sininho
-  sections: [
-    { key, label, count, icon, route, color, items[] }
-  ]
-}
+// Carrinhos criados (últimas 24h) — lead_cart_items com status 'waiting'
+// agrupados por lead_id para contar carrinhos únicos
+lead_cart_items JOIN store_leads WHERE store_leads.owner_id = user.id
+  AND lead_cart_items.status = 'waiting'
+  AND lead_cart_items.created_at > now() - 24h
+
+// Vendas pelo catálogo (últimos 3 dias)
+sales WHERE owner_id = user.id AND source = 'catalog' AND status = 'completed'
+  AND created_at > now() - 3 days
 ```
 
-### 2. Sininho funcional no Header
+E adicionar 3 novas seções no retorno do hook com ícones, rotas e descrições.
 
-Transformar o botão do sininho em `Header.tsx` num `Popover` que abre um painel de notificações:
+#### Mudanças em `src/components/dashboard/SystemAlerts.tsx`
 
-```
-┌─────────────────────────────────────┐
-│  🔔 Notificações              [X]   │
-├─────────────────────────────────────┤
-│  ⚡ Modo Evento                     │
-│  3 rascunhos pendentes de conciliar │
-│                          [Ver →]    │
-├─────────────────────────────────────┤
-│  👜 Bolsa Consignada                │
-│  2 clientes finalizaram escolhas    │
-│                          [Ver →]    │
-├─────────────────────────────────────┤
-│  🛍️ Bazar VIP                      │
-│  1 novo item para curadoria         │
-│                          [Ver →]    │
-├─────────────────────────────────────┤
-│  📍 Pontos Parceiros                │
-│  5 movimentações recentes           │
-│                          [Ver →]    │
-└─────────────────────────────────────┘
-```
+Adicionar 3 novos cards de alerta:
 
-- Badge com número real (soma de todos os itens de atenção)
-- Cada seção tem ícone, descrição e botão "Ver →" que navega para a rota correta
-- Seções com zero itens são omitidas
-- Se nenhuma notificação, exibe "Tudo em dia ✓"
-
-### 3. Cards de alerta no Dashboard (SystemAlerts)
-
-Adicionar ao `SystemAlerts.tsx` quatro novos cards:
-
-**Bolsa Consignada — Cliente escolheu peças**
-- Consulta: `consignments WHERE status = 'finalized_by_client'`
-- Card cor: roxo (`purple-500`)
-- Texto: "X bolsas prontas para conciliar" → botão "Ver bolsas" → `/bolsa-consignada`
-
-**Modo Evento — Rascunhos pendentes**
-- Já existe como banner separado; adicionar também como card no grid de alertas para consistência visual
-- Card cor: primary/rosa
-- Já tem query em `EventDraftsBanner`, reaproveitar
-
-**Bazar VIP — Novos itens para curadoria**
-- Consulta: `bazar_items WHERE owner_id = user.id AND status = 'pending'`
-- Card cor: indigo (`indigo-500`)
-- Texto: "X itens aguardando aprovação" → botão "Gerenciar" → `/bazar-admin`
-
-**Bazar VIP — Vendas realizadas (últimos 7 dias)**
-- Consulta: `bazar_items WHERE owner_id = user.id AND status = 'sold' AND sold_at > now() - 7 days`
-- Card cor: verde (`green-500`)
-- Texto: "X vendas no Bazar VIP esta semana"
-
-**Pontos Parceiros — Movimentações**
-- Consulta: `partner_point_items WHERE owner_id = user.id AND updated_at > now() - 24h AND status != 'allocated'`
-- Card cor: azul (`blue-500`)
-- Texto: "X movimentações em pontos parceiros" → botão "Ver" → `/pontos-parceiros`
+- **Leads Novos** — cor verde-azulado, ícone Users, rota `/whatsapp-crm`
+- **Carrinhos Ativos** — cor âmbar, ícone ShoppingCart, rota `/whatsapp-crm`
+- **Vendas pelo Catálogo** — cor verde, ícone CheckCircle, rota `/sales`
 
 ---
 
-## Arquivos a serem criados/editados
+### Parte 2 — Push Notifications no celular (AppWeb instalado)
 
-| Arquivo | Ação | Descrição |
-|---|---|---|
-| `src/hooks/useNotifications.tsx` | Criar | Hook centralizado com todas as contagens |
-| `src/components/layout/Header.tsx` | Editar | Sininho → Popover com lista de notificações |
-| `src/components/dashboard/SystemAlerts.tsx` | Editar | Adicionar 4 novos cards de alerta |
+**Sim, é possível!** O projeto já tem um `manifest.json` configurado (é uma PWA instalável). O que falta é implementar **Web Push Notifications** — o padrão que permite enviar avisos para o celular mesmo com o app fechado.
+
+#### Como funciona
+
+```text
+Evento ocorre no banco → Database Trigger → Edge Function →
+Web Push API → Service Worker → Notificação no celular
+```
+
+1. **Service Worker** (`public/sw.js`) — fica em segundo plano e recebe o push
+2. **Tabela `push_subscriptions**` — armazena os tokens de assinatura de cada dispositivo da usuária
+3. **Edge Function `send-push-notification**` — envia o push para o dispositivo via Web Push Protocol
+4. **Database Triggers** — disparam a Edge Function quando ocorre um evento relevante
+
+#### O que será implementado
+
+**a) Banco de dados:**
+
+- Nova tabela `push_subscriptions` com RLS (apenas a própria usuária acessa)
+- Campos: `user_id`, `endpoint`, `p256dh`, `auth`, `created_at`
+
+**b) Service Worker (`public/sw.js`):**
+
+- Recebe eventos `push` e exibe a notificação nativa do sistema operacional
+- Ao clicar na notificação, abre o app na rota correta
+
+**c) Hook `usePushNotifications`:**
+
+- Solicita permissão ao usuário (somente uma vez)
+- Registra o service worker
+- Salva a assinatura na tabela `push_subscriptions`
+
+**d) Edge Function `send-push-notification`:**
+
+- Recebe `user_id`, `title`, `body`, `url`
+- Busca todas as assinaturas do usuário
+- Envia o push via Web Push Protocol (usando as chaves VAPID)
+
+**e) Triggers nos eventos:**
+
+- Novo lead → chama `send-push-notification`
+- Carrinho criado → chama `send-push-notification`
+- Venda concluída (catalog) → chama `send-push-notification`
+- Bolsa consignada finalizada → chama `send-push-notification`
+- Item do Bazar aprovado/vendido → chama `send-push-notification`
+
+#### Chaves VAPID (necessárias para Web Push)
+
+Web Push requer um par de chaves VAPID (identificação do servidor). Serão geradas automaticamente pela edge function na primeira execução e armazenadas como secrets. Não é necessário nenhuma conta externa — é tudo via padrão W3C.
+
+#### Limitação importante
+
+- **iOS (iPhone/iPad):** Push Notifications em PWA só funciona a partir do **iOS 16.4+** com o app instalado na tela inicial (Add to Home Screen). Versões anteriores não recebem push.
+- **Android:** Funciona perfeitamente em todos os browsers modernos (Chrome, Firefox, Edge).
+
+---
+
+## Resumo dos arquivos
+
+
+| Arquivo                                              | Ação                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------- |
+| `src/hooks/useNotifications.tsx`                     | Adicionar 3 novas queries (leads, carrinhos, vendas catálogo) |
+| `src/components/dashboard/SystemAlerts.tsx`          | Adicionar 3 novos cards de alerta                             |
+| `public/sw.js`                                       | Criar Service Worker para receber e exibir push               |
+| `src/hooks/usePushNotifications.tsx`                 | Criar hook para registro e permissão de push                  |
+| `src/App.tsx`                                        | Chamar `usePushNotifications` para ativar ao logar            |
+| `supabase/functions/send-push-notification/index.ts` | Criar Edge Function de envio                                  |
+| Migração SQL                                         | Criar tabela `push_subscriptions`                             |
+
 
 ## O que NÃO muda
-- Lógica existente de alertas (aniversariantes, consórcio, vendas a prazo, solicitações de estoque)
-- Demais páginas e componentes
-- Banco de dados (apenas leituras novas)
 
-## Detalhes técnicos
-
-**Query para Bolsa Consignada com nome do cliente:**
-```sql
-SELECT c.id, c.status, cu.name, cu.phone
-FROM consignments c
-JOIN customers cu ON cu.id = c.customer_id
-WHERE c.seller_id = user.id AND c.status = 'finalized_by_client'
-```
-
-**Badge do sininho:**
-```typescript
-const totalBadge = eventDrafts + consignmentsReady + bazarPending + bazarSold + partnerMovements;
-// Badge só aparece quando totalBadge > 0
-```
+- Lógica de alertas existentes (aniversariantes, consórcio, parceiros, etc.)
+- Fluxo do catálogo para o cliente final
+- Todas as demais páginas e componentes
