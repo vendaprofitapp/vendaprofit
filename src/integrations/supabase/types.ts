@@ -251,6 +251,42 @@ export type Database = {
         }
         Relationships: []
       }
+      botconversa_logs: {
+        Row: {
+          botconversa_status: number | null
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          message: string | null
+          owner_id: string
+          phone: string | null
+          status: string
+        }
+        Insert: {
+          botconversa_status?: number | null
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          message?: string | null
+          owner_id: string
+          phone?: string | null
+          status?: string
+        }
+        Update: {
+          botconversa_status?: number | null
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          message?: string | null
+          owner_id?: string
+          phone?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       brand_requests: {
         Row: {
           b2b_url: string | null
