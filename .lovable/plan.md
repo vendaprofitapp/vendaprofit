@@ -1,102 +1,60 @@
 
+## Persistir estado em TODAS as telas ao trocar de aba do navegador
 
-## Integração Botconversa via Webhook — Um Webhook por Evento
+### O que ja foi feito
 
-### Por que um webhook por evento?
+Na implementacao anterior, o hook `useFormPersistence` foi criado e aplicado em algumas telas. Porem, dois problemas principais permanecem:
 
-No Botconversa, cada URL de webhook dispara um **fluxo específico**. Como cada evento do sistema tem uma mensagem diferente (novo lead vs. venda vs. bolsa finalizada), o ideal é que cada um tenha seu próprio fluxo no Botconversa — com mensagens personalizadas pelo admin diretamente no painel do Botconversa.
+1. **Vendas**: os dados do carrinho sao salvos, mas o dialogo fecha ao recarregar (a usuaria nao ve os dados salvos)
+2. **Outras telas**: abas ativas e buscas em varias paginas ainda usam `useState` comum e sao perdidos
 
-Se usássemos um único webhook, o admin precisaria configurar lógica condicional (if/else) dentro de um único fluxo no Botconversa, o que é mais complexo e difícil de manter.
+### Correcoes necessarias
 
-### Estrutura proposta
+#### 1. Sales (`src/pages/Sales.tsx`)
 
-4 campos de webhook na configuração, um para cada evento:
+- **`shippingData`**: trocar `useState` por `useFormPersistence("sales_shippingData", {...})` 
+- **Auto-reabrir formulario**: adicionar `useEffect` que detecta se `cart.length > 0` na montagem e chama `setIsNewSaleOpen(true)` automaticamente — assim a usuaria volta e ve o formulario aberto com tudo preenchido
+- Adicionar `clearShippingData()` no `resetForm`
 
-| Evento | Chave no `system_settings` | Dados enviados no POST |
-|---|---|---|
-| Novo Lead | `botconversa_webhook_new_lead` | phone, name, created_at |
-| Carrinho Criado | `botconversa_webhook_cart_created` | phone, lead_name, product_name, quantity, unit_price, selected_size, variant_color |
-| Venda pelo Catálogo | `botconversa_webhook_catalog_sale` | phone, customer_name, customer_phone, total, payment_method, items |
-| Bolsa Finalizada | `botconversa_webhook_consignment_finalized` | phone, customer_name, customer_phone |
+#### 2. Orders (`src/pages/Orders.tsx`)
 
-### Fluxo de funcionamento
+- **`activeTab`**: trocar `useState("orders")` por `useFormPersistence("orders_activeTab", "orders")`
 
-```text
-Evento ocorre (ex: novo lead)
-         |
-Trigger de banco chama Edge Function botconversa-notify
-         |
-Edge Function busca a URL do webhook correspondente ao event_type
-  (ex: botconversa_webhook_new_lead) em system_settings
-         |
-Se URL não configurada -> registra log "skipped" e encerra
-         |
-POST para a URL com: { phone, name, created_at, ... }
-         |
-Botconversa recebe -> encontra/cria contato -> dispara o fluxo
-         |
-Log salvo em botconversa_logs
-```
+#### 3. Marketing (`src/pages/Marketing.tsx`)
 
-### Alterações por arquivo
+- **`activeTab`**: trocar `useState("content")` por `useFormPersistence("marketing_activeTab", "content")`
 
-**1. Edge Function `supabase/functions/botconversa-notify/index.ts`**
+#### 4. Suppliers (`src/pages/Suppliers.tsx`)
 
-- Remover o endpoint fixo da API e a montagem de mensagem interna (o Botconversa cuida da mensagem agora)
-- Buscar a URL do webhook correspondente ao `event_type` na tabela `system_settings`
-- Mapear: `event_type` -> chave `botconversa_webhook_{event_type}`
-- Se a URL não existir ou estiver vazia, registrar log como `skipped` com motivo "Webhook não configurado"
-- Fazer `POST` para a URL com o payload do evento (sem API key no header -- webhook passivo já é autenticado pela URL)
-- Para testes com `test_phone`: substituir o phone do payload pelo número informado
-- Manter o log em `botconversa_logs` com status success/failed/skipped
+- Verificar se ha campo de busca com `useState` e persistir se houver
 
-**2. Admin UI `src/components/admin/BotconversaAdminSection.tsx`**
+#### 5. Consignments, Consortiums
 
-- Remover a seção de "API Key" (não é mais necessária para webhook passivo)
-- Adicionar 4 campos de URL de webhook, um para cada evento, com labels claros:
-  - "Webhook: Novo Lead" 
-  - "Webhook: Carrinho Criado"
-  - "Webhook: Venda pelo Catálogo"
-  - "Webhook: Bolsa Finalizada"
-- Cada campo salva/carrega do `system_settings` com a chave correspondente
-- Atualizar as instruções de configuração:
-  1. No Botconversa, crie um Fluxo para cada evento (ex: "Notificação Novo Lead")
-  2. Adicione um bloco de entrada tipo "Webhook" no fluxo
-  3. Copie a URL gerada e cole no campo correspondente abaixo
-  4. Use as variáveis recebidas ({{name}}, {{phone}}, {{product_name}}, etc.) para montar a mensagem no fluxo
-- O campo de teste permanece, mas agora dispara um POST para o webhook de "Novo Lead" com o número digitado
-- Carregar todas as 4 URLs no `loadSettings` e salvar cada uma individualmente com botão ou auto-save
-
-### Payload enviado para cada webhook
-
-**Novo Lead:**
-```json
-{ "phone": "5511999990000", "name": "Maria Silva", "created_at": "2026-02-20T..." }
-```
-
-**Carrinho Criado:**
-```json
-{ "phone": "5511999990000", "lead_name": "Maria", "product_name": "Vestido", "quantity": 1, "unit_price": 150, "selected_size": "M", "variant_color": "Rosa" }
-```
-
-**Venda pelo Catálogo:**
-```json
-{ "phone": "5511999990000", "customer_name": "Maria", "total": 299.90, "payment_method": "PIX", "items": [...] }
-```
-
-**Bolsa Finalizada:**
-```json
-{ "phone": "5511999990000", "customer_name": "Maria", "customer_phone": "11999990000" }
-```
-
-### O que acontece com a API Key existente
-
-A `BOTCONVERSA_API_KEY` nos Secrets permanece armazenada mas não será mais usada pela Edge Function. A UI remove a referência visual. Se futuramente for necessária para outra integração com a API direta do Botconversa, ela já estará disponível.
+- Essas paginas usam `useState` apenas para dialogs abertos e selecoes temporarias — nao precisam de persistencia (o padrao e nao persistir modais)
 
 ### Resumo de arquivos
 
-| Arquivo | Ação |
+| Arquivo | Mudanca |
 |---|---|
-| `supabase/functions/botconversa-notify/index.ts` | Reescrever: buscar webhook URL por evento em system_settings, POST direto para webhook, remover montagem de mensagem |
-| `src/components/admin/BotconversaAdminSection.tsx` | Adicionar 4 campos de webhook URL, remover seção de API Key, atualizar instruções |
+| `src/pages/Sales.tsx` | Persistir `shippingData`; adicionar `useEffect` para reabrir formulario se carrinho tiver itens; limpar `shippingData` no `resetForm` |
+| `src/pages/Orders.tsx` | Persistir `activeTab` com `useFormPersistence` |
+| `src/pages/Marketing.tsx` | Persistir `activeTab` com `useFormPersistence` |
 
+### O que NAO precisa mudar (ja esta correto)
+
+- `Reports.tsx` — todos os filtros e aba ja usam `useFormPersistence`
+- `PartnerReports.tsx` — periodo, grupo, parceira e aba ja usam `useFormPersistence`
+- `Financial.tsx` — periodo ja usa `useFormPersistence`
+- `Customers.tsx` — busca ja usa `useFormPersistence`
+- `StockControl.tsx` — busca e filtros ja usam `useFormPersistence`
+- `OrderForm.tsx` — formData e searchValue ja usam `useFormPersistence`
+
+### Comportamento esperado apos a correcao
+
+A usuaria esta no meio de uma venda, troca de aba no navegador (ou abre outro app no celular). Ao voltar:
+
+1. O formulario de venda reabre automaticamente (porque o carrinho tem itens)
+2. Carrinho, cliente, pagamento, frete — tudo esta preenchido como antes
+3. Ela continua de onde parou sem perder nenhum dado
+
+O mesmo vale para abas ativas em Encomendas e Marketing — a usuaria volta para a mesma aba que estava vendo.
