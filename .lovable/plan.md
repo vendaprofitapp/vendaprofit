@@ -1,150 +1,124 @@
 
-# Correção: Detector de Conjuntos — "Nenhum estoque de parceiro disponível"
+# Filtros de Categoria na Varredura Automática do Detector de Conjuntos
 
-## Diagnóstico completo
+## O que será feito
 
-A sociedade 1-1 entre teamwodbrasil e isabellegalx1 existe corretamente:
-- Grupo `23198f24` com `is_direct: true`
-- 672 produtos compartilhados no `product_partnerships`
-- 122 produtos da parceira com estoque > 0 acessíveis via RLS
+Na aba "Varredura Automática", adicionar um painel de filtros de categoria que permite à usuária escolher:
+- **Categorias e subcategorias do seu estoque próprio** (peça A do conjunto)
+- **Categorias e subcategorias do estoque parceiro** (peça B do conjunto)
 
-O banco de dados está correto. O problema é **exclusivamente no código JavaScript** da página `StockSetDetector.tsx`, em dois pontos:
+O sistema então comparará apenas produtos que atendam aos filtros escolhidos, encontrando pares com mesma cor e tamanho.
 
-### Problema 1 — URL excessivamente longa (causa principal da falha)
+### Exemplo de uso (caso da usuária):
+1. Escolhe "Varredura Automática"
+2. No filtro "Meu estoque": seleciona **Feminino → Top**
+3. No filtro "Estoque parceiro": seleciona **Feminino → Shorts**
+4. Clica "Iniciar Varredura"
+5. O sistema mostra todos os conjuntos Top + Shorts com mesma cor e tamanho
 
-A query atual faz **duas chamadas ao banco em sequência**:
+---
 
-1. Busca todos os `product_id` de `product_partnerships` → retorna **até 672 IDs**
-2. Usa esses IDs num `.in("id", productIds)` na tabela `products`
+## Lógica técnica
 
-Com 672 IDs, a cláusula `.in()` gera uma URL de requisição GET que pode **ultrapassar o limite de tamanho de URL** (~8KB), fazendo a requisição falhar silenciosamente (retornando array vazio `[]`). Isso explica exatamente o erro mostrado.
+### Estado adicionado (filtros de categoria)
 
-### Problema 2 — Correspondência de cores inconsistente
-
-Mesmo quando os produtos são carregados, o matching de `color_label` falha porque há:
-- Espaços extras no início/fim: `" Amarelo"` vs `"Amarelo"`, `"café "` vs `"Café"`
-- Capitalização mista: `"verde Jade"` vs `"Verde Jade"` vs `"verde jade"`
-
-A função `normalizeStr` remove acentos e faz lowercase, então o trim e lowercase já ajudam, mas há casos como `"verde Jade"` vs `"Verde Jade"` onde após normalização ficaria `"verde jade"` vs `"verde jade"` — isso funcionaria. O problema real de espaço (`" Amarelo"` → `" amarelo"` vs `"Amarelo"` → `"amarelo"`) é resolvido pelo `.trim()` já presente.
-
-Portanto o **único problema real** é o Problema 1 — a URL longa.
-
-## Solução
-
-### Substituir a abordagem de duas queries por um JOIN direto
-
-Em vez de buscar os `product_id` e depois usar `.in()`, fazer **uma única query** que já une `product_partnerships` com `products` diretamente, evitando a URL longa.
-
-**Query atual (problemática):**
-```javascript
-// Query 1: busca IDs
-const { data: partnerships } = await supabase
-  .from("product_partnerships")
-  .select("product_id")
-  .in("group_id", groupIds);
-
-const productIds = Array.from(new Set(...)); // até 672 IDs
-
-// Query 2: usa 672 IDs num .in() → URL gigante
-const { data } = await supabase
-  .from("products")
-  .select("...")
-  .in("id", productIds)  // PROBLEMA: URL muito longa
-  .neq("owner_id", user!.id)
-  .eq("is_active", true)
-  .gt("stock_quantity", 0);
+```typescript
+const [ownCategoryFilter, setOwnCategoryFilter] = useState<string>(""); // ex: "Feminino"
+const [ownSubcategoryFilter, setOwnSubcategoryFilter] = useState<string>(""); // ex: "Top"
+const [partnerCategoryFilter, setPartnerCategoryFilter] = useState<string>("");
+const [partnerSubcategoryFilter, setPartnerSubcategoryFilter] = useState<string>("");
 ```
 
-**Query nova (corrigida):**
-```javascript
-// Uma única query via join reverso pelo Supabase
-// Usa product_partnerships!inner para filtrar diretamente
-const { data } = await supabase
-  .from("products")
-  .select(`
-    id, name, color_label, size, price, stock_quantity,
-    image_url, main_category, subcategory, owner_id,
-    product_variants(id, size, stock_quantity),
-    product_partnerships!inner(group_id)
-  `)
-  .in("product_partnerships.group_id", groupIds)
-  .neq("owner_id", user!.id)
-  .eq("is_active", true)
-  .gt("stock_quantity", 0)
-  .order("name");
+### Derivação dinâmica de categorias disponíveis
+
+As opções de categoria/subcategoria são derivadas diretamente dos dados já carregados (sem nova query ao banco):
+
+```typescript
+const ownCategories = useMemo(() =>
+  [...new Set(ownProducts.map(p => p.main_category).filter(Boolean))].sort(),
+  [ownProducts]
+);
+
+const ownSubcategories = useMemo(() =>
+  [...new Set(
+    ownProducts
+      .filter(p => !ownCategoryFilter || p.main_category === ownCategoryFilter)
+      .map(p => p.subcategory)
+      .filter(Boolean)
+  )].sort(),
+  [ownProducts, ownCategoryFilter]
+);
+// Mesmo padrão para partnerCategories / partnerSubcategories
 ```
 
-Porém o Supabase JS não suporta filtros aninhados no `.in()` de relacionamentos diretamente. A alternativa correta é usar uma **função RPC** ou **reformular a query** para passar o `group_id` como filtro principal.
+### Aplicação dos filtros na varredura
 
-### Abordagem alternativa robusta: usar `product_partnerships` como tabela principal com embedding de `products`
+O `selectedOwnExpanded` (produtos próprios expandidos que entram na comparação) será filtrado:
 
-```javascript
-const { data: rawData } = await supabase
-  .from("product_partnerships")
-  .select(`
-    product_id,
-    products!inner(
-      id, name, color_label, size, price, stock_quantity,
-      image_url, main_category, subcategory, owner_id,
-      product_variants(id, size, stock_quantity)
-    )
-  `)
-  .in("group_id", groupIds)
-  .neq("products.owner_id", user!.id)
-  .eq("products.is_active", true)
-  .gt("products.stock_quantity", 0);
-
-// Extrair e deduplicar
-const seen = new Set<string>();
-const products = (rawData || [])
-  .map((r: any) => r.products)
-  .filter((p: any) => p && !seen.has(p.id) && seen.add(p.id));
+```typescript
+const selectedOwnExpanded = useMemo(() => {
+  if (scanMode === "auto") {
+    let filtered = ownProducts;
+    if (ownCategoryFilter) filtered = filtered.filter(p => p.main_category === ownCategoryFilter);
+    if (ownSubcategoryFilter) filtered = filtered.filter(p => p.subcategory === ownSubcategoryFilter);
+    return filtered.flatMap(expandProduct);
+  }
+  // modo manual: sem mudanças
+  return ownProducts.filter(p => selectedOwnItems.has(p.id)).flatMap(expandProduct);
+}, [ownProducts, selectedOwnItems, scanMode, ownCategoryFilter, ownSubcategoryFilter]);
 ```
 
-Esta abordagem elimina completamente a etapa intermediária de acumulação de IDs, passando um único `group_id` na query.
+O mesmo para `partnerExpanded` dentro do `useMemo` de `matches`:
 
-**Atenção:** Filtros aninhados (`neq("products.owner_id", ...)`) podem não funcionar no Supabase JS. A filtragem por `owner_id` e `is_active` será feita no **JavaScript** após receber os dados, que é seguro pois a RLS já garante que só produtos autorizados são retornados.
-
-### Query final limpa:
-
-```javascript
-const { data: rawData, error } = await supabase
-  .from("product_partnerships")
-  .select(`
-    products!inner(
-      id, name, color_label, size, price, stock_quantity,
-      image_url, main_category, subcategory, owner_id,
-      product_variants(id, size, stock_quantity)
-    )
-  `)
-  .in("group_id", groupIds);
-
-// Deduplicar e filtrar no cliente
-const seen = new Set<string>();
-return (rawData || [])
-  .map((r: any) => r.products)
-  .filter((p: any) =>
-    p &&
-    p.owner_id !== user!.id &&
-    p.is_active &&
-    p.stock_quantity > 0 &&
-    !seen.has(p.id) &&
-    seen.add(p.id)
-  ) as StockProduct[];
+```typescript
+let filteredPartner = partnerProducts;
+if (partnerCategoryFilter) filteredPartner = filteredPartner.filter(p => p.main_category === partnerCategoryFilter);
+if (partnerSubcategoryFilter) filteredPartner = filteredPartner.filter(p => p.subcategory === partnerSubcategoryFilter);
+const partnerExpanded = filteredPartner.flatMap(expandProduct);
 ```
 
-## Arquivos alterados
+---
 
-| Arquivo | Mudança |
+## Interface dos filtros
+
+Na seção "Varredura Automática" (Step 2), antes do botão "Iniciar Varredura", será exibido um painel de filtros com dois grupos lado a lado:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Filtrar peças da varredura (opcional)                   │
+│                                                         │
+│  MEU ESTOQUE              ESTOQUE PARCEIRO              │
+│  [Categoria ▼]            [Categoria ▼]                  │
+│  [Subcategoria ▼]         [Subcategoria ▼]               │
+│                                                         │
+│  ℹ️ Deixe em branco para comparar tudo                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Selects nativos simples (sem Radix) para evitar problemas de z-index dentro do Card
+- A subcategoria só aparece se a categoria tiver subcategorias disponíveis
+- Um botão "Limpar filtros" aparece se algum filtro estiver ativo
+- O contador no `CardDescription` é atualizado dinamicamente: "Compara **X peças filtradas** do seu estoque com..."
+
+---
+
+## Resumo da varredura atualizado
+
+O bloco de sumário após a varredura exibirá os filtros aplicados:
+```
+Filtros: Meu estoque: Feminino / Top  |  Parceiro: Feminino / Shorts
+```
+
+---
+
+## Arquivo alterado
+
+| Arquivo | Mudanças |
 |---|---|
-| `src/pages/StockSetDetector.tsx` | Reescrever a query de busca de produtos parceiros para usar join via `product_partnerships` como tabela principal, evitando a URL longa com centenas de IDs |
+| `src/pages/StockSetDetector.tsx` | Adicionar 4 estados de filtro, derivar categorias disponíveis com `useMemo`, aplicar filtros no `selectedOwnExpanded` e no matching de parceiros, adicionar UI de filtros na seção "Varredura Automática" |
 
 ## O que NÃO muda
-
-- Lógica de matching de cores e subcategorias (já funciona corretamente após trim+normalize)
-- UI e demais funcionalidades do Detector
-- RLS e estrutura do banco de dados
-
-## Resultado esperado
-
-Após a correção, ao selecionar "Próprio × Sociedade 1-1" e clicar em "Iniciar Varredura Completa", a usuária teamwodbrasil verá os 122 produtos com estoque da isabellegalx1 e o sistema detectará conjuntos entre os 168 produtos próprios e esses 122 produtos da parceira.
+- Lógica de matching (mesma cor + tamanho, pares complementares)
+- Modo de Busca Manual
+- Query ao banco de dados
+- Confirmação e envio de solicitações
