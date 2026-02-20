@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,7 @@ export function BotconversaAdminSection() {
   const [testing, setTesting] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState("");
   const [logs, setLogs] = useState<BotconversaLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
@@ -111,7 +113,9 @@ export function BotconversaAdminSection() {
           .select("phone")
           .eq("id", user.id)
           .single();
-        setAdminPhone(profile?.phone || null);
+        const phone = profile?.phone || "";
+        setAdminPhone(phone || null);
+        setTestPhone(phone);
       }
     } catch (err) {
       console.error("Error loading botconversa settings:", err);
@@ -136,8 +140,8 @@ export function BotconversaAdminSection() {
   }
 
   async function sendTestMessage() {
-    if (!adminPhone) {
-      toast.error("Você não tem telefone cadastrado no perfil. Cadastre em Configurações > Perfil.");
+    if (!testPhone.trim()) {
+      toast.error("Digite um número de telefone para enviar o teste.");
       return;
     }
     if (!user) return;
@@ -148,17 +152,17 @@ export function BotconversaAdminSection() {
         body: {
           event_type: "new_lead",
           owner_id: user.id,
+          test_phone: testPhone.trim(),
           payload: {
             name: "Teste do Sistema ✅",
-            phone: adminPhone,
+            phone: testPhone.trim(),
             created_at: new Date().toISOString(),
           },
         },
       });
 
       if (error) throw error;
-      toast.success("Mensagem de teste enviada! Verifique seu WhatsApp.");
-      // Refresh logs after a short delay
+      toast.success("Mensagem de teste enviada! Verifique o WhatsApp.");
       setTimeout(() => loadLogs(), 1500);
     } catch (err) {
       console.error("Error sending test message:", err);
@@ -282,27 +286,33 @@ export function BotconversaAdminSection() {
           </div>
 
           {/* Test message */}
-          <div className="border-t pt-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">Enviar mensagem de teste</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {adminPhone
-                    ? `Será enviado para: ${adminPhone}`
-                    : "⚠️ Cadastre seu telefone no perfil para testar."}
-                </p>
-              </div>
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-sm font-medium text-foreground">Enviar mensagem de teste</p>
+            <p className="text-xs text-muted-foreground">
+              Digite o número de WhatsApp que receberá a mensagem de teste (com DDD). Pode ser diferente do cadastrado no perfil.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                type="tel"
+                placeholder="Ex: 11999990000"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                className="flex-1"
+              />
               <Button
                 variant="outline"
                 size="sm"
                 onClick={sendTestMessage}
-                disabled={testing || !adminPhone || !enabled}
+                disabled={testing || !testPhone.trim() || !enabled}
                 className="shrink-0"
               >
                 <Send className="h-3.5 w-3.5 mr-1.5" />
                 {testing ? "Enviando..." : "Testar agora"}
               </Button>
             </div>
+            {!enabled && (
+              <p className="text-xs text-muted-foreground">⚠️ Ative as notificações acima para poder testar.</p>
+            )}
           </div>
         </CardContent>
       </Card>
