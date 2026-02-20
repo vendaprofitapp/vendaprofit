@@ -160,7 +160,7 @@ export default function Sales() {
   const [productSearch, setProductSearch] = useState("");
   const [dueDate, setDueDate, clearDueDate] = useFormPersistence("sales_dueDate", "");
   const [installments, setInstallments, clearInstallments] = useFormPersistence("sales_installments", 1);
-  const [shippingData, setShippingData] = useState<ShippingData>({
+  const [shippingData, setShippingData, clearShippingData] = useFormPersistence<ShippingData>("sales_shippingData", {
     method: "presencial",
     company: "",
     cost: 0,
@@ -168,6 +168,14 @@ export default function Sales() {
     address: "",
     notes: "",
   });
+
+  // Auto-reopen sale dialog if cart has items (survives tab switch / reload)
+  useEffect(() => {
+    if (cart.length > 0 && !isNewSaleOpen) {
+      setIsNewSaleOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [shippingLabelUrl, setShippingLabelUrl] = useState<string | null>(null);
   const [saleIdForShipping, setSaleIdForShipping] = useState<string>("");
   const [shippingTracking, setShippingTracking] = useState<string | null>(null);
@@ -1099,6 +1107,7 @@ export default function Sales() {
     clearNotes();
     clearDueDate();
     clearInstallments();
+    clearShippingData();
 
     setCart([]);
     setCustomerName("");
