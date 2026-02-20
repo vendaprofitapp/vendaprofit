@@ -1,60 +1,58 @@
 
-## Persistir estado em TODAS as telas ao trocar de aba do navegador
 
-### O que ja foi feito
+## Correção Definitiva: Detector de Conjuntos — Anti-Duplicação Excessiva
 
-Na implementacao anterior, o hook `useFormPersistence` foi criado e aplicado em algumas telas. Porem, dois problemas principais permanecem:
+### Causa raiz
 
-1. **Vendas**: os dados do carrinho sao salvos, mas o dialogo fecha ao recarregar (a usuaria nao ve os dados salvos)
-2. **Outras telas**: abas ativas e buscas em varias paginas ainda usam `useState` comum e sao perdidos
+O filtro de anti-duplicação (linhas 286-326) constrói um conjunto de chaves `cor|tamanho` de TODOS os produtos próprios. Depois, remove qualquer produto do parceiro que tenha a mesma `cor|tamanho`.
 
-### Correcoes necessarias
+O problema: se você tem um Shorts Rosa M no seu estoque, e a parceira tem um Top Rosa M, o Top é excluído — porque a chave `rosa|m` já existe no seu estoque. Mas são peças DIFERENTES (subcategorias diferentes). O filtro deveria excluir apenas peças que são realmente duplicatas (mesma subcategoria + cor + tamanho).
 
-#### 1. Sales (`src/pages/Sales.tsx`)
+### Exemplo do bug
 
-- **`shippingData`**: trocar `useState` por `useFormPersistence("sales_shippingData", {...})` 
-- **Auto-reabrir formulario**: adicionar `useEffect` que detecta se `cart.length > 0` na montagem e chama `setIsNewSaleOpen(true)` automaticamente — assim a usuaria volta e ve o formulario aberto com tudo preenchido
-- Adicionar `clearShippingData()` no `resetForm`
+- Seu estoque: Shorts Rosa M, Shorts Rosa G
+- Parceira: Top Rosa M, Top Rosa G
+- Chaves geradas: `rosa|m`, `rosa|g`
+- Filtro remove Top Rosa M e Top Rosa G (mesma cor+tamanho)
+- Resultado: 0 conjuntos detectados
 
-#### 2. Orders (`src/pages/Orders.tsx`)
+### Correção
 
-- **`activeTab`**: trocar `useState("orders")` por `useFormPersistence("orders_activeTab", "orders")`
+Incluir a **subcategoria** na chave de anti-duplicação. Assim, apenas peças que são realmente o mesmo item (mesma subcategoria + cor + tamanho) são excluídas.
 
-#### 3. Marketing (`src/pages/Marketing.tsx`)
+**Antes:**
+```
+chave = cor|tamanho
+```
 
-- **`activeTab`**: trocar `useState("content")` por `useFormPersistence("marketing_activeTab", "content")`
+**Depois:**
+```
+chave = cor|tamanho|subcategoria
+```
 
-#### 4. Suppliers (`src/pages/Suppliers.tsx`)
+### Arquivo modificado
 
-- Verificar se ha campo de busca com `useState` e persistir se houver
-
-#### 5. Consignments, Consortiums
-
-- Essas paginas usam `useState` apenas para dialogs abertos e selecoes temporarias — nao precisam de persistencia (o padrao e nao persistir modais)
-
-### Resumo de arquivos
-
-| Arquivo | Mudanca |
+| Arquivo | Mudança |
 |---|---|
-| `src/pages/Sales.tsx` | Persistir `shippingData`; adicionar `useEffect` para reabrir formulario se carrinho tiver itens; limpar `shippingData` no `resetForm` |
-| `src/pages/Orders.tsx` | Persistir `activeTab` com `useFormPersistence` |
-| `src/pages/Marketing.tsx` | Persistir `activeTab` com `useFormPersistence` |
+| `src/pages/StockSetDetector.tsx` | Alterar `ownColorSizeKeys` (linha 286-292) para incluir subcategoria na chave; alterar o filtro de anti-duplicação (linha 321-326) para usar a mesma chave com subcategoria |
 
-### O que NAO precisa mudar (ja esta correto)
+### Mudança no código (2 pontos)
 
-- `Reports.tsx` — todos os filtros e aba ja usam `useFormPersistence`
-- `PartnerReports.tsx` — periodo, grupo, parceira e aba ja usam `useFormPersistence`
-- `Financial.tsx` — periodo ja usa `useFormPersistence`
-- `Customers.tsx` — busca ja usa `useFormPersistence`
-- `StockControl.tsx` — busca e filtros ja usam `useFormPersistence`
-- `OrderForm.tsx` — formData e searchValue ja usam `useFormPersistence`
+**1. Construção das chaves (linhas 286-292):**
+Adicionar `normalizeStr(p.subcategory)` na chave:
+```ts
+keys.add(`${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`);
+```
 
-### Comportamento esperado apos a correcao
+**2. Filtro de anti-duplicação (linhas 321-326):**
+Usar a mesma chave com subcategoria:
+```ts
+const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`;
+return !ownColorSizeKeys.has(key);
+```
 
-A usuaria esta no meio de uma venda, troca de aba no navegador (ou abre outro app no celular). Ao voltar:
+### Resultado esperado
 
-1. O formulario de venda reabre automaticamente (porque o carrinho tem itens)
-2. Carrinho, cliente, pagamento, frete — tudo esta preenchido como antes
-3. Ela continua de onde parou sem perder nenhum dado
-
-O mesmo vale para abas ativas em Encomendas e Marketing — a usuaria volta para a mesma aba que estava vendo.
+- Shorts Rosa M (seu) + Top Rosa M (parceira) = Conjunto detectado
+- Top Rosa M (seu) + Top Rosa M (parceira) = Excluído (duplicata real)
+- Funciona corretamente com ou sem filtros de fornecedor/categoria
