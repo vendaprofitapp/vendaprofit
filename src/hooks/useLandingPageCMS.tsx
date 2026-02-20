@@ -551,5 +551,29 @@ export function useManageLandingPageFAQ() {
   });
 }
 
+export function useReorderLandingPagePricing() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderedIds: { id: string; display_order: number }[]) => {
+      // Update display_order for each plan in parallel
+      await Promise.all(
+        orderedIds.map(({ id, display_order }) =>
+          supabase
+            .from("landing_page_pricing")
+            .update({ display_order })
+            .eq("id", id)
+        )
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["landing-page-pricing"] });
+    },
+    onError: (error) => {
+      toast.error("Erro ao reordenar: " + error.message);
+    },
+  });
+}
+
 // Export defaults for seeding
 export { defaultSettings, defaultFeatures, defaultTestimonials, defaultPricing, defaultFAQs };
