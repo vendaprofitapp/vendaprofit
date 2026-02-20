@@ -1,58 +1,43 @@
 
-
-## Correção Definitiva: Detector de Conjuntos — Anti-Duplicação Excessiva
+## Correção: Trigger do Botconversa não dispara para leads reais
 
 ### Causa raiz
 
-O filtro de anti-duplicação (linhas 286-326) constrói um conjunto de chaves `cor|tamanho` de TODOS os produtos próprios. Depois, remove qualquer produto do parceiro que tenha a mesma `cor|tamanho`.
+A função de banco `call_botconversa_notify` usa `extensions.http_post()`, que requer a extensão **http** do PostgreSQL. Porém, essa extensão **não está instalada** no projeto — apenas a extensão **pg_net** está disponível.
 
-O problema: se você tem um Shorts Rosa M no seu estoque, e a parceira tem um Top Rosa M, o Top é excluído — porque a chave `rosa|m` já existe no seu estoque. Mas são peças DIFERENTES (subcategorias diferentes). O filtro deveria excluir apenas peças que são realmente duplicatas (mesma subcategoria + cor + tamanho).
+O que acontece:
+1. O teste manual pela tela de admin funciona porque chama a Edge Function **diretamente** via `supabase.functions.invoke()` (JavaScript no navegador)
+2. Um lead real criado pelo catálogo aciona o **trigger do banco** -> chama `call_botconversa_notify` -> tenta `extensions.http_post()` -> **FALHA** porque a extensão não existe -> o `EXCEPTION WHEN OTHERS` engole o erro silenciosamente
+3. Resultado: nenhum log, nenhuma notificação, sem mensagem de erro visível
 
-### Exemplo do bug
+### Solução
 
-- Seu estoque: Shorts Rosa M, Shorts Rosa G
-- Parceira: Top Rosa M, Top Rosa G
-- Chaves geradas: `rosa|m`, `rosa|g`
-- Filtro remove Top Rosa M e Top Rosa G (mesma cor+tamanho)
-- Resultado: 0 conjuntos detectados
+Trocar `extensions.http_post()` por `net.http_post()` (da extensão `pg_net` que já está instalada). A assinatura da função é ligeiramente diferente.
 
-### Correção
+### Mudança (Migration SQL)
 
-Incluir a **subcategoria** na chave de anti-duplicação. Assim, apenas peças que são realmente o mesmo item (mesma subcategoria + cor + tamanho) são excluídas.
+Recriar a função `call_botconversa_notify` usando `net.http_post`:
 
-**Antes:**
+```sql
+CREATE OR REPLACE FUNCTION public.call_botconversa_notify(...)
+  ...
+  -- De:
+  PERFORM extensions.http_post(url, body, headers);
+
+  -- Para:
+  PERFORM net.http_post(
+    url := _project_url || '/functions/v1/botconversa-notify',
+    body := jsonb_build_object(...),
+    headers := '{"Content-Type": "application/json"}'::jsonb
+  );
 ```
-chave = cor|tamanho
-```
 
-**Depois:**
-```
-chave = cor|tamanho|subcategoria
-```
+A função `net.http_post` do `pg_net` aceita os mesmos parâmetros (`url`, `body` como `jsonb`, `headers` como `jsonb`), mas o `body` deve ser passado como `jsonb` (não como `text`).
 
 ### Arquivo modificado
 
-| Arquivo | Mudança |
+| Tipo | O quê |
 |---|---|
-| `src/pages/StockSetDetector.tsx` | Alterar `ownColorSizeKeys` (linha 286-292) para incluir subcategoria na chave; alterar o filtro de anti-duplicação (linha 321-326) para usar a mesma chave com subcategoria |
+| Migration SQL | Recriar `call_botconversa_notify` trocando `extensions.http_post` por `net.http_post` |
 
-### Mudança no código (2 pontos)
-
-**1. Construção das chaves (linhas 286-292):**
-Adicionar `normalizeStr(p.subcategory)` na chave:
-```ts
-keys.add(`${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`);
-```
-
-**2. Filtro de anti-duplicação (linhas 321-326):**
-Usar a mesma chave com subcategoria:
-```ts
-const key = `${normalizeStr(p.color_label)}|${normalizeStr(p.size)}|${normalizeStr(p.subcategory)}`;
-return !ownColorSizeKeys.has(key);
-```
-
-### Resultado esperado
-
-- Shorts Rosa M (seu) + Top Rosa M (parceira) = Conjunto detectado
-- Top Rosa M (seu) + Top Rosa M (parceira) = Excluído (duplicata real)
-- Funciona corretamente com ou sem filtros de fornecedor/categoria
+Nenhum arquivo de código-fonte precisa ser alterado. Apenas a função de banco.
