@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.accept-partner-contract]
 verify_jwt = false
+
+[functions.botconversa-notify]
+verify_jwt = false

@@ -3163,6 +3163,24 @@ export type Database = {
         }
         Relationships: []
       }
+      system_settings: {
+        Row: {
+          key: string
+          updated_at: string | null
+          value: string | null
+        }
+        Insert: {
+          key: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Update: {
+          key?: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Relationships: []
+      }
       user_ad_integrations: {
         Row: {
           access_token: string | null
@@ -3336,6 +3354,10 @@ export type Database = {
       approve_stock_request: {
         Args: { _request_id: string; _response_notes?: string }
         Returns: Json
+      }
+      call_botconversa_notify: {
+        Args: { p_event_type: string; p_owner_id: string; p_payload: Json }
+        Returns: undefined
       }
       cleanup_old_fitting_room_usage: { Args: never; Returns: undefined }
       clear_category_from_products: {
