@@ -141,9 +141,38 @@ export function useNotifications(): NotificationsData {
     refetchInterval: 60000,
   });
 
-  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingLeads || loadingCarts;
+  // Catálogo — pedidos recebidos aguardando (últimos 7 dias)
+  const { data: catalogOrders = [], isLoading: loadingOrders } = useQuery({
+    queryKey: ["notifications-catalog-orders", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saved_carts")
+        .select("id")
+        .eq("owner_id", user!.id)
+        .eq("status", "waiting")
+        .gte("created_at", sevenDaysAgo);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 60000,
+  });
+
+  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingLeads || loadingCarts || loadingOrders;
 
   const sections: NotificationSection[] = [];
+
+  if (catalogOrders.length > 0) {
+    sections.push({
+      key: "catalog-orders",
+      label: "Pedidos da Loja",
+      count: catalogOrders.length,
+      icon: "🛍️",
+      route: "/catalog-orders",
+      color: "#10b981",
+      description: `${catalogOrders.length} pedido${catalogOrders.length > 1 ? "s" : ""} aguardando atendimento`,
+    });
+  }
 
   if (eventDrafts.length > 0) {
     sections.push({
@@ -211,7 +240,7 @@ export function useNotifications(): NotificationsData {
       label: "Novos Leads",
       count: newLeads.length,
       icon: "🧲",
-      route: "/marketing/whatsapp",
+      route: "/catalog-orders",
       color: "#f59e0b",
       description: `${newLeads.length} novo${newLeads.length > 1 ? "s" : ""} lead${newLeads.length > 1 ? "s" : ""} nas últimas 24h`,
     });
@@ -223,7 +252,7 @@ export function useNotifications(): NotificationsData {
       label: "Carrinhos Abandonados",
       count: abandonedCarts.length,
       icon: "🛒",
-      route: "/marketing/whatsapp",
+      route: "/catalog-orders",
       color: "#ef4444",
       description: `${abandonedCarts.length} carrinho${abandonedCarts.length > 1 ? "s" : ""} abandonado${abandonedCarts.length > 1 ? "s" : ""} nos últimos 7 dias`,
     });
