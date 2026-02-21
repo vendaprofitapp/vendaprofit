@@ -1,43 +1,74 @@
 
-## Correção: Trigger do Botconversa não dispara para leads reais
 
-### Causa raiz
+## Correcao: Acoes do Catalogo nao geram resultados no aplicativo
 
-A função de banco `call_botconversa_notify` usa `extensions.http_post()`, que requer a extensão **http** do PostgreSQL. Porém, essa extensão **não está instalada** no projeto — apenas a extensão **pg_net** está disponível.
+### Diagnostico completo
 
-O que acontece:
-1. O teste manual pela tela de admin funciona porque chama a Edge Function **diretamente** via `supabase.functions.invoke()` (JavaScript no navegador)
-2. Um lead real criado pelo catálogo aciona o **trigger do banco** -> chama `call_botconversa_notify` -> tenta `extensions.http_post()` -> **FALHA** porque a extensão não existe -> o `EXCEPTION WHEN OTHERS` engole o erro silenciosamente
-3. Resultado: nenhum log, nenhuma notificação, sem mensagem de erro visível
+Apos investigacao detalhada no banco de dados e no codigo, identifiquei **3 problemas distintos** que impedem o fluxo completo:
 
-### Solução
+---
 
-Trocar `extensions.http_post()` por `net.http_post()` (da extensão `pg_net` que já está instalada). A assinatura da função é ligeiramente diferente.
+### Problema 1: Botconversa nao envia notificacao porque a vendedora nao tem telefone no perfil
 
-### Mudança (Migration SQL)
+O edge function `botconversa-notify` busca o telefone do perfil da vendedora (`profiles.phone`) para incluir no payload do webhook. Se o perfil nao tem telefone, a funcao **pula silenciosamente** com `{ skipped: true, reason: "no_phone" }`.
 
-Recriar a função `call_botconversa_notify` usando `net.http_post`:
+A vendedora `teamwodbrasil@gmail.com` tem `phone: NULL` no perfil.
 
-```sql
-CREATE OR REPLACE FUNCTION public.call_botconversa_notify(...)
-  ...
-  -- De:
-  PERFORM extensions.http_post(url, body, headers);
+**Correcao**: No edge function, quando `profiles.phone` for null, buscar o `whatsapp_number` da `store_settings` como fallback. Toda vendedora que tem uma loja configurada tem esse campo preenchido.
 
-  -- Para:
-  PERFORM net.http_post(
-    url := _project_url || '/functions/v1/botconversa-notify',
-    body := jsonb_build_object(...),
-    headers := '{"Content-Type": "application/json"}'::jsonb
-  );
+| Arquivo | Mudanca |
+|---|---|
+| `supabase/functions/botconversa-notify/index.ts` | Adicionar fallback para `store_settings.whatsapp_number` quando `profiles.phone` for null |
+
+---
+
+### Problema 2: Trigger de "cart_created" nunca dispara
+
+O trigger `botconversa_cart_created_trigger` esta configurado com a clausula:
+
+```
+WHEN (NEW.status = 'waiting')
 ```
 
-A função `net.http_post` do `pg_net` aceita os mesmos parâmetros (`url`, `body` como `jsonb`, `headers` como `jsonb`), mas o `body` deve ser passado como `jsonb` (não como `text`).
+Porem, o codigo do catalogo insere itens na tabela `lead_cart_items` com `status = 'abandoned'` (funcao `saveAbandonedCart`). Como os status nao coincidem, o trigger **nunca executa**.
 
-### Arquivo modificado
+**Correcao**: Alterar o trigger para disparar em qualquer INSERT (remover a clausula WHEN), ja que a funcao trigger internamente ja decide o que fazer.
 
-| Tipo | O quê |
+| Tipo | Mudanca |
 |---|---|
-| Migration SQL | Recriar `call_botconversa_notify` trocando `extensions.http_post` por `net.http_post` |
+| Migration SQL | Recriar trigger `botconversa_cart_created_trigger` sem clausula WHEN |
 
-Nenhum arquivo de código-fonte precisa ser alterado. Apenas a função de banco.
+---
+
+### Problema 3: Notificacoes in-app nao incluem eventos do catalogo
+
+O hook `useNotifications` rastreia: Modo Evento, Bolsa Consignada, Bazar VIP e Pontos Parceiros. **Nao inclui** eventos do catalogo (novos leads, carrinhos abandonados, vendas do catalogo).
+
+Isso significa que mesmo com leads e carrinhos sendo criados corretamente, a vendedora nao ve nenhum alerta no sininho do app.
+
+**Correcao**: Adicionar 2 novas secoes ao `useNotifications`:
+- Novos Leads (ultimas 24h)
+- Carrinhos Abandonados (lead_cart_items com status 'abandoned' nos ultimos 7 dias)
+
+| Arquivo | Mudanca |
+|---|---|
+| `src/hooks/useNotifications.tsx` | Adicionar queries para `store_leads` (24h) e `lead_cart_items` com status abandoned (7 dias), e criar as secoes correspondentes no sininho |
+
+---
+
+### Resumo tecnico das mudancas
+
+| # | Arquivo | O que muda |
+|---|---|---|
+| 1 | `supabase/functions/botconversa-notify/index.ts` | Fallback: se `profiles.phone` for null, buscar `store_settings.whatsapp_number` |
+| 2 | Migration SQL | Recriar trigger `botconversa_cart_created_trigger` removendo `WHEN (NEW.status = 'waiting')` |
+| 3 | `src/hooks/useNotifications.tsx` | Adicionar secoes "Novos Leads" e "Carrinhos Abandonados" ao sininho de notificacoes |
+
+### Resultado esperado
+
+Apos as correcoes:
+1. Um novo lead no catalogo gera notificacao via Botconversa (usando o WhatsApp da loja) E aparece no sininho do app
+2. Itens adicionados ao carrinho geram o evento "cart_created" no Botconversa
+3. Carrinhos abandonados aparecem como alerta no sininho
+4. O CRM de Leads continua funcionando normalmente (ja esta correto)
+
