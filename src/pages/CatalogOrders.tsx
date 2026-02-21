@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ShoppingCart, Phone, ChevronDown, ChevronUp, Package,
-  AlertTriangle, MessageCircle, CheckCircle2,
+  AlertTriangle, MessageCircle, CheckCircle2, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +44,7 @@ export default function CatalogOrders() {
   const sinceDate = getPeriodDate(period);
 
   // Fetch received orders
-  const { data: orders = [], isLoading: loadingOrders } = useQuery({
+  const { data: orders = [], isLoading: loadingOrders, refetch: refetchOrders } = useQuery({
     queryKey: ["catalog-orders", user?.id, sinceDate],
     queryFn: async () => {
       if (!user) return [];
@@ -54,15 +54,19 @@ export default function CatalogOrders() {
         .eq("owner_id", user.id)
         .gte("created_at", sinceDate)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) {
+        toast.error("Erro ao carregar pedidos");
+        throw error;
+      }
       return data || [];
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   // Fetch abandoned carts
-  const { data: abandonedCarts = [], isLoading: loadingAbandoned } = useQuery({
+  const { data: abandonedCarts = [], isLoading: loadingAbandoned, refetch: refetchAbandoned } = useQuery({
     queryKey: ["abandoned-carts", user?.id, sinceDate],
     queryFn: async () => {
       if (!user) return [];
@@ -70,14 +74,17 @@ export default function CatalogOrders() {
         .from("lead_cart_items")
         .select("*, store_leads!lead_cart_items_lead_id_fkey(id, name, phone, owner_id, created_at)")
         .eq("status", "abandoned")
+        .eq("store_leads.owner_id", user.id)
         .gte("created_at", sinceDate)
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      // Filter by owner and group by lead
+      if (error) {
+        toast.error("Erro ao carregar carrinhos abandonados");
+        throw error;
+      }
+      // Filter valid items and group by lead
       const filtered = (data || []).filter(
         (item: any) => item.store_leads?.owner_id === user.id
       );
-      // Group items by lead_id
       const grouped = new Map<string, { lead: any; items: any[] }>();
       for (const item of filtered) {
         const leadId = item.lead_id;
@@ -89,7 +96,8 @@ export default function CatalogOrders() {
       return Array.from(grouped.values());
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   // Mark lead as contacted
@@ -140,16 +148,26 @@ export default function CatalogOrders() {
               Acompanhe pedidos recebidos e carrinhos abandonados do seu catálogo
             </p>
           </div>
-          <Select value={period} onValueChange={(v) => setPeriod(v as PeriodFilter)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hoje</SelectItem>
-              <SelectItem value="7days">Últimos 7 dias</SelectItem>
-              <SelectItem value="30days">Últimos 30 dias</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => { refetchOrders(); refetchAbandoned(); toast.success("Atualizado!"); }}
+              title="Atualizar"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Select value={period} onValueChange={(v) => setPeriod(v as PeriodFilter)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hoje</SelectItem>
+                <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                <SelectItem value="30days">Últimos 30 dias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <Tabs defaultValue="orders">
