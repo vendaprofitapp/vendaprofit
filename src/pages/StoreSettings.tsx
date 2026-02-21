@@ -560,7 +560,7 @@ export default function StoreSettings() {
         // Create new
         const { data, error } = await supabase
           .from("store_settings")
-          .insert({
+          .upsert({
             owner_id: user!.id,
             store_slug: formData.store_slug,
             store_name: formData.store_name,
@@ -587,7 +587,7 @@ export default function StoreSettings() {
             page_title: formData.page_title || null,
             favicon_url: faviconUrl || null,
             ...fontData,
-          })
+          }, { onConflict: 'owner_id' })
           .select("id")
           .single();
         
