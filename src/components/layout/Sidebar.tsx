@@ -229,6 +229,16 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             </button>
           )}
 
+          {/* Pedidos da Loja */}
+          <Link
+            to="/catalog-orders"
+            onClick={handleNavClick}
+            className={linkClasses(location.pathname === "/catalog-orders")}
+          >
+            <ShoppingCart className="h-5 w-5" />
+            Pedidos da Loja
+          </Link>
+
           {/* Grouped navigation */}
           {navGroups.map((group) => (
             <div key={group.label}>
