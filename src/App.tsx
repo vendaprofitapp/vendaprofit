@@ -51,6 +51,7 @@ import PartnerCatalog from "./pages/PartnerCatalog";
 import PartnerContract from "./pages/PartnerContract";
 import StockSetDetector from "./pages/StockSetDetector";
 import CatalogCheckout from "./pages/CatalogCheckout";
+import CatalogOrders from "./pages/CatalogOrders";
 
 const queryClient = new QueryClient();
 
@@ -138,6 +139,7 @@ const AppRoutes = () => (
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
     <Route path="/admin/landing-page" element={<ProtectedRoute><LandingPageAdmin /></ProtectedRoute>} />
     <Route path="/my-store" element={<ProtectedRoute><StoreSettingsPage /></ProtectedRoute>} />
+    <Route path="/catalog-orders" element={<ProtectedRoute><CatalogOrders /></ProtectedRoute>} />
     <Route path="/tutorial" element={<ProtectedRoute><Tutorial /></ProtectedRoute>} />
     <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
     <Route path="/marketing/whatsapp" element={<ProtectedRoute><WhatsAppCRM /></ProtectedRoute>} />
