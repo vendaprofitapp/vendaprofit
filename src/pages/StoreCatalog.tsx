@@ -248,6 +248,15 @@ export default function StoreCatalog() {
   const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
   const [inlineLeadName, setInlineLeadName] = useState("");
   const [inlineLeadWhatsapp, setInlineLeadWhatsapp] = useState("");
+
+  // Passive lead bar state
+  const [showLeadBar, setShowLeadBar] = useState(false);
+  const [leadBarDismissed, setLeadBarDismissed] = useState(() => {
+    try { return sessionStorage.getItem("lead_bar_dismissed") === "true"; } catch { return false; }
+  });
+  const [leadBarSaved, setLeadBarSaved] = useState(false);
+  const [barLeadName, setBarLeadName] = useState("");
+  const [barLeadWhatsapp, setBarLeadWhatsapp] = useState("");
   
 
   // Session persistence for secret area
@@ -260,6 +269,8 @@ export default function StoreCatalog() {
       }
     }
   }, [slug]);
+
+  
 
   // Save abandoned cart snapshot when cart changes
   useEffect(() => {
@@ -518,6 +529,26 @@ export default function StoreCatalog() {
     },
     enabled: !!slug,
   });
+
+  // Passive lead bar trigger (8s timer + scroll > 300px)
+  useEffect(() => {
+    const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
+    if (!leadCaptureEnabled || leadBarDismissed || leadBarSaved) return;
+    const storedLead = getStoredLead();
+    if (storedLead?.lead_id) return;
+
+    let activated = false;
+    const activate = () => { if (!activated) { activated = true; setShowLeadBar(true); } };
+
+    const timer = setTimeout(activate, 8000);
+    const handleScroll = () => { if (window.scrollY > 300) activate(); };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [store, leadBarDismissed, leadBarSaved]);
 
   // Incentives config - after store query
   const incentivesConfig: PurchaseIncentivesConfig = (store?.purchase_incentives_config as PurchaseIncentivesConfig) || defaultIncentivesConfig;
@@ -1820,11 +1851,9 @@ export default function StoreCatalog() {
                         </span>
                       </div>
 
-                      {/* Inline Lead Capture */}
+                      {/* Inline Lead Capture - always visible */}
                       {(() => {
-                        const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
                         const storedLead = getStoredLead();
-                        if (!leadCaptureEnabled) return null;
 
                         if (storedLead?.lead_id) {
                           return (
@@ -1864,10 +1893,9 @@ export default function StoreCatalog() {
                         className="w-full h-12 gap-2 text-base font-semibold rounded-xl"
                         style={{ backgroundColor: "#25D366" }}
                         onClick={async () => {
-                          const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
                           const storedLead = getStoredLead();
                           // Save inline lead data before checkout if needed
-                          if (leadCaptureEnabled && !storedLead?.lead_id && isInlineLeadValid) {
+                          if (!storedLead?.lead_id && isInlineLeadValid) {
                             const { isReturning } = await saveLeadData({ name: inlineLeadName.trim(), whatsapp: inlineLeadWhatsapp });
                             if (isReturning) {
                               toast.success(`Bem-vindo(a) de volta, ${inlineLeadName.trim()}! 🎉`);
@@ -1878,9 +1906,8 @@ export default function StoreCatalog() {
                           sendCartViaWhatsApp();
                         }}
                         disabled={!store.whatsapp_number || (() => {
-                          const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
                           const storedLead = getStoredLead();
-                          return leadCaptureEnabled && !storedLead?.lead_id && !isInlineLeadValid;
+                          return !storedLead?.lead_id && !isInlineLeadValid;
                         })()}
                       >
                         <MessageCircle className="h-5 w-5" />
@@ -2441,6 +2468,82 @@ export default function StoreCatalog() {
           storeSlug={slug}
         />
       )}
+      {/* Passive Lead Capture Bar */}
+      {(() => {
+        const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
+        const storedLead = getStoredLead();
+        const shouldShow = leadCaptureEnabled && !storedLead?.lead_id && !leadBarDismissed && showLeadBar && !leadBarSaved;
+        const primaryColor = store?.primary_color || "#DA2576";
+
+        const dismissBar = () => {
+          setLeadBarDismissed(true);
+          try { sessionStorage.setItem("lead_bar_dismissed", "true"); } catch {}
+        };
+
+        const handleBarSubmit = async () => {
+          const name = barLeadName.trim();
+          const whatsapp = barLeadWhatsapp;
+          if (name.length < 2 || whatsapp.replace(/\D/g, "").length < 10) return;
+          const { isReturning } = await saveLeadData({ name, whatsapp });
+          setLeadBarSaved(true);
+          setShowLeadBar(false);
+          if (isReturning) {
+            toast.success(`Bem-vindo(a) de volta, ${name}! 🎉`);
+          } else {
+            toast.success("Obrigado! Você receberá nossas novidades 💜");
+          }
+        };
+
+        return (
+          <div
+            className={cn(
+              "fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t shadow-lg transition-transform duration-500 ease-out",
+              shouldShow ? "translate-y-0" : "translate-y-full"
+            )}
+          >
+            <div className="max-w-xl mx-auto px-4 py-3">
+              <div className="flex items-start gap-2">
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-gray-800">Quer receber novidades? Deixe seu WhatsApp 💬</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      placeholder="Seu nome"
+                      value={barLeadName}
+                      onChange={e => setBarLeadName(e.target.value)}
+                      inputMode="text"
+                      maxLength={100}
+                      className="h-9 text-sm flex-1"
+                    />
+                    <Input
+                      placeholder="(00) 00000-0000"
+                      value={barLeadWhatsapp}
+                      onChange={e => setBarLeadWhatsapp(formatInlineWhatsApp(e.target.value))}
+                      inputMode="tel"
+                      maxLength={16}
+                      className="h-9 text-sm flex-1"
+                    />
+                    <Button
+                      onClick={handleBarSubmit}
+                      disabled={barLeadName.trim().length < 2 || barLeadWhatsapp.replace(/\D/g, "").length < 10}
+                      className="h-9 px-4 text-sm font-semibold rounded-lg shrink-0"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      Salvar
+                    </Button>
+                  </div>
+                </div>
+                <button
+                  onClick={dismissBar}
+                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+                  aria-label="Fechar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

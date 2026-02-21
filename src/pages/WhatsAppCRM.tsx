@@ -567,7 +567,7 @@ export default function WhatsAppCRM() {
               <UserPlus className="h-5 w-5 text-muted-foreground" />
               <div>
                 <Label htmlFor="lead-capture-toggle" className="text-sm font-medium cursor-pointer">Captura de Leads</Label>
-                <p className="text-xs text-muted-foreground">Solicitar nome e WhatsApp ao adicionar itens ao carrinho</p>
+                <p className="text-xs text-muted-foreground">Exibir barra de captura de leads durante a navegação no catálogo</p>
               </div>
             </div>
             <Switch
