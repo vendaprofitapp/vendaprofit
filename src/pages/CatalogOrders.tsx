@@ -72,9 +72,8 @@ export default function CatalogOrders() {
       if (!user) return [];
       const { data, error } = await supabase
         .from("lead_cart_items")
-        .select("*, store_leads!lead_cart_items_lead_id_fkey(id, name, phone, owner_id, created_at)")
+        .select("*, store_leads!lead_cart_items_lead_id_fkey(id, name, whatsapp, owner_id, created_at)")
         .eq("status", "abandoned")
-        .eq("store_leads.owner_id", user.id)
         .gte("created_at", sinceDate)
         .order("created_at", { ascending: false });
       if (error) {
@@ -327,14 +326,14 @@ export default function CatalogOrders() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {lead?.phone && (
+                          {lead?.whatsapp && (
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 text-green-600"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                openWhatsApp(lead.phone, `Olá ${lead.name}! Vi que você estava olhando alguns produtos na nossa loja 😊 Posso te ajudar?`);
+                                openWhatsApp(lead.whatsapp, `Olá ${lead.name}! Vi que você estava olhando alguns produtos na nossa loja 😊 Posso te ajudar?`);
                               }}
                             >
                               <MessageCircle className="h-4 w-4" />
