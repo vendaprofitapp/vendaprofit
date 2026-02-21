@@ -863,6 +863,41 @@ export type Database = {
           },
         ]
       }
+      crm_lead_contacts: {
+        Row: {
+          contacted_at: string
+          created_at: string
+          id: string
+          lead_id: string
+          owner_id: string
+          status: string
+        }
+        Insert: {
+          contacted_at?: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          owner_id: string
+          status?: string
+        }
+        Update: {
+          contacted_at?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          owner_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "store_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_payment_methods: {
         Row: {
           created_at: string

@@ -96,7 +96,7 @@ export default function WhatsAppCRM() {
     enabled: !!user?.id,
   });
 
-  // 2. New leads (no cart items, last 7 days)
+  // 2. New leads (no cart items, last 7 days, excluding already contacted)
   const { data: newLeads = [] } = useQuery({
     queryKey: ["crm-new-leads", user?.id],
     queryFn: async () => {
@@ -111,14 +111,24 @@ export default function WhatsAppCRM() {
 
       const leadIds = (leads || []).map(l => l.id);
       if (leadIds.length === 0) return [];
+
+      // Exclude leads that have cart items
       const { data: cartLeads } = await supabase
         .from("lead_cart_items")
         .select("lead_id")
         .in("lead_id", leadIds);
       const cartLeadIds = new Set((cartLeads || []).map((c: any) => c.lead_id));
 
+      // Exclude leads already contacted via crm_lead_contacts
+      const { data: contactedLeadRecords } = await supabase
+        .from("crm_lead_contacts" as any)
+        .select("lead_id")
+        .eq("owner_id", user!.id)
+        .in("lead_id", leadIds);
+      const contactedLeadIds = new Set((contactedLeadRecords || []).map((c: any) => c.lead_id));
+
       return (leads || [])
-        .filter(l => !cartLeadIds.has(l.id))
+        .filter(l => !cartLeadIds.has(l.id) && !contactedLeadIds.has(l.id))
         .map(l => ({
           id: l.id, name: l.name, phone: l.whatsapp,
           type: "new" as const, createdAt: l.created_at, sourceTable: "lead" as const,
@@ -154,6 +164,36 @@ export default function WhatsAppCRM() {
         entry.leadCartItemIds!.push(item.id);
       });
       return Array.from(map.values());
+    },
+    enabled: !!user?.id,
+  });
+
+  // 3b. Contacted leads WITHOUT cart (from crm_lead_contacts)
+  const { data: contactedBarLeads = [] } = useQuery({
+    queryKey: ["crm-contacted-bar-leads", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("crm_lead_contacts" as any)
+        .select("lead_id, status")
+        .eq("owner_id", user!.id)
+        .eq("status", "contacted");
+      if (error) throw error;
+      if (!data || data.length === 0) return [];
+
+      const leadIds = (data as any[]).map((c: any) => c.lead_id);
+      const { data: leads } = await supabase
+        .from("store_leads")
+        .select("id, name, whatsapp, created_at")
+        .in("id", leadIds);
+
+      return (leads || []).map(l => ({
+        id: l.id,
+        name: l.name,
+        phone: l.whatsapp,
+        type: "new" as const,
+        createdAt: l.created_at,
+        sourceTable: "lead" as const,
+      }));
     },
     enabled: !!user?.id,
   });
@@ -291,7 +331,7 @@ export default function WhatsAppCRM() {
 
   // Summary counts
   const abandonedTotal = abandonedLeads.reduce((sum, l) => sum + (l.cartTotal || 0), 0);
-  const allContactedCount = contactedLeads.length + contactedCustomers.length;
+  const allContactedCount = contactedLeads.length + contactedBarLeads.length + contactedCustomers.length;
 
   // Merge pending leads
   const pendingLeads = useMemo(() => {
@@ -303,10 +343,10 @@ export default function WhatsAppCRM() {
     return all;
   }, [activeFilter, abandonedLeads, newLeads, filteredBirthday, filteredInactive]);
 
-  // All contacted (leads + customers)
+  // All contacted (leads with cart + leads without cart + customers)
   const allContacted = useMemo(
-    () => [...contactedLeads, ...contactedCustomers],
-    [contactedLeads, contactedCustomers]
+    () => [...contactedLeads, ...contactedBarLeads, ...contactedCustomers],
+    [contactedLeads, contactedBarLeads, contactedCustomers]
   );
 
   // Mutations
@@ -360,6 +400,41 @@ export default function WhatsAppCRM() {
     },
   });
 
+  // Mark lead (no cart) as contacted via crm_lead_contacts
+  const markLeadContacted = useMutation({
+    mutationFn: async (leadId: string) => {
+      const { error } = await supabase
+        .from("crm_lead_contacts" as any)
+        .upsert(
+          { lead_id: leadId, owner_id: user!.id, status: "contacted", contacted_at: new Date().toISOString() } as any,
+          { onConflict: "lead_id,owner_id" }
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-new-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-contacted-bar-leads"] });
+      toast.success("Lead movido para Contatados!");
+    },
+  });
+
+  // Update contact status for leads without cart
+  const updateLeadContactStatus = useMutation({
+    mutationFn: async ({ leadId, status }: { leadId: string; status: string }) => {
+      const { error } = await supabase
+        .from("crm_lead_contacts" as any)
+        .update({ status, contacted_at: new Date().toISOString() } as any)
+        .eq("lead_id", leadId)
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["crm-contacted-bar-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["crm-new-leads"] });
+      toast.success(status === "converted" ? "Convertido em venda!" : "Lead descartado.");
+    },
+  });
+
   const updateCustomerContactStatus = useMutation({
     mutationFn: async ({ customerId, status }: { customerId: string; status: string }) => {
       const { error } = await supabase
@@ -401,6 +476,8 @@ export default function WhatsAppCRM() {
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`, "_blank");
     if (lead.sourceTable === "lead" && lead.type === "abandoned") {
       markContacted.mutate(lead.id);
+    } else if (lead.sourceTable === "lead" && lead.type === "new") {
+      markLeadContacted.mutate(lead.id);
     } else if (lead.sourceTable === "customer") {
       markCustomerContacted.mutate(lead.id);
     }
@@ -445,7 +522,9 @@ export default function WhatsAppCRM() {
     setDragOverColumn(null);
     try {
       const data = JSON.parse(e.dataTransfer.getData("application/json"));
-      if (data.sourceTable === "lead") {
+      if (data.sourceTable === "lead" && data.type === "new") {
+        markLeadContacted.mutate(data.id);
+      } else if (data.sourceTable === "lead") {
         markContacted.mutate(data.id);
       } else if (data.sourceTable === "customer") {
         markCustomerContacted.mutate(data.id);
@@ -503,6 +582,7 @@ export default function WhatsAppCRM() {
 
   const renderContactedCard = (lead: UnifiedLead) => {
     const isCustomer = lead.sourceTable === "customer";
+    const isBarLead = lead.sourceTable === "lead" && (!lead.cartItems || lead.cartItems.length === 0);
     return (
       <div key={`${lead.sourceTable}-${lead.id}`} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
         <div className="flex items-start justify-between gap-3">
@@ -526,6 +606,8 @@ export default function WhatsAppCRM() {
           <Button size="sm" className="flex-1 gap-1.5" onClick={() => {
             if (isCustomer) {
               updateCustomerContactStatus.mutate({ customerId: lead.id, status: "converted" });
+            } else if (isBarLead) {
+              updateLeadContactStatus.mutate({ leadId: lead.id, status: "converted" });
             } else {
               updateLeadStatus.mutate({ leadId: lead.id, status: "converted" });
             }
@@ -535,6 +617,8 @@ export default function WhatsAppCRM() {
           <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => {
             if (isCustomer) {
               updateCustomerContactStatus.mutate({ customerId: lead.id, status: "cancelled" });
+            } else if (isBarLead) {
+              updateLeadContactStatus.mutate({ leadId: lead.id, status: "cancelled" });
             } else {
               updateLeadStatus.mutate({ leadId: lead.id, status: "cancelled" });
             }
