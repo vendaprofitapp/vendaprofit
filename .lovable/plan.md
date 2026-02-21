@@ -1,24 +1,59 @@
+# Nova Aba: Pedidos do Catalogo
 
-# Remover Pop-up "Reservar suas pecas" e Renomear Botao
+## Objetivo
 
-## Problema
-Ao clicar "Finalizar pelo WhatsApp" na sacola, o sistema verifica se o cliente ja preencheu seus dados (lead). Se nao preencheu, abre o pop-up "Reservar suas pecas" ao inves de ir para a pagina de checkout. Como a pagina de checkout ja coleta Nome e WhatsApp, esse pop-up e redundante e causa confusao.
+Criar uma nova pagina dedicada para exibir todas as acoes realizadas na pagina de vendas (catalogo), com detalhamento completo de pedidos gerados e carrinhos abandonados. O link ficara no sidebar logo abaixo de "Minha Loja".
 
-## Solucao
+## Estrutura da Pagina
 
-### Arquivo: `src/pages/StoreCatalog.tsx`
+A pagina tera duas abas (Tabs):
 
-**1. Remover a verificacao de lead no checkout**
-Na funcao `sendCartViaWhatsApp` (linha ~1524), remover o bloco que verifica `getStoredLead()` e abre o `LeadCaptureSheet`. A funcao deve navegar diretamente para a pagina de checkout sem verificar se o lead existe, pois a pagina de checkout ja coleta esses dados.
+### Aba 1 - Pedidos Recebidos
 
-**2. Remover o state `pendingCheckout`**
-- Remover a declaracao `const [pendingCheckout, setPendingCheckout] = useState(false)` (linha ~251)
-- Remover o bloco que verifica `pendingCheckout` dentro do callback `onLeadCaptured` (linhas ~422-428)
+Consulta a tabela `saved_carts` (status `waiting`) com os itens de `saved_cart_items`:
 
-**3. Renomear o botao na sacola**
-Trocar o texto "Finalizar pelo WhatsApp" (linha ~1790) para "Revisar e enviar pedido".
+- Codigo do pedido (short_code)
+- Nome do cliente e telefone
+- Data/hora do pedido
+- Valor total
+- Lista detalhada de itens: nome do produto, cor, tamanho, quantidade, preco unitario, origem (estoque/sob encomenda)
+- Botao para abrir WhatsApp do cliente
+- Badge de status (Aguardando / Convertido)
 
-## Impacto
-- O pop-up "Reservar suas pecas" continua existindo para captura de leads ao adicionar itens ao carrinho (esse fluxo nao muda)
-- O checkout sempre ira para a pagina dedicada, onde o cliente preenche seus dados
-- Nenhuma outra funcionalidade e afetada
+### Aba 2 - Carrinhos Abandonados
+
+Consulta a tabela `lead_cart_items` (status `abandoned`) com dados do lead via `store_leads`:
+
+- Nome e WhatsApp do cliente
+- Data em que o carrinho foi criado
+- Lista de produtos abandonados: nome, cor, tamanho, quantidade, preco
+- Botao para contatar via WhatsApp
+- Botao para marcar como "contatado"
+
+## Alteracoes por Arquivo
+
+
+| Arquivo                             | Alteracao                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `src/pages/CatalogOrders.tsx`       | **Novo arquivo** - Pagina completa com duas abas (Pedidos e Abandonados)                         |
+| `src/components/layout/Sidebar.tsx` | Adicionar link "Pedidos do Catalogo" com icone `ShoppingCart` logo apos o botao "Ver Minha Loja" |
+| `src/App.tsx`                       | Registrar rota `/catalog-orders` como rota protegida                                             |
+
+
+## Detalhes Tecnicos
+
+### Pagina `CatalogOrders.tsx`
+
+- Usa `useQuery` para buscar dados com polling a cada 30s
+- Pedidos: `saved_carts` com join em `saved_cart_items`, ordenados por data desc
+- Abandonados: `lead_cart_items` com join em `store_leads`, status `abandoned`, ordenados por data desc
+- Cards expansiveis mostrando os itens detalhados de cada pedido/carrinho
+- Formatacao de preco em BRL e datas com `date-fns`
+- Filtro por periodo (hoje, 7 dias, 30 dias)
+
+### Sidebar
+
+- O item sera adicionado logo abaixo do botao dourado "Ver Minha Loja", fora dos grupos, com destaque visual sutil
+- Icone: `ShoppingCart`
+- Texto: "Pedidos da Loja"
+- Rota: `/catalog-orders`
