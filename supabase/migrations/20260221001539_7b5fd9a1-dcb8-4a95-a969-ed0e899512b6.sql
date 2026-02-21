@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS botconversa_catalog_sale_trigger ON public.sales;
