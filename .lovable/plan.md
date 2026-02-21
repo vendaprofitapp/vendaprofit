@@ -1,69 +1,97 @@
 
 
-# Barra Fixa de Captura de Lead Passiva (controlada pelo toggle existente)
+# Corrigir Leads da Barra Passiva no WhatsApp CRM
 
-## Resumo
+## Problema
 
-Adicionar uma barra fixa no rodape do catalogo que captura Nome e WhatsApp de visitantes que navegam sem abrir o carrinho. A barra so aparece quando o toggle "Captura de Leads" na pagina WhatsApp CRM esta ativo. Os campos inline no carrinho permanecem **sempre visiveis**, independentemente do toggle.
+Leads capturados pela barra passiva (sem carrinho) aparecem corretamente como "Novos Cadastros" no CRM, mas **nao podem ser movidos para "Contatados"** porque toda a logica de marcacao depende da tabela `lead_cart_items` -- que esses leads nao possuem.
 
-## Separacao de responsabilidades
+### Pontos de falha identificados:
 
-| Funcionalidade | Depende do toggle? |
-|---|---|
-| Campos inline no carrinho (Nome + WhatsApp) | **Nao** -- sempre aparecem |
-| Barra passiva no rodape do catalogo | **Sim** -- so aparece quando toggle ligado |
+1. **`markContacted`**: atualiza `lead_cart_items.status` para "contacted", mas leads da barra passiva nao tem itens nessa tabela -- nada acontece
+2. **`handleWhatsApp`**: ao clicar no WhatsApp de um lead tipo "new", nenhuma acao de marcacao e executada (so trata "abandoned" e "customer")
+3. **Drag & drop**: arrastar um lead do tipo "new" para "Contatados" chama `markContacted` que falha silenciosamente
+4. **Coluna "Contatados"**: so busca leads com `lead_cart_items.status = 'contacted'` + `crm_customer_contacts.status = 'contacted'` -- leads sem carrinho nunca aparecem aqui
 
-## Como funciona a barra passiva
+## Solucao
 
-1. Cliente entra no catalogo e navega normalmente
-2. Apos 8 segundos ou scroll > 300px, uma barra sutil desliza de baixo: "Quer receber novidades? Deixe seu WhatsApp"
-3. Dois campos compactos (Nome + WhatsApp) + botao "Salvar"
-4. Ao preencher, lead salvo no banco + localStorage, barra desaparece com "Obrigado!"
-5. Se lead ja existe no localStorage, a barra nunca aparece
-6. O "X" dispensa a barra pela sessao (sessionStorage)
-7. Toggle desligado = barra nunca aparece, mas carrinho continua pedindo dados normalmente
+Criar uma tabela auxiliar `crm_lead_contacts` (espelho de `crm_customer_contacts` mas para `store_leads`) que registra o status de contato de leads sem carrinho. Atualizar as queries e mutations do CRM para incluir esses leads.
 
-## Alteracoes por arquivo
+## Passo 1 -- Migracao de banco
 
-| Arquivo | O que muda |
-|---|---|
-| `src/pages/StoreCatalog.tsx` | Adicionar estados `showLeadBar` e `leadBarDismissed`. Adicionar useEffect com timer 8s + scroll listener (condicionado ao toggle). Renderizar barra fixa (`position: fixed, bottom: 0, z-40`) condicionada a `lead_capture_enabled && !storedLead`. **Manter campos inline do carrinho sem condicao ao toggle** -- eles aparecem sempre. Reutilizar `saveLeadData` existente. |
-| `src/pages/WhatsAppCRM.tsx` | Atualizar texto descritivo do toggle de "Solicitar nome e WhatsApp ao adicionar itens ao carrinho" para "Exibir barra de captura de leads durante a navegacao no catalogo" |
-
-## Detalhes tecnicos
-
-### Campos inline do carrinho (sem mudanca)
-
-Os campos de Nome e WhatsApp dentro do Sheet do carrinho continuam aparecendo **sempre**, para qualquer visitante, independentemente do toggle. Isso garante que todo pedido tenha dados de contato.
-
-### Novos estados para a barra passiva
-
-- `showLeadBar: boolean` (inicia false) -- controla visibilidade
-- `leadBarDismissed: boolean` (inicia lendo sessionStorage) -- se usuario clicou X
-- `barLeadName: string` e `barLeadWhatsapp: string` -- campos do formulario da barra
-
-### Logica de exibicao da barra (useEffect)
+Criar tabela `crm_lead_contacts`:
 
 ```text
-Condicoes para mostrar a barra:
-  lead_capture_enabled === true (toggle ligado)
-  AND localStorage nao tem lead_id
-  AND sessionStorage nao tem lead_bar_dismissed
-  AND (timer 8s expirou OR scrollY > 300)
+crm_lead_contacts
+  - id (uuid, PK)
+  - lead_id (uuid, FK -> store_leads.id)
+  - owner_id (uuid)
+  - status (text, default 'contacted')
+  - contacted_at (timestamptz)
+  - created_at (timestamptz)
+  - UNIQUE(lead_id, owner_id)
 ```
 
-### UI da barra
+Com politicas de RLS para o owner ver e gerenciar seus proprios registros.
 
-- `fixed bottom-0 left-0 right-0 z-40` (abaixo do Sheet do carrinho que e z-50)
-- Background com blur: `bg-white/95 dark:bg-card/95 backdrop-blur-sm border-t shadow-lg`
-- Animacao: `transition-transform duration-500` com `translate-y-full` / `translate-y-0`
-- Layout responsivo: campos empilham no mobile, lado a lado no desktop
-- Botao X no canto superior direito para dispensar
-- Ao salvar com sucesso: toast de confirmacao + barra desaparece
+## Passo 2 -- Alteracoes em `src/pages/WhatsAppCRM.tsx`
 
-### Interacao entre barra e carrinho
+### 2a. Nova query: leads sem carrinho contatados
 
-- Se lead capturado pela barra, campos no carrinho mostram estado "confirmado" (nome + check)
-- Se lead NAO capturado pela barra mas abriu carrinho, campos inline funcionam normalmente como captura principal
-- Ambos usam a mesma funcao `saveLeadData` -- sem duplicacao
+Buscar `crm_lead_contacts` com status "contacted", fazer join com `store_leads` para obter nome/whatsapp, e incluir esses leads na coluna "Contatados".
+
+### 2b. Nova mutation: `markLeadContacted`
+
+Para leads do tipo "new" (sourceTable "lead" sem cart items): inserir/atualizar registro em `crm_lead_contacts`.
+
+### 2c. Nova mutation: `updateLeadContactStatus`
+
+Para converter ou descartar leads contatados sem carrinho.
+
+### 2d. Corrigir `handleWhatsApp`
+
+Adicionar tratamento para leads do tipo "new":
+
+```text
+if (lead.sourceTable === "lead" && lead.type === "abandoned") {
+  markContacted.mutate(lead.id);
+} else if (lead.sourceTable === "lead" && lead.type === "new") {
+  markLeadContacted.mutate(lead.id);  // NOVO
+} else if (lead.sourceTable === "customer") {
+  markCustomerContacted.mutate(lead.id);
+}
+```
+
+### 2e. Corrigir drag & drop (`handleDrop`)
+
+Distinguir leads com carrinho vs sem carrinho:
+
+```text
+if (data.sourceTable === "lead" && data.type === "new") {
+  markLeadContacted.mutate(data.id);
+} else if (data.sourceTable === "lead") {
+  markContacted.mutate(data.id);
+} else if (data.sourceTable === "customer") {
+  markCustomerContacted.mutate(data.id);
+}
+```
+
+### 2f. Excluir leads ja contatados da lista "Novos Cadastros"
+
+Na query de `newLeads`, alem de excluir leads com cart items, tambem excluir leads que ja tem registro em `crm_lead_contacts`.
+
+### 2g. Incluir leads contatados sem carrinho na coluna "Contatados"
+
+Mesclar a nova query com `contactedLeads` e `contactedCustomers` no `allContacted`.
+
+### 2h. Atualizar contagem no card "Novos Cadastros"
+
+Contagem ja reflete automaticamente com a exclusao do item 2f.
+
+## Resumo de arquivos alterados
+
+| Arquivo | Alteracao |
+|---|---|
+| Migracao SQL | Criar tabela `crm_lead_contacts` com RLS |
+| `src/pages/WhatsAppCRM.tsx` | Adicionar query de leads contatados sem carrinho. Adicionar mutations `markLeadContacted` e `updateLeadContactStatus`. Corrigir `handleWhatsApp` e `handleDrop` para tratar leads "new". Excluir leads contatados da query "Novos Cadastros". Mesclar na coluna "Contatados". |
 
