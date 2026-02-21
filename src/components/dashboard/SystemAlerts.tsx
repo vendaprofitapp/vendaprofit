@@ -305,15 +305,17 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
-  // Modo Evento — rascunhos pendentes
-  const { data: eventDrafts = [] } = useQuery({
-    queryKey: ["alerts-event-drafts", user?.id],
+  // Pedidos do Catálogo — pedidos recebidos aguardando (últimos 7 dias)
+  const { data: catalogOrders = [] } = useQuery({
+    queryKey: ["alerts-catalog-orders", user?.id],
     queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
-        .from("event_sale_drafts")
-        .select("id, estimated_total")
+        .from("saved_carts")
+        .select("id, short_code, customer_name, total")
         .eq("owner_id", user!.id)
-        .eq("status", "pending");
+        .eq("status", "waiting")
+        .gte("created_at", since);
       if (error) throw error;
       return data;
     },
@@ -369,7 +371,7 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
-  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0 || consignmentsReady.length > 0 || eventDrafts.length > 0 || bazarPendingItems.length > 0 || bazarSoldItems.length > 0 || partnerMovements.length > 0;
+  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0 || consignmentsReady.length > 0 || bazarPendingItems.length > 0 || bazarSoldItems.length > 0 || partnerMovements.length > 0 || catalogOrders.length > 0;
 
   if (!hasAlerts) return null;
 
@@ -669,23 +671,23 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Modo Evento — Rascunhos pendentes */}
-      {eventDrafts.length > 0 && (
-        <Card className="border-primary/30 bg-primary/5">
+      {/* Pedidos do Catálogo — Pedidos recebidos */}
+      {catalogOrders.length > 0 && (
+        <Card className="border-emerald-500/30 bg-emerald-500/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-primary">
-              <Zap className="h-4 w-4" />
-              Modo Evento
-              <Badge className="ml-auto">{eventDrafts.length}</Badge>
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-emerald-600">
+              <ShoppingCart className="h-4 w-4" />
+              Pedidos da Loja
+              <Badge variant="secondary" className="ml-auto bg-emerald-500/20 text-emerald-600">{catalogOrders.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {eventDrafts.length} rascunho{eventDrafts.length > 1 ? "s" : ""} pendente{eventDrafts.length > 1 ? "s" : ""} de conciliar
+              {catalogOrders.length} pedido{catalogOrders.length > 1 ? "s" : ""} aguardando atendimento
             </p>
-            <Button size="sm" className="w-full mt-1" onClick={() => navigate("/evento/conciliacao")}>
+            <Button size="sm" className="w-full mt-1 bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => navigate("/catalog-orders")}>
               <ArrowRight className="h-4 w-4 mr-2" />
-              Conciliar Vendas
+              Ver Pedidos
             </Button>
           </CardContent>
         </Card>
