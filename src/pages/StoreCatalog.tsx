@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell, CheckCircle2 } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -244,10 +244,10 @@ export default function StoreCatalog() {
   const [secretPassword, setSecretPassword] = useState("");
   const [viewingSecretArea, setViewingSecretArea] = useState(false);
 
-  // Lead capture state
-  const [showLeadCapture, setShowLeadCapture] = useState(false);
+  // Lead capture state (inline in cart)
   const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
-  const [pendingCartAdd, setPendingCartAdd] = useState<{ item: CatalogDisplayItem; size: string; effectivePrice: number } | null>(null);
+  const [inlineLeadName, setInlineLeadName] = useState("");
+  const [inlineLeadWhatsapp, setInlineLeadWhatsapp] = useState("");
   
 
   // Session persistence for secret area
@@ -392,35 +392,18 @@ export default function StoreCatalog() {
   };
 
   const addToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
-    // Always add the item first
     doAddToCart(item, size, effectivePrice);
-
-    // If lead_capture_enabled and no lead stored yet, ask for data right after adding
-    const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
-    const storedLead = getStoredLead();
-    if (leadCaptureEnabled && !storedLead) {
-      setPendingCartAdd(null);
-      setShowLeadCapture(true);
-    }
   };
 
-  const handleLeadSubmit = async (data: { name: string; whatsapp: string }) => {
-    setShowLeadCapture(false);
-    const { leadId, isReturning } = await saveLeadData(data);
-
-    if (isReturning) {
-      toast.success(`Bem-vindo(a) de volta, ${data.name}! 🎉`);
-    } else {
-      toast.success(`Bem-vindo(a), ${data.name}! 🎉`);
-    }
-
-    // Complete the pending add (legacy path, may be null now)
-    if (pendingCartAdd) {
-      doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
-      setPendingCartAdd(null);
-    }
-
+  // Format WhatsApp for inline lead capture
+  const formatInlineWhatsApp = (value: string): string => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits.length ? `(${digits}` : "";
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
+
+  const isInlineLeadValid = inlineLeadName.trim().length >= 2 && inlineLeadWhatsapp.replace(/\D/g, "").length >= 10;
 
   const doAddToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
     const prevTotal = cartTotal;
@@ -1758,19 +1741,76 @@ export default function StoreCatalog() {
                       </div>
                     </ScrollArea>
                     
-                    <div className="border-t pt-4 space-y-4">
+                    <div className="border-t pt-4 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">Total</span>
                         <span className="text-xl font-bold text-gray-900">
                           {formatPrice(cartTotal)}
                         </span>
                       </div>
+
+                      {/* Inline Lead Capture */}
+                      {(() => {
+                        const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
+                        const storedLead = getStoredLead();
+                        if (!leadCaptureEnabled) return null;
+
+                        if (storedLead?.lead_id) {
+                          return (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200">
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                              <span className="text-sm text-green-800 truncate">{storedLead.name}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-500">Preencha para finalizar:</p>
+                            <Input
+                              placeholder="Seu nome"
+                              value={inlineLeadName}
+                              onChange={e => setInlineLeadName(e.target.value)}
+                              onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" }), 350)}
+                              inputMode="text"
+                              maxLength={100}
+                              className="h-9 text-sm"
+                            />
+                            <Input
+                              placeholder="(00) 00000-0000"
+                              value={inlineLeadWhatsapp}
+                              onChange={e => setInlineLeadWhatsapp(formatInlineWhatsApp(e.target.value))}
+                              onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" }), 350)}
+                              inputMode="tel"
+                              maxLength={16}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                        );
+                      })()}
                       
                       <Button 
                         className="w-full h-12 gap-2 text-base font-semibold rounded-xl"
                         style={{ backgroundColor: "#25D366" }}
-                        onClick={sendCartViaWhatsApp}
-                        disabled={!store.whatsapp_number}
+                        onClick={async () => {
+                          const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
+                          const storedLead = getStoredLead();
+                          // Save inline lead data before checkout if needed
+                          if (leadCaptureEnabled && !storedLead?.lead_id && isInlineLeadValid) {
+                            const { isReturning } = await saveLeadData({ name: inlineLeadName.trim(), whatsapp: inlineLeadWhatsapp });
+                            if (isReturning) {
+                              toast.success(`Bem-vindo(a) de volta, ${inlineLeadName.trim()}! 🎉`);
+                            } else {
+                              toast.success(`Bem-vindo(a), ${inlineLeadName.trim()}! 🎉`);
+                            }
+                          }
+                          sendCartViaWhatsApp();
+                        }}
+                        disabled={!store.whatsapp_number || (() => {
+                          const leadCaptureEnabled = (store as any)?.lead_capture_enabled !== false;
+                          const storedLead = getStoredLead();
+                          return leadCaptureEnabled && !storedLead?.lead_id && !isInlineLeadValid;
+                        })()}
                       >
                         <MessageCircle className="h-5 w-5" />
                         Revisar e enviar pedido
@@ -2299,20 +2339,7 @@ export default function StoreCatalog() {
         </DialogContent>
       </Dialog>
 
-      {/* Lead Capture Sheet */}
-      <LeadCaptureSheet
-        open={showLeadCapture}
-        onOpenChange={(open) => {
-          setShowLeadCapture(open);
-          if (!open && pendingCartAdd) {
-            // User dismissed without filling - still add to cart
-            doAddToCart(pendingCartAdd.item, pendingCartAdd.size, pendingCartAdd.effectivePrice);
-            setPendingCartAdd(null);
-          }
-        }}
-        onSubmit={handleLeadSubmit}
-        primaryColor={primaryColor}
-      />
+      {/* Lead Capture Sheet removed — now inline in cart */}
 
       {/* Loyalty Lead Capture Sheet */}
       <LeadCaptureSheet
