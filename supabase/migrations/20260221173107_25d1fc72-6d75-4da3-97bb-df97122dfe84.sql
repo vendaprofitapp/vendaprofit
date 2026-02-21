@@ -1,0 +1,1 @@
+ALTER TABLE store_settings ADD CONSTRAINT store_settings_owner_id_unique UNIQUE (owner_id);
