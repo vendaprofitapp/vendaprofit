@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +66,7 @@ export function ConsignmentDetailsDialog({
     removeItem,
     loading 
   } = useConsignment();
+  const navigate = useNavigate();
   const [linkCopied, setLinkCopied] = useState(false);
 
   const { data: details, refetch } = useQuery({
@@ -134,12 +136,22 @@ export function ConsignmentDetailsDialog({
     }
   };
 
-  const handleComplete = async () => {
-    const success = await completeConsignment(consignment.id);
-    if (success) {
-      refetch();
-      onUpdate();
-    }
+  const handleComplete = () => {
+    const consignmentData = {
+      consignmentId: consignment.id,
+      customerName: consignment.customers?.name || "",
+      customerPhone: consignment.customers?.phone || "",
+      items: keptItems.map(item => ({
+        product_id: item.products?.id,
+        product_name: item.products?.name || "",
+        price: item.original_price,
+        size: item.product_variants?.size || item.products?.size || null,
+        color: item.products?.color_label || null,
+        variant_id: (item as any).variant_id || null,
+      })),
+    };
+    onOpenChange(false);
+    navigate("/sales", { state: { consignmentData } });
   };
 
   const handleCancel = async () => {

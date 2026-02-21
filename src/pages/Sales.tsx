@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Plus, Search, ShoppingCart, Eye, Edit2, Truck, Mic } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
@@ -79,6 +79,8 @@ const statusConfig = {
 export default function Sales() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
@@ -87,6 +89,7 @@ export default function Sales() {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const isMobile = useIsMobile();
+  const [consignmentData, setConsignmentData] = useState<any>(null);
 
   // Voice command state for passing to NewSaleDialog
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<{
@@ -205,6 +208,17 @@ export default function Sales() {
   useEffect(() => {
     if (fromDraftId && draftNotes) setIsNewSaleOpen(true);
   }, [fromDraftId, draftNotes]);
+
+  // Handle consignment data from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.consignmentData) {
+      setConsignmentData(state.consignmentData);
+      setIsNewSaleOpen(true);
+      // Clear the state to prevent re-triggering on back navigation
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   return (
     <MainLayout>
@@ -352,6 +366,8 @@ export default function Sales() {
         fromDraftId={fromDraftId}
         draftNotes={draftNotes}
         onDraftReconciled={handleDraftReconciled}
+        consignmentData={consignmentData}
+        onConsignmentProcessed={() => setConsignmentData(null)}
       />
 
       {/* View Sale Dialog */}

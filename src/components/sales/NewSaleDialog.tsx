@@ -88,6 +88,20 @@ interface CustomPaymentMethod {
 }
 
 // ─── Props ────────────────────────────────────────────────────
+interface ConsignmentSaleData {
+  consignmentId: string;
+  customerName: string;
+  customerPhone: string;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    price: number;
+    size: string | null;
+    color: string | null;
+    variant_id: string | null;
+  }>;
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -103,6 +117,8 @@ interface NewSaleDialogProps {
   fromDraftId?: string | null;
   draftNotes?: string | null;
   onDraftReconciled?: () => void;
+  consignmentData?: ConsignmentSaleData | null;
+  onConsignmentProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -113,6 +129,8 @@ export default function NewSaleDialog({
   fromDraftId,
   draftNotes,
   onDraftReconciled,
+  consignmentData,
+  onConsignmentProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -658,6 +676,62 @@ export default function NewSaleDialog({
     } finally { setIsImporting(false); }
   };
 
+  // ─── Load consignment data into cart ───────────────────────
+  const [consignmentProcessed, setConsignmentProcessed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !consignmentData || consignmentProcessed || !user) return;
+
+    const loadConsignmentItems = async () => {
+      const productIds = consignmentData.items.map(i => i.product_id).filter(Boolean);
+      if (productIds.length === 0) return;
+
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+        .in("id", productIds);
+
+      if (error || !products) {
+        toast({ title: "Erro ao carregar produtos da malinha", variant: "destructive" });
+        return;
+      }
+
+      const cartItems: CartItem[] = consignmentData.items.map(item => {
+        const dbProduct = products.find(p => p.id === item.product_id);
+        const product: Product = dbProduct
+          ? { ...dbProduct, isB2B: false }
+          : {
+              id: item.product_id,
+              name: item.product_name,
+              price: item.price,
+              stock_quantity: 1,
+              owner_id: user.id,
+              group_id: null,
+              category: "",
+              color: item.color,
+              size: item.size,
+            };
+        return { product, quantity: 1, isPartnerStock: false };
+      });
+
+      setCart(cartItems);
+      setCustomerName(consignmentData.customerName || "");
+      setCustomerPhone(consignmentData.customerPhone || "");
+      setNotes(`Venda originada da Bolsa Consignada #${consignmentData.consignmentId.slice(0, 8)}`);
+      setConsignmentProcessed(true);
+    };
+
+    loadConsignmentItems();
+  }, [open, consignmentData, consignmentProcessed, user]);
+
+  // Reset consignment state when dialog closes
+  useEffect(() => {
+    if (!open && consignmentProcessed) {
+      setConsignmentProcessed(false);
+      onConsignmentProcessed?.();
+    }
+  }, [open, consignmentProcessed, onConsignmentProcessed]);
+
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
@@ -889,6 +963,14 @@ export default function NewSaleDialog({
         onDraftReconciled?.();
         queryClient.invalidateQueries({ queryKey: ["event-drafts-pending"] });
         queryClient.invalidateQueries({ queryKey: ["event-drafts-pending-count"] });
+      }
+      // Mark consignment as completed after successful sale
+      if (consignmentData?.consignmentId) {
+        await supabase
+          .from("consignments")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", consignmentData.consignmentId);
+        queryClient.invalidateQueries({ queryKey: ["consignments"] });
       }
 
       queryClient.invalidateQueries({ queryKey: ["sales"] });
