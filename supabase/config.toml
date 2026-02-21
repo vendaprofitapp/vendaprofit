@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.botconversa-notify]
 verify_jwt = false
+
+[functions.always-profit-webhook]
+verify_jwt = false
