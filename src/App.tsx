@@ -50,6 +50,7 @@ import PartnerPointDetail from "./pages/PartnerPointDetail";
 import PartnerCatalog from "./pages/PartnerCatalog";
 import PartnerContract from "./pages/PartnerContract";
 import StockSetDetector from "./pages/StockSetDetector";
+import CatalogCheckout from "./pages/CatalogCheckout";
 
 const queryClient = new QueryClient();
 
@@ -157,6 +158,7 @@ const AppRoutes = () => (
     <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/contrato/:token" element={<PartnerContract />} />
     <Route path="/bag/:token" element={<PublicBag />} />
+    <Route path="/:slug/checkout" element={<CatalogCheckout />} />
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
   </Routes>

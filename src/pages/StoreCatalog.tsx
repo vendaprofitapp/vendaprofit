@@ -1,4 +1,4 @@
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -220,6 +220,7 @@ interface StoreSettings {
 
 export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -1530,98 +1531,24 @@ export default function StoreCatalog() {
       setShowLeadCapture(true);
       return;
     }
-    
-    const shortCode = generateShortCode();
 
-    // Resolve lead_id — storedLead.lead_id may be "" if a previous INSERT failed
-    // Re-fetch from DB if needed so the saved_cart is always linked to a lead
-    let resolvedLeadId: string | null = storedLead?.lead_id || null;
-    if (!resolvedLeadId && storedLead?.whatsapp) {
-      const { data: refetched } = await supabase
-        .from("store_leads")
-        .select("id")
-        .eq("store_id", store.id)
-        .eq("whatsapp", storedLead.whatsapp)
-        .maybeSingle();
-      if (refetched?.id) {
-        resolvedLeadId = refetched.id;
-        // Update localStorage with recovered lead_id
-        localStorage.setItem(`store_lead_${slug}`, JSON.stringify({
-          ...storedLead,
-          lead_id: resolvedLeadId,
-        }));
-      }
-    }
-    
-    // Save cart to database
-    try {
-      const { data: savedCart, error: cartError } = await supabase
-        .from("saved_carts")
-        .insert({
-          short_code: shortCode,
-          store_id: store.id,
-          owner_id: store.owner_id,
-          lead_id: resolvedLeadId,
-          customer_name: storedLead?.name || "Cliente",
-          customer_phone: storedLead?.whatsapp || "",
-          total: cartTotal,
-          status: "waiting",
-        } as any)
-        .select("id")
-        .single();
-
-      if (!cartError && savedCart) {
-        const cartItems = cart.map(item => ({
-          cart_id: savedCart.id,
-          product_id: item.displayItem.productId,
-          product_name: item.displayItem.name,
-          variant_color: item.displayItem.color || null,
-          selected_size: item.selectedSize,
-          quantity: item.quantity,
-          unit_price: item.effectivePrice,
-          source: getItemSource(item),
-        }));
-        await supabase.from("saved_cart_items").insert(cartItems as any);
-      }
-    } catch (err) {
-      console.error("Erro ao salvar carrinho:", err);
-    }
-
-    const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
-    
-    let message = `🧾 *Código do pedido: ${shortCode}*\n\n`;
-    message += "Olá! Gostaria de fazer o seguinte pedido:\n\n";
-    
-    cart.forEach((item, index) => {
-      const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
-      const source = getItemSource(item);
-      const sourceLabel = getSourceLabel(source);
-      const emoji = index < numberEmojis.length ? numberEmojis[index] : `${index + 1}.`;
-      message += `${emoji} ${item.displayItem.name}${colorInfo} ${sourceLabel}\n`;
-      message += `Tamanho: ${item.selectedSize}\n`;
-      message += `Quantidade: ${item.quantity}\n`;
-      message += `Preço unitário: ${formatPrice(item.effectivePrice)}\n`;
-      message += `Subtotal: ${formatPrice(item.effectivePrice * item.quantity)}\n\n`;
-    });
-    
-    message += `✅ *TOTAL: ${formatPrice(cartTotal)}*`;
-    
-    const phone = store.whatsapp_number.replace(/\D/g, "");
-    window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
-    
-    // Mark lead cart items as converted and save source
-    if (storedLead?.lead_id) {
-      supabase
-        .from("lead_cart_items")
-        .update({ status: "converted" } as any)
-        .eq("lead_id", storedLead.lead_id)
-        .eq("status", "abandoned")
-        .then(() => {});
-    }
-    
-    clearCart();
+    // Navigate to full-page checkout instead of processing inline
     setCartOpen(false);
-    toast.success("Pedido enviado pelo WhatsApp!");
+    navigate(`/${slug}/checkout`, {
+      state: {
+        cart,
+        store: {
+          id: store.id,
+          owner_id: store.owner_id,
+          store_name: store.store_name,
+          whatsapp_number: store.whatsapp_number,
+          primary_color: store.primary_color,
+          logo_url: store.logo_url,
+        },
+        cartTotal,
+        slug,
+      },
+    });
   };
 
   if (storeLoading) {
