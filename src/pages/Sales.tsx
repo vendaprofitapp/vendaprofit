@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Plus, Search, ShoppingCart, Eye, Edit2, Truck, Mic } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -202,9 +202,9 @@ export default function Sales() {
   }, [setSearchParams]);
 
   // Open dialog if draft params present
-  useState(() => {
+  useEffect(() => {
     if (fromDraftId && draftNotes) setIsNewSaleOpen(true);
-  });
+  }, [fromDraftId, draftNotes]);
 
   return (
     <MainLayout>
