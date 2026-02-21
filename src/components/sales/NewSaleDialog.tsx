@@ -1223,17 +1223,16 @@ export default function NewSaleDialog({
 
               {/* Shipping Section */}
               <ShippingSection
-                shippingData={shippingData}
-                onShippingChange={setShippingData}
+                value={shippingData}
+                onChange={setShippingData}
                 shippingConfig={shippingProfile || undefined}
                 customerAddress={selectedCustomerId ? (() => {
                   const c = registeredCustomers.find(cu => cu.id === selectedCustomerId);
                   if (!c?.address_zip) return undefined;
                   return { address_zip: c.address_zip, address_street: c.address_street || "", address_number: c.address_number || "", address_complement: c.address_complement || "", address_neighborhood: c.address_neighborhood || "", address_city: c.address_city || "", address_state: c.address_state || "" };
                 })() : undefined}
-                products={quoteProducts}
-                onTrackingGenerated={(tracking) => setShippingTracking(tracking)}
-                onLabelGenerated={(url) => setShippingLabelUrl(url)}
+                quoteProducts={quoteProducts}
+                onTrackingGenerated={(tracking, labelUrl) => { setShippingTracking(tracking); setShippingLabelUrl(labelUrl); }}
                 saleId={saleIdForShipping}
               />
 
