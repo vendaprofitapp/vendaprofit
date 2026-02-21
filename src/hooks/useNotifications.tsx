@@ -107,7 +107,41 @@ export function useNotifications(): NotificationsData {
     refetchInterval: 60000,
   });
 
-  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner;
+  // Catálogo — novos leads (últimas 24h)
+  const { data: newLeads = [], isLoading: loadingLeads } = useQuery({
+    queryKey: ["notifications-new-leads", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_leads")
+        .select("id")
+        .eq("owner_id", user!.id)
+        .gte("created_at", oneDayAgo);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 60000,
+  });
+
+  // Catálogo — carrinhos abandonados (últimos 7 dias)
+  const { data: abandonedCarts = [], isLoading: loadingCarts } = useQuery({
+    queryKey: ["notifications-abandoned-carts", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_cart_items")
+        .select("id, lead_id")
+        .eq("status", "abandoned")
+        .gte("created_at", sevenDaysAgo);
+      if (error) throw error;
+      // Deduplicate by lead_id to count unique carts
+      const uniqueLeads = new Set((data || []).map((d: { lead_id: string }) => d.lead_id));
+      return Array.from(uniqueLeads);
+    },
+    enabled: !!user?.id,
+    refetchInterval: 60000,
+  });
+
+  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingLeads || loadingCarts;
 
   const sections: NotificationSection[] = [];
 
@@ -168,6 +202,30 @@ export function useNotifications(): NotificationsData {
       route: "/pontos-parceiros",
       color: "#3b82f6",
       description: `${partnerMovements.length} movimentação${partnerMovements.length > 1 ? "ões" : ""} recente${partnerMovements.length > 1 ? "s" : ""}`,
+    });
+  }
+
+  if (newLeads.length > 0) {
+    sections.push({
+      key: "new-leads",
+      label: "Novos Leads",
+      count: newLeads.length,
+      icon: "🧲",
+      route: "/whatsapp-crm",
+      color: "#f59e0b",
+      description: `${newLeads.length} novo${newLeads.length > 1 ? "s" : ""} lead${newLeads.length > 1 ? "s" : ""} nas últimas 24h`,
+    });
+  }
+
+  if (abandonedCarts.length > 0) {
+    sections.push({
+      key: "abandoned-carts",
+      label: "Carrinhos Abandonados",
+      count: abandonedCarts.length,
+      icon: "🛒",
+      route: "/whatsapp-crm",
+      color: "#ef4444",
+      description: `${abandonedCarts.length} carrinho${abandonedCarts.length > 1 ? "s" : ""} abandonado${abandonedCarts.length > 1 ? "s" : ""} nos últimos 7 dias`,
     });
   }
 
