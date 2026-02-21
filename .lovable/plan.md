@@ -1,50 +1,69 @@
 
-# Captura de Lead Inline no Carrinho (sem pop-up)
 
-## Problema
+# Barra Fixa de Captura de Lead Passiva (controlada pelo toggle existente)
 
-O pop-up (Drawer/Dialog) do `LeadCaptureSheet` causa instabilidades em dispositivos moveis -- conflitos com o teclado virtual, camadas sobrepostas ao Sheet do carrinho, e comportamento imprevisivel ao fechar/abrir multiplos modais.
+## Resumo
 
-## Estrategia Proposta: Formulario Embutido no Carrinho
+Adicionar uma barra fixa no rodape do catalogo que captura Nome e WhatsApp de visitantes que navegam sem abrir o carrinho. A barra so aparece quando o toggle "Captura de Leads" na pagina WhatsApp CRM esta ativo. Os campos inline no carrinho permanecem **sempre visiveis**, independentemente do toggle.
 
-Em vez de abrir um pop-up separado, os campos de Nome e WhatsApp serao exibidos **diretamente dentro do painel do carrinho (Sheet)**, logo acima do botao "Revisar e enviar pedido". Isso elimina completamente o problema de multiplos modais no mobile.
+## Separacao de responsabilidades
 
-### Como funciona para o cliente:
-
-1. Cliente adiciona itens ao carrinho normalmente (sem interrupcao)
-2. Ao abrir a sacola, se os dados ainda nao foram capturados, ele ve dois campos compactos (Nome e WhatsApp) integrados ao rodape do carrinho, antes do botao de finalizar
-3. O botao de finalizar so fica habilitado apos preencher os campos (quando lead capture esta ativo)
-4. Ao preencher, os dados sao salvos automaticamente no banco e no localStorage -- sem necessidade de clicar em "salvar"
-5. Se o cliente ja forneceu os dados antes, os campos aparecem preenchidos com um indicador visual de confirmacao
-
-### Vantagens:
-
-- Zero pop-ups: nenhum modal, drawer ou overlay adicional
-- Fluxo natural: o cliente preenche no momento que ja esta decidindo comprar
-- Sem conflitos de teclado virtual no mobile
-- Dados capturados antes do checkout, habilitando o rastreio de carrinhos abandonados
-- Compativel com o toggle "Captura de Leads" existente (quando desativado, os campos nao aparecem)
-
-## Alteracoes por Arquivo
-
-| Arquivo | Alteracao |
+| Funcionalidade | Depende do toggle? |
 |---|---|
-| `src/pages/StoreCatalog.tsx` | Substituir o `LeadCaptureSheet` por campos inline dentro do SheetContent do carrinho. Mover logica de captura para o rodape do carrinho. Remover o state `showLeadCapture` e `pendingCartAdd`. |
-| `src/components/catalog/LeadCaptureSheet.tsx` | Manter o arquivo (ainda usado pelo `showLoyaltyCapture`), sem alteracoes. |
+| Campos inline no carrinho (Nome + WhatsApp) | **Nao** -- sempre aparecem |
+| Barra passiva no rodape do catalogo | **Sim** -- so aparece quando toggle ligado |
 
-## Detalhes Tecnicos
+## Como funciona a barra passiva
 
-### Dentro do SheetContent do carrinho (`StoreCatalog.tsx`):
+1. Cliente entra no catalogo e navega normalmente
+2. Apos 8 segundos ou scroll > 300px, uma barra sutil desliza de baixo: "Quer receber novidades? Deixe seu WhatsApp"
+3. Dois campos compactos (Nome + WhatsApp) + botao "Salvar"
+4. Ao preencher, lead salvo no banco + localStorage, barra desaparece com "Obrigado!"
+5. Se lead ja existe no localStorage, a barra nunca aparece
+6. O "X" dispensa a barra pela sessao (sessionStorage)
+7. Toggle desligado = barra nunca aparece, mas carrinho continua pedindo dados normalmente
 
-- Quando `lead_capture_enabled === true` e nao ha lead salvo no localStorage:
-  - Renderizar dois campos `Input` (Nome e WhatsApp) com formatacao automatica no rodape, entre o total e o botao de enviar
-  - O botao "Revisar e enviar pedido" fica desabilitado ate que ambos os campos sejam validos (nome >= 2 chars, WhatsApp >= 10 digitos)
-  - Ao clicar no botao de enviar, salvar os dados do lead no banco (reutilizando `saveLeadData`) antes de navegar ao checkout
+## Alteracoes por arquivo
 
-- Quando lead ja esta salvo no localStorage:
-  - Exibir uma linha compacta com o nome do cliente e um icone de check, sem campos editaveis
-  - Botao de enviar habilitado normalmente
+| Arquivo | O que muda |
+|---|---|
+| `src/pages/StoreCatalog.tsx` | Adicionar estados `showLeadBar` e `leadBarDismissed`. Adicionar useEffect com timer 8s + scroll listener (condicionado ao toggle). Renderizar barra fixa (`position: fixed, bottom: 0, z-40`) condicionada a `lead_capture_enabled && !storedLead`. **Manter campos inline do carrinho sem condicao ao toggle** -- eles aparecem sempre. Reutilizar `saveLeadData` existente. |
+| `src/pages/WhatsAppCRM.tsx` | Atualizar texto descritivo do toggle de "Solicitar nome e WhatsApp ao adicionar itens ao carrinho" para "Exibir barra de captura de leads durante a navegacao no catalogo" |
 
-- Os campos usam `inputMode="text"` e `inputMode="tel"` respectivamente, e `scrollIntoView` no focus para garantir boa experiencia no mobile
+## Detalhes tecnicos
 
-- O `saveAbandonedCart` continua funcionando normalmente via o useEffect existente, pois o `lead_id` estara disponivel no localStorage assim que o cliente preencher os campos
+### Campos inline do carrinho (sem mudanca)
+
+Os campos de Nome e WhatsApp dentro do Sheet do carrinho continuam aparecendo **sempre**, para qualquer visitante, independentemente do toggle. Isso garante que todo pedido tenha dados de contato.
+
+### Novos estados para a barra passiva
+
+- `showLeadBar: boolean` (inicia false) -- controla visibilidade
+- `leadBarDismissed: boolean` (inicia lendo sessionStorage) -- se usuario clicou X
+- `barLeadName: string` e `barLeadWhatsapp: string` -- campos do formulario da barra
+
+### Logica de exibicao da barra (useEffect)
+
+```text
+Condicoes para mostrar a barra:
+  lead_capture_enabled === true (toggle ligado)
+  AND localStorage nao tem lead_id
+  AND sessionStorage nao tem lead_bar_dismissed
+  AND (timer 8s expirou OR scrollY > 300)
+```
+
+### UI da barra
+
+- `fixed bottom-0 left-0 right-0 z-40` (abaixo do Sheet do carrinho que e z-50)
+- Background com blur: `bg-white/95 dark:bg-card/95 backdrop-blur-sm border-t shadow-lg`
+- Animacao: `transition-transform duration-500` com `translate-y-full` / `translate-y-0`
+- Layout responsivo: campos empilham no mobile, lado a lado no desktop
+- Botao X no canto superior direito para dispensar
+- Ao salvar com sucesso: toast de confirmacao + barra desaparece
+
+### Interacao entre barra e carrinho
+
+- Se lead capturado pela barra, campos no carrinho mostram estado "confirmado" (nome + check)
+- Se lead NAO capturado pela barra mas abriu carrinho, campos inline funcionam normalmente como captura principal
+- Ambos usam a mesma funcao `saveLeadData` -- sem duplicacao
+
