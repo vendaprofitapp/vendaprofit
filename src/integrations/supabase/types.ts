@@ -3400,6 +3400,7 @@ export type Database = {
         Args: { category_name: string }
         Returns: undefined
       }
+      create_sale_transaction: { Args: { payload: Json }; Returns: Json }
       get_catalog_customer_loyalty: {
         Args: { _owner_id: string; _phone: string }
         Returns: Json
