@@ -1884,7 +1884,7 @@ export default function StoreCatalog() {
                         })()}
                       >
                         <MessageCircle className="h-5 w-5" />
-                        Revisar e enviar pedido
+                        Enviar pedido
                       </Button>
                       
                       <button 
