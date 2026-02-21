@@ -95,22 +95,35 @@ Deno.serve(async (req) => {
       phone = test_phone.replace(/\D/g, "");
       if (!phone.startsWith("55")) phone = "55" + phone;
     } else {
-      const { data: profile, error: profileError } = await supabase
+      // Try profiles.phone first
+      const { data: profile } = await supabase
         .from("profiles")
         .select("phone")
         .eq("id", owner_id)
         .single();
 
-      if (profileError || !profile?.phone) {
+      let rawPhone = profile?.phone;
+
+      // Fallback: store_settings.whatsapp_number
+      if (!rawPhone) {
+        const { data: store } = await supabase
+          .from("store_settings")
+          .select("whatsapp_number")
+          .eq("owner_id", owner_id)
+          .single();
+        rawPhone = store?.whatsapp_number;
+      }
+
+      if (!rawPhone) {
         console.log(`No phone found for owner ${owner_id} — skipping`);
-        await saveLog({ event_type, owner_id, phone: null, status: "skipped", error_message: "Vendedora sem telefone cadastrado no perfil" });
+        await saveLog({ event_type, owner_id, phone: null, status: "skipped", error_message: "Vendedora sem telefone cadastrado no perfil ou loja" });
         return new Response(JSON.stringify({ skipped: true, reason: "no_phone" }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      phone = profile.phone.replace(/\D/g, "");
+      phone = rawPhone.replace(/\D/g, "");
       if (!phone.startsWith("55")) phone = "55" + phone;
     }
 
