@@ -163,7 +163,7 @@ export function useNotifications(): NotificationsData {
       label: "Bolsa Consignada",
       count: consignmentsReady.length,
       icon: "👜",
-      route: "/bolsa-consignada",
+      route: "/consignments",
       color: "#a855f7",
       description: `${consignmentsReady.length} cliente${consignmentsReady.length > 1 ? "s" : ""} finalizou as escolhas`,
     });
@@ -175,7 +175,7 @@ export function useNotifications(): NotificationsData {
       label: "Bazar VIP — Curadoria",
       count: bazarPending.length,
       icon: "🛍️",
-      route: "/bazar-admin",
+      route: "/admin/bazar",
       color: "#6366f1",
       description: `${bazarPending.length} item${bazarPending.length > 1 ? "ns" : ""} aguardando aprovação`,
     });
@@ -187,7 +187,7 @@ export function useNotifications(): NotificationsData {
       label: "Bazar VIP — Vendas",
       count: bazarSold.length,
       icon: "🎉",
-      route: "/bazar-admin",
+      route: "/admin/bazar",
       color: "#22c55e",
       description: `${bazarSold.length} venda${bazarSold.length > 1 ? "s" : ""} no Bazar nos últimos 7 dias`,
     });
@@ -199,7 +199,7 @@ export function useNotifications(): NotificationsData {
       label: "Pontos Parceiros",
       count: partnerMovements.length,
       icon: "📍",
-      route: "/pontos-parceiros",
+      route: "/partner-points",
       color: "#3b82f6",
       description: `${partnerMovements.length} movimentação${partnerMovements.length > 1 ? "ões" : ""} recente${partnerMovements.length > 1 ? "s" : ""}`,
     });
@@ -211,7 +211,7 @@ export function useNotifications(): NotificationsData {
       label: "Novos Leads",
       count: newLeads.length,
       icon: "🧲",
-      route: "/whatsapp-crm",
+      route: "/marketing/whatsapp",
       color: "#f59e0b",
       description: `${newLeads.length} novo${newLeads.length > 1 ? "s" : ""} lead${newLeads.length > 1 ? "s" : ""} nas últimas 24h`,
     });
@@ -223,7 +223,7 @@ export function useNotifications(): NotificationsData {
       label: "Carrinhos Abandonados",
       count: abandonedCarts.length,
       icon: "🛒",
-      route: "/whatsapp-crm",
+      route: "/marketing/whatsapp",
       color: "#ef4444",
       description: `${abandonedCarts.length} carrinho${abandonedCarts.length > 1 ? "s" : ""} abandonado${abandonedCarts.length > 1 ? "s" : ""} nos últimos 7 dias`,
     });

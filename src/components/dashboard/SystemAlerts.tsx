@@ -661,7 +661,7 @@ export function SystemAlerts() {
             <p className="text-xs text-muted-foreground">
               {consignmentsReady.length} cliente{consignmentsReady.length > 1 ? "s" : ""} finalizou as escolhas e aguarda conciliação
             </p>
-            <Button size="sm" className="w-full mt-1 bg-purple-500 hover:bg-purple-600 text-white" onClick={() => navigate("/bolsa-consignada")}>
+            <Button size="sm" className="w-full mt-1 bg-purple-500 hover:bg-purple-600 text-white" onClick={() => navigate("/consignments")}>
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Bolsas
             </Button>
@@ -705,7 +705,7 @@ export function SystemAlerts() {
             {bazarPendingItems.slice(0, 2).map((item) => (
               <div key={item.id} className="text-xs text-muted-foreground truncate">• {item.title}</div>
             ))}
-            <Button size="sm" className="w-full mt-1 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={() => navigate("/bazar-admin")}>
+            <Button size="sm" className="w-full mt-1 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={() => navigate("/admin/bazar")}>
               <ArrowRight className="h-4 w-4 mr-2" />
               Gerenciar
             </Button>
@@ -727,7 +727,7 @@ export function SystemAlerts() {
             <p className="text-xs text-muted-foreground">
               {bazarSoldItems.length} venda{bazarSoldItems.length > 1 ? "s" : ""} realizadas nos últimos 7 dias
             </p>
-            <Button size="sm" variant="outline" className="w-full mt-1 border-green-500/30 text-green-600" onClick={() => navigate("/bazar-admin")}>
+            <Button size="sm" variant="outline" className="w-full mt-1 border-green-500/30 text-green-600" onClick={() => navigate("/admin/bazar")}>
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Bazar
             </Button>
@@ -749,7 +749,7 @@ export function SystemAlerts() {
             <p className="text-xs text-muted-foreground">
               {partnerMovements.length} movimentação{partnerMovements.length > 1 ? "ões" : ""} nas últimas 24h
             </p>
-            <Button size="sm" className="w-full mt-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate("/pontos-parceiros")}>
+            <Button size="sm" className="w-full mt-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate("/partner-points")}>
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Pontos
             </Button>
