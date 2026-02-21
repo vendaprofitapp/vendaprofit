@@ -1501,23 +1501,94 @@ export default function StoreCatalog() {
   const sendCartViaWhatsApp = async () => {
     if (!store?.whatsapp_number || cart.length === 0) return;
 
-    // Navigate to full-page checkout instead of processing inline
-    setCartOpen(false);
-    navigate(`/${slug}/checkout`, {
-      state: {
-        cart,
-        store: {
-          id: store.id,
+    try {
+      const storedLead = getStoredLead();
+      const customerName = storedLead?.name || inlineLeadName.trim();
+      const customerPhone = (storedLead?.whatsapp || inlineLeadWhatsapp).replace(/\D/g, "");
+      const shortCode = generateShortCode();
+
+      // 1. Save cart (saved_carts + saved_cart_items)
+      const { data: savedCart } = await supabase
+        .from("saved_carts")
+        .insert({
+          short_code: shortCode,
+          store_id: store.id,
           owner_id: store.owner_id,
-          store_name: store.store_name,
-          whatsapp_number: store.whatsapp_number,
-          primary_color: store.primary_color,
-          logo_url: store.logo_url,
-        },
-        cartTotal,
-        slug,
-      },
-    });
+          lead_id: storedLead?.lead_id || null,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          total: cartTotal,
+          status: "waiting",
+        } as any)
+        .select("id")
+        .single();
+
+      if (savedCart) {
+        const cartItems = cart.map(item => ({
+          cart_id: savedCart.id,
+          product_id: item.displayItem.productId,
+          product_name: item.displayItem.name,
+          variant_color: item.displayItem.color || null,
+          selected_size: item.selectedSize,
+          quantity: item.quantity,
+          unit_price: item.effectivePrice,
+          source: getItemSource(item),
+        }));
+        await supabase.from("saved_cart_items").insert(cartItems as any);
+      }
+
+      // 2. Insert sale with source='catalog' to trigger BotConversa webhook
+      await supabase.from("sales").insert({
+        owner_id: store.owner_id,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        payment_method: "Pendente",
+        subtotal: cartTotal,
+        total: cartTotal,
+        discount_amount: 0,
+        status: "completed",
+        sale_source: "catalog",
+        notes: `Pedido via catálogo ${shortCode}`,
+      } as any);
+
+      // 3. Mark lead_cart_items as converted
+      if (storedLead?.lead_id) {
+        await supabase
+          .from("lead_cart_items")
+          .update({ status: "converted" } as any)
+          .eq("lead_id", storedLead.lead_id)
+          .eq("status", "abandoned");
+      }
+
+      // 4. Build WhatsApp message and open
+      const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+      let message = `🧾 *Código do pedido: ${shortCode}*\n\n`;
+      message += "Olá! Gostaria de fazer o seguinte pedido:\n\n";
+
+      cart.forEach((item, index) => {
+        const colorInfo = item.displayItem.color ? ` - ${item.displayItem.color}` : "";
+        const source = getItemSource(item);
+        const sourceLabel = getSourceLabel(source);
+        const emoji = index < numberEmojis.length ? numberEmojis[index] : `${index + 1}.`;
+        message += `${emoji} ${item.displayItem.name}${colorInfo} ${sourceLabel}\n`;
+        message += `Tamanho: ${item.selectedSize}\n`;
+        message += `Quantidade: ${item.quantity}\n`;
+        message += `Preço unitário: ${formatPrice(item.effectivePrice)}\n`;
+        message += `Subtotal: ${formatPrice(item.effectivePrice * item.quantity)}\n\n`;
+      });
+
+      message += `✅ *TOTAL: ${formatPrice(cartTotal)}*`;
+
+      const phone = store.whatsapp_number!.replace(/\D/g, "");
+      window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
+
+      toast.success("Pedido enviado com sucesso! 🎉");
+      setCartOpen(false);
+      setCart([]);
+    } catch (err) {
+      console.error("Erro ao finalizar pedido:", err);
+      toast.error("Erro ao enviar pedido. Tente novamente.");
+    }
   };
 
   if (storeLoading) {
