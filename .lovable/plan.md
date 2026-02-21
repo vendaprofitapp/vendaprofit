@@ -1,59 +1,43 @@
-# Nova Aba: Pedidos do Catalogo
 
-## Objetivo
+# Corrigir Exibicao de Pedidos na Aba "Pedidos da Loja"
 
-Criar uma nova pagina dedicada para exibir todas as acoes realizadas na pagina de vendas (catalogo), com detalhamento completo de pedidos gerados e carrinhos abandonados. O link ficara no sidebar logo abaixo de "Minha Loja".
+## Diagnostico
 
-## Estrutura da Pagina
+A investigacao mostrou que:
+- Os dados ESTAO sendo salvos corretamente na tabela `saved_carts` (status `waiting`)
+- A requisicao de rede retorna Status 200 com os pedidos
+- As politicas de seguranca (RLS) estao configuradas corretamente
+- A rota e o sidebar estao registrados corretamente
 
-A pagina tera duas abas (Tabs):
+O problema e que o polling atual e de 30 segundos, entao se o usuario abre a pagina logo apos fazer um pedido, pode nao ver o dado imediatamente. Alem disso, nao ha atualizacao em tempo real.
 
-### Aba 1 - Pedidos Recebidos
+## Solucao
 
-Consulta a tabela `saved_carts` (status `waiting`) com os itens de `saved_cart_items`:
+### 1. Arquivo: `src/pages/CatalogOrders.tsx` - Melhorias de confiabilidade
 
-- Codigo do pedido (short_code)
-- Nome do cliente e telefone
-- Data/hora do pedido
-- Valor total
-- Lista detalhada de itens: nome do produto, cor, tamanho, quantidade, preco unitario, origem (estoque/sob encomenda)
-- Botao para abrir WhatsApp do cliente
-- Badge de status (Aguardando / Convertido)
+- **Reduzir o polling de 30s para 10s** para que novos pedidos aparecam mais rapido
+- **Adicionar botao de "Atualizar"** manual para o usuario forcar a busca
+- **Adicionar `refetchOnWindowFocus: true`** para que ao voltar para a aba, os dados sejam recarregados automaticamente
+- **Remover o filtro `.eq("owner_id", user.id)`** da query de pedidos, pois a politica RLS ja filtra por owner_id automaticamente (duplo filtro pode causar conflitos em cenarios de cache)
 
-### Aba 2 - Carrinhos Abandonados
+### 2. Arquivo: `src/pages/CatalogOrders.tsx` - Melhoria na query de abandonados
 
-Consulta a tabela `lead_cart_items` (status `abandoned`) com dados do lead via `store_leads`:
+- A query de carrinhos abandonados filtra por `owner_id` no lado do cliente (JavaScript) apos trazer todos os dados. Isso e ineficiente e pode falhar silenciosamente se a relacao `store_leads` nao retornar dados.
+- Alterar para filtrar diretamente no banco usando o campo `store_leads.owner_id`
 
-- Nome e WhatsApp do cliente
-- Data em que o carrinho foi criado
-- Lista de produtos abandonados: nome, cor, tamanho, quantidade, preco
-- Botao para contatar via WhatsApp
-- Botao para marcar como "contatado"
+### 3. Validar que a query nao esta falhando silenciosamente
 
-## Alteracoes por Arquivo
+- Adicionar tratamento de erro visual (toast) caso a query falhe, em vez de apenas exibir "Nenhum pedido"
 
+## Resumo de alteracoes
 
-| Arquivo                             | Alteracao                                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `src/pages/CatalogOrders.tsx`       | **Novo arquivo** - Pagina completa com duas abas (Pedidos e Abandonados)                         |
-| `src/components/layout/Sidebar.tsx` | Adicionar link "Pedidos do Catalogo" com icone `ShoppingCart` logo apos o botao "Ver Minha Loja" |
-| `src/App.tsx`                       | Registrar rota `/catalog-orders` como rota protegida                                             |
+| Arquivo | Alteracao |
+|---|---|
+| `src/pages/CatalogOrders.tsx` | Reduzir polling para 10s, adicionar `refetchOnWindowFocus`, botao "Atualizar", melhor tratamento de erros, otimizar query de abandonados |
 
+## Resultado esperado
 
-## Detalhes Tecnicos
-
-### Pagina `CatalogOrders.tsx`
-
-- Usa `useQuery` para buscar dados com polling a cada 30s
-- Pedidos: `saved_carts` com join em `saved_cart_items`, ordenados por data desc
-- Abandonados: `lead_cart_items` com join em `store_leads`, status `abandoned`, ordenados por data desc
-- Cards expansiveis mostrando os itens detalhados de cada pedido/carrinho
-- Formatacao de preco em BRL e datas com `date-fns`
-- Filtro por periodo (hoje, 7 dias, 30 dias)
-
-### Sidebar
-
-- O item sera adicionado logo abaixo do botao dourado "Ver Minha Loja", fora dos grupos, com destaque visual sutil
-- Icone: `ShoppingCart`
-- Texto: "Pedidos da Loja"
-- Rota: `/catalog-orders`
+- Pedidos aparecerao em no maximo 10 segundos apos serem criados
+- Ao alternar abas do navegador e voltar, os dados serao atualizados automaticamente
+- Botao de atualizar manual para garantir que o usuario possa forcar a busca
+- Erros serao exibidos visualmente em vez de silenciosamente ignorados
