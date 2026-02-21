@@ -1,43 +1,50 @@
 
-# Corrigir Exibicao de Pedidos na Aba "Pedidos da Loja"
+# Captura de Lead Inline no Carrinho (sem pop-up)
 
-## Diagnostico
+## Problema
 
-A investigacao mostrou que:
-- Os dados ESTAO sendo salvos corretamente na tabela `saved_carts` (status `waiting`)
-- A requisicao de rede retorna Status 200 com os pedidos
-- As politicas de seguranca (RLS) estao configuradas corretamente
-- A rota e o sidebar estao registrados corretamente
+O pop-up (Drawer/Dialog) do `LeadCaptureSheet` causa instabilidades em dispositivos moveis -- conflitos com o teclado virtual, camadas sobrepostas ao Sheet do carrinho, e comportamento imprevisivel ao fechar/abrir multiplos modais.
 
-O problema e que o polling atual e de 30 segundos, entao se o usuario abre a pagina logo apos fazer um pedido, pode nao ver o dado imediatamente. Alem disso, nao ha atualizacao em tempo real.
+## Estrategia Proposta: Formulario Embutido no Carrinho
 
-## Solucao
+Em vez de abrir um pop-up separado, os campos de Nome e WhatsApp serao exibidos **diretamente dentro do painel do carrinho (Sheet)**, logo acima do botao "Revisar e enviar pedido". Isso elimina completamente o problema de multiplos modais no mobile.
 
-### 1. Arquivo: `src/pages/CatalogOrders.tsx` - Melhorias de confiabilidade
+### Como funciona para o cliente:
 
-- **Reduzir o polling de 30s para 10s** para que novos pedidos aparecam mais rapido
-- **Adicionar botao de "Atualizar"** manual para o usuario forcar a busca
-- **Adicionar `refetchOnWindowFocus: true`** para que ao voltar para a aba, os dados sejam recarregados automaticamente
-- **Remover o filtro `.eq("owner_id", user.id)`** da query de pedidos, pois a politica RLS ja filtra por owner_id automaticamente (duplo filtro pode causar conflitos em cenarios de cache)
+1. Cliente adiciona itens ao carrinho normalmente (sem interrupcao)
+2. Ao abrir a sacola, se os dados ainda nao foram capturados, ele ve dois campos compactos (Nome e WhatsApp) integrados ao rodape do carrinho, antes do botao de finalizar
+3. O botao de finalizar so fica habilitado apos preencher os campos (quando lead capture esta ativo)
+4. Ao preencher, os dados sao salvos automaticamente no banco e no localStorage -- sem necessidade de clicar em "salvar"
+5. Se o cliente ja forneceu os dados antes, os campos aparecem preenchidos com um indicador visual de confirmacao
 
-### 2. Arquivo: `src/pages/CatalogOrders.tsx` - Melhoria na query de abandonados
+### Vantagens:
 
-- A query de carrinhos abandonados filtra por `owner_id` no lado do cliente (JavaScript) apos trazer todos os dados. Isso e ineficiente e pode falhar silenciosamente se a relacao `store_leads` nao retornar dados.
-- Alterar para filtrar diretamente no banco usando o campo `store_leads.owner_id`
+- Zero pop-ups: nenhum modal, drawer ou overlay adicional
+- Fluxo natural: o cliente preenche no momento que ja esta decidindo comprar
+- Sem conflitos de teclado virtual no mobile
+- Dados capturados antes do checkout, habilitando o rastreio de carrinhos abandonados
+- Compativel com o toggle "Captura de Leads" existente (quando desativado, os campos nao aparecem)
 
-### 3. Validar que a query nao esta falhando silenciosamente
-
-- Adicionar tratamento de erro visual (toast) caso a query falhe, em vez de apenas exibir "Nenhum pedido"
-
-## Resumo de alteracoes
+## Alteracoes por Arquivo
 
 | Arquivo | Alteracao |
 |---|---|
-| `src/pages/CatalogOrders.tsx` | Reduzir polling para 10s, adicionar `refetchOnWindowFocus`, botao "Atualizar", melhor tratamento de erros, otimizar query de abandonados |
+| `src/pages/StoreCatalog.tsx` | Substituir o `LeadCaptureSheet` por campos inline dentro do SheetContent do carrinho. Mover logica de captura para o rodape do carrinho. Remover o state `showLeadCapture` e `pendingCartAdd`. |
+| `src/components/catalog/LeadCaptureSheet.tsx` | Manter o arquivo (ainda usado pelo `showLoyaltyCapture`), sem alteracoes. |
 
-## Resultado esperado
+## Detalhes Tecnicos
 
-- Pedidos aparecerao em no maximo 10 segundos apos serem criados
-- Ao alternar abas do navegador e voltar, os dados serao atualizados automaticamente
-- Botao de atualizar manual para garantir que o usuario possa forcar a busca
-- Erros serao exibidos visualmente em vez de silenciosamente ignorados
+### Dentro do SheetContent do carrinho (`StoreCatalog.tsx`):
+
+- Quando `lead_capture_enabled === true` e nao ha lead salvo no localStorage:
+  - Renderizar dois campos `Input` (Nome e WhatsApp) com formatacao automatica no rodape, entre o total e o botao de enviar
+  - O botao "Revisar e enviar pedido" fica desabilitado ate que ambos os campos sejam validos (nome >= 2 chars, WhatsApp >= 10 digitos)
+  - Ao clicar no botao de enviar, salvar os dados do lead no banco (reutilizando `saveLeadData`) antes de navegar ao checkout
+
+- Quando lead ja esta salvo no localStorage:
+  - Exibir uma linha compacta com o nome do cliente e um icone de check, sem campos editaveis
+  - Botao de enviar habilitado normalmente
+
+- Os campos usam `inputMode="text"` e `inputMode="tel"` respectivamente, e `scrollIntoView` no focus para garantir boa experiencia no mobile
+
+- O `saveAbandonedCart` continua funcionando normalmente via o useEffect existente, pois o `lead_id` estara disponivel no localStorage assim que o cliente preencher os campos
