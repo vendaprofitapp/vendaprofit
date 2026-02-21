@@ -1,48 +1,24 @@
 
+# Remover Pop-up "Reservar suas pecas" e Renomear Botao
 
-# Correcao: Loja em Branco para a Usuaria dayana_tbperez@hotmail.com
-
-## Problema Identificado
-
-A usuaria possui **dois registros** na tabela `store_settings` para o mesmo `owner_id`:
-
-| ID | Slug | Nome | Criado em |
-|---|---|---|---|
-| 4d8bd952... | pwrdatibaia | PWRD Atibaia | 02/02/2026 |
-| c8e3ae87... | pwrd-atibaia | PWRD Atibaia | 18/02/2026 |
-
-A query usa `.maybeSingle()`, que retorna erro quando mais de uma linha e encontrada. Isso faz com que `storeSettings` fique `null`, mostrando tudo em branco e impedindo salvar (pois o sistema tenta criar um terceiro registro, que tambem falha).
-
-Nenhuma outra usuaria tem registros duplicados.
+## Problema
+Ao clicar "Finalizar pelo WhatsApp" na sacola, o sistema verifica se o cliente ja preencheu seus dados (lead). Se nao preencheu, abre o pop-up "Reservar suas pecas" ao inves de ir para a pagina de checkout. Como a pagina de checkout ja coleta Nome e WhatsApp, esse pop-up e redundante e causa confusao.
 
 ## Solucao
 
-Duas acoes:
+### Arquivo: `src/pages/StoreCatalog.tsx`
 
-### 1. Remover o registro duplicado (dados)
-Deletar o registro mais antigo (sem slug com hifen), mantendo o mais recente que a usuaria provavelmente criou por ultimo.
+**1. Remover a verificacao de lead no checkout**
+Na funcao `sendCartViaWhatsApp` (linha ~1524), remover o bloco que verifica `getStoredLead()` e abre o `LeadCaptureSheet`. A funcao deve navegar diretamente para a pagina de checkout sem verificar se o lead existe, pois a pagina de checkout ja coleta esses dados.
 
-Executar via ferramenta de dados:
-```sql
-DELETE FROM store_settings WHERE id = '4d8bd952-6dbc-4699-b520-521eb75b5147';
-```
+**2. Remover o state `pendingCheckout`**
+- Remover a declaracao `const [pendingCheckout, setPendingCheckout] = useState(false)` (linha ~251)
+- Remover o bloco que verifica `pendingCheckout` dentro do callback `onLeadCaptured` (linhas ~422-428)
 
-### 2. Prevenir duplicatas futuras (schema)
-Adicionar uma constraint `UNIQUE` na coluna `owner_id` da tabela `store_settings` para garantir que cada usuario tenha no maximo um registro de loja. Isso impede que o bug se repita.
-
-```sql
-ALTER TABLE store_settings ADD CONSTRAINT store_settings_owner_id_unique UNIQUE (owner_id);
-```
-
-Tambem ajustar a mutacao de criacao no `StoreSettings.tsx` para usar `upsert` ao inves de `insert`, como camada extra de protecao.
-
-## Arquivos a Alterar
-
-### `src/pages/StoreSettings.tsx`
-- Na secao de criacao (linhas 561-596), trocar `.insert(...)` por `.upsert(...)` para que, caso ja exista um registro para o `owner_id`, ele seja atualizado ao inves de duplicado.
+**3. Renomear o botao na sacola**
+Trocar o texto "Finalizar pelo WhatsApp" (linha ~1790) para "Revisar e enviar pedido".
 
 ## Impacto
-- Corrige imediatamente o problema da usuaria
-- Previne que qualquer outro usuario tenha o mesmo problema no futuro
+- O pop-up "Reservar suas pecas" continua existindo para captura de leads ao adicionar itens ao carrinho (esse fluxo nao muda)
+- O checkout sempre ira para a pagina dedicada, onde o cliente preenche seus dados
 - Nenhuma outra funcionalidade e afetada
-
