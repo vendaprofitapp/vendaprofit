@@ -1,23 +1,40 @@
 
+# Correcao de Rotas Invalidas nas Notificacoes
 
-## Correção: "record 'new' has no field 'source'"
+## Problema Identificado
 
-### Causa raiz
+As rotas configuradas no sistema de notificacoes (sininho no cabecalho e alertas do Dashboard) nao correspondem as rotas reais registradas no React Router. Ao clicar, o usuario e levado para uma pagina 404 ou para o catalogo publico (via a rota `/:slug`).
 
-O trigger `botconversa_catalog_sale_trigger` dispara em **todo INSERT** na tabela `sales`. A função `trigger_botconversa_catalog_sale()` tenta acessar `NEW.source`, mas a tabela `sales` **não possui** a coluna `source`.
+## Rotas Incorretas vs Corretas
 
-O campo `source` existe apenas na tabela `sale_items` (itens individuais da venda), não na tabela `sales` (cabeçalho da venda).
+| Notificacao | Rota Atual (ERRADA) | Rota Correta |
+|---|---|---|
+| Bolsa Consignada | `/bolsa-consignada` | `/consignments` |
+| Bazar VIP - Curadoria | `/bazar-admin` | `/admin/bazar` |
+| Bazar VIP - Vendas | `/bazar-admin` | `/admin/bazar` |
+| Pontos Parceiros | `/pontos-parceiros` | `/partner-points` |
+| Novos Leads | `/whatsapp-crm` | `/marketing/whatsapp` |
+| Carrinhos Abandonados | `/whatsapp-crm` | `/marketing/whatsapp` |
 
-### Solução
+A rota do Modo Evento (`/evento/conciliacao`) esta correta.
 
-Recriar o trigger com uma condição `WHEN` que evite o acesso a campos inexistentes, **ou** alterar a função trigger para não referenciar `NEW.source`.
+## Arquivos a Alterar
 
-A abordagem mais simples e segura: **remover o trigger**, já que vendas feitas pelo catálogo já são notificadas pelo fluxo correto (o checkout do catálogo chama a Edge Function diretamente). O trigger é redundante e está quebrando vendas normais.
+### 1. `src/hooks/useNotifications.tsx`
+Corrigir as 5 rotas erradas nas secoes de notificacao:
+- Linha 166: `/bolsa-consignada` para `/consignments`
+- Linha 178: `/bazar-admin` para `/admin/bazar`
+- Linha 190: `/bazar-admin` para `/admin/bazar`
+- Linha 202: `/pontos-parceiros` para `/partner-points`
+- Linhas 214 e 226: `/whatsapp-crm` para `/marketing/whatsapp`
 
-### Mudança
+### 2. `src/components/dashboard/SystemAlerts.tsx`
+Corrigir as mesmas rotas nos botoes de navegacao do Dashboard:
+- Linha 664: `/bolsa-consignada` para `/consignments`
+- Linha 708: `/bazar-admin` para `/admin/bazar`
+- Linha 730: `/bazar-admin` para `/admin/bazar`
+- Linha 752: `/pontos-parceiros` para `/partner-points`
 
-| Tipo | O quê |
-|---|---|
-| Migration SQL | `DROP TRIGGER botconversa_catalog_sale_trigger ON public.sales;` |
+## Detalhes Tecnicos
 
-Isso resolve o erro imediatamente. Vendas manuais voltarão a funcionar. Notificações de vendas do catálogo continuam funcionando pelo fluxo direto (Edge Function chamada no checkout).
+As rotas corretas foram confirmadas diretamente no `src/App.tsx` e no `src/components/layout/Sidebar.tsx`. A correcao e pontual (apenas strings de rota) e nao afeta nenhuma outra logica.
