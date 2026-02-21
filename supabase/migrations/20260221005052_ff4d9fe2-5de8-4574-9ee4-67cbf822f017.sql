@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.trigger_botconversa_catalog_sale() CASCADE;

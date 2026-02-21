@@ -45,6 +45,9 @@ export function BazarCheckoutDialog({ open, onOpenChange, item, ownerId, primary
     }
 
     setLoadingShipping(true);
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 15000);
+
     try {
       const { data, error } = await supabase.functions.invoke("quote-bazar-shipping", {
         body: {
@@ -58,6 +61,13 @@ export function BazarCheckoutDialog({ open, onOpenChange, item, ownerId, primary
         },
       });
 
+      clearTimeout(timeoutId);
+
+      if (abortController.signal.aborted) {
+        toast.error("O cálculo de frete demorou demasiado. Tente novamente.");
+        return;
+      }
+
       if (error) throw error;
 
       const options = data?.options || [];
@@ -69,7 +79,12 @@ export function BazarCheckoutDialog({ open, onOpenChange, item, ownerId, primary
       setShippingOptions(options);
       setStep("shipping");
     } catch (err: any) {
-      toast.error(err.message || "Erro ao calcular frete");
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError" || abortController.signal.aborted) {
+        toast.error("O cálculo de frete demorou demasiado. Tente novamente.");
+      } else {
+        toast.error(err.message || "Erro ao calcular frete");
+      }
     } finally {
       setLoadingShipping(false);
     }
