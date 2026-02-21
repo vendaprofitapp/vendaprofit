@@ -248,7 +248,7 @@ export default function StoreCatalog() {
   const [showLeadCapture, setShowLeadCapture] = useState(false);
   const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
   const [pendingCartAdd, setPendingCartAdd] = useState<{ item: CatalogDisplayItem; size: string; effectivePrice: number } | null>(null);
-  const [pendingCheckout, setPendingCheckout] = useState(false);
+  
 
   // Session persistence for secret area
   useEffect(() => {
@@ -420,12 +420,6 @@ export default function StoreCatalog() {
       setPendingCartAdd(null);
     }
 
-    // If user was trying to checkout, proceed now
-    if (pendingCheckout) {
-      setPendingCheckout(false);
-      // Small delay to allow state to settle
-      setTimeout(() => sendCartViaWhatsApp(), 50);
-    }
   };
 
   const doAddToCart = (item: CatalogDisplayItem, size: string, effectivePrice: number) => {
@@ -1524,14 +1518,6 @@ export default function StoreCatalog() {
   const sendCartViaWhatsApp = async () => {
     if (!store?.whatsapp_number || cart.length === 0) return;
 
-    // Always require lead data before sending — gate checkout here
-    const storedLead = getStoredLead();
-    if (!storedLead) {
-      setPendingCheckout(true);
-      setShowLeadCapture(true);
-      return;
-    }
-
     // Navigate to full-page checkout instead of processing inline
     setCartOpen(false);
     navigate(`/${slug}/checkout`, {
@@ -1787,7 +1773,7 @@ export default function StoreCatalog() {
                         disabled={!store.whatsapp_number}
                       >
                         <MessageCircle className="h-5 w-5" />
-                        Finalizar pelo WhatsApp
+                        Revisar e enviar pedido
                       </Button>
                       
                       <button 
