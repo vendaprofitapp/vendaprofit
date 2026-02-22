@@ -327,6 +327,9 @@ export default function Reports() {
       if (split.user_id === user?.id) {
         if (split.type === 'payment_fee') {
           existing.feeAmount += Math.abs(split.amount);
+        } else if (split.type === 'group_commission') {
+          // Partner point commission stored as negative on seller's own user_id
+          existing.partnerCommission += Math.abs(split.amount);
         } else if (split.type === 'cost_recovery') {
           existing.myCostRecovery += split.amount;
         } else if (split.type === 'profit_share') {
