@@ -476,7 +476,7 @@ export default function Reports() {
         if (hasSplits && saleInfo) {
           // Use actual recorded splits
           feeAmount = saleInfo.feeAmount * itemProportion;
-          partnerCommission = hasPartnership ? saleInfo.partnerCommission * itemProportion : 0;
+          partnerCommission = saleInfo.partnerCommission * itemProportion;
           myRealProfit = saleInfo.myProfitShare * itemProportion;
         } else {
           // Fallback: calculate from fee map (own stock, no splits recorded)
