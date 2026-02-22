@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useExpenseTotals } from "./ExpenseSummaryCards";
-import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
 
 interface DREReportProps {
   dateRange: { start: Date; end: Date };
@@ -14,15 +14,15 @@ interface DREReportProps {
 export function DREReport({ dateRange }: DREReportProps) {
   const { user } = useAuth();
 
-  // Fetch sales with items in period
-  const { data: salesWithItems = [] } = useQuery({
-    queryKey: ["dre-sales", user?.id, dateRange],
+  // 1. Fetch COMPLETED sales in period
+  const { data: completedSales = [] } = useQuery({
+    queryKey: ["dre-sales-completed", user?.id, dateRange],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
         .select("id, status, total, subtotal, payment_method, sale_items(product_id, quantity)")
         .eq("owner_id", user?.id!)
-        .in("status", ["completed", "pending"])
+        .eq("status", "completed")
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
@@ -31,12 +31,41 @@ export function DREReport({ dateRange }: DREReportProps) {
     enabled: !!user,
   });
 
-  // Adjust pending sales to only count paid installments
-  const pendingSaleIds = useMemo(() =>
-    salesWithItems.filter((s: any) => s.status === 'pending').map((s: any) => s.id),
-    [salesWithItems]
-  );
-  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
+  // 2. Fetch deferred revenue recognized in this period (by paid_at)
+  const { deferredSaleIds, deferredSalesMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
+
+  // 3. Fetch pending sales that had installments paid in this period
+  const { data: deferredSalesRaw = [] } = useQuery({
+    queryKey: ["dre-sales-deferred", deferredSaleIds],
+    queryFn: async () => {
+      if (deferredSaleIds.length === 0) return [];
+      const results: any[] = [];
+      for (let i = 0; i < deferredSaleIds.length; i += 500) {
+        const chunk = deferredSaleIds.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("sales")
+          .select("id, status, total, subtotal, payment_method, sale_items(product_id, quantity)")
+          .in("id", chunk)
+          .eq("status", "pending")
+          .eq("owner_id", user?.id!);
+        if (error) throw error;
+        if (data) results.push(...data);
+      }
+      return results;
+    },
+    enabled: deferredSaleIds.length > 0,
+  });
+
+  // 4. Merge into unified sales list with adjusted values
+  const salesWithItems = useMemo(() => {
+    const all: any[] = [...completedSales];
+    for (const sale of deferredSalesRaw) {
+      const info = deferredSalesMap.get(sale.id);
+      if (!info || info.revenueInPeriod <= 0) continue;
+      all.push({ ...sale, _recognizedRevenue: info.revenueInPeriod, _costRatio: info.costRatioInPeriod });
+    }
+    return all;
+  }, [completedSales, deferredSalesRaw, deferredSalesMap]);
 
   // Fetch payment fees
   const { data: paymentFees = [] } = useQuery({
@@ -88,7 +117,6 @@ export function DREReport({ dateRange }: DREReportProps) {
 
   const expenseTotals = useExpenseTotals(user?.id, dateRange);
 
-  // Calculate DRE values with deferred sales ratio
   const feeMap = useMemo(() => {
     const map = new Map<string, number>();
     paymentFees.forEach((f: any) => map.set(f.payment_method, f.fee_percent));
@@ -105,13 +133,13 @@ export function DREReport({ dateRange }: DREReportProps) {
     let rev = 0, fees = 0, cost = 0;
 
     for (const sale of salesWithItems as any[]) {
-      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
-      const costRatio = getDeferredCostRatio(sale, deferredInfo);
+      const revenue = sale._recognizedRevenue ?? sale.total ?? 0;
+      const costRatio = sale._costRatio ?? 1;
 
-      rev += recognizedRevenue;
+      rev += revenue;
 
       const feePercent = feeMap.get(sale.payment_method) || 0;
-      fees += recognizedRevenue * (feePercent / 100);
+      fees += revenue * (feePercent / 100);
 
       for (const item of (sale.sale_items || [])) {
         const unitCost = productCostMap.get(item.product_id) || 0;
@@ -120,7 +148,7 @@ export function DREReport({ dateRange }: DREReportProps) {
     }
 
     return { grossRevenue: rev, totalFees: fees, cmv: cost };
-  }, [salesWithItems, deferredInfo, feeMap, productCostMap]);
+  }, [salesWithItems, feeMap, productCostMap]);
 
   const netRevenue = grossRevenue - totalFees;
   const grossProfit = netRevenue - cmv;

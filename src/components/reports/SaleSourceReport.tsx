@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { downloadXlsx } from "@/utils/xlsExport";
 import { toast } from "sonner";
-import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
 
 interface SaleSourceReportProps {
   title: string;
@@ -52,9 +52,9 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
   const [dateTo, setDateTo] = useState(() => format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [paymentFilter, setPaymentFilter] = useState("all");
 
-  // Fetch sales filtered by source
-  const { data: salesData = [], isLoading } = useQuery({
-    queryKey: ["report-by-source", saleSource, dateFrom, dateTo],
+  // 1. Fetch COMPLETED sales by created_at filtered by source
+  const { data: completedSalesData = [], isLoading } = useQuery({
+    queryKey: ["report-by-source-completed", saleSource, dateFrom, dateTo],
     queryFn: async () => {
       let query = supabase
         .from("sales")
@@ -62,7 +62,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           id, customer_name, payment_method, subtotal, discount_amount, total, status, created_at, sale_source, event_name, shipping_cost, shipping_payer,
           sale_items (id, product_id, product_name, quantity, unit_price, total)
         `)
-        .in("status", ["completed", "pending"])
+        .eq("status", "completed")
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false });
@@ -80,30 +80,70 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     enabled: !!user,
   });
 
-  // Fetch deferred payment info for pending sales
-  const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
-  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
+  // 2. Fetch deferred revenue recognized in this period (by paid_at)
+  const periodDateRange = useMemo(() => ({
+    start: new Date(`${dateFrom}T00:00:00`),
+    end: new Date(`${dateTo}T23:59:59`),
+  }), [dateFrom, dateTo]);
 
+  const { deferredSaleIds, deferredSalesMap } = useDeferredRevenueInPeriod(user?.id, periodDateRange);
+
+  // 3. Fetch the pending sales that had installments paid in this period, filtered by source
+  const { data: deferredSalesRaw = [] } = useQuery({
+    queryKey: ["report-by-source-deferred", saleSource, deferredSaleIds],
+    queryFn: async () => {
+      if (deferredSaleIds.length === 0) return [];
+      const results: SaleWithItems[] = [];
+      for (let i = 0; i < deferredSaleIds.length; i += 500) {
+        const chunk = deferredSaleIds.slice(i, i + 500);
+        let query = supabase
+          .from("sales")
+          .select(`id, customer_name, payment_method, subtotal, discount_amount, total, status, created_at, sale_source, event_name, shipping_cost, shipping_payer,
+            sale_items (id, product_id, product_name, quantity, unit_price, total)`)
+          .in("id", chunk)
+          .eq("status", "pending");
+
+        if (saleSource === "event") {
+          query = query.not("event_name", "is", null);
+        } else {
+          query = query.eq("sale_source", saleSource);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (data) results.push(...(data as SaleWithItems[]));
+      }
+      return results;
+    },
+    enabled: deferredSaleIds.length > 0,
+  });
+
+  // 4. Build adjusted sales data
   const adjustedSalesData = useMemo(() => {
-    return salesData.map(sale => {
-      if (sale.status !== 'pending') return sale;
-      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
-      const costRatio = getDeferredCostRatio(sale, deferredInfo);
-      const revenueRatio = sale.total > 0 ? recognizedRevenue / sale.total : 0;
-      return {
+    const adjusted: SaleWithItems[] = [...completedSalesData];
+
+    for (const sale of deferredSalesRaw) {
+      const info = deferredSalesMap.get(sale.id);
+      if (!info || info.revenueInPeriod <= 0) continue;
+      const revenueRatio = sale.total > 0 ? info.revenueInPeriod / sale.total : 0;
+      adjusted.push({
         ...sale,
-        total: recognizedRevenue,
+        total: info.revenueInPeriod,
         subtotal: sale.subtotal * revenueRatio,
         discount_amount: (sale.discount_amount || 0) * revenueRatio,
         shipping_cost: (sale.shipping_cost || 0) * revenueRatio,
-        _costRatio: costRatio,
+        _costRatio: info.costRatioInPeriod,
         sale_items: sale.sale_items.map(item => ({
           ...item,
           total: item.total * revenueRatio,
         })),
-      };
-    });
-  }, [salesData, deferredInfo]);
+      } as any);
+    }
+
+    return adjusted;
+  }, [completedSalesData, deferredSalesRaw, deferredSalesMap]);
+
+  const salesData = adjustedSalesData;
 
   // Get product costs
   const productIds = useMemo(() => {
