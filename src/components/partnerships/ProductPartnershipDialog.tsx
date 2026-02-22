@@ -47,6 +47,7 @@ interface Product {
   id: string;
   name: string;
   price: number;
+  cost_price?: number | null;
   category: string;
   category_2?: string | null;
   category_3?: string | null;
@@ -324,6 +325,11 @@ export function ProductPartnershipDialog({
           .eq("group_id", groupId);
         if (error) throw error;
       } else {
+        // Validate cost_price before releasing
+        const product = products.find(p => p.id === productId);
+        if (!product?.cost_price && product?.cost_price !== 0) {
+          throw new Error(`O produto "${product?.name || ''}" não possui preço de custo cadastrado. Cadastre o custo antes de liberar para parceria.`);
+        }
         const { error } = await supabase
           .from("product_partnerships")
           .upsert(
@@ -344,7 +350,14 @@ export function ProductPartnershipDialog({
   // Release all visible products mutation
   const releaseAllMutation = useMutation({
     mutationFn: async () => {
-      const productsToRelease = filteredProducts.filter((p) => !isProductInPartnership(p.id));
+      const notReleased = filteredProducts.filter((p) => !isProductInPartnership(p.id));
+      // Filter out products without cost_price
+      const withoutCost = notReleased.filter(p => !p.cost_price && p.cost_price !== 0);
+      const productsToRelease = notReleased.filter(p => p.cost_price || p.cost_price === 0);
+
+      if (productsToRelease.length === 0 && withoutCost.length > 0) {
+        throw new Error(`${withoutCost.length} produto(s) sem preço de custo cadastrado. Cadastre o custo antes de liberar.`);
+      }
       if (productsToRelease.length === 0) throw new Error("Todos os produtos já estão liberados");
 
       const inserts = productsToRelease.map((p) => ({ product_id: p.id, group_id: groupId }));
@@ -352,11 +365,14 @@ export function ProductPartnershipDialog({
         .from("product_partnerships")
         .upsert(inserts, { onConflict: "product_id,group_id", ignoreDuplicates: true });
       if (error) throw error;
-      return productsToRelease.length;
+      return { released: productsToRelease.length, skipped: withoutCost.length };
     },
-    onSuccess: (count) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["product-partnerships"], exact: false });
-      toast({ title: "Produtos liberados!", description: `${count} produto${count !== 1 ? "s" : ""} liberado${count !== 1 ? "s" : ""}.` });
+      const msg = result.skipped > 0
+        ? `${result.released} liberado(s). ${result.skipped} ignorado(s) por falta de preço de custo.`
+        : `${result.released} produto${result.released !== 1 ? "s" : ""} liberado${result.released !== 1 ? "s" : ""}.`;
+      toast({ title: "Produtos liberados!", description: msg });
     },
     onError: (error) => {
       toast({ title: "Erro ao liberar produtos", description: error.message, variant: "destructive" });

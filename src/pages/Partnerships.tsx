@@ -79,6 +79,7 @@ interface Product {
   id: string;
   name: string;
   price: number;
+  cost_price?: number | null;
   category: string;
   category_2?: string | null;
   category_3?: string | null;
@@ -234,7 +235,7 @@ export default function Partnerships() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)")
+        .select("id, name, price, cost_price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)")
         .eq("owner_id", user?.id)
         .eq("is_active", true)
         .order("name");
@@ -479,6 +480,11 @@ export default function Partnerships() {
           .eq("group_id", groupId);
         if (error) throw error;
       } else {
+        // Validate cost_price before releasing
+        const product = products.find(p => p.id === productId);
+        if (!product?.cost_price && product?.cost_price !== 0) {
+          throw new Error(`O produto "${product?.name || ''}" não possui preço de custo cadastrado. Cadastre o custo antes de liberar.`);
+        }
         // Add partnership - ignore duplicates (no UPDATE policy on this table)
         const { error } = await supabase
           .from("product_partnerships")
