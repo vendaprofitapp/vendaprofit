@@ -1155,7 +1155,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? "manual" : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : "manual",
+          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : "manual",
           event_name: eventName || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
