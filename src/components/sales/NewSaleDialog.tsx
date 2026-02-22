@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
-import { Plus, Search, Minus, Users, Clock, X, Download, Instagram } from "lucide-react";
+import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,24 @@ interface CatalogOrderData {
   total: number;
 }
 
+interface PartnerPointOrderData {
+  partnerPointSaleId: string;
+  customerName: string;
+  customerPhone: string;
+  paymentMethod: string;
+  customPaymentMethodId: string | null;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    variant_id?: string | null;
+  }>;
+  totalGross: number;
+  partnerName: string;
+  rackCommissionPct: number;
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -137,6 +155,8 @@ interface NewSaleDialogProps {
   onConsignmentProcessed?: () => void;
   catalogOrderData?: CatalogOrderData | null;
   onCatalogOrderProcessed?: () => void;
+  partnerPointOrderData?: PartnerPointOrderData | null;
+  onPartnerPointOrderProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -151,6 +171,8 @@ export default function NewSaleDialog({
   onConsignmentProcessed,
   catalogOrderData,
   onCatalogOrderProcessed,
+  partnerPointOrderData,
+  onPartnerPointOrderProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -849,6 +871,64 @@ export default function NewSaleDialog({
     }
   }, [open, catalogOrderProcessed, onCatalogOrderProcessed]);
 
+  // ─── Load partner point order data into cart ──────────────
+  const [partnerPointProcessed, setPartnerPointProcessed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !partnerPointOrderData || partnerPointProcessed || !user) return;
+
+    const loadPartnerPointItems = async () => {
+      const productIds = partnerPointOrderData.items.map(i => i.product_id).filter(Boolean);
+      let products: any[] = [];
+      if (productIds.length > 0) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds);
+        if (!error && data) products = data;
+      }
+
+      const cartItems: CartItem[] = partnerPointOrderData.items.map(item => {
+        const dbProduct = products.find(p => p.id === item.product_id);
+        const product: Product = dbProduct
+          ? { ...dbProduct, isB2B: false }
+          : {
+              id: item.product_id || crypto.randomUUID(),
+              name: item.product_name,
+              price: item.unit_price,
+              stock_quantity: item.quantity,
+              owner_id: user.id,
+              group_id: null,
+              category: "",
+              color: null,
+              size: null,
+            };
+        return { product, quantity: item.quantity, isPartnerStock: false };
+      });
+
+      setCart(cartItems);
+      setCustomerName(partnerPointOrderData.customerName || "");
+      setCustomerPhone(partnerPointOrderData.customerPhone || "");
+      setNotes(`Venda via Ponto Parceiro: ${partnerPointOrderData.partnerName}`);
+
+      // Pre-select payment method
+      if (partnerPointOrderData.customPaymentMethodId) {
+        setSelectedPaymentMethodId(partnerPointOrderData.customPaymentMethodId);
+      }
+
+      setPartnerPointProcessed(true);
+    };
+
+    loadPartnerPointItems();
+  }, [open, partnerPointOrderData, partnerPointProcessed, user]);
+
+  useEffect(() => {
+    if (!open && partnerPointProcessed) {
+      setPartnerPointProcessed(false);
+      onPartnerPointOrderProcessed?.();
+    }
+  }, [open, partnerPointProcessed, onPartnerPointOrderProcessed]);
+
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
@@ -974,7 +1054,31 @@ export default function NewSaleDialog({
         }
       }
 
-      // ── Build items payload ──
+      // Override financial splits for partner point orders
+      if (partnerPointOrderData) {
+        financialSplitsPayload.length = 0;
+        const paymentFeeAmount = (feePercent / 100) * total;
+        const netAfterFees = total - paymentFeeAmount;
+        const partnerCommission = netAfterFees * (partnerPointOrderData.rackCommissionPct / 100);
+        const sellerNet = netAfterFees - partnerCommission;
+
+        financialSplitsPayload.push({
+          user_id: user.id,
+          amount: sellerNet,
+          type: 'profit_share',
+          description: `Receita líquida — venda no ${partnerPointOrderData.partnerName}`,
+        });
+
+        if (partnerCommission > 0) {
+          financialSplitsPayload.push({
+            user_id: user.id,
+            amount: -partnerCommission,
+            type: 'group_commission',
+            description: `Comissão ${partnerPointOrderData.rackCommissionPct}% — ${partnerPointOrderData.partnerName}`,
+          });
+        }
+      }
+
       const itemsPayload = cart.map((item) => {
         let productName = item.product.name;
         if (item.variant) {
@@ -1049,7 +1153,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: "manual",
+          sale_source: partnerPointOrderData ? "catalog" : "manual",
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
           shipping_cost: shippingData.cost || 0,
@@ -1075,7 +1179,7 @@ export default function NewSaleDialog({
       setSaleIdForShipping(rpcResult.sale_id);
       return rpcResult;
     },
-    onSuccess: async () => {
+    onSuccess: async (result: any) => {
       if (pendingRequestId) {
         await supabase.from("stock_requests").update({ status: "completed" as any }).eq("id", pendingRequestId);
         setPendingRequestId(null);
@@ -1107,8 +1211,18 @@ export default function NewSaleDialog({
           .eq("id", catalogOrderData.catalogOrderId);
         queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
       }
+      // Mark partner point sale as completed after successful sale
+      if (partnerPointOrderData?.partnerPointSaleId) {
+        await supabase
+          .from("partner_point_sales")
+          .update({
+            pass_status: "completed",
+            converted_sale_id: result?.sale_id || null,
+          } as any)
+          .eq("id", partnerPointOrderData.partnerPointSaleId);
+        queryClient.invalidateQueries({ queryKey: ["partner-point-orders"] });
+      }
 
-      queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["partner-sales"] });
@@ -1429,7 +1543,26 @@ export default function NewSaleDialog({
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+              </Select>
+
+              {/* Partner Point Commission Banner */}
+              {partnerPointOrderData && (
+                <div className="p-3 bg-muted/50 rounded-lg border space-y-1.5">
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    Venda via {partnerPointOrderData.partnerName}
+                  </p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Comissão do parceiro:</span>
+                    <Badge variant="outline" className="font-mono">
+                      {partnerPointOrderData.rackCommissionPct}%
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Fórmula: (Total − Taxas) × {partnerPointOrderData.rackCommissionPct}%
+                  </p>
+                </div>
+              )}
               </div>
 
               {/* Deferred payment fields */}
