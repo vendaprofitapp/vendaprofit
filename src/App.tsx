@@ -51,6 +51,7 @@ import PartnerCatalog from "./pages/PartnerCatalog";
 import PartnerContract from "./pages/PartnerContract";
 import StockSetDetector from "./pages/StockSetDetector";
 import FeaturedProducts from "./pages/FeaturedProducts";
+import BazarSeller from "./pages/BazarSeller";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
@@ -162,6 +163,7 @@ const AppRoutes = () => (
     <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/contrato/:token" element={<PartnerContract />} />
     <Route path="/bag/:token" element={<PublicBag />} />
+    <Route path="/bazar/vender" element={<BazarSeller />} />
     
     <Route path="/:slug" element={<SlugRoute />} />
     <Route path="*" element={<NotFound />} />
