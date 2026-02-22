@@ -89,6 +89,7 @@ const navGroups: NavGroup[] = [
       { icon: Users, label: "Parcerias", path: "/reports/parcerias" },
       { icon: Instagram, label: "Instagram / Redes", path: "/reports/instagram" },
       { icon: Package, label: "B2B", path: "/reports/b2b" },
+      { icon: Clock, label: "Vendas a Prazo", path: "/reports/deferred" },
     ],
   },
   {
