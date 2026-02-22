@@ -90,6 +90,23 @@ export function useNotifications(): NotificationsData {
     refetchInterval: 60000,
   });
 
+  // Pontos Parceiros — vendas pendentes de contato
+  const { data: partnerPendingSales = [], isLoading: loadingPartnerSales } = useQuery({
+    queryKey: ["notifications-partner-pending-sales", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partner_point_sales")
+        .select("id")
+        .eq("owner_id", user!.id)
+        .eq("pass_status", "pending")
+        .is("seller_contacted_at" as any, null);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 60000,
+  });
+
   // Pontos Parceiros — movimentações recentes (24h)
   const { data: partnerMovements = [], isLoading: loadingPartner } = useQuery({
     queryKey: ["notifications-partner-movements", user?.id],
@@ -158,7 +175,7 @@ export function useNotifications(): NotificationsData {
     refetchInterval: 60000,
   });
 
-  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingLeads || loadingCarts || loadingOrders;
+  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingPartnerSales || loadingLeads || loadingCarts || loadingOrders;
 
   const sections: NotificationSection[] = [];
 
@@ -219,6 +236,18 @@ export function useNotifications(): NotificationsData {
       route: "/admin/bazar",
       color: "#22c55e",
       description: `${bazarSold.length} venda${bazarSold.length > 1 ? "s" : ""} no Bazar nos últimos 7 dias`,
+    });
+  }
+
+  if (partnerPendingSales.length > 0) {
+    sections.push({
+      key: "partner-sales",
+      label: "Vendas em Parceiros",
+      count: partnerPendingSales.length,
+      icon: "📍",
+      route: "/catalog-orders",
+      color: "#f59e0b",
+      description: `${partnerPendingSales.length} venda${partnerPendingSales.length > 1 ? "s" : ""} pendente${partnerPendingSales.length > 1 ? "s" : ""} de contato`,
     });
   }
 
