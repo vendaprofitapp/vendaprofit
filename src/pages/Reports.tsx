@@ -3,7 +3,7 @@ import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Download, Filter, X, Percent, Users, FileText, BarChart3 } from "lucide-react";
+import { Download, Filter, X, Percent, Users, FileText, BarChart3, Truck } from "lucide-react";
 import { downloadXlsx } from "@/utils/xlsExport";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountSettlement } from "@/components/reports/AccountSettlement";
@@ -71,6 +71,8 @@ interface SaleWithItems {
   status: string;
   created_at: string;
   owner_id: string;
+  shipping_cost: number | null;
+  shipping_payer: string | null;
   sale_items: {
     id: string;
     product_id: string;
@@ -452,6 +454,9 @@ export default function Reports() {
       const saleInfo = splitsBySale.get(sale.id);
       const hasSplits = saleInfo?.hasSplits ?? false;
       const hasPartnership = saleInfo?.hasPartnership ?? false;
+      const shippingCost = Number(sale.shipping_cost) || 0;
+      const shippingPayer = sale.shipping_payer || null;
+      const isSellerShipping = shippingPayer === 'seller' && shippingCost > 0;
       
       return sale.sale_items.map(item => {
         const product = productMap.get(item.product_id);
@@ -469,6 +474,10 @@ export default function Reports() {
         // Use financial_splits as source of truth when available
         const itemProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 1 / sale.sale_items.length;
         
+        // Distribute shipping proportionally
+        const itemShipping = shippingCost * itemProportion;
+        const itemSellerShipping = isSellerShipping ? itemShipping : 0;
+        
         let feeAmount: number;
         let partnerCommission: number;
         let myRealProfit: number;
@@ -477,16 +486,15 @@ export default function Reports() {
           // Use actual recorded splits
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
-          // myProfitShare from splits already represents net profit (revenue - cost was split at sale time)
-          myRealProfit = saleInfo.myProfitShare * itemProportion;
+          myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
         } else {
-          // Fallback: calculate from fee map (own stock, no splits recorded)
+          // Fallback: calculate from fee map
           feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
           partnerCommission = 0;
-          myRealProfit = grossProfit - feeAmount;
+          myRealProfit = grossProfit - feeAmount - itemSellerShipping;
         }
         
-        const realProfit = grossProfit - feeAmount - partnerCommission;
+        const realProfit = grossProfit - feeAmount - partnerCommission - itemSellerShipping;
 
         return {
           saleId: sale.id,
@@ -502,6 +510,9 @@ export default function Reports() {
           feePercent,
           feeAmount,
           partnerCommission,
+          shippingCost: itemShipping,
+          shippingPayer,
+          sellerShipping: itemSellerShipping,
           realProfit,
           myRealProfit,
           hasPartnership,
@@ -529,12 +540,14 @@ export default function Reports() {
     const totalGrossProfit = detailedSalesData.reduce((sum, d) => sum + d.grossProfit, 0);
     const totalFees = detailedSalesData.reduce((sum, d) => sum + d.feeAmount, 0);
     const totalPartnerCommission = detailedSalesData.reduce((sum, d) => sum + d.partnerCommission, 0);
+    const totalShipping = detailedSalesData.reduce((sum, d) => sum + d.shippingCost, 0);
+    const totalSellerShipping = detailedSalesData.reduce((sum, d) => sum + d.sellerShipping, 0);
     const totalRealProfit = detailedSalesData.reduce((sum, d) => sum + d.realProfit, 0);
     const totalMyRealProfit = detailedSalesData.reduce((sum, d) => sum + d.myRealProfit, 0);
     const totalPartnerAmount = detailedSalesData.reduce((sum, d) => sum + d.partnerAmount, 0);
     const hasAnyPartnership = detailedSalesData.some(d => d.hasPartnership);
 
-    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalPartnerCommission, totalRealProfit, totalMyRealProfit, totalPartnerAmount, hasAnyPartnership };
+    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalPartnerCommission, totalShipping, totalSellerShipping, totalRealProfit, totalMyRealProfit, totalPartnerAmount, hasAnyPartnership };
   }, [filteredSales, detailedSalesData]);
 
   // Chart data: Sales over time
@@ -921,6 +934,19 @@ export default function Reports() {
             - R$ {stats.totalFees.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
+        {stats.totalShipping > 0 && (
+          <div className="rounded-xl bg-card p-5 shadow-soft">
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Truck className="h-3 w-3" /> Frete
+            </p>
+            <p className="text-2xl font-bold text-destructive">
+              - R$ {stats.totalSellerShipping.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Total: R$ {stats.totalShipping.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+        )}
         {stats.totalPartnerCommission > 0 && (
           <div className="rounded-xl bg-card p-5 shadow-soft">
             <p className="text-sm text-muted-foreground flex items-center gap-1">
@@ -937,7 +963,7 @@ export default function Reports() {
             R$ {stats.totalMyRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-muted-foreground">
-            (Após custo, taxas e comissões)
+            (Após custo, taxas, frete e comissões)
           </p>
         </div>
       </div>
@@ -982,6 +1008,7 @@ export default function Reports() {
                 <TableHead className="text-right">Desconto</TableHead>
                 <TableHead className="text-right">Lucro Bruto</TableHead>
                 <TableHead className="text-right">Taxa Pgto</TableHead>
+                {stats.totalShipping > 0 && <TableHead className="text-right">Frete</TableHead>}
                 <TableHead className="text-right">Comissão Parceiro</TableHead>
                 <TableHead className="text-right">Meu Lucro</TableHead>
               </TableRow>
@@ -989,13 +1016,13 @@ export default function Reports() {
             <TableBody>
               {salesLoading ? (
                 <TableRow>
-                   <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                   <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : detailedSalesData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                     Nenhuma venda encontrada no período
                   </TableCell>
                 </TableRow>
@@ -1033,6 +1060,16 @@ export default function Reports() {
                     <TableCell className="text-right whitespace-nowrap text-destructive">
                       {item.feeAmount > 0.01 ? `- R$ ${item.feeAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
                     </TableCell>
+                    {stats.totalShipping > 0 && (
+                      <TableCell className="text-right whitespace-nowrap">
+                        {item.shippingCost > 0.01 ? (
+                          <span className={item.shippingPayer === 'seller' ? 'text-destructive' : 'text-muted-foreground'}>
+                            {item.shippingPayer === 'seller' ? '- ' : ''}R$ {item.shippingCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            <span className="block text-[10px]">{item.shippingPayer === 'seller' ? 'vendedora' : 'compradora'}</span>
+                          </span>
+                        ) : "-"}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right whitespace-nowrap text-destructive">
                       {item.partnerCommission > 0.01 ? `- R$ ${item.partnerCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
                     </TableCell>
