@@ -1,9 +1,11 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useExpenseTotals } from "./ExpenseSummaryCards";
+import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
 
 interface DREReportProps {
   dateRange: { start: Date; end: Date };
@@ -12,13 +14,13 @@ interface DREReportProps {
 export function DREReport({ dateRange }: DREReportProps) {
   const { user } = useAuth();
 
-  // Fetch sales in period
-  const { data: sales = [] } = useQuery({
+  // Fetch sales with items in period
+  const { data: salesWithItems = [] } = useQuery({
     queryKey: ["dre-sales", user?.id, dateRange],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
-        .select("total, subtotal, payment_method")
+        .select("id, status, total, subtotal, payment_method, sale_items(product_id, quantity)")
         .eq("owner_id", user?.id!)
         .in("status", ["completed", "pending"])
         .gte("created_at", dateRange.start.toISOString())
@@ -29,22 +31,12 @@ export function DREReport({ dateRange }: DREReportProps) {
     enabled: !!user,
   });
 
-  // Fetch sale items for CMV
-  const { data: saleItems = [] } = useQuery({
-    queryKey: ["dre-sale-items", user?.id, dateRange],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select("sale_items(product_id, quantity)")
-        .eq("owner_id", user?.id!)
-        .in("status", ["completed", "pending"])
-        .gte("created_at", dateRange.start.toISOString())
-        .lte("created_at", dateRange.end.toISOString());
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!user,
-  });
+  // Adjust pending sales to only count paid installments
+  const pendingSaleIds = useMemo(() =>
+    salesWithItems.filter((s: any) => s.status === 'pending').map((s: any) => s.id),
+    [salesWithItems]
+  );
+  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
 
   // Fetch payment fees
   const { data: paymentFees = [] } = useQuery({
@@ -61,19 +53,21 @@ export function DREReport({ dateRange }: DREReportProps) {
   });
 
   // Get product costs for CMV
-  const productIds = new Set<string>();
-  saleItems.forEach((s: any) => {
-    (s.sale_items || []).forEach((item: any) => {
-      if (item.product_id) productIds.add(item.product_id);
+  const productIds = useMemo(() => {
+    const ids = new Set<string>();
+    salesWithItems.forEach((s: any) => {
+      (s.sale_items || []).forEach((item: any) => {
+        if (item.product_id) ids.add(item.product_id);
+      });
     });
-  });
+    return ids;
+  }, [salesWithItems]);
 
   const { data: products = [] } = useQuery({
     queryKey: ["dre-products", Array.from(productIds)],
     queryFn: async () => {
       if (productIds.size === 0) return [];
       const ids = Array.from(productIds);
-      // Batch in chunks of 500 to avoid URI too long
       const chunks: string[][] = [];
       for (let i = 0; i < ids.length; i += 500) {
         chunks.push(ids.slice(i, i + 500));
@@ -94,33 +88,41 @@ export function DREReport({ dateRange }: DREReportProps) {
 
   const expenseTotals = useExpenseTotals(user?.id, dateRange);
 
-  // Calculate DRE values
-  const grossRevenue = sales.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+  // Calculate DRE values with deferred sales ratio
+  const feeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    paymentFees.forEach((f: any) => map.set(f.payment_method, f.fee_percent));
+    return map;
+  }, [paymentFees]);
 
-  // Payment fees
-  const feeMap = new Map<string, number>();
-  paymentFees.forEach((f: any) => feeMap.set(f.payment_method, f.fee_percent));
+  const productCostMap = useMemo(() => {
+    const map = new Map<string, number>();
+    products.forEach((p: any) => map.set(p.id, p.cost_price || 0));
+    return map;
+  }, [products]);
 
-  let totalFees = 0;
-  for (const sale of sales) {
-    const feePercent = feeMap.get(sale.payment_method) || 0;
-    totalFees += (sale.total || 0) * (feePercent / 100);
-  }
+  const { grossRevenue, totalFees, cmv } = useMemo(() => {
+    let rev = 0, fees = 0, cost = 0;
+
+    for (const sale of salesWithItems as any[]) {
+      const ratio = getSalePaidRatio(sale, paidBySale);
+      const adjustedTotal = (sale.total || 0) * ratio;
+
+      rev += adjustedTotal;
+
+      const feePercent = feeMap.get(sale.payment_method) || 0;
+      fees += adjustedTotal * (feePercent / 100);
+
+      for (const item of (sale.sale_items || [])) {
+        const unitCost = productCostMap.get(item.product_id) || 0;
+        cost += unitCost * (item.quantity || 1) * ratio;
+      }
+    }
+
+    return { grossRevenue: rev, totalFees: fees, cmv: cost };
+  }, [salesWithItems, paidBySale, feeMap, productCostMap]);
 
   const netRevenue = grossRevenue - totalFees;
-
-  // CMV (cost of goods sold)
-  const productCostMap = new Map<string, number>();
-  products.forEach((p: any) => productCostMap.set(p.id, p.cost_price || 0));
-
-  let cmv = 0;
-  saleItems.forEach((s: any) => {
-    (s.sale_items || []).forEach((item: any) => {
-      const cost = productCostMap.get(item.product_id) || 0;
-      cmv += cost * (item.quantity || 1);
-    });
-  });
-
   const grossProfit = netRevenue - cmv;
   const netProfit = grossProfit - expenseTotals.total;
 
@@ -182,7 +184,7 @@ export function DREReport({ dateRange }: DREReportProps) {
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Considera apenas sua parte nas despesas divididas com parceiros
+            Considera apenas sua parte nas despesas divididas com parceiros. Vendas a prazo contam apenas parcelas recebidas.
           </p>
         </div>
       </CardContent>

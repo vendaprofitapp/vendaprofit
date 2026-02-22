@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { downloadXlsx } from "@/utils/xlsExport";
 import { toast } from "sonner";
+import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
 
 interface SaleSourceReportProps {
   title: string;
@@ -78,6 +79,28 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     },
     enabled: !!user,
   });
+
+  // Adjust pending sales to only count paid installments
+  const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
+  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
+
+  const adjustedSalesData = useMemo(() => {
+    return salesData.map(sale => {
+      if (sale.status !== 'pending') return sale;
+      const ratio = getSalePaidRatio(sale, paidBySale);
+      return {
+        ...sale,
+        total: sale.total * ratio,
+        subtotal: sale.subtotal * ratio,
+        discount_amount: (sale.discount_amount || 0) * ratio,
+        shipping_cost: (sale.shipping_cost || 0) * ratio,
+        sale_items: sale.sale_items.map(item => ({
+          ...item,
+          total: item.total * ratio,
+        })),
+      };
+    });
+  }, [salesData, paidBySale]);
 
   // Get product costs
   const productIds = useMemo(() => {
@@ -176,7 +199,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
   }, [salesData]);
 
   const filtered = useMemo(() => {
-    return salesData.filter(s => {
+    return adjustedSalesData.filter(s => {
       if (paymentFilter !== "all" && s.payment_method !== paymentFilter) return false;
       return true;
     });

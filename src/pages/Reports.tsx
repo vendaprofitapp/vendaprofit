@@ -29,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, subMonths, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
 
 const COLORS = ["hsl(15, 90%, 55%)", "hsl(25, 95%, 60%)", "hsl(145, 65%, 42%)", "hsl(38, 92%, 50%)", "hsl(220, 10%, 50%)", "hsl(280, 60%, 55%)", "hsl(190, 70%, 45%)"];
 
@@ -189,6 +190,28 @@ export default function Reports() {
     },
     enabled: !!user,
   });
+
+  // Adjust pending sales to only count paid installments
+  const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
+  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
+
+  const adjustedSalesData = useMemo(() => {
+    return salesData.map(sale => {
+      if (sale.status !== 'pending') return sale;
+      const ratio = getSalePaidRatio(sale, paidBySale);
+      return {
+        ...sale,
+        total: sale.total * ratio,
+        subtotal: sale.subtotal * ratio,
+        discount_amount: (sale.discount_amount || 0) * ratio,
+        shipping_cost: (sale.shipping_cost || 0) * ratio,
+        sale_items: sale.sale_items.map(item => ({
+          ...item,
+          total: item.total * ratio,
+        })),
+      };
+    });
+  }, [salesData, paidBySale]);
 
   // Fetch own products for category/color/cost info
   const { data: ownProducts = [] } = useQuery({
@@ -396,7 +419,7 @@ export default function Reports() {
 
   // Filter sales based on all criteria
   const filteredSales = useMemo(() => {
-    return salesData.filter(sale => {
+    return adjustedSalesData.filter(sale => {
       if (paymentMethodFilter !== "all" && sale.payment_method !== paymentMethodFilter) {
         return false;
       }
