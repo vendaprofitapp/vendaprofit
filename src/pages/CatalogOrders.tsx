@@ -61,6 +61,7 @@ export default function CatalogOrders() {
         .from("saved_carts")
         .select("*, saved_cart_items(*)")
         .eq("owner_id", user.id)
+        .neq("status", "cancelled")
         .gte("created_at", sinceDate)
         .order("created_at", { ascending: false });
       if (error) {
