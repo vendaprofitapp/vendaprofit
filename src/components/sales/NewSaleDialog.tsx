@@ -189,6 +189,8 @@ export default function NewSaleDialog({
   const [discountType, setDiscountType, clearDiscountType] = useFormPersistence("sales_discountType", "fixed");
   const [discountValue, setDiscountValue, clearDiscountValue] = useFormPersistence("sales_discountValue", 0);
   const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
+  const [manualSaleSource, setManualSaleSource, clearManualSaleSource] = useFormPersistence("sales_manualSource", "manual");
+  const [manualEventName, setManualEventName, clearManualEventName] = useFormPersistence("sales_manualEventName", "");
   const [dueDate, setDueDate, clearDueDate] = useFormPersistence("sales_dueDate", "");
   const [installments, setInstallments, clearInstallments] = useFormPersistence("sales_installments", 1);
   const [installmentDetails, setInstallmentDetails, clearInstallmentDetails] = useFormPersistence<Array<{ dueDate: string; amount: number }>>("sales_installmentDetails", []);
@@ -935,10 +937,11 @@ export default function NewSaleDialog({
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
     clearPaymentMethodId(); clearDiscountType(); clearDiscountValue(); clearNotes();
+    clearManualSaleSource(); clearManualEventName();
     clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
     setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
-    setDiscountValue(0); setNotes(""); setProductSearch(""); setSelectedCustomerId("");
+    setDiscountValue(0); setNotes(""); setManualSaleSource("manual"); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
     setImportCartCode(""); setImportedCartId(null);
@@ -1155,8 +1158,8 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : "manual",
-          event_name: eventName || null,
+          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : manualSaleSource,
+          event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
           shipping_cost: shippingData.cost || 0,
@@ -1694,6 +1697,31 @@ export default function NewSaleDialog({
                 onTrackingGenerated={(tracking, labelUrl) => { setShippingTracking(tracking); setShippingLabelUrl(labelUrl); }}
                 saleId={saleIdForShipping}
               />
+
+              {/* Sale Origin Selector - only for manual sales */}
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && (
+                <div className="space-y-2">
+                  <Label>Origem da Venda</Label>
+                  <Select value={manualSaleSource} onValueChange={(v) => { setManualSaleSource(v); if (v !== "event") setManualEventName(""); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Venda Direta</SelectItem>
+                      <SelectItem value="event">Evento</SelectItem>
+                      <SelectItem value="catalog">Minha Loja</SelectItem>
+                      <SelectItem value="instagram">Instagram / Rede Social</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {manualSaleSource === "event" && (
+                    <Input
+                      placeholder="Nome do evento..."
+                      value={manualEventName}
+                      onChange={(e) => setManualEventName(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* Notes */}
               <div>

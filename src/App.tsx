@@ -65,6 +65,7 @@ import ReportEvent from "./pages/ReportEvent";
 import ReportConsortium from "./pages/ReportConsortium";
 import ReportSociedade from "./pages/ReportSociedade";
 import ReportParcerias from "./pages/ReportParcerias";
+import ReportInstagram from "./pages/ReportInstagram";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
@@ -185,6 +186,7 @@ const AppRoutes = () => (
     <Route path="/reports/consortium" element={<ProtectedRoute><ReportConsortium /></ProtectedRoute>} />
     <Route path="/reports/sociedade" element={<ProtectedRoute><ReportSociedade /></ProtectedRoute>} />
     <Route path="/reports/parcerias" element={<ProtectedRoute><ReportParcerias /></ProtectedRoute>} />
+    <Route path="/reports/instagram" element={<ProtectedRoute><ReportInstagram /></ProtectedRoute>} />
     <Route path="/reports/catalog" element={<ProtectedRoute><ReportCatalog /></ProtectedRoute>} />
     <Route path="/plano-expirado" element={<PlanExpired />} />
     <Route path="/p/:token" element={<PartnerCatalog />} />
