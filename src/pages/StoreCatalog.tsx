@@ -22,7 +22,7 @@ import { LeadCaptureSheet } from "@/components/catalog/LeadCaptureSheet";
 import { LoyaltyHeader } from "@/components/catalog/LoyaltyHeader";
 import { VipAreaDrawer } from "@/components/catalog/VipAreaDrawer";
 import { useCatalogLoyalty } from "@/hooks/useCatalogLoyalty";
-import { FeaturedProductsDialog } from "@/components/catalog/FeaturedProductsDialog";
+
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -730,7 +730,7 @@ export default function StoreCatalog() {
     return user?.id === store?.owner_id;
   }, [user?.id, store?.owner_id]);
 
-  const [showFeaturedDialog, setShowFeaturedDialog] = useState(false);
+  
 
   // Fetch featured products for sorting
   const { data: featuredProductIds = [] } = useQuery({
@@ -2271,20 +2271,6 @@ export default function StoreCatalog() {
           );
         })()}
 
-        {/* Edit Featured Button - owner only */}
-        {isStoreOwner && (
-          <div className="flex justify-end mb-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => setShowFeaturedDialog(true)}
-            >
-              <Star className="h-3.5 w-3.5 text-yellow-500" />
-              Editar Destaques
-            </Button>
-          </div>
-        )}
 
         {/* Products Grid - 2 cols mobile, 4 cols desktop */}
         {productsLoading ? (
@@ -2589,20 +2575,6 @@ export default function StoreCatalog() {
           </div>
         );
       })()}
-      {/* Featured Products Dialog */}
-      {isStoreOwner && store && (
-        <FeaturedProductsDialog
-          open={showFeaturedDialog}
-          onOpenChange={setShowFeaturedDialog}
-          ownerId={store.owner_id}
-          catalogItems={enrichedCatalogItems.map(ci => ({
-            productId: ci.productId,
-            name: ci.name,
-            color: ci.color,
-            image_url: ci.image_url,
-          }))}
-        />
-      )}
     </div>
   );
 }
