@@ -2175,34 +2175,7 @@ export default function StoreCatalog() {
               </button>
             )}
 
-            {/* BAZAR VIP Button - only show if store has approved bazar items */}
-            {bazarItemsCount > 0 && (
-              <button
-                className={cn(
-                  "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
-                  bazarMode
-                    ? "bg-pink-600 text-white shadow-lg"
-                    : "bg-pink-600/10 text-pink-600 hover:bg-pink-600/20"
-                )}
-                onClick={() => {
-                  setBazarMode(!bazarMode);
-                  if (!bazarMode) {
-                    setSelectedMarketingFilter("all");
-                    setShowOpportunities(false);
-                    setSelectedMainCategory(null);
-                    setSelectedSubcategory(null);
-                  }
-                }}
-              >
-                <Tag className="h-3.5 w-3.5" />
-                Bazar VIP
-                {bazarMode && (
-                  <span className="ml-1 text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">
-                    ✓
-                  </span>
-                )}
-              </button>
-            )}
+            {/* Bazar VIP button removed - entry via category badge only */}
           </div>
         </div>
 
