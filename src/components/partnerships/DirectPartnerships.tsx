@@ -260,7 +260,7 @@ export function DirectPartnerships() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)")
+        .select("id, name, price, cost_price, category, category_2, category_3, main_category, subcategory, stock_quantity, supplier_id, color_label, model, is_new_release, marketing_status, min_stock_level, product_variants(size, stock_quantity, marketing_status)")
         .eq("owner_id", user?.id)
         .eq("is_active", true)
         .order("name");
