@@ -2021,6 +2021,7 @@ export type Database = {
       }
       partner_point_sales: {
         Row: {
+          converted_sale_id: string | null
           created_at: string
           custom_payment_method_id: string | null
           customer_name: string
@@ -2040,6 +2041,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          converted_sale_id?: string | null
           created_at?: string
           custom_payment_method_id?: string | null
           customer_name: string
@@ -2059,6 +2061,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          converted_sale_id?: string | null
           created_at?: string
           custom_payment_method_id?: string | null
           customer_name?: string
@@ -2078,6 +2081,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "partner_point_sales_converted_sale_id_fkey"
+            columns: ["converted_sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "partner_point_sales_partner_point_id_fkey"
             columns: ["partner_point_id"]

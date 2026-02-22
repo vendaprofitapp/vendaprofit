@@ -1,0 +1,1 @@
+ALTER TABLE public.partner_point_sales ADD COLUMN converted_sale_id UUID REFERENCES public.sales(id) DEFAULT NULL;

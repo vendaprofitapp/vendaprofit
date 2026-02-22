@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ChevronDown, ChevronUp, MapPin, Phone, CheckCircle2, Clock,
+  ShoppingBag, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { calculatePartnerPointSplit } from "@/utils/profitEngine";
 
 type PeriodFilter = "today" | "7days" | "30days";
 
@@ -42,6 +44,7 @@ export function PartnerOrdersSection({ period }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [convertingIds, setConvertingIds] = useState<Set<string>>(new Set());
   const sinceDate = useMemo(() => getPeriodDate(period), [period]);
 
   const { data: partnerSales = [], isLoading } = useQuery({
@@ -50,7 +53,7 @@ export function PartnerOrdersSection({ period }: Props) {
       if (!user) return [];
       const { data, error } = await supabase
         .from("partner_point_sales")
-        .select("*, partner_points(name)")
+        .select("*, partner_points(name, rack_commission_pct, payment_fee_pct)")
         .eq("owner_id", user.id)
         .gte("created_at", sinceDate)
         .order("created_at", { ascending: false });
@@ -74,6 +77,152 @@ export function PartnerOrdersSection({ period }: Props) {
       queryClient.invalidateQueries({ queryKey: ["partner-point-orders"] });
     },
   });
+
+  const convertToSale = async (sale: any) => {
+    if (!user) return;
+    
+    const saleId = sale.id;
+    setConvertingIds(prev => new Set(prev).add(saleId));
+
+    try {
+      const items = Array.isArray(sale.items) ? sale.items : [];
+      const partnerPoint = sale.partner_points;
+      const rackCommissionPct = partnerPoint?.rack_commission_pct ?? 0;
+
+      // 1. Recalculate payment fee from current config
+      let paymentFeePct = 0;
+      if (sale.custom_payment_method_id) {
+        const { data: pm } = await supabase
+          .from("custom_payment_methods")
+          .select("fee_percent")
+          .eq("id", sale.custom_payment_method_id)
+          .single();
+        if (pm) paymentFeePct = pm.fee_percent;
+      }
+
+      // 2. Fetch cost_price for all products
+      const productIds = items.map((i: any) => i.product_id).filter(Boolean);
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, cost_price")
+        .in("id", productIds);
+      const costMap = new Map((products || []).map(p => [p.id, p.cost_price ?? 0]));
+
+      // 3. Calculate total cost and split
+      let totalCost = 0;
+      const saleItems: any[] = [];
+      const stockUpdates: any[] = [];
+
+      for (const item of items) {
+        const costPrice = costMap.get(item.product_id) ?? 0;
+        totalCost += costPrice * (item.quantity || 1);
+
+        saleItems.push({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price,
+          total: item.unit_price * (item.quantity || 1),
+          source: "estoque_proprio",
+        });
+
+        // Stock deduction - use variant_id if present
+        stockUpdates.push({
+          product_id: item.product_id,
+          variant_id: item.variant_id || "",
+          quantity: item.quantity || 1,
+        });
+      }
+
+      // 4. Calculate partner point financial split
+      const split = calculatePartnerPointSplit({
+        grossPrice: sale.total_gross,
+        costPrice: totalCost,
+        rackCommissionPct,
+        paymentFeePct,
+      });
+
+      // 5. Build financial splits for the database
+      const partnerName = partnerPoint?.name || "Ponto Parceiro";
+      const financialSplits: any[] = [];
+
+      // Seller gets: netRevenue - partnerCommission
+      financialSplits.push({
+        user_id: user.id,
+        amount: split.sellerNet + totalCost, // seller total = sellerNet + cost recovery
+        type: "profit_share",
+        description: `Receita líquida — venda no ${partnerName}`,
+      });
+
+      // We don't have a partner user_id for partner_points (they're external entities)
+      // So we record the partner commission as a negative split (expense) for the seller
+      if (split.partnerCommission > 0) {
+        financialSplits.push({
+          user_id: user.id,
+          amount: -split.partnerCommission,
+          type: "group_commission",
+          description: `Comissão ${rackCommissionPct}% — ${partnerName}`,
+        });
+      }
+
+      // 6. Create sale via RPC
+      const payload = {
+        owner_id: user.id,
+        sale: {
+          customer_name: sale.customer_name,
+          customer_phone: sale.customer_phone,
+          payment_method: sale.payment_method,
+          subtotal: sale.total_gross,
+          discount_type: null,
+          discount_value: 0,
+          discount_amount: 0,
+          total: sale.total_gross,
+          notes: `Convertido de Ponto Parceiro: ${partnerName}`,
+          status: "completed",
+          sale_source: "catalog",
+        },
+        items: saleItems,
+        stock_updates: stockUpdates,
+        financial_splits: financialSplits,
+      };
+
+      const { data: result, error: rpcError } = await supabase.rpc(
+        "create_sale_transaction",
+        { payload: payload as any }
+      );
+
+      if (rpcError) throw rpcError;
+      const resultObj = result as any;
+      if (!resultObj?.success) throw new Error(resultObj?.error || "Erro ao criar venda");
+
+      // 7. Update partner_point_sale status
+      const { error: updateError } = await supabase
+        .from("partner_point_sales")
+        .update({
+          pass_status: "completed",
+          converted_sale_id: resultObj.sale_id,
+        } as any)
+        .eq("id", saleId);
+      if (updateError) throw updateError;
+
+      toast.success("Venda registrada com sucesso!", {
+        description: `Lucro líquido: ${formatBRL(split.sellerNet)} | Comissão ${partnerName}: ${formatBRL(split.partnerCommission)}`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["partner-point-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    } catch (err: any) {
+      console.error("Convert to sale error:", err);
+      toast.error("Erro ao converter em venda", { description: err.message });
+    } finally {
+      setConvertingIds(prev => {
+        const next = new Set(prev);
+        next.delete(saleId);
+        return next;
+      });
+    }
+  };
 
   const toggleOrder = (id: string) => {
     setExpandedOrders((prev) => {
@@ -130,6 +279,8 @@ export function PartnerOrdersSection({ period }: Props) {
     const partnerName = sale.partner_points?.name || "Ponto Parceiro";
     const passEmoji = PASS_EMOJI[sale.pass_color] ?? "⚪";
     const isContacted = !!(sale as any).seller_contacted_at;
+    const isConverted = !!(sale as any).converted_sale_id;
+    const isConverting = convertingIds.has(sale.id);
     const needsAction = sale.pass_status === "pending" && (sale.pass_color === "green" || sale.pass_color === "yellow");
 
     return (
@@ -155,6 +306,12 @@ export function PartnerOrdersSection({ period }: Props) {
                   <Badge variant="outline" className="text-xs text-green-600 border-green-300 gap-1">
                     <CheckCircle2 className="h-3 w-3" />
                     Contatado
+                  </Badge>
+                )}
+                {isConverted && (
+                  <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 gap-1">
+                    <ShoppingBag className="h-3 w-3" />
+                    Venda Registrada
                   </Badge>
                 )}
               </div>
@@ -224,11 +381,30 @@ export function PartnerOrdersSection({ period }: Props) {
               )}
             </div>
 
-            {sale.pass_status === "pending" && !isContacted && (
+            {/* Convert to Sale button - visible for pending sales not yet converted */}
+            {sale.pass_status === "pending" && !isConverted && (
               <div className="flex flex-wrap gap-2 pt-3 border-t mt-3">
-                {sale.customer_phone && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    convertToSale(sale);
+                  }}
+                  disabled={isConverting}
+                >
+                  {isConverting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                  )}
+                  {isConverting ? "Registrando..." : "Converter em Venda"}
+                </Button>
+
+                {!isContacted && sale.customer_phone && (
                   <Button
                     size="sm"
+                    variant="outline"
                     className="gap-1.5"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -240,18 +416,20 @@ export function PartnerOrdersSection({ period }: Props) {
                     {sale.pass_color === "green" ? "Enviar PIX" : sale.pass_color === "yellow" ? "Enviar Link" : "Contatar Cliente"}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    markContacted.mutate(sale.id);
-                  }}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Marcar Contatado
-                </Button>
+                {!isContacted && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      markContacted.mutate(sale.id);
+                    }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Marcar Contatado
+                  </Button>
+                )}
               </div>
             )}
 
