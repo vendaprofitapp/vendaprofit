@@ -1363,11 +1363,13 @@ export default function NewSaleDialog({
                 <ProfitBreakdownCard
                   cart={cart}
                   currentUserId={user.id}
+                  currentUserName={profiles.find(p => p.id === user.id)?.full_name}
                   groupCommissionPercent={0.20}
                   hasActivePartnership={hasActivePartnership}
                   paymentFeePercent={selectedPaymentMethodId ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0) : 0}
                   saleNetMultiplier={subtotal > 0 ? total / subtotal : 1}
                   productPartnerships={productPartnershipsMap}
+                  profiles={profiles}
                 />
               )}
 
