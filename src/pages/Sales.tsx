@@ -91,6 +91,7 @@ export default function Sales() {
   const isMobile = useIsMobile();
   const [consignmentData, setConsignmentData] = useState<any>(null);
   const [catalogOrderData, setCatalogOrderData] = useState<any>(null);
+  const [partnerPointOrderData, setPartnerPointOrderData] = useState<any>(null);
 
   // Voice command state for passing to NewSaleDialog
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<{
@@ -215,6 +216,29 @@ export default function Sales() {
     const state = location.state as any;
     if (state?.consignmentData) {
       setConsignmentData(state.consignmentData);
+      setIsNewSaleOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (state?.fromPartnerPointOrder) {
+      // Clear persisted sale form data so partner point order data takes priority
+      const keysToClean = [
+        "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
+        "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
+        "sales_notes", "sales_dueDate", "sales_installments", "sales_installmentDetails",
+        "sales_shippingData",
+      ];
+      keysToClean.forEach(k => sessionStorage.removeItem(k));
+
+      setPartnerPointOrderData({
+        partnerPointSaleId: state.partnerPointSaleId,
+        customerName: state.customer_name,
+        customerPhone: state.customer_phone,
+        paymentMethod: state.payment_method,
+        customPaymentMethodId: state.custom_payment_method_id,
+        items: state.items,
+        totalGross: state.total,
+        partnerName: state.partner_name,
+        rackCommissionPct: state.rack_commission_pct,
+      });
       setIsNewSaleOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     } else if (state?.fromCatalogOrder) {
@@ -389,6 +413,8 @@ export default function Sales() {
         onConsignmentProcessed={() => setConsignmentData(null)}
         catalogOrderData={catalogOrderData}
         onCatalogOrderProcessed={() => setCatalogOrderData(null)}
+        partnerPointOrderData={partnerPointOrderData}
+        onPartnerPointOrderProcessed={() => setPartnerPointOrderData(null)}
       />
 
       {/* View Sale Dialog */}
