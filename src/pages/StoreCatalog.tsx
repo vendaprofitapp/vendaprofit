@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell, CheckCircle2, Star } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell, CheckCircle2, Star, Tag } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -244,6 +244,14 @@ export default function StoreCatalog() {
   const [showSecretDialog, setShowSecretDialog] = useState(false);
   const [secretPassword, setSecretPassword] = useState("");
   const [viewingSecretArea, setViewingSecretArea] = useState(false);
+
+  // Bazar VIP state
+  const [bazarMode, setBazarMode] = useState(false);
+  const [showBazarBuyerDialog, setShowBazarBuyerDialog] = useState(false);
+  const [bazarBuyerPhone, setBazarBuyerPhone] = useState("");
+  const [bazarBuyerVerified, setBazarBuyerVerified] = useState(false);
+  const [bazarPendingItem, setBazarPendingItem] = useState<{ item: any; } | null>(null);
+  const [bazarBuyerChecking, setBazarBuyerChecking] = useState(false);
 
   // Lead capture state (inline in cart)
   const [showLoyaltyCapture, setShowLoyaltyCapture] = useState(false);
@@ -731,6 +739,37 @@ export default function StoreCatalog() {
   }, [user?.id, store?.owner_id]);
 
   
+
+  // Check if store owner has bazar items (for showing BAZAR VIP button)
+  const { data: bazarItemsCount = 0 } = useQuery({
+    queryKey: ["bazar-items-count", store?.owner_id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("bazar_items")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_id", store!.owner_id)
+        .eq("status", "approved");
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!store?.owner_id,
+  });
+
+  // Fetch bazar items when bazarMode is active
+  const { data: bazarItems = [], isLoading: bazarLoading } = useQuery({
+    queryKey: ["bazar-catalog-items", store?.owner_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bazar_items")
+        .select("*")
+        .eq("owner_id", store!.owner_id)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!store?.owner_id && bazarMode,
+  });
 
   // Fetch featured products for sorting
   const { data: featuredProductIds = [] } = useQuery({
@@ -2050,6 +2089,7 @@ export default function StoreCatalog() {
               onClick={() => {
                 setSelectedMarketingFilter("all");
                 setShowOpportunities(false);
+                setBazarMode(false);
               }}
             >
               Todos
@@ -2089,6 +2129,7 @@ export default function StoreCatalog() {
                       onClick={() => {
                         setSelectedMarketingFilter(selectedMarketingFilter === key ? "all" : key);
                         setShowOpportunities(false);
+                        setBazarMode(false);
                       }}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -2121,6 +2162,35 @@ export default function StoreCatalog() {
                 <Lock className="h-3.5 w-3.5" />
                 {store.secret_area_name || "Área VIP"}
                 {secretAreaUnlocked && (
+                  <span className="ml-1 text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">
+                    ✓
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* BAZAR VIP Button - only show if store has approved bazar items */}
+            {bazarItemsCount > 0 && (
+              <button
+                className={cn(
+                  "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5",
+                  bazarMode
+                    ? "bg-pink-600 text-white shadow-lg"
+                    : "bg-pink-600/10 text-pink-600 hover:bg-pink-600/20"
+                )}
+                onClick={() => {
+                  setBazarMode(!bazarMode);
+                  if (!bazarMode) {
+                    setSelectedMarketingFilter("all");
+                    setShowOpportunities(false);
+                    setSelectedMainCategory(null);
+                    setSelectedSubcategory(null);
+                  }
+                }}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                Bazar VIP
+                {bazarMode && (
                   <span className="ml-1 text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">
                     ✓
                   </span>
@@ -2273,49 +2343,155 @@ export default function StoreCatalog() {
 
 
         {/* Products Grid - 2 cols mobile, 4 cols desktop */}
-        {productsLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="animate-pulse">
-                <div className="aspect-[3/4] bg-gray-100 rounded-xl mb-3" />
-                <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
-                <div className="h-4 bg-gray-100 rounded w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="text-center py-16">
-            <Package className="h-12 w-12 text-gray-200 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum produto encontrado</h3>
-            <p className="text-gray-500 text-sm">Tente ajustar os filtros de busca</p>
-          </div>
+        {bazarMode ? (
+          // BAZAR VIP Grid
+          bazarLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[3/4] bg-gray-100 rounded-xl mb-3" />
+                  <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
+                  <div className="h-4 bg-gray-100 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : bazarItems.length === 0 ? (
+            <div className="text-center py-16">
+              <Tag className="h-12 w-12 text-gray-200 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum item no Bazar VIP</h3>
+              <p className="text-gray-500 text-sm">Volte em breve para novidades!</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {bazarItems.map((item) => {
+                const img = item.image_url || item.image_url_2 || item.image_url_3;
+                const bazarPrice = Number(item.final_price || item.seller_price);
+                return (
+                  <div key={item.id} className="group flex flex-col p-3 rounded-2xl shadow-sm hover:shadow-md transition-shadow" style={{ backgroundColor: cardBackgroundColor }}>
+                    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 mb-3">
+                      <Badge className="absolute left-2 top-2 z-20 text-[10px] font-semibold border-0 bg-pink-600 text-white">
+                        <Tag className="h-3 w-3 mr-1" />
+                        Bazar VIP
+                      </Badge>
+                      {img ? (
+                        <img src={img} alt={item.title} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center">
+                          <Package className="h-8 w-8 text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-1 flex flex-col gap-2">
+                      <h3 className="text-sm font-medium text-gray-900 line-clamp-2">{item.title}</h3>
+                      {item.description && (
+                        <p className="text-xs text-gray-500 line-clamp-2">{item.description}</p>
+                      )}
+                      <span className="text-base font-bold text-gray-900">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(bazarPrice)}
+                      </span>
+                      <Button
+                        className="w-full h-10 rounded-xl font-semibold text-xs sm:text-sm bg-pink-600 hover:bg-pink-700 text-white"
+                        onClick={() => {
+                          // Check if buyer is already verified
+                          if (bazarBuyerVerified) {
+                            // Add bazar item directly to cart as a CatalogDisplayItem
+                            const bazarDisplayItem: CatalogDisplayItem = {
+                              id: `bazar-${item.id}`,
+                              productId: item.id,
+                              name: item.title,
+                              description: item.description,
+                              price: bazarPrice,
+                              marketingPrices: null,
+                              marketingDeliveryDays: null,
+                              category: "Bazar VIP",
+                              main_category: "Bazar VIP",
+                              subcategory: null,
+                              is_new_release: false,
+                              color: null,
+                              model: null,
+                              color_label: null,
+                              custom_detail: null,
+                              sizes: ["Único"],
+                              sizeMarketingStatus: {},
+                              sizeMarketingPrices: {},
+                              sizeMarketingDeliveryDays: {},
+                              sizeIsPartner: {},
+                              sizeConsignedCount: {},
+                              sizePhysicalStock: { "Único": 1 },
+                              marketingStatus: null,
+                              image_url: img || null,
+                              image_url_2: null,
+                              image_url_3: null,
+                              video_url: null,
+                              totalStock: 1,
+                              owner_id: item.owner_id,
+                              isPartner: false,
+                              hasPartnerSizes: false,
+                              isB2B: false,
+                            };
+                            addToCart(bazarDisplayItem, "Único", bazarPrice);
+                          } else {
+                            // Need to verify buyer first
+                            setBazarPendingItem({ item });
+                            setShowBazarBuyerDialog(true);
+                          }
+                        }}
+                      >
+                        <ShoppingBag className="h-4 w-4 mr-1 flex-shrink-0" />
+                        <span className="truncate">Comprar</span>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {(() => {
-              // Sort: featured products first by position, then rest
-              const featuredMap = new Map(featuredProductIds.map((fp: any) => [fp.product_id, fp.position]));
-              const sorted = [...filteredItems].sort((a, b) => {
-                const posA = featuredMap.get(a.productId);
-                const posB = featuredMap.get(b.productId);
-                if (posA !== undefined && posB !== undefined) return posA - posB;
-                if (posA !== undefined) return -1;
-                if (posB !== undefined) return 1;
-                return 0;
-              });
-              return sorted.map(item => (
-                <BoutiqueProductCard 
-                  key={item.id}
-                  item={item}
-                  primaryColor={primaryColor}
-                  cardBackgroundColor={cardBackgroundColor}
-                  onAddToCart={addToCart}
-                  isStoreOwner={isStoreOwner}
-                  incentivesConfig={incentivesConfig}
-                  onTrackView={trackProductView}
-                />
-              ));
-            })()}
-          </div>
+          // Regular products grid
+          productsLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[3/4] bg-gray-100 rounded-xl mb-3" />
+                  <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
+                  <div className="h-4 bg-gray-100 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-center py-16">
+              <Package className="h-12 w-12 text-gray-200 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum produto encontrado</h3>
+              <p className="text-gray-500 text-sm">Tente ajustar os filtros de busca</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {(() => {
+                // Sort: featured products first by position, then rest
+                const featuredMap = new Map(featuredProductIds.map((fp: any) => [fp.product_id, fp.position]));
+                const sorted = [...filteredItems].sort((a, b) => {
+                  const posA = featuredMap.get(a.productId);
+                  const posB = featuredMap.get(b.productId);
+                  if (posA !== undefined && posB !== undefined) return posA - posB;
+                  if (posA !== undefined) return -1;
+                  if (posB !== undefined) return 1;
+                  return 0;
+                });
+                return sorted.map(item => (
+                  <BoutiqueProductCard 
+                    key={item.id}
+                    item={item}
+                    primaryColor={primaryColor}
+                    cardBackgroundColor={cardBackgroundColor}
+                    onAddToCart={addToCart}
+                    isStoreOwner={isStoreOwner}
+                    incentivesConfig={incentivesConfig}
+                    onTrackView={trackProductView}
+                  />
+                ));
+              })()}
+            </div>
+          )
         )}
       </div>
 
@@ -2469,6 +2645,135 @@ export default function StoreCatalog() {
       </Dialog>
 
       {/* Lead Capture Sheet removed — now inline in cart */}
+
+      {/* Bazar VIP Buyer Verification Dialog */}
+      <Dialog open={showBazarBuyerDialog} onOpenChange={setShowBazarBuyerDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-pink-100">
+              <Tag className="h-8 w-8 text-pink-600" />
+            </div>
+            <DialogTitle className="text-center text-xl">
+              Bazar VIP
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Para comprar no Bazar VIP, informe seu WhatsApp cadastrado.
+            </DialogDescription>
+          </DialogHeader>
+          <form 
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!store || bazarBuyerChecking) return;
+              setBazarBuyerChecking(true);
+              try {
+                const cleanPhone = bazarBuyerPhone.replace(/\D/g, "");
+                const { data, error } = await supabase.rpc("validate_bazar_buyer", {
+                  _owner_id: store.owner_id,
+                  _buyer_phone: cleanPhone,
+                });
+                if (error) throw error;
+                if (data === true) {
+                  setBazarBuyerVerified(true);
+                  setShowBazarBuyerDialog(false);
+                  toast.success("Acesso liberado! Bem-vindo(a) ao Bazar VIP 🎉");
+                  // If there's a pending item, add it to cart
+                  if (bazarPendingItem) {
+                    const item = bazarPendingItem.item;
+                    const img = item.image_url || item.image_url_2 || item.image_url_3;
+                    const bazarPrice = Number(item.final_price || item.seller_price);
+                    const bazarDisplayItem: CatalogDisplayItem = {
+                      id: `bazar-${item.id}`,
+                      productId: item.id,
+                      name: item.title,
+                      description: item.description,
+                      price: bazarPrice,
+                      marketingPrices: null,
+                      marketingDeliveryDays: null,
+                      category: "Bazar VIP",
+                      main_category: "Bazar VIP",
+                      subcategory: null,
+                      is_new_release: false,
+                      color: null,
+                      model: null,
+                      color_label: null,
+                      custom_detail: null,
+                      sizes: ["Único"],
+                      sizeMarketingStatus: {},
+                      sizeMarketingPrices: {},
+                      sizeMarketingDeliveryDays: {},
+                      sizeIsPartner: {},
+                      sizeConsignedCount: {},
+                      sizePhysicalStock: { "Único": 1 },
+                      marketingStatus: null,
+                      image_url: img || null,
+                      image_url_2: null,
+                      image_url_3: null,
+                      video_url: null,
+                      totalStock: 1,
+                      owner_id: item.owner_id,
+                      isPartner: false,
+                      hasPartnerSizes: false,
+                      isB2B: false,
+                    };
+                    addToCart(bazarDisplayItem, "Único", bazarPrice);
+                    setBazarPendingItem(null);
+                  }
+                } else {
+                  toast.error("Seu número não tem permissão para comprar no Bazar VIP. Entre em contato com a loja.");
+                }
+              } catch (err) {
+                console.error("Erro ao verificar comprador:", err);
+                toast.error("Erro ao verificar. Tente novamente.");
+              } finally {
+                setBazarBuyerChecking(false);
+              }
+            }}
+            className="space-y-4 mt-2"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="bazar-buyer-phone">Seu WhatsApp</Label>
+              <Input
+                id="bazar-buyer-phone"
+                type="tel"
+                placeholder="(00) 00000-0000"
+                value={bazarBuyerPhone}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
+                  if (digits.length <= 2) setBazarBuyerPhone(digits.length ? `(${digits}` : "");
+                  else if (digits.length <= 7) setBazarBuyerPhone(`(${digits.slice(0, 2)}) ${digits.slice(2)}`);
+                  else setBazarBuyerPhone(`(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`);
+                }}
+                className="h-12 text-center text-lg"
+                inputMode="tel"
+                maxLength={16}
+                autoFocus
+              />
+            </div>
+            <Button 
+              type="submit"
+              className="w-full h-12 text-base font-semibold bg-pink-600 hover:bg-pink-700"
+              disabled={bazarBuyerPhone.replace(/\D/g, "").length < 10 || bazarBuyerChecking}
+            >
+              {bazarBuyerChecking ? (
+                <span className="animate-spin mr-2">⏳</span>
+              ) : (
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+              )}
+              Verificar Acesso
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBazarBuyerDialog(false);
+                setBazarPendingItem(null);
+              }}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Voltar para a loja
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Loyalty Lead Capture Sheet */}
       <LeadCaptureSheet
