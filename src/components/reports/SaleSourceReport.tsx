@@ -366,16 +366,14 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
             <p className="text-xs text-muted-foreground">Taxas Pgto</p>
             <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalFees)}</p>
           </CardContent></Card>
-          {summary.totalShipping > 0 && (
-            <Card><CardContent className="pt-4 pb-4 text-center">
-              <Truck className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Frete Total</p>
-              <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalShipping)}</p>
-              {summary.totalSellerShipping > 0 && (
-                <p className="text-xs text-muted-foreground">Vendedora: {fmt(summary.totalSellerShipping)}</p>
-              )}
-            </CardContent></Card>
-          )}
+          <Card><CardContent className="pt-4 pb-4 text-center">
+            <Truck className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
+            <p className="text-xs text-muted-foreground">Frete Total</p>
+            <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalShipping)}</p>
+            {summary.totalSellerShipping > 0 && (
+              <p className="text-xs text-muted-foreground">Vendedora: {fmt(summary.totalSellerShipping)}</p>
+            )}
+          </CardContent></Card>
           {summary.totalCommission > 0 && (
             <Card><CardContent className="pt-4 pb-4 text-center">
               <Percent className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
@@ -446,7 +444,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
                       <TableHead className="text-right">Custo</TableHead>
                       <TableHead className="text-right">Venda</TableHead>
                       <TableHead className="text-right">Taxa</TableHead>
-                      {summary.totalShipping > 0 && <TableHead className="text-right">Frete</TableHead>}
+                      <TableHead className="text-right">Frete</TableHead>
                       {summary.totalCommission > 0 && <TableHead className="text-right">Comissão</TableHead>}
                       <TableHead className="text-right">Lucro Líq.</TableHead>
                       <TableHead>Pgto</TableHead>
@@ -463,16 +461,14 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
                         <TableCell className="text-right text-destructive text-xs">{fmt(row.totalCost)}</TableCell>
                         <TableCell className="text-right text-xs">{fmt(row.afterDiscount)}</TableCell>
                         <TableCell className="text-right text-destructive/70 text-xs">{fmt(row.feeAmount)}</TableCell>
-                        {summary.totalShipping > 0 && (
-                          <TableCell className="text-right text-xs">
-                            {row.shippingCost > 0 ? (
-                              <span className={row.shippingPayer === 'seller' ? 'text-destructive' : 'text-muted-foreground'}>
-                                {fmt(row.shippingCost)}
-                                <span className="block text-[10px]">{row.shippingPayer === 'seller' ? 'vendedora' : 'compradora'}</span>
-                              </span>
-                            ) : '—'}
-                          </TableCell>
-                        )}
+                        <TableCell className="text-right text-xs">
+                          {row.shippingCost > 0 ? (
+                            <span className={row.shippingPayer === 'seller' ? 'text-destructive' : 'text-muted-foreground'}>
+                              {fmt(row.shippingCost)}
+                              <span className="block text-[10px]">{row.shippingPayer === 'seller' ? 'vendedora' : 'compradora'}</span>
+                            </span>
+                          ) : '—'}
+                        </TableCell>
                         {summary.totalCommission > 0 && <TableCell className="text-right text-destructive/70 text-xs">{fmt(row.partnerCommission)}</TableCell>}
                         <TableCell className={`text-right font-bold text-xs ${row.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>{fmt(row.netProfit)}</TableCell>
                         <TableCell className="text-xs">{row.paymentMethod}</TableCell>
