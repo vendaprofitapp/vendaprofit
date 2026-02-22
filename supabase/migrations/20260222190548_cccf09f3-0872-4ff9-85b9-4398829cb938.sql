@@ -1,0 +1,1 @@
+ALTER TABLE public.partner_point_sales ADD COLUMN seller_contacted_at TIMESTAMPTZ DEFAULT NULL;

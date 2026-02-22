@@ -18,10 +18,11 @@ import {
 import {
   ShoppingCart, Phone, ChevronDown, ChevronUp, Package,
   AlertTriangle, MessageCircle, CheckCircle2, RefreshCw,
-  DollarSign, Pencil, XCircle,
+  DollarSign, Pencil, XCircle, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EditCatalogOrderDialog } from "@/components/catalog/EditCatalogOrderDialog";
+import { PartnerOrdersSection } from "@/components/catalog/PartnerOrdersSection";
 
 type PeriodFilter = "today" | "7days" | "30days";
 
@@ -236,6 +237,10 @@ export default function CatalogOrders() {
                   {abandonedCarts.length}
                 </Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="partners" className="gap-2">
+              <MapPin className="h-4 w-4" />
+              Pontos Parceiros
             </TabsTrigger>
           </TabsList>
 
@@ -481,6 +486,11 @@ export default function CatalogOrders() {
                 );
               })
             )}
+          </TabsContent>
+
+          {/* Tab: Pontos Parceiros */}
+          <TabsContent value="partners" className="space-y-3 mt-4">
+            <PartnerOrdersSection period={period} />
           </TabsContent>
         </Tabs>
       </div>

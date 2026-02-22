@@ -2035,6 +2035,7 @@ export type Database = {
           payment_fee_applied: number | null
           payment_method: string
           payment_proof_url: string | null
+          seller_contacted_at: string | null
           total_gross: number
           updated_at: string
         }
@@ -2053,6 +2054,7 @@ export type Database = {
           payment_fee_applied?: number | null
           payment_method?: string
           payment_proof_url?: string | null
+          seller_contacted_at?: string | null
           total_gross?: number
           updated_at?: string
         }
@@ -2071,6 +2073,7 @@ export type Database = {
           payment_fee_applied?: number | null
           payment_method?: string
           payment_proof_url?: string | null
+          seller_contacted_at?: string | null
           total_gross?: number
           updated_at?: string
         }
