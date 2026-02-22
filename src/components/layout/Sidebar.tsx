@@ -83,6 +83,7 @@ const navGroups: NavGroup[] = [
       { icon: Wallet, label: "Financeiro", path: "/financial" },
       { icon: TrendingUp, label: "Relatórios", path: "/reports" },
       { icon: TrendingUp, label: "Rel. Sociedades", path: "/partner-reports" },
+      { icon: MapPin, label: "Rel. Pontos Parceiros", path: "/reports/partner-points" },
     ],
   },
   {
