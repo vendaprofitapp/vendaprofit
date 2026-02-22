@@ -102,6 +102,22 @@ interface ConsignmentSaleData {
   }>;
 }
 
+interface CatalogOrderData {
+  catalogOrderId: string;
+  customerName: string;
+  customerPhone: string;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    variant_color?: string | null;
+    selected_size?: string | null;
+    source?: string | null;
+  }>;
+  total: number;
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -119,6 +135,8 @@ interface NewSaleDialogProps {
   onDraftReconciled?: () => void;
   consignmentData?: ConsignmentSaleData | null;
   onConsignmentProcessed?: () => void;
+  catalogOrderData?: CatalogOrderData | null;
+  onCatalogOrderProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -131,6 +149,8 @@ export default function NewSaleDialog({
   onDraftReconciled,
   consignmentData,
   onConsignmentProcessed,
+  catalogOrderData,
+  onCatalogOrderProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -775,6 +795,60 @@ export default function NewSaleDialog({
     }
   }, [open, consignmentProcessed, onConsignmentProcessed]);
 
+  // ─── Load catalog order data into cart ─────────────────────
+  const [catalogOrderProcessed, setCatalogOrderProcessed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !catalogOrderData || catalogOrderProcessed || !user) return;
+
+    const loadCatalogOrderItems = async () => {
+      const productIds = catalogOrderData.items.map(i => i.product_id).filter(Boolean);
+      
+      let products: any[] = [];
+      if (productIds.length > 0) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds);
+        if (!error && data) products = data;
+      }
+
+      const cartItems: CartItem[] = catalogOrderData.items.map(item => {
+        const dbProduct = products.find(p => p.id === item.product_id);
+        const product: Product = dbProduct
+          ? { ...dbProduct, isB2B: false }
+          : {
+              id: item.product_id || crypto.randomUUID(),
+              name: item.product_name,
+              price: item.unit_price,
+              stock_quantity: item.quantity,
+              owner_id: user.id,
+              group_id: null,
+              category: "",
+              color: item.variant_color || null,
+              size: item.selected_size || null,
+            };
+        return { product, quantity: item.quantity, isPartnerStock: false };
+      });
+
+      setCart(cartItems);
+      setCustomerName(catalogOrderData.customerName || "");
+      setCustomerPhone(catalogOrderData.customerPhone || "");
+      setNotes(`Pedido do catálogo #${catalogOrderData.catalogOrderId.slice(0, 8)}`);
+      setCatalogOrderProcessed(true);
+    };
+
+    loadCatalogOrderItems();
+  }, [open, catalogOrderData, catalogOrderProcessed, user]);
+
+  // Reset catalog order state when dialog closes
+  useEffect(() => {
+    if (!open && catalogOrderProcessed) {
+      setCatalogOrderProcessed(false);
+      onCatalogOrderProcessed?.();
+    }
+  }, [open, catalogOrderProcessed, onCatalogOrderProcessed]);
+
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
@@ -1025,8 +1099,15 @@ export default function NewSaleDialog({
           .eq("id", consignmentData.consignmentId);
         queryClient.invalidateQueries({ queryKey: ["consignments"] });
       }
+      // Mark catalog order as converted after successful sale
+      if (catalogOrderData?.catalogOrderId) {
+        await supabase
+          .from("saved_carts")
+          .update({ status: "converted" } as any)
+          .eq("id", catalogOrderData.catalogOrderId);
+        queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
+      }
 
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
