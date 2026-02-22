@@ -165,7 +165,7 @@ export default function Financial() {
       .map((pp: any) => pp.product_id);
     const externalStockValue = myProducts
       .filter((p: any) => sharedProductIds.includes(p.id))
-      .reduce((sum: number, p: any) => sum + (p.cost_price || p.price * 0.5), 0);
+      .reduce((sum: number, p: any) => sum + (p.cost_price || 0), 0);
 
     return { netProfit, costToRecover, payablesToPartners, externalStockValue };
   }, [receivedSplits, allSplits, myProducts, productPartnerships, user?.id]);

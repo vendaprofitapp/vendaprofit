@@ -111,7 +111,7 @@ export function DREReport({ dateRange }: DREReportProps) {
 
   // CMV (cost of goods sold)
   const productCostMap = new Map<string, number>();
-  products.forEach((p: any) => productCostMap.set(p.id, p.cost_price || p.price * 0.5));
+  products.forEach((p: any) => productCostMap.set(p.id, p.cost_price || 0));
 
   let cmv = 0;
   saleItems.forEach((s: any) => {
