@@ -223,6 +223,17 @@ export default function NewSaleDialog({
   const [importedCartId, setImportedCartId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  // Auto-detect active event session from localStorage
+  useEffect(() => {
+    if (!open) return;
+    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData) return;
+    const activeEvent = localStorage.getItem("vp_active_event_name");
+    if (activeEvent && manualSaleSource === "manual") {
+      setManualSaleSource("event");
+      setManualEventName(activeEvent);
+    }
+  }, [open]);
+
   // Variant selection dialog
   const [showVariantDialog, setShowVariantDialog] = useState(false);
   const [selectedProductForVariant, setSelectedProductForVariant] = useState<Product | null>(null);
