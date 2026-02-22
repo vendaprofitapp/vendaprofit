@@ -1,0 +1,1 @@
+ALTER TABLE public.partner_point_sales DROP CONSTRAINT partner_point_sales_payment_method_check;
