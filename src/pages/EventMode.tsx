@@ -252,8 +252,14 @@ export default function EventMode() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Event Name Gate Dialog */}
-      <Dialog open={showEventNameDialog} onOpenChange={(open) => { if (eventName) setShowEventNameDialog(open); }}>
-        <DialogContent className="sm:max-w-sm" onPointerDownOutside={(e) => { if (!eventName) e.preventDefault(); }}>
+      <Dialog open={showEventNameDialog} onOpenChange={(open) => {
+        if (!open && !eventName) {
+          navigate("/");
+          return;
+        }
+        setShowEventNameDialog(open);
+      }}>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Nome do Evento</DialogTitle>
             <DialogDescription>Informe o nome do evento para identificar as vendas no relatório.</DialogDescription>
