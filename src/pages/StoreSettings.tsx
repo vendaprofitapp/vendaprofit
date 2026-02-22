@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers } from "lucide-react";
+import { ExternalLink, Copy, Store, Palette, Upload, X, ImageIcon, Link2, Type, Flame, Clock, Rocket, GripVertical, Filter, Layers, Star } from "lucide-react";
+import { FeaturedProductsDialog } from "@/components/catalog/FeaturedProductsDialog";
 import { cn } from "@/lib/utils";
 
 // Filter button configuration type
@@ -134,6 +135,27 @@ export default function StoreSettings() {
   const fontInputRef = useRef<HTMLInputElement>(null);
   const bannerMobileInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
+  const [showFeaturedDialog, setShowFeaturedDialog] = useState(false);
+
+  // Fetch products for featured dialog
+  const { data: catalogProducts = [] } = useQuery({
+    queryKey: ["catalog-products-for-featured", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, color, image_url")
+        .eq("owner_id", user!.id)
+        .gt("stock_quantity", 0);
+      if (error) throw error;
+      return (data || []).map(p => ({
+        productId: p.id,
+        name: p.name,
+        color: p.color,
+        image_url: p.image_url,
+      }));
+    },
+    enabled: !!user?.id,
+  });
 
   // Available Google Fonts
   const availableFonts = [
@@ -1058,6 +1080,32 @@ export default function StoreSettings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 4.5 - Produtos em Destaque */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-yellow-500" />
+              Produtos em Destaque
+            </CardTitle>
+            <CardDescription>Escolha até 10 produtos para aparecer primeiro no catálogo</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => setShowFeaturedDialog(true)}>
+              <Star className="h-4 w-4 mr-2" />
+              Editar Destaques
+            </Button>
+          </CardContent>
+        </Card>
+
+        {user?.id && (
+          <FeaturedProductsDialog
+            open={showFeaturedDialog}
+            onOpenChange={setShowFeaturedDialog}
+            ownerId={user.id}
+            catalogItems={catalogProducts}
+          />
+        )}
 
         {/* 5 - Botões de Filtro */}
         <Card>
