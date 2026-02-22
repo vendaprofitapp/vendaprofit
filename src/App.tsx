@@ -53,6 +53,13 @@ import PartnerContract from "./pages/PartnerContract";
 import StockSetDetector from "./pages/StockSetDetector";
 import FeaturedProducts from "./pages/FeaturedProducts";
 import BazarSeller from "./pages/BazarSeller";
+import ReportManual from "./pages/ReportManual";
+import ReportCatalog from "./pages/ReportCatalog";
+import ReportB2B from "./pages/ReportB2B";
+import ReportVoice from "./pages/ReportVoice";
+import ReportBazar from "./pages/ReportBazar";
+import ReportConsignment from "./pages/ReportConsignment";
+import ReportEvent from "./pages/ReportEvent";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
@@ -161,6 +168,13 @@ const AppRoutes = () => (
     <Route path="/partner-points" element={<ProtectedRoute><PartnerPoints /></ProtectedRoute>} />
     <Route path="/partner-points/:id" element={<ProtectedRoute><PartnerPointDetail /></ProtectedRoute>} />
     <Route path="/stock/conjuntos" element={<ProtectedRoute><StockSetDetector /></ProtectedRoute>} />
+    <Route path="/reports/manual" element={<ProtectedRoute><ReportManual /></ProtectedRoute>} />
+    <Route path="/reports/catalog" element={<ProtectedRoute><ReportCatalog /></ProtectedRoute>} />
+    <Route path="/reports/b2b" element={<ProtectedRoute><ReportB2B /></ProtectedRoute>} />
+    <Route path="/reports/voice" element={<ProtectedRoute><ReportVoice /></ProtectedRoute>} />
+    <Route path="/reports/bazar" element={<ProtectedRoute><ReportBazar /></ProtectedRoute>} />
+    <Route path="/reports/consignment" element={<ProtectedRoute><ReportConsignment /></ProtectedRoute>} />
+    <Route path="/reports/events" element={<ProtectedRoute><ReportEvent /></ProtectedRoute>} />
     <Route path="/plano-expirado" element={<PlanExpired />} />
     <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/contrato/:token" element={<PartnerContract />} />

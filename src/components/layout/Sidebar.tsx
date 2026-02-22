@@ -84,6 +84,13 @@ const navGroups: NavGroup[] = [
       { icon: TrendingUp, label: "Relatórios", path: "/reports" },
       { icon: TrendingUp, label: "Rel. Sociedades", path: "/partner-reports" },
       { icon: MapPin, label: "Rel. Pontos Parceiros", path: "/reports/partner-points" },
+      { icon: ShoppingCart, label: "Rel. Vendas Manuais", path: "/reports/manual" },
+      { icon: Store, label: "Rel. Catálogo", path: "/reports/catalog" },
+      { icon: Package, label: "Rel. B2B", path: "/reports/b2b" },
+      { icon: Briefcase, label: "Rel. Consignação", path: "/reports/consignment" },
+      { icon: ShoppingBag, label: "Rel. Bazar", path: "/reports/bazar" },
+      { icon: Zap, label: "Rel. Eventos", path: "/reports/events" },
+      { icon: Megaphone, label: "Rel. Voz", path: "/reports/voice" },
     ],
   },
   {
