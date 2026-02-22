@@ -227,7 +227,7 @@ export default function NewSaleDialog({
   useEffect(() => {
     if (!open) return;
     if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData) return;
-    const activeEvent = localStorage.getItem("vp_active_event_name");
+    const activeEvent = localStorage.getItem("vp_active_event_name") || localStorage.getItem("vp_last_event_name");
     if (activeEvent && manualSaleSource === "manual") {
       setManualSaleSource("event");
       setManualEventName(activeEvent);

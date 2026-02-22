@@ -296,6 +296,10 @@ export default function EventMode() {
           size="sm"
           className="ml-auto gap-1.5"
           onClick={() => {
+            // Preserve event name for reconciliation after session ends
+            if (eventName) {
+              localStorage.setItem("vp_last_event_name", eventName);
+            }
             localStorage.removeItem(EVENT_NAME_KEY);
             setEventName("");
             toast({ title: "Evento encerrado", description: "Você pode voltar ao Modo Evento quando quiser." });
