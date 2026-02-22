@@ -233,7 +233,7 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
 
   // Scenario A: Partnership stock sold by partner
   // Split: Configurable cost split, configurable profit split
-  if (isPartnershipStock && sellerIsOwner && hasActivePartnership) {
+  if (isPartnershipStock && (sellerIsOwner || input.isDirectPartnership) && hasActivePartnership) {
     result.scenario = 'A';
     result.scenarioDescription = `Venda de estoque parceria pelo sócio - Split ${(costSplitRatio * 100).toFixed(0)}/${((1 - costSplitRatio) * 100).toFixed(0)} custo, ${(profitShareSeller * 100).toFixed(0)}/${(profitSharePartner * 100).toFixed(0)} lucro`;
     
