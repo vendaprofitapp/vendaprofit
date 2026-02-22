@@ -770,7 +770,7 @@ export default function NewSaleDialog({
       }
 
       const shippingForBuyer = shippingData.payer === "buyer" && shippingData.method !== "presencial" ? shippingData.cost : 0;
-      const saleNetMultiplier = subtotal > 0 ? total / subtotal : 1;
+      const saleNetMultiplier = subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1;
 
       // ── Pre-fetch ALL partnership data in batch (eliminates N+1) ──
       const productIds = cart.map(item => item.product.id);
@@ -1367,7 +1367,7 @@ export default function NewSaleDialog({
                   groupCommissionPercent={0.20}
                   hasActivePartnership={hasActivePartnership}
                   paymentFeePercent={selectedPaymentMethodId ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0) : 0}
-                  saleNetMultiplier={subtotal > 0 ? total / subtotal : 1}
+                  saleNetMultiplier={subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1}
                   productPartnerships={productPartnershipsMap}
                   profiles={profiles}
                 />
