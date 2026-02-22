@@ -90,6 +90,7 @@ export default function Sales() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const isMobile = useIsMobile();
   const [consignmentData, setConsignmentData] = useState<any>(null);
+  const [catalogOrderData, setCatalogOrderData] = useState<any>(null);
 
   // Voice command state for passing to NewSaleDialog
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<{
@@ -215,7 +216,16 @@ export default function Sales() {
     if (state?.consignmentData) {
       setConsignmentData(state.consignmentData);
       setIsNewSaleOpen(true);
-      // Clear the state to prevent re-triggering on back navigation
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (state?.fromCatalogOrder) {
+      setCatalogOrderData({
+        catalogOrderId: state.catalogOrderId,
+        customerName: state.customer_name,
+        customerPhone: state.customer_phone,
+        items: state.items,
+        total: state.total,
+      });
+      setIsNewSaleOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state]);
@@ -368,6 +378,8 @@ export default function Sales() {
         onDraftReconciled={handleDraftReconciled}
         consignmentData={consignmentData}
         onConsignmentProcessed={() => setConsignmentData(null)}
+        catalogOrderData={catalogOrderData}
+        onCatalogOrderProcessed={() => setCatalogOrderData(null)}
       />
 
       {/* View Sale Dialog */}
