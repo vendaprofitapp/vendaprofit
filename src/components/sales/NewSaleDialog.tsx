@@ -147,6 +147,7 @@ export default function NewSaleDialog({
   const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
   const [dueDate, setDueDate, clearDueDate] = useFormPersistence("sales_dueDate", "");
   const [installments, setInstallments, clearInstallments] = useFormPersistence("sales_installments", 1);
+  const [installmentDetails, setInstallmentDetails, clearInstallmentDetails] = useFormPersistence<Array<{ dueDate: string; amount: number }>>("sales_installmentDetails", []);
   const [shippingData, setShippingData, clearShippingData] = useFormPersistence<ShippingData>("sales_shippingData", {
     method: "presencial",
     company: "",
@@ -778,9 +779,9 @@ export default function NewSaleDialog({
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
     clearPaymentMethodId(); clearDiscountType(); clearDiscountValue(); clearNotes();
-    clearDueDate(); clearInstallments(); clearShippingData();
+    clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
-    setSelectedPaymentMethodId(""); setInstallments(1); setDiscountType("fixed");
+    setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
     setDiscountValue(0); setNotes(""); setProductSearch(""); setSelectedCustomerId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
@@ -933,13 +934,23 @@ export default function NewSaleDialog({
       }
 
       // ── Build payment_reminder payload ──
-      let paymentReminderPayload = null;
+      let paymentRemindersPayload: any[] | null = null;
       if (isDeferred && dueDate) {
-        paymentReminderPayload = {
-          customer_name: customerName || null, customer_phone: customerPhone || null,
-          customer_instagram: customerInstagram || null, amount: total, due_date: dueDate,
-          payment_method_name: paymentMethodName, notes: notes || null,
-        };
+        if (installments > 1 && installmentDetails.length > 0) {
+          // Multiple installments
+          paymentRemindersPayload = installmentDetails.map((inst, idx) => ({
+            customer_name: customerName || null, customer_phone: customerPhone || null,
+            customer_instagram: customerInstagram || null, amount: inst.amount, due_date: inst.dueDate,
+            payment_method_name: `${paymentMethodName} (${idx + 1}/${installmentDetails.length})`, notes: notes || null,
+          }));
+        } else {
+          // Single payment (backward compat)
+          paymentRemindersPayload = [{
+            customer_name: customerName || null, customer_phone: customerPhone || null,
+            customer_instagram: customerInstagram || null, amount: total, due_date: dueDate,
+            payment_method_name: paymentMethodName, notes: notes || null,
+          }];
+        }
       }
 
       // ── Build shipping_expense payload ──
@@ -977,7 +988,7 @@ export default function NewSaleDialog({
         items: itemsPayload,
         stock_updates: stockUpdates,
         financial_splits: financialSplitsPayload,
-        payment_reminder: paymentReminderPayload,
+        payment_reminders: paymentRemindersPayload,
         shipping_expense: shippingExpensePayload,
       };
 
@@ -1346,14 +1357,91 @@ export default function NewSaleDialog({
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-200">💳 Pagamento a prazo</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Data de Vencimento</Label>
-                      <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                      <Label>1ª Data de Vencimento</Label>
+                      <Input type="date" value={dueDate} onChange={(e) => {
+                        setDueDate(e.target.value);
+                        // Auto-generate installments when date changes
+                        if (installments > 1 && e.target.value) {
+                          const details = [];
+                          const installmentAmount = Math.floor((total / installments) * 100) / 100;
+                          const remainder = Math.round((total - installmentAmount * installments) * 100) / 100;
+                          for (let i = 0; i < installments; i++) {
+                            const date = new Date(e.target.value + "T12:00:00");
+                            date.setMonth(date.getMonth() + i);
+                            details.push({
+                              dueDate: date.toISOString().split("T")[0],
+                              amount: i === 0 ? installmentAmount + remainder : installmentAmount,
+                            });
+                          }
+                          setInstallmentDetails(details);
+                        }
+                      }} />
                     </div>
                     <div>
                       <Label>Parcelas</Label>
-                      <Input type="number" min="1" max="24" value={installments} onChange={(e) => setInstallments(Number(e.target.value))} />
+                      <Input type="number" min="1" max="24" value={installments} onChange={(e) => {
+                        const n = Math.max(1, Math.min(24, Number(e.target.value)));
+                        setInstallments(n);
+                        if (n > 1 && dueDate) {
+                          const details = [];
+                          const installmentAmount = Math.floor((total / n) * 100) / 100;
+                          const remainder = Math.round((total - installmentAmount * n) * 100) / 100;
+                          for (let i = 0; i < n; i++) {
+                            const date = new Date(dueDate + "T12:00:00");
+                            date.setMonth(date.getMonth() + i);
+                            details.push({
+                              dueDate: date.toISOString().split("T")[0],
+                              amount: i === 0 ? installmentAmount + remainder : installmentAmount,
+                            });
+                          }
+                          setInstallmentDetails(details);
+                        } else {
+                          setInstallmentDetails([]);
+                        }
+                      }} />
                     </div>
                   </div>
+                  {/* Editable installment details */}
+                  {installments > 1 && installmentDetails.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Detalhes das parcelas (editável):</p>
+                      <div className="max-h-48 overflow-y-auto space-y-1.5">
+                        {installmentDetails.map((inst, idx) => (
+                          <div key={idx} className="grid grid-cols-[auto_1fr_1fr] gap-2 items-center">
+                            <span className="text-xs font-medium text-muted-foreground w-6">{idx + 1}x</span>
+                            <Input
+                              type="date"
+                              value={inst.dueDate}
+                              className="h-8 text-sm"
+                              onChange={(e) => {
+                                setInstallmentDetails(prev => prev.map((item, i) => i === idx ? { ...item, dueDate: e.target.value } : item));
+                              }}
+                            />
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                              <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.01"
+                                min="0"
+                                value={inst.amount}
+                                className="h-8 text-sm pl-8"
+                                onChange={(e) => {
+                                  setInstallmentDetails(prev => prev.map((item, i) => i === idx ? { ...item, amount: Number(e.target.value) } : item));
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Soma: R$ {installmentDetails.reduce((s, i) => s + i.amount, 0).toFixed(2).replace(".", ",")}
+                        {Math.abs(installmentDetails.reduce((s, i) => s + i.amount, 0) - total) > 0.01 && (
+                          <span className="text-destructive ml-1">(diferença de R$ {Math.abs(installmentDetails.reduce((s, i) => s + i.amount, 0) - total).toFixed(2).replace(".", ",")})</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
