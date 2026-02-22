@@ -477,7 +477,8 @@ export default function Reports() {
           // Use actual recorded splits
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
-          myRealProfit = saleInfo.myProfitShare * itemProportion;
+          // myProfitShare from splits = revenue - commission, still need to subtract cost
+          myRealProfit = (saleInfo.myProfitShare * itemProportion) - totalCost;
         } else {
           // Fallback: calculate from fee map (own stock, no splits recorded)
           feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
