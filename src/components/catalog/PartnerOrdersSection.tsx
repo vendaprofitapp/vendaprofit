@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,7 +42,7 @@ export function PartnerOrdersSection({ period }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
-  const sinceDate = getPeriodDate(period);
+  const sinceDate = useMemo(() => getPeriodDate(period), [period]);
 
   const { data: partnerSales = [], isLoading } = useQuery({
     queryKey: ["partner-point-orders", user?.id, sinceDate],
