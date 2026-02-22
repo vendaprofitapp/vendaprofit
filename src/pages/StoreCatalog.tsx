@@ -326,10 +326,12 @@ export default function StoreCatalog() {
 
   // Save lead to localStorage and DB — detects returning customers by WhatsApp
   const saveLeadData = async (data: { name: string; whatsapp: string }): Promise<{ leadId: string; isReturning: boolean }> => {
-    if (!store) return { leadId: "", isReturning: false };
+    if (!store) {
+      console.error("[LeadCapture] Store não carregada, impossível salvar lead.");
+      return { leadId: "", isReturning: false };
+    }
 
     // 1. Check if a lead already exists for this WhatsApp + store
-    // NOTE: Public SELECT policy now allows anonymous visitors to query by store_id + whatsapp
     const { data: existingLead, error: selectErr } = await supabase
       .from("store_leads")
       .select("id, name")
@@ -348,7 +350,6 @@ export default function StoreCatalog() {
       // Returning customer — reuse existing lead, update last_seen
       leadId = existingLead.id;
       isReturning = true;
-      // UPDATE now allowed by public policy — not critical if it fails
       await supabase
         .from("store_leads")
         .update({ last_seen_at: new Date().toISOString(), name: data.name })
@@ -371,6 +372,8 @@ export default function StoreCatalog() {
 
       if (insertErr) {
         console.error("[LeadCapture] Erro ao salvar lead:", insertErr);
+        toast.error("Não foi possível salvar seu cadastro. Tente novamente.");
+        return { leadId: "", isReturning: false };
       }
       leadId = leadRow?.id || "";
     }
@@ -2820,13 +2823,19 @@ export default function StoreCatalog() {
           const name = barLeadName.trim();
           const whatsapp = barLeadWhatsapp;
           if (name.length < 2 || whatsapp.replace(/\D/g, "").length < 10) return;
-          const { isReturning } = await saveLeadData({ name, whatsapp });
-          setLeadBarSaved(true);
-          setShowLeadBar(false);
-          if (isReturning) {
-            toast.success(`Bem-vindo(a) de volta, ${name}! 🎉`);
-          } else {
-            toast.success("Obrigado! Você receberá nossas novidades 💜");
+          try {
+            const { isReturning, leadId } = await saveLeadData({ name, whatsapp });
+            if (!leadId) return; // Error toast already shown by saveLeadData
+            setLeadBarSaved(true);
+            setShowLeadBar(false);
+            if (isReturning) {
+              toast.success(`Bem-vindo(a) de volta, ${name}! 🎉`);
+            } else {
+              toast.success("Obrigado! Você receberá nossas novidades 💜");
+            }
+          } catch (err) {
+            console.error("[LeadCapture] Erro inesperado na barra passiva:", err);
+            toast.error("Erro ao salvar. Tente novamente.");
           }
         };
 
