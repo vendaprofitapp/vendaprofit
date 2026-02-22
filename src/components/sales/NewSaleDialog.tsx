@@ -1057,6 +1057,16 @@ export default function NewSaleDialog({
             if (splitResult.owner.groupCommission > 0) financialSplitsPayload.push({ user_id: item.product.owner_id, amount: splitResult.owner.groupCommission, type: 'group_commission', description: `Comissão de grupo - ${item.product.name}` });
           }
         }
+
+        // Record payment fee as separate split for reporting
+        if (splitResult.paymentFeeAmount > 0) {
+          financialSplitsPayload.push({
+            user_id: user.id,
+            amount: -splitResult.paymentFeeAmount,
+            type: 'payment_fee',
+            description: `Taxa ${feePercent.toFixed(1)}% ${paymentMethodName} - ${item.product.name}`,
+          });
+        }
       }
 
       // Override financial splits for partner point orders
