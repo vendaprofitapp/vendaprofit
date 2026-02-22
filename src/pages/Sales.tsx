@@ -218,6 +218,15 @@ export default function Sales() {
       setIsNewSaleOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     } else if (state?.fromCatalogOrder) {
+      // Clear persisted sale form data so catalog order data takes priority
+      const keysToClean = [
+        "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
+        "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
+        "sales_notes", "sales_dueDate", "sales_installments", "sales_installmentDetails",
+        "sales_shippingData",
+      ];
+      keysToClean.forEach(k => sessionStorage.removeItem(k));
+
       setCatalogOrderData({
         catalogOrderId: state.catalogOrderId,
         customerName: state.customer_name,
