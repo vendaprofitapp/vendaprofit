@@ -63,13 +63,23 @@ export function PaymentRemindersSection({ userId }: PaymentRemindersSectionProps
         .eq("id", id);
       if (error) throw error;
 
-      // Update sale status to completed
+      // Check if ALL reminders for this sale are now paid
       if (reminder?.sale_id) {
-        const { error: saleError } = await supabase
-          .from("sales")
-          .update({ status: "completed" })
-          .eq("id", reminder.sale_id);
-        if (saleError) throw saleError;
+        const { data: unpaidReminders } = await supabase
+          .from("payment_reminders")
+          .select("id")
+          .eq("sale_id", reminder.sale_id)
+          .eq("is_paid", false)
+          .neq("id", id);
+
+        // Only complete the sale if no more unpaid reminders remain
+        if (!unpaidReminders || unpaidReminders.length === 0) {
+          const { error: saleError } = await supabase
+            .from("sales")
+            .update({ status: "completed" })
+            .eq("id", reminder.sale_id);
+          if (saleError) throw saleError;
+        }
       }
     },
     onSuccess: () => {
