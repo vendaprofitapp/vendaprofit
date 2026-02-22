@@ -30,9 +30,16 @@ interface ProductPartnershipInfo {
   commissionPercent: number;
 }
 
+interface ProfileInfo {
+  id: string;
+  full_name: string;
+  email?: string;
+}
+
 interface ProfitBreakdownCardProps {
   cart: CartItemWithCost[];
   currentUserId: string;
+  currentUserName?: string;
   groupCommissionPercent?: number;
   hasActivePartnership: boolean;
   /** Percentual de taxa do método de pagamento (ex: 10 para 10%) */
@@ -41,45 +48,61 @@ interface ProfitBreakdownCardProps {
   saleNetMultiplier?: number;
   /** Map of product ID to partnership info (for own products in partnerships) */
   productPartnerships?: Map<string, ProductPartnershipInfo>;
+  /** Profiles for name resolution */
+  profiles?: ProfileInfo[];
+}
+
+interface DetailItem {
+  productName: string;
+  scenario: SaleSplitResult["scenario"];
+  scenarioDescription: string;
+  sellerTotalReceive: number;
+  sellerProfitOnly: number;
+  partnerTotalReceive: number;
+  partnerProfitOnly: number;
+  owner: number;
+  partnershipPaymentDue: number;
+  ownerName?: string;
+  ownerId?: string;
+  costPrice: number;
+  salePrice: number;
+  feeAmount: number;
+  salePriceGross: number;
+  isB2B?: boolean;
+  appliedConfig?: SaleSplitResult["appliedConfig"];
 }
 
 interface AggregatedSplits {
-  sellerTotalReceive: number; // Cost recovery + profit share
-  sellerProfitOnly: number; // Only profit share (real net profit)
-  partnerTotalReceive: number; // Cost recovery + profit share
-  partnerProfitOnly: number; // Only profit share
+  sellerTotalReceive: number;
+  sellerProfitOnly: number;
+  partnerTotalReceive: number;
+  partnerProfitOnly: number;
   ownerTotal: number;
   partnershipPaymentDue: number;
-  paymentFeesTotal: number; // Total de taxas do pagamento (cartão etc.)
+  paymentFeesTotal: number;
+  totalCost: number;
+  totalGross: number;
   scenarios: Set<SaleSplitResult["scenario"]>;
-  details: Array<{
-    productName: string;
-    scenario: SaleSplitResult["scenario"];
-    scenarioDescription: string;
-    sellerTotalReceive: number;
-    sellerProfitOnly: number;
-    partnerTotalReceive: number;
-    partnerProfitOnly: number;
-    owner: number;
-    partnershipPaymentDue: number;
-    ownerName?: string;
-    costPrice: number;
-    salePrice: number;
-    feeAmount: number;
-    salePriceGross: number;
-    isB2B?: boolean;
-  }>;
+  details: DetailItem[];
 }
 
 export function ProfitBreakdownCard({
   cart,
   currentUserId,
+  currentUserName,
   groupCommissionPercent = 0.20,
   hasActivePartnership,
   paymentFeePercent = 0,
   saleNetMultiplier = 1,
   productPartnerships,
+  profiles = [],
 }: ProfitBreakdownCardProps) {
+
+  const getProfileName = (userId: string): string => {
+    if (userId === currentUserId) return currentUserName || profiles.find(p => p.id === userId)?.full_name || "Você";
+    return profiles.find(p => p.id === userId)?.full_name || "Parceira";
+  };
+
   const aggregatedSplits = useMemo<AggregatedSplits>(() => {
     const result: AggregatedSplits = {
       sellerTotalReceive: 0,
@@ -89,27 +112,21 @@ export function ProfitBreakdownCard({
       ownerTotal: 0,
       partnershipPaymentDue: 0,
       paymentFeesTotal: 0,
+      totalCost: 0,
+      totalGross: 0,
       scenarios: new Set(),
       details: [],
     };
 
     cart.forEach((item) => {
       const salePriceGross = item.product.price * item.quantity;
-      // Apply discount multiplier first
       const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
-
-      // Use cost_price if available, otherwise estimate as 50% of sale price
       const costPrice = (item.product.cost_price ?? item.product.price * 0.5) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
-      
-      // Check if product is in a partnership (from passed map)
       const partnershipInfo = productPartnerships?.get(item.product.id);
       const isInPartnership = !!partnershipInfo;
-      
-      // Product is partnership stock if it came from partner OR if it's in our partnerships
       const isPartnershipStock = item.isPartnerStock || isInPartnership;
 
-      // Pass payment fee to profitEngine - it will calculate net revenue internally
       const splitResult = calculateSaleSplits({
         salePrice: salePriceAfterDiscount,
         costPrice,
@@ -130,7 +147,7 @@ export function ProfitBreakdownCard({
           is_direct: partnershipInfo.isDirect,
         } : null,
       });
-      
+
       const feeAmount = splitResult.paymentFeeAmount;
 
       result.sellerTotalReceive += splitResult.seller.total;
@@ -140,6 +157,8 @@ export function ProfitBreakdownCard({
       result.ownerTotal += splitResult.owner.total;
       result.partnershipPaymentDue += splitResult.partnershipPaymentDue || 0;
       result.paymentFeesTotal += feeAmount;
+      result.totalCost += costPrice;
+      result.totalGross += salePriceGross;
       result.scenarios.add(splitResult.scenario);
 
       result.details.push({
@@ -153,35 +172,66 @@ export function ProfitBreakdownCard({
         owner: splitResult.owner.total,
         partnershipPaymentDue: splitResult.partnershipPaymentDue || 0,
         ownerName: item.ownerName,
+        ownerId: item.product.owner_id,
         costPrice,
         salePrice: splitResult.netRevenue,
         feeAmount,
         salePriceGross,
         isB2B: !!(item.product.isB2B || item.product.b2b_source_product_id),
+        appliedConfig: splitResult.appliedConfig,
       });
     });
 
     return result;
   }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier, productPartnerships]);
 
-  // Don't show if cart is empty
-  if (cart.length === 0) {
-    return null;
-  }
+  // Group details by owner for multi-stock display (must be before early returns)
+  const groupedByOwner = useMemo(() => {
+    const groups = new Map<string, DetailItem[]>();
+    aggregatedSplits.details.forEach(d => {
+      const key = d.ownerId || currentUserId;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(d);
+    });
+    return groups;
+  }, [aggregatedSplits.details, currentUserId]);
 
-  // Show if there are partnership items, active partnerships, OR payment fees
-  // Also show if any product in cart is in a partnership
-  const hasPartnershipItems = cart.some(item => 
-    item.isPartnerStock || 
-    item.product.owner_id !== currentUserId || 
+  if (cart.length === 0) return null;
+
+  const hasPartnershipItems = cart.some(item =>
+    item.isPartnerStock ||
+    item.product.owner_id !== currentUserId ||
     productPartnerships?.has(item.product.id)
   );
   const hasPaymentFee = paymentFeePercent > 0;
   const shouldShow = hasPartnershipItems || hasActivePartnership || hasPaymentFee;
 
   if (!shouldShow && aggregatedSplits.scenarios.has('OWN_STOCK') && aggregatedSplits.scenarios.size === 1) {
-    return null; // Don't show for pure own stock sales without partnerships and no fees
+    return null;
   }
+
+  // Calculate total net profit (gross - cost - fees)
+  const totalNetProfit = aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.totalCost - aggregatedSplits.paymentFeesTotal;
+
+  // Build cost+fees label
+  const costFeesLabel = aggregatedSplits.paymentFeesTotal > 0
+    ? `Custo ${formatCurrency(aggregatedSplits.totalCost)} + Taxas ${formatCurrency(aggregatedSplits.paymentFeesTotal)}`
+    : `Custo ${formatCurrency(aggregatedSplits.totalCost)}`;
+
+  // Find partner user id from partnership items for naming
+  const getPartnerUserId = (): string | null => {
+    for (const detail of aggregatedSplits.details) {
+      if (detail.scenario === 'A' && detail.ownerId && detail.ownerId !== currentUserId) {
+        return detail.ownerId;
+      }
+    }
+    for (const item of cart) {
+      if (item.isPartnerStock && item.product.owner_id !== currentUserId) {
+        return item.product.owner_id;
+      }
+    }
+    return null;
+  };
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/10">
@@ -192,76 +242,82 @@ export function ProfitBreakdownCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Main Summary Badges */}
-        <div className="flex flex-wrap gap-2">
-          {/* Seller's net profit - Green (only profit, no cost recovery) */}
-          <Badge
-            variant="outline"
-            className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
-          >
-            <Wallet className="h-3.5 w-3.5 mr-1.5" />
-            Lucro Líquido Real: {formatCurrency(aggregatedSplits.sellerProfitOnly)}
-          </Badge>
+        {/* Main: Lucro Líquido (Custo + Taxas) = R$ XX */}
+        <Badge
+          variant="outline"
+          className="bg-sky-500/10 text-sky-700 border-sky-500/30 px-3 py-1.5 text-sm font-medium w-full justify-center"
+        >
+          <Wallet className="h-3.5 w-3.5 mr-1.5" />
+          Lucro Líquido ({costFeesLabel}) = {formatCurrency(Math.max(0, totalNetProfit))}
+        </Badge>
 
-          {/* Seller's total to receive (cost + profit) - Emerald */}
-          {aggregatedSplits.sellerTotalReceive !== aggregatedSplits.sellerProfitOnly && (
-            <Badge
-              variant="outline"
-              className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 px-3 py-1.5 text-sm font-medium"
-            >
-              <Receipt className="h-3.5 w-3.5 mr-1.5" />
-              Total a Receber: {formatCurrency(aggregatedSplits.sellerTotalReceive)}
-            </Badge>
-          )}
+        {/* Per-person splits */}
+        <div className="flex flex-col gap-2">
+          {/* Scenario A: Sociedade 1-1 splits */}
+          {aggregatedSplits.scenarios.has('A') && (() => {
+            const sellerName = getProfileName(currentUserId);
+            const partnerUserId = getPartnerUserId();
+            const partnerName = partnerUserId ? getProfileName(partnerUserId) : 
+              (aggregatedSplits.details.find(d => d.ownerName)?.ownerName || "Parceira");
+            
+            // Get config from first scenario A detail
+            const configDetail = aggregatedSplits.details.find(d => d.scenario === 'A');
+            const config = configDetail?.appliedConfig;
+            const costPct = config ? (config.costSplitRatio * 100).toFixed(0) : "50";
+            const profitSellerPct = config ? (config.profitShareSeller * 100).toFixed(0) : "70";
+            const profitPartnerPct = config ? (config.profitSharePartner * 100).toFixed(0) : "30";
+            const costPartnerPct = config ? ((1 - config.costSplitRatio) * 100).toFixed(0) : "50";
 
-          {/* Payment fee badge (card etc.) */}
-          {aggregatedSplits.paymentFeesTotal > 0 && (
-            <Badge
-              variant="outline"
-              className="bg-destructive/10 text-destructive border-destructive/30 px-3 py-1.5 text-sm font-medium"
-            >
-              Taxa ({paymentFeePercent}%): -{formatCurrency(aggregatedSplits.paymentFeesTotal)}
-            </Badge>
-          )}
+            return (
+              <>
+                <Badge
+                  variant="outline"
+                  className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
+                >
+                  <Receipt className="h-3.5 w-3.5 mr-1.5" />
+                  {sellerName} recebe ({costPct}% custo + {profitSellerPct}% lucro) = {formatCurrency(aggregatedSplits.sellerTotalReceive)}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="bg-amber-500/10 text-amber-700 border-amber-500/30 px-3 py-1.5 text-sm font-medium"
+                >
+                  <Users className="h-3.5 w-3.5 mr-1.5" />
+                  {partnerName} recebe ({costPartnerPct}% custo + {profitPartnerPct}% lucro) = {formatCurrency(aggregatedSplits.partnerTotalReceive)}
+                </Badge>
+              </>
+            );
+          })()}
 
-          {/* Partner's share - Blue */}
-          {aggregatedSplits.partnerTotalReceive > 0 && (
-            <Badge
-              variant="outline"
-              className="bg-blue-500/10 text-blue-700 border-blue-500/30 px-3 py-1.5 text-sm font-medium"
-            >
-              <Users className="h-3.5 w-3.5 mr-1.5" />
-              Sócia Recebe: {formatCurrency(aggregatedSplits.partnerTotalReceive)}
-            </Badge>
-          )}
+          {/* Scenario B: Parceria de Grupo */}
+          {aggregatedSplits.scenarios.has('B') && (() => {
+            const sellerName = getProfileName(currentUserId);
+            const configDetail = aggregatedSplits.details.find(d => d.scenario === 'B');
+            const config = configDetail?.appliedConfig;
+            const commPct = config ? (config.groupCommission * 100).toFixed(0) : "20";
+            const sellerPct = config ? ((1 - config.groupCommission) * 100).toFixed(0) : "80";
 
-          {/* Partner's net profit if different */}
-          {aggregatedSplits.partnerProfitOnly > 0 &&
-            aggregatedSplits.partnerProfitOnly !== aggregatedSplits.partnerTotalReceive && (
-              <Badge
-                variant="outline"
-                className="bg-sky-500/10 text-sky-700 border-sky-500/30 px-3 py-1.5 text-xs"
-              >
-                Lucro Sócia: {formatCurrency(aggregatedSplits.partnerProfitOnly)}
-              </Badge>
-            )}
+            return (
+              <>
+                <Badge
+                  variant="outline"
+                  className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
+                >
+                  <Receipt className="h-3.5 w-3.5 mr-1.5" />
+                  {sellerName} recebe ({sellerPct}% comissão) = {formatCurrency(aggregatedSplits.sellerProfitOnly)}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="bg-orange-500/10 text-orange-700 border-orange-500/30 px-3 py-1.5 text-sm font-medium"
+                >
+                  <Building2 className="h-3.5 w-3.5 mr-1.5" />
+                  Grupo recebe ({commPct}% comissão) = {formatCurrency(aggregatedSplits.ownerTotal)}
+                </Badge>
+              </>
+            );
+          })()}
 
-          {/* Owner/Group commission - Orange */}
-          {aggregatedSplits.ownerTotal > 0 && (
-            <Badge
-              variant="outline"
-              className="bg-orange-500/10 text-orange-700 border-orange-500/30 px-3 py-1.5 text-sm font-medium"
-            >
-              <Building2 className="h-3.5 w-3.5 mr-1.5" />
-              Pago ao Grupo: {formatCurrency(aggregatedSplits.ownerTotal)}
-            </Badge>
-          )}
-        </div>
-
-        {/* Third-party partnership payment notice */}
-        {aggregatedSplits.partnershipPaymentDue > 0 && (
-          <>
-            <Separator className="my-2" />
+          {/* Scenario C: Third-party sells partnership stock */}
+          {aggregatedSplits.scenarios.has('C') && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
               <p className="text-sm font-medium text-amber-700 flex items-center gap-2">
                 <Users className="h-4 w-4" />
@@ -276,11 +332,71 @@ export function ProfitBreakdownCard({
                 </p>
               ))}
             </div>
+          )}
+
+          {/* OWN_STOCK with fees - simple display */}
+          {aggregatedSplits.scenarios.has('OWN_STOCK') && !aggregatedSplits.scenarios.has('A') && !aggregatedSplits.scenarios.has('B') && hasPaymentFee && (
+            <Badge
+              variant="outline"
+              className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
+            >
+              <Wallet className="h-3.5 w-3.5 mr-1.5" />
+              Lucro Líquido Real: {formatCurrency(aggregatedSplits.sellerProfitOnly)}
+            </Badge>
+          )}
+        </div>
+
+        {/* Detailed breakdown per product (if multiple items from different owners) */}
+        {groupedByOwner.size > 1 && (
+          <>
+            <Separator className="my-2" />
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground font-medium">Detalhes por estoque:</p>
+              {Array.from(groupedByOwner.entries()).map(([ownerId, items]) => {
+                const ownerLabel = ownerId === currentUserId
+                  ? "Seu Estoque"
+                  : `Estoque de ${getProfileName(ownerId)}`;
+                return (
+                  <div key={ownerId} className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">{ownerLabel}</p>
+                    {items.map((detail, idx) => (
+                      <div key={idx} className="text-xs bg-background/50 rounded p-2 space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium truncate max-w-[180px]">{detail.productName}</span>
+                          <Badge
+                            variant="secondary"
+                            className={`text-[10px] px-1.5 ${detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'bg-amber-500/15 text-amber-700 border-amber-500/30' : ''}`}
+                          >
+                            {detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'Sob Encomenda' : getScenarioShortLabel(detail.scenario)}
+                          </Badge>
+                        </div>
+                        <p className="text-muted-foreground">
+                          Venda: {formatCurrency(detail.salePriceGross)}
+                          {detail.feeAmount > 0 && (
+                            <span className="text-destructive"> | Taxa: -{formatCurrency(detail.feeAmount)}</span>
+                          )}
+                          {' '}| Custo: {formatCurrency(detail.costPrice)}
+                        </p>
+                        <div className="flex gap-2 text-muted-foreground flex-wrap">
+                          <span className="text-green-600">Seu Lucro: {formatCurrency(detail.sellerProfitOnly)}</span>
+                          {detail.partnerTotalReceive > 0 && (
+                            <span className="text-blue-600">Sócia: {formatCurrency(detail.partnerTotalReceive)}</span>
+                          )}
+                          {detail.owner > 0 && (
+                            <span className="text-orange-600">Grupo: {formatCurrency(detail.owner)}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
 
-        {/* Detailed breakdown per product (if multiple items) */}
-        {aggregatedSplits.details.length > 1 && (
+        {/* Single owner, multiple products */}
+        {groupedByOwner.size === 1 && aggregatedSplits.details.length > 1 && (
           <>
             <Separator className="my-2" />
             <div className="space-y-2">
@@ -289,61 +405,22 @@ export function ProfitBreakdownCard({
                 <div key={idx} className="text-xs bg-background/50 rounded p-2 space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="font-medium truncate max-w-[180px]">{detail.productName}</span>
-                    <Badge 
-                      variant="secondary" 
-                      className={`text-[10px] px-1.5 ${detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'bg-amber-500/15 text-amber-700 border-amber-500/30' : ''}`}
-                    >
-                      {detail.isB2B && detail.scenario === 'OWN_STOCK' ? 'Sob Encomenda' : getScenarioShortLabel(detail.scenario)}
+                    <Badge variant="secondary" className="text-[10px] px-1.5">
+                      {getScenarioShortLabel(detail.scenario)}
                     </Badge>
                   </div>
                   <p className="text-muted-foreground">
-                    Venda: {formatCurrency(detail.salePriceGross)}
-                    {detail.feeAmount > 0 && (
-                      <span className="text-destructive"> | Taxa: -{formatCurrency(detail.feeAmount)}</span>
-                    )}
-                    {' '}| Custo: {formatCurrency(detail.costPrice)}
+                    Venda: {formatCurrency(detail.salePriceGross)} | Custo: {formatCurrency(detail.costPrice)}
                   </p>
-                  <div className="flex gap-2 text-muted-foreground flex-wrap">
-                    <span className="text-green-600">
-                      Seu Lucro: {formatCurrency(detail.sellerProfitOnly)}
-                    </span>
-                    {detail.sellerTotalReceive !== detail.sellerProfitOnly && (
-                      <span className="text-emerald-600">
-                        (Total: {formatCurrency(detail.sellerTotalReceive)})
-                      </span>
-                    )}
-                    {detail.partnerTotalReceive > 0 && (
-                      <span className="text-blue-600">
-                        Sócia: {formatCurrency(detail.partnerTotalReceive)}
-                      </span>
-                    )}
-                    {detail.owner > 0 && (
-                      <span className="text-orange-600">Grupo: {formatCurrency(detail.owner)}</span>
-                    )}
-                    {detail.partnershipPaymentDue > 0 && (
-                      <span className="text-amber-600">Parceria: {formatCurrency(detail.partnershipPaymentDue)}</span>
-                    )}
-                  </div>
                 </div>
               ))}
             </div>
           </>
         )}
 
-        {/* Single item explanation with cost breakdown */}
+        {/* Single item explanation */}
         {aggregatedSplits.details.length === 1 && (
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p>
-              Venda Bruta: {formatCurrency(aggregatedSplits.details[0].salePriceGross)}
-              {aggregatedSplits.details[0].feeAmount > 0 && (
-                <span className="text-destructive"> | Taxa Finan.: -{formatCurrency(aggregatedSplits.details[0].feeAmount)}</span>
-              )}
-            </p>
-            <p>
-              Venda Líquida: {formatCurrency(aggregatedSplits.details[0].salePrice)} | 
-              Custo: {formatCurrency(aggregatedSplits.details[0].costPrice)} | 
-              Lucro Bruto: {formatCurrency(aggregatedSplits.details[0].salePrice - aggregatedSplits.details[0].costPrice)}
-            </p>
+          <div className="text-xs text-muted-foreground">
             {aggregatedSplits.details[0].scenario !== 'OWN_STOCK' && (
               <p className="italic">{aggregatedSplits.details[0].scenarioDescription}</p>
             )}
