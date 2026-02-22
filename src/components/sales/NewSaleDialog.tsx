@@ -197,6 +197,11 @@ export default function NewSaleDialog({
   const [autoPartnerLastQuery, setAutoPartnerLastQuery] = useState("");
   const [autoPartnerSearching, setAutoPartnerSearching] = useState(false);
 
+  // Inline cost_price input
+  const [costPriceProduct, setCostPriceProduct] = useState<Product | null>(null);
+  const [costPriceValue, setCostPriceValue] = useState("");
+  const [savingCostPrice, setSavingCostPrice] = useState(false);
+
   // Voice sale dialog state
   const [showVoiceSaleDialog, setShowVoiceSaleDialog] = useState(false);
   const [voiceSaleCommand, setVoiceSaleCommand] = useState<NewSaleDialogProps["voiceCommand"]>(null);
@@ -585,6 +590,12 @@ export default function NewSaleDialog({
       handleRequestReserve({ ...product, ownerName: product.ownerName || "Parceira", ownerEmail: "" });
       return;
     }
+    // Block products without cost_price - show inline form
+    if (product.cost_price == null || product.cost_price <= 0) {
+      setCostPriceProduct(product);
+      setCostPriceValue("");
+      return;
+    }
     setSelectedProductForVariant(product);
     setSelectedProductPartnerInfo(null);
     setShowVariantDialog(true);
@@ -620,6 +631,37 @@ export default function NewSaleDialog({
     setSelectedProductForVariant(null);
     setSelectedProductPartnerInfo(null);
   }, [setCart]);
+
+  // ─── Inline cost_price save ────────────────────────────────
+  const handleSaveCostPrice = useCallback(async () => {
+    if (!costPriceProduct || !costPriceValue) return;
+    const parsed = parseFloat(costPriceValue.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast({ title: "Valor inválido", description: "Insira um valor numérico válido.", variant: "destructive" });
+      return;
+    }
+    setSavingCostPrice(true);
+    const { error } = await supabase
+      .from("products")
+      .update({ cost_price: parsed })
+      .eq("id", costPriceProduct.id);
+    setSavingCostPrice(false);
+    if (error) {
+      toast({ title: "Erro ao salvar custo", description: error.message, variant: "destructive" });
+      return;
+    }
+    // Update the product in local cache and proceed
+    const updatedProduct = { ...costPriceProduct, cost_price: parsed };
+    queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
+    setCostPriceProduct(null);
+    setCostPriceValue("");
+    toast({ title: "Preço de custo salvo!" });
+    // Now proceed to add the product
+    setSelectedProductForVariant(updatedProduct);
+    setSelectedProductPartnerInfo(null);
+    setShowVariantDialog(true);
+    setProductSearch("");
+  }, [costPriceProduct, costPriceValue, queryClient, setProductSearch]);
 
   // ─── Customer selection ───────────────────────────────────
   const handleCustomerSelect = useCallback((customerId: string) => {
@@ -800,7 +842,7 @@ export default function NewSaleDialog({
       for (const item of cart) {
         const salePriceGross = item.product.price * item.quantity;
         const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
-        const costPrice = (item.product.cost_price ?? item.product.price * 0.5) * item.quantity;
+        const costPrice = (item.product.cost_price ?? 0) * item.quantity;
         const sellerIsOwner = item.product.owner_id === user.id;
 
         const productPartnerships = partnershipsByProduct.get(item.product.id) || [];
@@ -1153,15 +1195,22 @@ export default function NewSaleDialog({
                       {combinedProductsList.ownProducts.length > 0 && (
                         <>
                           <div className="px-3 py-1.5 bg-secondary/30 text-xs font-medium text-muted-foreground">Seu Estoque</div>
-                          {combinedProductsList.ownProducts.map((product) => (
+                          {combinedProductsList.ownProducts.map((product) => {
+                            const noCost = product.cost_price == null || product.cost_price <= 0;
+                            return (
                             <button type="button" key={product.id} className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0" onClick={() => handleProductClick(product)}>
                               <div>
                                 <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">Estoque: {product.stock_quantity} • Toque para selecionar</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Estoque: {product.stock_quantity}
+                                  {noCost && <span className="text-destructive ml-1">• Sem custo</span>}
+                                  {!noCost && " • Toque para selecionar"}
+                                </p>
                               </div>
                               <p className="font-semibold">R$ {product.price.toFixed(2).replace(".", ",")}</p>
                             </button>
-                          ))}
+                            );
+                          })}
                         </>
                       )}
                       {combinedProductsList.partnerProducts.length > 0 && (
@@ -1457,6 +1506,38 @@ export default function NewSaleDialog({
             <AlertDialogAction disabled={createReserveMutation.isPending || (reserveVariants.length > 0 && !selectedReserveVariant)}
               onClick={() => { if (selectedPartnerProduct) createReserveMutation.mutate({ product: selectedPartnerProduct, quantity: reserveQuantity, notes: reserveNotes, variant: selectedReserveVariant }); }}>
               {createReserveMutation.isPending ? "Enviando..." : "Enviar Solicitação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Inline Cost Price Dialog */}
+      <AlertDialog open={!!costPriceProduct} onOpenChange={(open) => { if (!open) setCostPriceProduct(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Preço de Custo Obrigatório</AlertDialogTitle>
+            <AlertDialogDescription>
+              O produto <strong>{costPriceProduct?.name}</strong> não possui preço de custo cadastrado. Insira o valor para continuar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Label>Preço de Custo (R$)</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              placeholder="Ex: 45,00"
+              value={costPriceValue}
+              onChange={(e) => setCostPriceValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveCostPrice(); }}
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveCostPrice} disabled={savingCostPrice || !costPriceValue}>
+              {savingCostPrice ? "Salvando..." : "Salvar e Adicionar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

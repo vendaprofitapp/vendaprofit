@@ -121,7 +121,7 @@ export function ProfitBreakdownCard({
     cart.forEach((item) => {
       const salePriceGross = item.product.price * item.quantity;
       const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
-      const costPrice = (item.product.cost_price ?? item.product.price * 0.5) * item.quantity;
+      const costPrice = (item.product.cost_price ?? 0) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
       const partnershipInfo = productPartnerships?.get(item.product.id);
       const isInPartnership = !!partnershipInfo;
