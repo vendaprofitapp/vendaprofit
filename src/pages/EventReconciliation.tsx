@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Camera, Clock, Package, Trash2, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Camera, Clock, Package, Trash2, ShoppingCart, Tag } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +21,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -51,6 +53,7 @@ export default function EventReconciliation() {
   const queryClient = useQueryClient();
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [draftToDiscard, setDraftToDiscard] = useState<string | null>(null);
+  const [eventName, setEventName] = useState("");
 
   const { data: drafts = [], isLoading } = useQuery({
     queryKey: ["event-drafts-pending", user?.id],
@@ -99,7 +102,8 @@ export default function EventReconciliation() {
       .filter(Boolean)
       .join(" | ");
 
-    navigate(`/sales?from_draft=${draft.id}&draft_notes=${encodeURIComponent(prefillNotes)}`);
+    const eventNameParam = eventName.trim() ? `&event_name=${encodeURIComponent(eventName.trim())}` : "";
+    navigate(`/sales?from_draft=${draft.id}&draft_notes=${encodeURIComponent(prefillNotes)}${eventNameParam}`);
   };
 
   return (
@@ -112,6 +116,20 @@ export default function EventReconciliation() {
           <h1 className="text-2xl font-bold text-foreground">Conciliação de Rascunhos</h1>
           <p className="text-sm text-muted-foreground">Transforme rascunhos de evento em vendas oficiais</p>
         </div>
+      </div>
+
+      {/* Event Name */}
+      <div className="mb-6 max-w-sm">
+        <Label className="flex items-center gap-2 mb-1.5">
+          <Tag className="h-4 w-4 text-primary" />
+          Nome do Evento
+        </Label>
+        <Input
+          placeholder="Ex: Feira de Inverno 2026"
+          value={eventName}
+          onChange={(e) => setEventName(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground mt-1">Usado para filtrar nos relatórios</p>
       </div>
 
       {isLoading ? (

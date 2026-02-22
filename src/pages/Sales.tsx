@@ -106,6 +106,7 @@ export default function Sales() {
   // Draft params
   const fromDraftId = searchParams.get("from_draft");
   const draftNotes = searchParams.get("draft_notes");
+  const eventName = searchParams.get("event_name");
 
   // Fetch sales
   const { data: sales = [], isLoading } = useQuery({
@@ -408,6 +409,7 @@ export default function Sales() {
         onVoiceCommandProcessed={() => setPendingVoiceCommand(null)}
         fromDraftId={fromDraftId}
         draftNotes={draftNotes}
+        eventName={eventName}
         onDraftReconciled={handleDraftReconciled}
         consignmentData={consignmentData}
         onConsignmentProcessed={() => setConsignmentData(null)}
