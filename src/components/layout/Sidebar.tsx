@@ -38,6 +38,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Estratégias",
     items: [
+      { icon: Store, label: "Minha Loja", path: "/my-store" },
       { icon: Zap, label: "Modo Evento", path: "/evento" },
       { icon: Briefcase, label: "Bolsa Consignada", path: "/consignments" },
       { icon: Gift, label: "Consórcios", path: "/consortiums" },
@@ -91,7 +92,6 @@ const navGroups: NavGroup[] = [
   {
     label: "Sistema",
     items: [
-      { icon: Store, label: "Minha Loja", path: "/my-store" },
       { icon: Wallet, label: "Financeiro", path: "/financial" },
       { icon: Settings, label: "Configurações", path: "/settings" },
       { icon: BookOpen, label: "Tutorial", path: "/tutorial" },
