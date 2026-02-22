@@ -29,7 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, subMonths, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
-import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
 
 const COLORS = ["hsl(15, 90%, 55%)", "hsl(25, 95%, 60%)", "hsl(145, 65%, 42%)", "hsl(38, 92%, 50%)", "hsl(220, 10%, 50%)", "hsl(280, 60%, 55%)", "hsl(190, 70%, 45%)"];
 
@@ -165,8 +165,9 @@ export default function Reports() {
   }, [period]);
 
   // Fetch sales with items
-  const { data: salesData = [], isLoading: salesLoading } = useQuery({
-    queryKey: ["sales-report", dateRange.start, dateRange.end],
+  // 1. Fetch COMPLETED sales by created_at in period
+  const { data: completedSales = [], isLoading: salesLoading } = useQuery({
+    queryKey: ["sales-report-completed", dateRange.start, dateRange.end],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
@@ -183,7 +184,7 @@ export default function Reports() {
         `)
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString())
-        .in("status", ["completed", "pending"])
+        .eq("status", "completed")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as SaleWithItems[];
@@ -191,31 +192,57 @@ export default function Reports() {
     enabled: !!user,
   });
 
-  // Fetch deferred payment info for pending sales
-  const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
-  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
+  // 2. Fetch deferred revenue recognized in this period (by paid_at)
+  const { deferredSaleIds, deferredSalesMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
 
-  // Adjusted sales: pending sales use paid installment amounts as revenue, CMV proportional to installment count
+  // 3. Fetch the pending sales that had installments paid in this period
+  const { data: deferredSalesData = [] } = useQuery({
+    queryKey: ["sales-report-deferred", deferredSaleIds],
+    queryFn: async () => {
+      if (deferredSaleIds.length === 0) return [];
+      const results: SaleWithItems[] = [];
+      for (let i = 0; i < deferredSaleIds.length; i += 500) {
+        const chunk = deferredSaleIds.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("sales")
+          .select(`*, sale_items (id, product_id, product_name, quantity, unit_price, total)`)
+          .in("id", chunk)
+          .eq("status", "pending");
+        if (error) throw error;
+        if (data) results.push(...(data as SaleWithItems[]));
+      }
+      return results;
+    },
+    enabled: deferredSaleIds.length > 0,
+  });
+
+  // 4. Build adjusted sales: completed as-is, pending with recognized revenue/cost
   const adjustedSalesData = useMemo(() => {
-    return salesData.map(sale => {
-      if (sale.status !== 'pending') return sale;
-      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
-      const costRatio = getDeferredCostRatio(sale, deferredInfo);
-      const revenueRatio = sale.total > 0 ? recognizedRevenue / sale.total : 0;
-      return {
+    const adjusted: SaleWithItems[] = [...completedSales];
+
+    for (const sale of deferredSalesData) {
+      const info = deferredSalesMap.get(sale.id);
+      if (!info || info.revenueInPeriod <= 0) continue;
+      const revenueRatio = sale.total > 0 ? info.revenueInPeriod / sale.total : 0;
+      adjusted.push({
         ...sale,
-        total: recognizedRevenue,
+        total: info.revenueInPeriod,
         subtotal: sale.subtotal * revenueRatio,
         discount_amount: (sale.discount_amount || 0) * revenueRatio,
         shipping_cost: (sale.shipping_cost || 0) * revenueRatio,
-        _costRatio: costRatio,
+        _costRatio: info.costRatioInPeriod,
         sale_items: sale.sale_items.map(item => ({
           ...item,
           total: item.total * revenueRatio,
         })),
-      };
-    });
-  }, [salesData, deferredInfo]);
+      } as any);
+    }
+
+    return adjusted;
+  }, [completedSales, deferredSalesData, deferredSalesMap]);
+
+  // Alias for backward compat with filters that reference salesData
+  const salesData = adjustedSalesData;
 
   // Fetch own products for category/color/cost info
   const { data: ownProducts = [] } = useQuery({

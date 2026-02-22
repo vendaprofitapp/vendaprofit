@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
-import { useDeferredPaidAmounts, getDeferredRevenueAmount } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
 import { ptBR } from "date-fns/locale";
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { ExpenseSummaryCards, useExpenseTotals } from "@/components/financial/ExpenseSummaryCards";
@@ -122,15 +122,15 @@ export default function Financial() {
   // Expense totals for overview
   const expenseTotals = useExpenseTotals(user?.id, dateRange);
 
-  // Fetch total revenue (faturamento) - includes pending sales
-  const { data: revenueSales = [] } = useQuery({
-    queryKey: ["revenue-total", user?.id, dateRange],
+  // Fetch completed sales revenue
+  const { data: completedRevenueSales = [] } = useQuery({
+    queryKey: ["revenue-completed", user?.id, dateRange],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
         .select("id, status, total")
         .eq("owner_id", user?.id!)
-        .in("status", ["completed", "pending"])
+        .eq("status", "completed")
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
@@ -139,14 +139,15 @@ export default function Financial() {
     enabled: !!user,
   });
 
-  const pendingRevenueSaleIds = useMemo(() => revenueSales.filter((s: any) => s.status === 'pending').map((s: any) => s.id), [revenueSales]);
-  const revenueDeferredInfo = useDeferredPaidAmounts(pendingRevenueSaleIds);
+  // Fetch deferred revenue recognized in this period (by paid_at)
+  const { deferredSalesMap: revenueDeferredMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
 
   const totalRevenue = useMemo(() => {
-    return revenueSales.reduce((sum: number, s: any) => {
-      return sum + getDeferredRevenueAmount(s, revenueDeferredInfo);
-    }, 0);
-  }, [revenueSales, revenueDeferredInfo]);
+    const completedTotal = completedRevenueSales.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+    let deferredTotal = 0;
+    revenueDeferredMap.forEach(info => { deferredTotal += info.revenueInPeriod; });
+    return completedTotal + deferredTotal;
+  }, [completedRevenueSales, revenueDeferredMap]);
 
   // Calculate financial summary
   const financialSummary = useMemo(() => {
