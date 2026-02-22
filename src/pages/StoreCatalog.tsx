@@ -226,7 +226,10 @@ export default function StoreCatalog() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(() => searchParams.get("categoria") || null);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(() => {
+    const cat = searchParams.get("categoria");
+    return cat === "Bazar VIP" ? null : cat || null;
+  });
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(() => searchParams.get("sub") || null);
   const [showOpportunities, setShowOpportunities] = useState(false);
   const [selectedMarketingFilter, setSelectedMarketingFilter] = useState<MarketingStatusValue | "all">("all");
@@ -246,7 +249,7 @@ export default function StoreCatalog() {
   const [viewingSecretArea, setViewingSecretArea] = useState(false);
 
   // Bazar VIP state
-  const [bazarMode, setBazarMode] = useState(false);
+  const [bazarMode, setBazarMode] = useState(() => searchParams.get("categoria") === "Bazar VIP");
   const [showBazarBuyerDialog, setShowBazarBuyerDialog] = useState(false);
   const [bazarBuyerPhone, setBazarBuyerPhone] = useState("");
   const [bazarBuyerVerified, setBazarBuyerVerified] = useState(false);
@@ -2262,10 +2265,21 @@ export default function StoreCatalog() {
                         "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 hover:opacity-80"
                       )}
                       style={{
-                        backgroundColor: selectedMainCategory === cat.name ? categoriesConfig.color : '#f3f4f6',
-                        color: selectedMainCategory === cat.name ? 'white' : '#4b5563'
+                        backgroundColor: (cat.name === "Bazar VIP" ? bazarMode : selectedMainCategory === cat.name) ? categoriesConfig.color : '#f3f4f6',
+                        color: (cat.name === "Bazar VIP" ? bazarMode : selectedMainCategory === cat.name) ? 'white' : '#4b5563'
                       }}
                       onClick={() => {
+                        // If "Bazar VIP" category, activate bazarMode instead of filtering products
+                        if (cat.name === "Bazar VIP") {
+                          setBazarMode(true);
+                          setSelectedMainCategory(null);
+                          setSelectedSubcategory(null);
+                          setSelectedMarketingFilter("all");
+                          setShowOpportunities(false);
+                          setSearchParams(prev => { prev.delete("categoria"); prev.delete("sub"); return prev; }, { replace: true });
+                          return;
+                        }
+                        setBazarMode(false);
                         if (selectedMainCategory === cat.name) {
                           setSelectedMainCategory(null);
                           setSelectedSubcategory(null);
