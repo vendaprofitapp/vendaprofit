@@ -150,6 +150,7 @@ interface NewSaleDialogProps {
   onVoiceCommandProcessed?: () => void;
   fromDraftId?: string | null;
   draftNotes?: string | null;
+  eventName?: string | null;
   onDraftReconciled?: () => void;
   consignmentData?: ConsignmentSaleData | null;
   onConsignmentProcessed?: () => void;
@@ -166,6 +167,7 @@ export default function NewSaleDialog({
   onVoiceCommandProcessed,
   fromDraftId,
   draftNotes,
+  eventName,
   onDraftReconciled,
   consignmentData,
   onConsignmentProcessed,
@@ -1153,7 +1155,8 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: partnerPointOrderData ? "catalog" : "manual",
+          sale_source: consignmentData ? "consignment" : fromDraftId ? "manual" : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : "manual",
+          event_name: eventName || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
           shipping_cost: shippingData.cost || 0,
