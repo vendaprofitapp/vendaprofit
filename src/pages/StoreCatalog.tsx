@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell, CheckCircle2 } from "lucide-react";
+import { Search, MessageCircle, Store, Package, ShoppingCart, Plus, Minus, Trash2, X, Flame, Heart, ShoppingBag, Clock, Rocket, Layers, ChevronLeft, ChevronRight, Link2, Lock, Eye, EyeOff, Play, Video, Copy, Bell, CheckCircle2, Star } from "lucide-react";
 import { CustomerFilters, CustomerFiltersState, ActiveFiltersDisplay } from "@/components/catalog/CustomerFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,6 +22,7 @@ import { LeadCaptureSheet } from "@/components/catalog/LeadCaptureSheet";
 import { LoyaltyHeader } from "@/components/catalog/LoyaltyHeader";
 import { VipAreaDrawer } from "@/components/catalog/VipAreaDrawer";
 import { useCatalogLoyalty } from "@/hooks/useCatalogLoyalty";
+import { FeaturedProductsDialog } from "@/components/catalog/FeaturedProductsDialog";
 
 import type { MarketingPrices } from "@/components/stock/MarketingStatusSelector";
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG"];
@@ -728,6 +729,23 @@ export default function StoreCatalog() {
   const isStoreOwner = useMemo(() => {
     return user?.id === store?.owner_id;
   }, [user?.id, store?.owner_id]);
+
+  const [showFeaturedDialog, setShowFeaturedDialog] = useState(false);
+
+  // Fetch featured products for sorting
+  const { data: featuredProductIds = [] } = useQuery({
+    queryKey: ["featured-products-order", store?.owner_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("featured_products")
+        .select("product_id, position")
+        .eq("owner_id", store!.owner_id)
+        .order("position");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!store?.owner_id,
+  });
 
   // Fetch store partnerships (groups linked to store)
   const { data: partnerships } = useQuery({
@@ -2253,6 +2271,21 @@ export default function StoreCatalog() {
           );
         })()}
 
+        {/* Edit Featured Button - owner only */}
+        {isStoreOwner && (
+          <div className="flex justify-end mb-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => setShowFeaturedDialog(true)}
+            >
+              <Star className="h-3.5 w-3.5 text-yellow-500" />
+              Editar Destaques
+            </Button>
+          </div>
+        )}
+
         {/* Products Grid - 2 cols mobile, 4 cols desktop */}
         {productsLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
@@ -2272,18 +2305,30 @@ export default function StoreCatalog() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {filteredItems.map(item => (
-              <BoutiqueProductCard 
-                key={item.id}
-                item={item}
-                primaryColor={primaryColor}
-                cardBackgroundColor={cardBackgroundColor}
-                onAddToCart={addToCart}
-                isStoreOwner={isStoreOwner}
-                incentivesConfig={incentivesConfig}
-                onTrackView={trackProductView}
-              />
-            ))}
+            {(() => {
+              // Sort: featured products first by position, then rest
+              const featuredMap = new Map(featuredProductIds.map((fp: any) => [fp.product_id, fp.position]));
+              const sorted = [...filteredItems].sort((a, b) => {
+                const posA = featuredMap.get(a.productId);
+                const posB = featuredMap.get(b.productId);
+                if (posA !== undefined && posB !== undefined) return posA - posB;
+                if (posA !== undefined) return -1;
+                if (posB !== undefined) return 1;
+                return 0;
+              });
+              return sorted.map(item => (
+                <BoutiqueProductCard 
+                  key={item.id}
+                  item={item}
+                  primaryColor={primaryColor}
+                  cardBackgroundColor={cardBackgroundColor}
+                  onAddToCart={addToCart}
+                  isStoreOwner={isStoreOwner}
+                  incentivesConfig={incentivesConfig}
+                  onTrackView={trackProductView}
+                />
+              ));
+            })()}
           </div>
         )}
       </div>
@@ -2544,6 +2589,20 @@ export default function StoreCatalog() {
           </div>
         );
       })()}
+      {/* Featured Products Dialog */}
+      {isStoreOwner && store && (
+        <FeaturedProductsDialog
+          open={showFeaturedDialog}
+          onOpenChange={setShowFeaturedDialog}
+          ownerId={store.owner_id}
+          catalogItems={enrichedCatalogItems.map(ci => ({
+            productId: ci.productId,
+            name: ci.name,
+            color: ci.color,
+            image_url: ci.image_url,
+          }))}
+        />
+      )}
     </div>
   );
 }
