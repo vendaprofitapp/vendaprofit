@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { Users, Calendar, FileText, MessageSquare, DollarSign, ChevronDown, ChevronRight, Eye, Wallet, TrendingUp, ArrowDownLeft } from "lucide-react";
+import { Users, Calendar, FileText, MessageSquare, DollarSign, ChevronDown, ChevronRight, Eye, Wallet, TrendingUp, ArrowDownLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { downloadXlsx } from "@/utils/xlsExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -367,6 +368,84 @@ export function AccountSettlement() {
     setIsDetailOpen(true);
   };
 
+  const handleExportXlsx = () => {
+    if (allSplits.length === 0) {
+      toast({ title: "Nenhum dado para exportar", variant: "destructive" });
+      return;
+    }
+
+    const periodLabel = periodOptions.find(p => p.value === period)?.label || period;
+
+    const headers = [
+      "Data da Venda",
+      "ID da Venda",
+      "Parceiro",
+      "E-mail Parceiro",
+      "Produto(s)",
+      "Valor da Venda",
+      "Tipo de Split",
+      "Descrição",
+      "Valor do Split",
+      "Destinatário",
+      "Período",
+    ];
+
+    const typeLabels: Record<string, string> = {
+      profit_share: "Lucro",
+      cost_recovery: "Recuperação de Custo",
+      group_commission: "Comissão de Grupo",
+    };
+
+    const rows: any[][] = [];
+
+    // Group by partner for totals
+    const partnerTotals = new Map<string, number>();
+
+    for (const split of allSplits) {
+      const sale = salesMap.get(split.sale_id);
+      const profile = profileMap.get(split.user_id);
+      const productNames = sale?.sale_items
+        ? sale.sale_items.map(i => `${i.product_name} (${i.quantity}x)`).join(", ")
+        : "";
+
+      const partnerName = profile?.full_name || split.user_id.slice(0, 8);
+      partnerTotals.set(partnerName, (partnerTotals.get(partnerName) || 0) + split.amount);
+
+      rows.push([
+        sale ? format(new Date(sale.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "",
+        split.sale_id.slice(0, 8),
+        partnerName,
+        profile?.email || "",
+        productNames,
+        sale?.total || 0,
+        typeLabels[split.type] || split.type,
+        split.description || "",
+        split.amount,
+        split.user_id === user?.id ? "Eu" : partnerName,
+        periodLabel,
+      ]);
+    }
+
+    // Add partner totals
+    rows.push([]);
+    rows.push(["TOTAIS POR PARCEIRO", "", "", "", "", "", "", "", "", "", ""]);
+    partnerTotals.forEach((total, name) => {
+      rows.push(["", "", name, "", "", "", "", "", total, "", ""]);
+    });
+
+    // Grand total
+    const grandTotal = allSplits.reduce((s, sp) => s + sp.amount, 0);
+    rows.push(["TOTAL GERAL", "", "", "", "", "", "", "", grandTotal, "", ""]);
+
+    downloadXlsx(
+      [headers, ...rows],
+      "Acerto de Contas",
+      `acerto-contas-${format(new Date(), "yyyy-MM-dd")}.xlsx`
+    );
+
+    toast({ title: "Relatório exportado com sucesso!" });
+  };
+
   return (
     <div className="space-y-4">
       {/* Mobile-First Header */}
@@ -374,6 +453,10 @@ export function AccountSettlement() {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Acerto de Contas</h2>
           <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={handleExportXlsx}>
+              <Download className="h-4 w-4 mr-1.5" />
+              Exportar XLS
+            </Button>
             <Calendar className="h-4 w-4 text-muted-foreground hidden sm:block" />
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[140px] sm:w-[160px] h-9 text-sm">

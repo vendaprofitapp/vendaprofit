@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Download, Filter, X, Percent, Users, FileText, BarChart3 } from "lucide-react";
+import { downloadXlsx } from "@/utils/xlsExport";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountSettlement } from "@/components/reports/AccountSettlement";
 import {
@@ -592,7 +593,7 @@ export default function Reports() {
     discountFilter !== "all",
   ].filter(Boolean).length;
 
-  // Export to CSV
+  // Export to XLSX
   const handleExport = () => {
     if (detailedSalesData.length === 0) {
       toast.error("Nenhum dado para exportar");
@@ -600,66 +601,84 @@ export default function Reports() {
     }
 
     const headers = [
-      "Data",
+      "ID da Venda",
+      "Data/Hora",
       "Cliente",
       "Produto",
       "Quantidade",
+      "Preço Unitário",
+      "Custo Unitário",
       "Custo Total",
       "Venda Total",
       "Desconto",
+      "Venda Após Desconto",
       "Lucro Bruto",
-      "Taxa (%)",
+      "Forma de Pagamento",
+      "Taxa Pagamento (%)",
       "Valor da Taxa",
       "Lucro Real",
-      "Forma de Pagamento"
+      "Meu Lucro (split)",
+      "Parte Parceiro",
+      "Parceria?",
     ];
 
-    const rows = detailedSalesData.map(d => [
-      format(parseISO(d.date), "dd/MM/yyyy HH:mm"),
-      d.customer,
-      d.productName,
-      d.quantity,
-      d.totalCost.toFixed(2).replace(".", ","),
-      d.totalSale.toFixed(2).replace(".", ","),
-      d.itemDiscount.toFixed(2).replace(".", ","),
-      d.grossProfit.toFixed(2).replace(".", ","),
-      d.feePercent.toFixed(2).replace(".", ","),
-      d.feeAmount.toFixed(2).replace(".", ","),
-      d.realProfit.toFixed(2).replace(".", ","),
-      d.paymentMethod
-    ]);
+    const rows = detailedSalesData.map(d => {
+      const product = productMap.get(d.productName ? "" : "");
+      // find product by name from sale items
+      const matchedProduct = products.find(p => p.name === d.productName);
+      const costPrice = matchedProduct?.cost_price || 0;
+      const unitPrice = d.totalSale / (d.quantity || 1);
+      return [
+        d.saleId.slice(0, 8),
+        format(parseISO(d.date), "dd/MM/yyyy HH:mm"),
+        d.customer,
+        d.productName,
+        d.quantity,
+        unitPrice,
+        costPrice,
+        d.totalCost,
+        d.totalSale,
+        d.itemDiscount,
+        d.totalSaleAfterDiscount,
+        d.grossProfit,
+        d.paymentMethod,
+        d.feePercent,
+        d.feeAmount,
+        d.realProfit,
+        d.myRealProfit,
+        d.partnerAmount,
+        d.hasPartnership ? "Sim" : "Não",
+      ];
+    });
 
     // Add totals row
     rows.push([
       "TOTAIS",
       "",
       "",
-      detailedSalesData.reduce((s, d) => s + d.quantity, 0).toString(),
-      stats.totalCost.toFixed(2).replace(".", ","),
-      (stats.totalRevenue + stats.totalDiscount).toFixed(2).replace(".", ","),
-      stats.totalDiscount.toFixed(2).replace(".", ","),
-      stats.totalGrossProfit.toFixed(2).replace(".", ","),
       "",
-      stats.totalFees.toFixed(2).replace(".", ","),
-      stats.totalRealProfit.toFixed(2).replace(".", ","),
-      ""
+      detailedSalesData.reduce((s, d) => s + d.quantity, 0),
+      "",
+      "",
+      stats.totalCost,
+      stats.totalRevenue + stats.totalDiscount,
+      stats.totalDiscount,
+      stats.totalRevenue,
+      stats.totalGrossProfit,
+      "",
+      "",
+      stats.totalFees,
+      stats.totalRealProfit,
+      stats.totalMyRealProfit,
+      stats.totalPartnerAmount,
+      "",
     ]);
 
-    const csvContent = [
-      headers.join(";"),
-      ...rows.map(row => row.join(";"))
-    ].join("\n");
-
-    // Add BOM for Excel UTF-8 compatibility
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `relatorio-vendas-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadXlsx(
+      [headers, ...rows],
+      "Vendas",
+      `relatorio-vendas-${format(new Date(), "yyyy-MM-dd")}.xlsx`
+    );
 
     toast.success("Relatório exportado com sucesso!");
   };
