@@ -1,0 +1,1 @@
+ALTER TABLE public.bazar_items ADD COLUMN subcategory TEXT;

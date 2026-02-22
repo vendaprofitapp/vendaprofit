@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users, Pencil, Trash2, ShoppingCart } from "lucide-react";
 import { BazarPermissionsTab } from "@/components/bazar/BazarPermissionsTab";
@@ -22,7 +24,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
   sold: { label: "Vendido", variant: "outline" },
 };
 
-function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onReject, isPending, onEdit, onDelete, onMarkSold }: any) {
+function BazarItemCard({ item, tab, commissions, setCommissions, subcategories: subcats, selectedSubcategories, setSelectedSubcategories, onApprove, onReject, isPending, onEdit, onDelete, onMarkSold }: any) {
   const imgs = [item.image_url, item.image_url_2, item.image_url_3].filter(Boolean) as string[];
   const commVal = commissions[item.id] ?? "";
   const commNum = parseFloat((commVal || "0").replace(",", "."));
@@ -82,6 +84,25 @@ function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onRe
                 <span>Preço Final:</span>
                 <span className="text-primary">R$ {finalPrice.toFixed(2).replace(".", ",")}</span>
               </div>
+              {/* Subcategory selector for approval */}
+              {subcats && subcats.length > 0 && (
+                <div className="pt-1">
+                  <Label className="text-xs">Subcategoria *</Label>
+                  <Select
+                    value={selectedSubcategories[item.id] || ""}
+                    onValueChange={(v) => setSelectedSubcategories((p: any) => ({ ...p, [item.id]: v }))}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Selecione a subcategoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subcats.map((sc: any) => (
+                        <SelectItem key={sc.id} value={sc.name}>{sc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -104,9 +125,14 @@ function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onRe
         {/* Sold info */}
         {tab === "sold" && <SoldDetails item={item} />}
 
-        <Badge variant={STATUS_MAP[item.status]?.variant || "secondary"}>
-          {STATUS_MAP[item.status]?.label || item.status}
-        </Badge>
+        <div className="flex gap-1.5 flex-wrap">
+          <Badge variant={STATUS_MAP[item.status]?.variant || "secondary"}>
+            {STATUS_MAP[item.status]?.label || item.status}
+          </Badge>
+          {item.subcategory && (
+            <Badge variant="outline" className="text-xs">{item.subcategory}</Badge>
+          )}
+        </div>
 
         {tab === "pending" && (
           <div className="flex gap-2">
@@ -256,6 +282,23 @@ export default function BazarAdmin() {
   const [soldItem, setSoldItem] = useState<any>(null);
   const [deleteItem, setDeleteItem] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedSubcategories, setSelectedSubcategories] = useState<Record<string, string>>({});
+
+  // Fetch subcategories for "Bazar VIP" main category
+  const { data: bazarSubcategories = [] } = useQuery({
+    queryKey: ["bazar-subcategories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subcategories")
+        .select("id, name, main_category_id")
+        .eq("main_category_id", (
+          await supabase.from("main_categories").select("id").eq("name", "Bazar VIP").single()
+        ).data?.id || "")
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["bazar-items", user?.id, tab],
@@ -272,13 +315,14 @@ export default function BazarAdmin() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, status, commission }: { id: string; status: string; commission?: number }) => {
+    mutationFn: async ({ id, status, commission, subcategory }: { id: string; status: string; commission?: number; subcategory?: string }) => {
       const updateData: Record<string, any> = { status };
       if (commission != null) {
         updateData.store_commission = commission;
         const item = items.find((i) => i.id === id);
         if (item) updateData.final_price = Number(item.seller_price) + commission;
       }
+      if (subcategory) updateData.subcategory = subcategory;
       const { error } = await supabase.from("bazar_items").update(updateData).eq("id", id);
       if (error) throw error;
     },
@@ -293,7 +337,9 @@ export default function BazarAdmin() {
     const raw = commissions[id];
     const commission = parseFloat((raw || "0").replace(",", "."));
     if (isNaN(commission) || commission < 0) { toast.error("Informe uma comissão válida"); return; }
-    updateMutation.mutate({ id, status: "approved", commission });
+    const subcategory = selectedSubcategories[id];
+    if (bazarSubcategories.length > 0 && !subcategory) { toast.error("Selecione uma subcategoria"); return; }
+    updateMutation.mutate({ id, status: "approved", commission, subcategory });
   };
 
   const handleReject = (id: string) => updateMutation.mutate({ id, status: "rejected" });
@@ -353,6 +399,9 @@ export default function BazarAdmin() {
                     tab={tab}
                     commissions={commissions}
                     setCommissions={setCommissions}
+                    subcategories={bazarSubcategories}
+                    selectedSubcategories={selectedSubcategories}
+                    setSelectedSubcategories={setSelectedSubcategories}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     isPending={updateMutation.isPending}
