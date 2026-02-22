@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format, subDays, startOfDay } from "date-fns";
@@ -11,10 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   ShoppingCart, Phone, ChevronDown, ChevronUp, Package,
   AlertTriangle, MessageCircle, CheckCircle2, RefreshCw,
+  DollarSign, Pencil, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { EditCatalogOrderDialog } from "@/components/catalog/EditCatalogOrderDialog";
 
 type PeriodFilter = "today" | "7days" | "30days";
 
@@ -37,9 +44,11 @@ function openWhatsApp(phone: string, message?: string) {
 export default function CatalogOrders() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<PeriodFilter>("7days");
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [expandedCarts, setExpandedCarts] = useState<Set<string>>(new Set());
+  const [editingOrder, setEditingOrder] = useState<any>(null);
 
   const sinceDate = useMemo(() => getPeriodDate(period), [period]);
 
@@ -114,6 +123,44 @@ export default function CatalogOrders() {
       queryClient.invalidateQueries({ queryKey: ["abandoned-carts"] });
     },
   });
+
+  // Cancel order mutation
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const { error } = await supabase
+        .from("saved_carts")
+        .update({ status: "cancelled" })
+        .eq("id", orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Pedido cancelado!");
+      queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
+    },
+    onError: () => toast.error("Erro ao cancelar pedido"),
+  });
+
+  const handleConvertToSale = (order: any) => {
+    const items = (order.saved_cart_items || []).map((item: any) => ({
+      product_id: item.product_id,
+      product_name: item.product_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      variant_color: item.variant_color,
+      selected_size: item.selected_size,
+      source: item.source,
+    }));
+    navigate("/sales", {
+      state: {
+        fromCatalogOrder: true,
+        catalogOrderId: order.id,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        items,
+        total: order.total,
+      },
+    });
+  };
 
   const toggleOrder = (id: string) => {
     setExpandedOrders((prev) => {
@@ -280,6 +327,57 @@ export default function CatalogOrders() {
                           <span>Total</span>
                           <span>{formatBRL(order.total)}</span>
                         </div>
+                        {order.status === "waiting" && (
+                          <div className="flex flex-wrap gap-2 pt-3 border-t mt-3">
+                            <Button
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={(e) => { e.stopPropagation(); handleConvertToSale(order); }}
+                            >
+                              <DollarSign className="h-3.5 w-3.5" />
+                              Converter em Venda
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5"
+                              onClick={(e) => { e.stopPropagation(); setEditingOrder(order); }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar Pedido
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Cancelar Pedido
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Cancelar pedido #{order.short_code}?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    O pedido de {order.customer_name} ({formatBRL(order.total)}) será cancelado. Esta ação não pode ser desfeita.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Voltar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    onClick={() => cancelOrderMutation.mutate(order.id)}
+                                  >
+                                    Confirmar Cancelamento
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        )}
                       </div>
                     )}
                   </Card>
@@ -385,6 +483,16 @@ export default function CatalogOrders() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <EditCatalogOrderDialog
+        open={!!editingOrder}
+        onOpenChange={(open) => !open && setEditingOrder(null)}
+        order={editingOrder}
+        onSaved={() => {
+          setEditingOrder(null);
+          refetchOrders();
+        }}
+      />
     </MainLayout>
   );
 }
