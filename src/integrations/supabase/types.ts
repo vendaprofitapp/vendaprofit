@@ -166,6 +166,7 @@ export type Database = {
           sold_at: string | null
           status: string
           store_commission: number | null
+          subcategory: string | null
           title: string
           updated_at: string
           weight_grams: number
@@ -205,6 +206,7 @@ export type Database = {
           sold_at?: string | null
           status?: string
           store_commission?: number | null
+          subcategory?: string | null
           title: string
           updated_at?: string
           weight_grams: number
@@ -244,6 +246,7 @@ export type Database = {
           sold_at?: string | null
           status?: string
           store_commission?: number | null
+          subcategory?: string | null
           title?: string
           updated_at?: string
           weight_grams?: number

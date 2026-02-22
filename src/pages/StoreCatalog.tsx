@@ -2219,9 +2219,10 @@ export default function StoreCatalog() {
           
           if (!categoriesConfig.visible || systemMainCategories.length === 0) return null;
           
-          const subcatsForSelected = selectedMainCategory 
+          const activeMainCatName = bazarMode ? "Bazar VIP" : selectedMainCategory;
+          const subcatsForSelected = activeMainCatName 
             ? systemSubcategories.filter(sc => {
-                const mainCat = systemMainCategories.find(mc => mc.name === selectedMainCategory);
+                const mainCat = systemMainCategories.find(mc => mc.name === activeMainCatName);
                 return mainCat && sc.main_category_id === mainCat.id;
               })
             : [];
@@ -2272,7 +2273,7 @@ export default function StoreCatalog() {
               </div>
               
               {/* Subcategories - shown when a main category with subcategories is selected */}
-              {selectedMainCategory && subcatsForSelected.length > 0 && (
+              {(selectedMainCategory || bazarMode) && subcatsForSelected.length > 0 && (
                 <div className="overflow-x-auto pb-2 -mx-4 px-4 mt-2 scrollbar-hide">
                   <div className="flex gap-2 min-w-max">
                     <button
@@ -2345,7 +2346,12 @@ export default function StoreCatalog() {
                 </div>
               ))}
             </div>
-          ) : bazarItems.length === 0 ? (
+          ) : (() => {
+            // Filter bazar items by selected subcategory
+            const filteredBazar = selectedSubcategory
+              ? bazarItems.filter((item) => item.subcategory === selectedSubcategory)
+              : bazarItems;
+            return filteredBazar.length === 0 ? (
             <div className="text-center py-16">
               <Tag className="h-12 w-12 text-gray-200 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum item no Bazar VIP</h3>
@@ -2353,7 +2359,7 @@ export default function StoreCatalog() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              {bazarItems.map((item) => {
+              {filteredBazar.map((item) => {
                 const img = item.image_url || item.image_url_2 || item.image_url_3;
                 const bazarPrice = Number(item.final_price || item.seller_price);
                 return (
@@ -2435,7 +2441,8 @@ export default function StoreCatalog() {
                 );
               })}
             </div>
-          )
+          );
+          })()
         ) : (
           // Regular products grid
           productsLoading ? (

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useQuery } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -20,7 +22,25 @@ export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: Bazar
   const [description, setDescription] = useState(item?.description || "");
   const [sellerPrice, setSellerPrice] = useState(item?.seller_price?.toString().replace(".", ",") || "");
   const [commission, setCommission] = useState(item?.store_commission?.toString().replace(".", ",") || "0");
+  const [subcategory, setSubcategory] = useState(item?.subcategory || "");
   const [saving, setSaving] = useState(false);
+
+  // Fetch subcategories for "Bazar VIP"
+  const { data: bazarSubcategories = [] } = useQuery({
+    queryKey: ["bazar-subcategories"],
+    queryFn: async () => {
+      const { data: mc } = await supabase.from("main_categories").select("id").eq("name", "Bazar VIP").single();
+      if (!mc) return [];
+      const { data, error } = await supabase
+        .from("subcategories")
+        .select("id, name")
+        .eq("main_category_id", mc.id)
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open,
+  });
 
   const handleSave = async () => {
     if (!title.trim()) { toast.error("Título é obrigatório"); return; }
@@ -36,6 +56,7 @@ export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: Bazar
         seller_price: price,
         store_commission: isNaN(comm) ? 0 : comm,
         final_price: price + (isNaN(comm) ? 0 : comm),
+        subcategory: subcategory || null,
       }).eq("id", item.id);
 
       if (error) throw error;
@@ -54,6 +75,7 @@ export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: Bazar
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editar Item do Bazar</DialogTitle>
+          <DialogDescription>Altere os dados do item do Bazar VIP</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -64,6 +86,21 @@ export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: Bazar
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
+          {bazarSubcategories.length > 0 && (
+            <div>
+              <Label>Subcategoria</Label>
+              <Select value={subcategory} onValueChange={setSubcategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a subcategoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bazarSubcategories.map((sc: any) => (
+                    <SelectItem key={sc.id} value={sc.name}>{sc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Preço vendedor (R$)</Label>
