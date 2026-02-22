@@ -29,7 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, subMonths, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
-import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
 
 const COLORS = ["hsl(15, 90%, 55%)", "hsl(25, 95%, 60%)", "hsl(145, 65%, 42%)", "hsl(38, 92%, 50%)", "hsl(220, 10%, 50%)", "hsl(280, 60%, 55%)", "hsl(190, 70%, 45%)"];
 
@@ -191,27 +191,31 @@ export default function Reports() {
     enabled: !!user,
   });
 
-  // Adjust pending sales to only count paid installments
+  // Fetch deferred payment info for pending sales
   const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
-  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
+  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
 
+  // Adjusted sales: pending sales use paid installment amounts as revenue, CMV proportional to installment count
   const adjustedSalesData = useMemo(() => {
     return salesData.map(sale => {
       if (sale.status !== 'pending') return sale;
-      const ratio = getSalePaidRatio(sale, paidBySale);
+      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
+      const costRatio = getDeferredCostRatio(sale, deferredInfo);
+      const revenueRatio = sale.total > 0 ? recognizedRevenue / sale.total : 0;
       return {
         ...sale,
-        total: sale.total * ratio,
-        subtotal: sale.subtotal * ratio,
-        discount_amount: (sale.discount_amount || 0) * ratio,
-        shipping_cost: (sale.shipping_cost || 0) * ratio,
+        total: recognizedRevenue,
+        subtotal: sale.subtotal * revenueRatio,
+        discount_amount: (sale.discount_amount || 0) * revenueRatio,
+        shipping_cost: (sale.shipping_cost || 0) * revenueRatio,
+        _costRatio: costRatio,
         sale_items: sale.sale_items.map(item => ({
           ...item,
-          total: item.total * ratio,
+          total: item.total * revenueRatio,
         })),
       };
     });
-  }, [salesData, paidBySale]);
+  }, [salesData, deferredInfo]);
 
   // Fetch own products for category/color/cost info
   const { data: ownProducts = [] } = useQuery({
@@ -484,7 +488,8 @@ export default function Reports() {
       return sale.sale_items.map(item => {
         const product = productMap.get(item.product_id);
         const costPrice = product?.cost_price || 0;
-        const totalCost = costPrice * item.quantity;
+        const costRatio = (sale as any)._costRatio ?? 1;
+        const totalCost = costPrice * item.quantity * costRatio;
         const itemTotal = Number(item.total);
         
         // Proportionally distribute the sale discount across items
