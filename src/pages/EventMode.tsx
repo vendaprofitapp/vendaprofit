@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Plus, Camera, Mic, MicOff, X, Minus, Save, Loader2,
+  ArrowLeft, Plus, Camera, Mic, MicOff, X, Minus, Save, Loader2, Power,
 } from "lucide-react";
 
 interface BagItem {
@@ -278,13 +278,27 @@ export default function EventMode() {
 
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background border-b px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => { localStorage.removeItem(EVENT_NAME_KEY); navigate(-1); }}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <Badge className="bg-green-600 text-white gap-1.5 text-sm py-1 px-3 cursor-pointer" onClick={changeEventName}>
           <span className="h-2 w-2 rounded-full bg-white animate-pulse inline-block" />
           {eventName || "Modo Evento Ativo"}
         </Badge>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="ml-auto gap-1.5"
+          onClick={() => {
+            localStorage.removeItem(EVENT_NAME_KEY);
+            setEventName("");
+            toast({ title: "Evento encerrado", description: "Você pode voltar ao Modo Evento quando quiser." });
+            navigate("/");
+          }}
+        >
+          <Power className="h-4 w-4" />
+          Encerrar
+        </Button>
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-4 pb-32 space-y-6">
