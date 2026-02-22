@@ -2762,6 +2762,7 @@ export type Database = {
           discount_amount: number | null
           discount_type: string | null
           discount_value: number | null
+          event_name: string | null
           id: string
           notes: string | null
           owner_id: string
@@ -2787,6 +2788,7 @@ export type Database = {
           discount_amount?: number | null
           discount_type?: string | null
           discount_value?: number | null
+          event_name?: string | null
           id?: string
           notes?: string | null
           owner_id: string
@@ -2812,6 +2814,7 @@ export type Database = {
           discount_amount?: number | null
           discount_type?: string | null
           discount_value?: number | null
+          event_name?: string | null
           id?: string
           notes?: string | null
           owner_id?: string
