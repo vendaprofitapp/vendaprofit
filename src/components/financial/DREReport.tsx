@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useExpenseTotals } from "./ExpenseSummaryCards";
-import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
 
 interface DREReportProps {
   dateRange: { start: Date; end: Date };
@@ -36,7 +36,7 @@ export function DREReport({ dateRange }: DREReportProps) {
     salesWithItems.filter((s: any) => s.status === 'pending').map((s: any) => s.id),
     [salesWithItems]
   );
-  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
+  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
 
   // Fetch payment fees
   const { data: paymentFees = [] } = useQuery({
@@ -105,22 +105,22 @@ export function DREReport({ dateRange }: DREReportProps) {
     let rev = 0, fees = 0, cost = 0;
 
     for (const sale of salesWithItems as any[]) {
-      const ratio = getSalePaidRatio(sale, paidBySale);
-      const adjustedTotal = (sale.total || 0) * ratio;
+      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
+      const costRatio = getDeferredCostRatio(sale, deferredInfo);
 
-      rev += adjustedTotal;
+      rev += recognizedRevenue;
 
       const feePercent = feeMap.get(sale.payment_method) || 0;
-      fees += adjustedTotal * (feePercent / 100);
+      fees += recognizedRevenue * (feePercent / 100);
 
       for (const item of (sale.sale_items || [])) {
         const unitCost = productCostMap.get(item.product_id) || 0;
-        cost += unitCost * (item.quantity || 1) * ratio;
+        cost += unitCost * (item.quantity || 1) * costRatio;
       }
     }
 
     return { grossRevenue: rev, totalFees: fees, cmv: cost };
-  }, [salesWithItems, paidBySale, feeMap, productCostMap]);
+  }, [salesWithItems, deferredInfo, feeMap, productCostMap]);
 
   const netRevenue = grossRevenue - totalFees;
   const grossProfit = netRevenue - cmv;

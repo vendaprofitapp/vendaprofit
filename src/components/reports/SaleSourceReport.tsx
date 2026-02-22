@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { downloadXlsx } from "@/utils/xlsExport";
 import { toast } from "sonner";
-import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredPaidAmounts, getDeferredRevenueAmount, getDeferredCostRatio } from "@/hooks/useDeferredPaidAmounts";
 
 interface SaleSourceReportProps {
   title: string;
@@ -80,27 +80,30 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     enabled: !!user,
   });
 
-  // Adjust pending sales to only count paid installments
+  // Fetch deferred payment info for pending sales
   const pendingSaleIds = useMemo(() => salesData.filter(s => s.status === 'pending').map(s => s.id), [salesData]);
-  const paidBySale = useDeferredPaidAmounts(pendingSaleIds);
+  const deferredInfo = useDeferredPaidAmounts(pendingSaleIds);
 
   const adjustedSalesData = useMemo(() => {
     return salesData.map(sale => {
       if (sale.status !== 'pending') return sale;
-      const ratio = getSalePaidRatio(sale, paidBySale);
+      const recognizedRevenue = getDeferredRevenueAmount(sale, deferredInfo);
+      const costRatio = getDeferredCostRatio(sale, deferredInfo);
+      const revenueRatio = sale.total > 0 ? recognizedRevenue / sale.total : 0;
       return {
         ...sale,
-        total: sale.total * ratio,
-        subtotal: sale.subtotal * ratio,
-        discount_amount: (sale.discount_amount || 0) * ratio,
-        shipping_cost: (sale.shipping_cost || 0) * ratio,
+        total: recognizedRevenue,
+        subtotal: sale.subtotal * revenueRatio,
+        discount_amount: (sale.discount_amount || 0) * revenueRatio,
+        shipping_cost: (sale.shipping_cost || 0) * revenueRatio,
+        _costRatio: costRatio,
         sale_items: sale.sale_items.map(item => ({
           ...item,
-          total: item.total * ratio,
+          total: item.total * revenueRatio,
         })),
       };
     });
-  }, [salesData, paidBySale]);
+  }, [salesData, deferredInfo]);
 
   // Get product costs
   const productIds = useMemo(() => {
@@ -217,7 +220,8 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
 
       return sale.sale_items.map((item, idx) => {
         const costPrice = costMap.get(item.product_id) || 0;
-        const totalCost = costPrice * item.quantity;
+        const costRatio = (sale as any)._costRatio ?? 1;
+        const totalCost = costPrice * item.quantity * costRatio;
         const itemTotal = Number(item.total);
         const proportion = subtotal > 0 ? itemTotal / subtotal : 1 / sale.sale_items.length;
         const itemDiscount = discount * proportion;

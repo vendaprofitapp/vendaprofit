@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
-import { useDeferredPaidAmounts, getSalePaidRatio } from "@/hooks/useDeferredPaidAmounts";
+import { useDeferredPaidAmounts, getDeferredRevenueAmount } from "@/hooks/useDeferredPaidAmounts";
 import { ptBR } from "date-fns/locale";
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { ExpenseSummaryCards, useExpenseTotals } from "@/components/financial/ExpenseSummaryCards";
@@ -140,14 +140,13 @@ export default function Financial() {
   });
 
   const pendingRevenueSaleIds = useMemo(() => revenueSales.filter((s: any) => s.status === 'pending').map((s: any) => s.id), [revenueSales]);
-  const revenuePaidBySale = useDeferredPaidAmounts(pendingRevenueSaleIds);
+  const revenueDeferredInfo = useDeferredPaidAmounts(pendingRevenueSaleIds);
 
   const totalRevenue = useMemo(() => {
     return revenueSales.reduce((sum: number, s: any) => {
-      const ratio = getSalePaidRatio(s, revenuePaidBySale);
-      return sum + (s.total || 0) * ratio;
+      return sum + getDeferredRevenueAmount(s, revenueDeferredInfo);
     }, 0);
-  }, [revenueSales, revenuePaidBySale]);
+  }, [revenueSales, revenueDeferredInfo]);
 
   // Calculate financial summary
   const financialSummary = useMemo(() => {
