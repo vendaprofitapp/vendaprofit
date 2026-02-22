@@ -43,6 +43,8 @@ const navGroups: NavGroup[] = [
       { icon: Gift, label: "Consórcios", path: "/consortiums" },
       { icon: ShoppingBag, label: "Bazar VIP", path: "/admin/bazar" },
       { icon: MapPin, label: "Pontos Parceiros", path: "/partner-points" },
+      { icon: Users, label: "Sociedade", path: "/partnerships/sociedade" },
+      { icon: Briefcase, label: "Parceria", path: "/partnerships/parceria" },
     ],
   },
   {
@@ -65,16 +67,10 @@ const navGroups: NavGroup[] = [
       { icon: Warehouse, label: "Controle", path: "/stock" },
       { icon: Tag, label: "Categorias", path: "/categories" },
       { icon: Truck, label: "Fornecedores", path: "/suppliers" },
+      { icon: Clock, label: "Solicitações", path: "/stock-requests" },
       { icon: Package, label: "Pedidos B2B", path: "/b2b-orders" },
       { icon: ClipboardList, label: "Encomendas", path: "/orders" },
       { icon: Layers, label: "Detector de Conjuntos", path: "/stock/conjuntos" },
-    ],
-  },
-  {
-    label: "Parcerias",
-    items: [
-      { icon: Users, label: "Sócias / Parceiras", path: "/partnerships" },
-      { icon: Clock, label: "Solicitações", path: "/stock-requests" },
     ],
   },
   {

@@ -129,7 +129,12 @@ interface Profile {
   email: string;
 }
 
-export default function Partnerships() {
+interface PartnershipsProps {
+  defaultTab?: "direct" | "groups";
+  hideTabSwitcher?: boolean;
+}
+
+export default function Partnerships({ defaultTab, hideTabSwitcher }: PartnershipsProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -140,7 +145,7 @@ export default function Partnerships() {
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "direct");
+  const [activeTab, setActiveTab] = useState(defaultTab || searchParams.get("tab") || "direct");
 
   // Auto-open create dialog from query params
   useEffect(() => {
@@ -572,25 +577,37 @@ export default function Partnerships() {
   return (
     <MainLayout>
       {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Sociedades e Parcerias</h1>
-          <p className="text-muted-foreground">Gerencie suas sociedades 1-1 e parcerias em grupo</p>
+      {!hideTabSwitcher && (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Sociedades e Parcerias</h1>
+            <p className="text-muted-foreground">Gerencie suas sociedades 1-1 e parcerias em grupo</p>
+          </div>
         </div>
-      </div>
+      )}
+      {hideTabSwitcher && defaultTab === "groups" && (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Parcerias em Grupo</h1>
+            <p className="text-muted-foreground">Gerencie suas parcerias com múltiplos vendedores</p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs for Direct vs Group Partnerships */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="direct" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Sociedades 1-1
-          </TabsTrigger>
-          <TabsTrigger value="groups" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Parcerias
-          </TabsTrigger>
-        </TabsList>
+        {!hideTabSwitcher && (
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="direct" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Sociedades 1-1
+            </TabsTrigger>
+            <TabsTrigger value="groups" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Parcerias
+            </TabsTrigger>
+          </TabsList>
+        )}
 
         {/* Direct Partnerships Tab */}
         <TabsContent value="direct">
