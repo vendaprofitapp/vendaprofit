@@ -78,6 +78,7 @@ const navGroups: NavGroup[] = [
     label: "Relatórios",
     items: [
       { icon: TrendingUp, label: "Geral", path: "/reports" },
+      { icon: ShoppingCart, label: "Venda Direta", path: "/reports/manual" },
       { icon: Store, label: "Minha Loja", path: "/reports/catalog" },
       { icon: Zap, label: "Eventos", path: "/reports/events" },
       { icon: Briefcase, label: "Bolsa Consignada", path: "/reports/consignment" },
