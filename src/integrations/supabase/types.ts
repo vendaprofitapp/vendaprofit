@@ -3572,6 +3572,10 @@ export type Database = {
         Args: { _enabled: boolean; _group_id: string }
         Returns: undefined
       }
+      validate_bazar_buyer: {
+        Args: { _buyer_phone: string; _owner_id: string }
+        Returns: boolean
+      }
       validate_bazar_seller: {
         Args: { _owner_id: string; _seller_phone: string }
         Returns: boolean
