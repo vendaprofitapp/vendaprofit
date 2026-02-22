@@ -931,6 +931,47 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_bazar_permissions: {
+        Row: {
+          bazar_token: string
+          can_buy: boolean
+          can_sell: boolean
+          created_at: string
+          customer_id: string
+          id: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          bazar_token?: string
+          can_buy?: boolean
+          can_sell?: boolean
+          created_at?: string
+          customer_id: string
+          id?: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          bazar_token?: string
+          can_buy?: boolean
+          can_sell?: boolean
+          created_at?: string
+          customer_id?: string
+          id?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_bazar_permissions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_orders: {
         Row: {
           created_at: string

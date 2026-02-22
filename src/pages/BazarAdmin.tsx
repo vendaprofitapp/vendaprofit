@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign } from "lucide-react";
+import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users } from "lucide-react";
+import { BazarPermissionsTab } from "@/components/bazar/BazarPermissionsTab";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Pendente", variant: "secondary" },
@@ -221,7 +222,7 @@ function SoldDetails({ item }: { item: any }) {
 export default function BazarAdmin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("pending");
+  const [tab, setTab] = useState("permissions");
   const [commissions, setCommissions] = useState<Record<string, string>>({});
 
   const { data: items = [], isLoading } = useQuery({
@@ -235,7 +236,7 @@ export default function BazarAdmin() {
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user && tab !== "permissions",
   });
 
   const updateMutation = useMutation({
@@ -275,11 +276,18 @@ export default function BazarAdmin() {
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
+            <TabsTrigger value="permissions" className="gap-1.5">
+              <Users className="h-3.5 w-3.5" /> Permissões
+            </TabsTrigger>
             <TabsTrigger value="pending">Pendentes</TabsTrigger>
             <TabsTrigger value="approved">Aprovados</TabsTrigger>
             <TabsTrigger value="rejected">Rejeitados</TabsTrigger>
             <TabsTrigger value="sold">Vendidos</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="permissions" className="mt-4">
+            {user?.id && <BazarPermissionsTab userId={user.id} />}
+          </TabsContent>
 
           <TabsContent value={tab} className="mt-4">
             {isLoading ? (
