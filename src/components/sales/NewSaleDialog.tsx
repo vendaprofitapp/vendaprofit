@@ -800,7 +800,7 @@ export default function NewSaleDialog({
       for (const item of cart) {
         const salePriceGross = item.product.price * item.quantity;
         const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
-        const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
+        const costPrice = (item.product.cost_price ?? item.product.price * 0.5) * item.quantity;
         const sellerIsOwner = item.product.owner_id === user.id;
 
         const productPartnerships = partnershipsByProduct.get(item.product.id) || [];
@@ -1012,25 +1012,48 @@ export default function NewSaleDialog({
   useEffect(() => {
     const pendingSaleData = sessionStorage.getItem("pendingSaleFromRequest");
     if (!pendingSaleData) return;
-    try {
-      const saleData = JSON.parse(pendingSaleData);
-      sessionStorage.removeItem("pendingSaleFromRequest");
-      if (saleData.requestId) setPendingRequestId(saleData.requestId);
-      const productPrice = Number(saleData.productPrice) || 0;
-      let displayName = saleData.productName || "Produto";
-      const variantParts = [];
-      if (saleData.variantColor) variantParts.push(saleData.variantColor);
-      if (saleData.variantSize) variantParts.push(saleData.variantSize);
-      if (variantParts.length > 0) displayName += ` (${variantParts.join(' - ')})`;
-      const partnerProduct: Product = { id: saleData.productId, name: displayName, price: productPrice, stock_quantity: saleData.quantity, owner_id: "", group_id: null, category: "", color: saleData.variantColor || null, size: saleData.variantSize || null };
-      const variant = saleData.variantId ? { id: saleData.variantId, product_id: saleData.productId, size: saleData.variantSize || "", stock_quantity: saleData.quantity, image_url: null } as ProductVariant : null;
-      setCart([{ product: partnerProduct, quantity: saleData.quantity, isPartnerStock: true, ownerName: saleData.ownerName, variant, fromApprovedRequest: true }]);
-      onOpenChange(true);
-      toast({ title: "Produto do parceiro adicionado", description: `${displayName} (${saleData.quantity}x) de ${saleData.ownerName} foi adicionado ao carrinho.` });
-    } catch (e) {
-      console.error("Error parsing pending sale data:", e);
-      sessionStorage.removeItem("pendingSaleFromRequest");
-    }
+    const loadPendingSale = async () => {
+      try {
+        const saleData = JSON.parse(pendingSaleData);
+        sessionStorage.removeItem("pendingSaleFromRequest");
+        if (saleData.requestId) setPendingRequestId(saleData.requestId);
+
+        // Fetch real product data from DB to get accurate cost_price
+        let productPrice = Number(saleData.productPrice) || 0;
+        let costPrice: number | undefined;
+        let ownerId = "";
+        let groupId: string | null = null;
+
+        if (saleData.productId) {
+          const { data: dbProduct } = await supabase
+            .from("products")
+            .select("price, cost_price, owner_id, group_id")
+            .eq("id", saleData.productId)
+            .single();
+          if (dbProduct) {
+            productPrice = dbProduct.price ?? productPrice;
+            costPrice = dbProduct.cost_price ?? undefined;
+            ownerId = dbProduct.owner_id ?? "";
+            groupId = dbProduct.group_id ?? null;
+          }
+        }
+
+        let displayName = saleData.productName || "Produto";
+        const variantParts = [];
+        if (saleData.variantColor) variantParts.push(saleData.variantColor);
+        if (saleData.variantSize) variantParts.push(saleData.variantSize);
+        if (variantParts.length > 0) displayName += ` (${variantParts.join(' - ')})`;
+        const partnerProduct: Product = { id: saleData.productId, name: displayName, price: productPrice, cost_price: costPrice, stock_quantity: saleData.quantity, owner_id: ownerId, group_id: groupId, category: "", color: saleData.variantColor || null, size: saleData.variantSize || null };
+        const variant = saleData.variantId ? { id: saleData.variantId, product_id: saleData.productId, size: saleData.variantSize || "", stock_quantity: saleData.quantity, image_url: null } as ProductVariant : null;
+        setCart([{ product: partnerProduct, quantity: saleData.quantity, isPartnerStock: true, ownerName: saleData.ownerName, variant, fromApprovedRequest: true }]);
+        onOpenChange(true);
+        toast({ title: "Produto do parceiro adicionado", description: `${displayName} (${saleData.quantity}x) de ${saleData.ownerName} foi adicionado ao carrinho.` });
+      } catch (e) {
+        console.error("Error parsing pending sale data:", e);
+        sessionStorage.removeItem("pendingSaleFromRequest");
+      }
+    };
+    loadPendingSale();
   }, []);
 
   // Voice command processing

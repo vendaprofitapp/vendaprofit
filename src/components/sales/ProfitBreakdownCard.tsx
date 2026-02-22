@@ -99,7 +99,7 @@ export function ProfitBreakdownCard({
       const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
 
       // Use cost_price if available, otherwise estimate as 50% of sale price
-      const costPrice = (item.product.cost_price || item.product.price * 0.5) * item.quantity;
+      const costPrice = (item.product.cost_price ?? item.product.price * 0.5) * item.quantity;
       const sellerIsOwner = item.product.owner_id === currentUserId;
       
       // Check if product is in a partnership (from passed map)
