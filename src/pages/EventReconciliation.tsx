@@ -53,7 +53,7 @@ export default function EventReconciliation() {
   const queryClient = useQueryClient();
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [draftToDiscard, setDraftToDiscard] = useState<string | null>(null);
-  const [eventName, setEventName] = useState("");
+  const [eventName, setEventName] = useState(() => localStorage.getItem("vp_active_event_name") || "");
 
   const { data: drafts = [], isLoading } = useQuery({
     queryKey: ["event-drafts-pending", user?.id],

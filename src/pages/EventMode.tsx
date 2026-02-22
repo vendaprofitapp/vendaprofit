@@ -23,11 +23,18 @@ interface BagItem {
   quantity: number;
 }
 
+const EVENT_NAME_KEY = "vp_active_event_name";
+
 export default function EventMode() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Event name gate
+  const [eventName, setEventName] = useState(() => localStorage.getItem(EVENT_NAME_KEY) || "");
+  const [eventNameInput, setEventNameInput] = useState("");
+  const [showEventNameDialog, setShowEventNameDialog] = useState(!localStorage.getItem(EVENT_NAME_KEY));
 
   // Bag state
   const [bagItems, setBagItems] = useState<BagItem[]>([]);
@@ -229,16 +236,54 @@ export default function EventMode() {
     };
   }, []);
 
+  const confirmEventName = () => {
+    if (!eventNameInput.trim()) return;
+    const name = eventNameInput.trim();
+    setEventName(name);
+    localStorage.setItem(EVENT_NAME_KEY, name);
+    setShowEventNameDialog(false);
+  };
+
+  const changeEventName = () => {
+    setEventNameInput(eventName);
+    setShowEventNameDialog(true);
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Event Name Gate Dialog */}
+      <Dialog open={showEventNameDialog} onOpenChange={(open) => { if (eventName) setShowEventNameDialog(open); }}>
+        <DialogContent className="sm:max-w-sm" onPointerDownOutside={(e) => { if (!eventName) e.preventDefault(); }}>
+          <DialogHeader>
+            <DialogTitle>Nome do Evento</DialogTitle>
+            <DialogDescription>Informe o nome do evento para identificar as vendas no relatório.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Nome do Evento</Label>
+              <Input
+                placeholder="Ex: Feira da Vila, Bazar Solidário..."
+                value={eventNameInput}
+                onChange={(e) => setEventNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmEventName(); }}
+                autoFocus
+              />
+            </div>
+            <Button className="w-full" disabled={!eventNameInput.trim()} onClick={confirmEventName}>
+              Iniciar Evento
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background border-b px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="icon" onClick={() => { localStorage.removeItem(EVENT_NAME_KEY); navigate(-1); }}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <Badge className="bg-green-600 text-white gap-1.5 text-sm py-1 px-3">
+        <Badge className="bg-green-600 text-white gap-1.5 text-sm py-1 px-3 cursor-pointer" onClick={changeEventName}>
           <span className="h-2 w-2 rounded-full bg-white animate-pulse inline-block" />
-          Modo Evento Ativo
+          {eventName || "Modo Evento Ativo"}
         </Badge>
       </header>
 
