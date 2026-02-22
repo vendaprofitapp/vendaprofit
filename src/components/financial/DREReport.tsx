@@ -20,7 +20,7 @@ export function DREReport({ dateRange }: DREReportProps) {
         .from("sales")
         .select("total, subtotal, payment_method")
         .eq("owner_id", user?.id!)
-        .eq("status", "completed")
+        .in("status", ["completed", "pending"])
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
@@ -37,7 +37,7 @@ export function DREReport({ dateRange }: DREReportProps) {
         .from("sales")
         .select("sale_items(product_id, quantity)")
         .eq("owner_id", user?.id!)
-        .eq("status", "completed")
+        .in("status", ["completed", "pending"])
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
