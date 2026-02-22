@@ -61,6 +61,8 @@ import ReportBazar from "./pages/ReportBazar";
 import ReportConsignment from "./pages/ReportConsignment";
 import ReportEvent from "./pages/ReportEvent";
 import ReportConsortium from "./pages/ReportConsortium";
+import ReportSociedade from "./pages/ReportSociedade";
+import ReportParcerias from "./pages/ReportParcerias";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
@@ -177,6 +179,9 @@ const AppRoutes = () => (
     <Route path="/reports/consignment" element={<ProtectedRoute><ReportConsignment /></ProtectedRoute>} />
     <Route path="/reports/events" element={<ProtectedRoute><ReportEvent /></ProtectedRoute>} />
     <Route path="/reports/consortium" element={<ProtectedRoute><ReportConsortium /></ProtectedRoute>} />
+    <Route path="/reports/sociedade" element={<ProtectedRoute><ReportSociedade /></ProtectedRoute>} />
+    <Route path="/reports/parcerias" element={<ProtectedRoute><ReportParcerias /></ProtectedRoute>} />
+    <Route path="/reports/catalog" element={<ProtectedRoute><ReportCatalog /></ProtectedRoute>} />
     <Route path="/plano-expirado" element={<PlanExpired />} />
     <Route path="/p/:token" element={<PartnerCatalog />} />
     <Route path="/contrato/:token" element={<PartnerContract />} />

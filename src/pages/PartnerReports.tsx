@@ -96,13 +96,17 @@ const periodOptions = [
   { value: "all", label: "Todo Período" }
 ];
 
-export default function PartnerReports() {
+interface PartnerReportsProps {
+  filterMode?: "all" | "partnerships" | "groups";
+}
+
+export default function PartnerReports({ filterMode }: PartnerReportsProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [period, setPeriod] = useFormPersistence("partnerReports_period", "month");
   const [selectedGroupId, setSelectedGroupId] = useFormPersistence("partnerReports_groupId", "all");
   const [selectedPartnerId, setSelectedPartnerId] = useFormPersistence("partnerReports_partnerId", "all");
-  const [activeTab, setActiveTab] = useFormPersistence("partnerReports_activeTab", "all");
+  const [activeTab, setActiveTab] = useFormPersistence("partnerReports_activeTab", filterMode || "all");
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -757,8 +761,12 @@ export default function PartnerReports() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Relatório de Sociedades e Parcerias</h1>
-          <p className="text-muted-foreground">Acompanhe os ganhos e divisões com sociedades 1-1 e parcerias</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            {filterMode === "partnerships" ? "Relatório de Sociedades" : filterMode === "groups" ? "Relatório de Parcerias" : "Relatório de Sociedades e Parcerias"}
+          </h1>
+          <p className="text-muted-foreground">
+            {filterMode === "partnerships" ? "Acompanhe os ganhos e divisões com sociedades 1-1" : filterMode === "groups" ? "Acompanhe os ganhos e divisões com parcerias" : "Acompanhe os ganhos e divisões com sociedades 1-1 e parcerias"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleRefresh} className="gap-2">
@@ -773,21 +781,23 @@ export default function PartnerReports() {
       </div>
 
       {/* Tabs for Partnerships vs Groups */}
-      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedGroupId("all"); setSelectedPartnerId("all"); }} className="mb-6">
-        <TabsList className="grid w-full max-w-xl grid-cols-3">
-          <TabsTrigger value="all" className="gap-2">
-            <DollarSign className="h-4 w-4" />
-            Todas
-          </TabsTrigger>
-          <TabsTrigger value="partnerships" className="gap-2">
-            <Users className="h-4 w-4" />
-            Sociedades 1-1 ({directPartnerships.length})
-          </TabsTrigger>
-          <TabsTrigger value="groups" className="gap-2">
-            <Building2 className="h-4 w-4" />
-            Parcerias ({regularGroups.length})
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={filterMode || activeTab} onValueChange={(v) => { if (!filterMode) { setActiveTab(v as typeof activeTab); setSelectedGroupId("all"); setSelectedPartnerId("all"); } }} className="mb-6">
+        {!filterMode && (
+          <TabsList className="grid w-full max-w-xl grid-cols-3">
+            <TabsTrigger value="all" className="gap-2">
+              <DollarSign className="h-4 w-4" />
+              Todas
+            </TabsTrigger>
+            <TabsTrigger value="partnerships" className="gap-2">
+              <Users className="h-4 w-4" />
+              Sociedades 1-1 ({directPartnerships.length})
+            </TabsTrigger>
+            <TabsTrigger value="groups" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              Parcerias ({regularGroups.length})
+            </TabsTrigger>
+          </TabsList>
+        )}
 
         {/* Info Card */}
         <Card className="my-6 bg-primary/5 border-primary/20">
