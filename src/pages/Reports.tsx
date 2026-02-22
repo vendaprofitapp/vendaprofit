@@ -241,6 +241,9 @@ export default function Reports() {
     return adjusted;
   }, [completedSales, deferredSalesData, deferredSalesMap]);
 
+  // Set of completed sale IDs for deferred split adjustment
+  const completedSaleIds = useMemo(() => new Set(completedSales.map(s => s.id)), [completedSales]);
+
   // Alias for backward compat with filters that reference salesData
   const salesData = adjustedSalesData;
 
@@ -384,7 +387,6 @@ export default function Reports() {
         if (split.type === 'payment_fee') {
           existing.feeAmount += Math.abs(split.amount);
         } else if (split.type === 'group_commission') {
-          // Partner point commission stored as negative on seller's own user_id
           existing.partnerCommission += Math.abs(split.amount);
         } else if (split.type === 'cost_recovery') {
           existing.myCostRecovery += split.amount;
@@ -398,14 +400,37 @@ export default function Reports() {
         if (split.type === 'group_commission') {
           existing.partnerCommission += Math.abs(split.amount);
         } else {
-          // cost_recovery + profit_share for partner
           existing.partnerCommission += split.amount;
         }
       }
       map.set(split.sale_id, existing);
     }
+
+    // Regime de caixa: adjust splits for pending (deferred) sales
+    for (const [saleId, splits] of map) {
+      if (completedSaleIds.has(saleId)) continue;
+      const deferredInfo = deferredSalesMap.get(saleId);
+      if (deferredInfo) {
+        const ratio = deferredInfo.costRatioInPeriod;
+        splits.myTotal *= ratio;
+        splits.feeAmount *= ratio;
+        splits.myCostRecovery *= ratio;
+        splits.myProfitShare *= ratio;
+        splits.partnerAmount *= ratio;
+        splits.partnerCommission *= ratio;
+      } else {
+        // Pending sale with no installments paid in period: zero out
+        splits.myTotal = 0;
+        splits.feeAmount = 0;
+        splits.myCostRecovery = 0;
+        splits.myProfitShare = 0;
+        splits.partnerAmount = 0;
+        splits.partnerCommission = 0;
+      }
+    }
+
     return map;
-  }, [financialSplitsData, user?.id]);
+  }, [financialSplitsData, user?.id, completedSaleIds, deferredSalesMap]);
 
   // Create product map for quick lookup
   const productMap = useMemo(() => {

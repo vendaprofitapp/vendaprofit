@@ -140,7 +140,10 @@ export default function Financial() {
   });
 
   // Fetch deferred revenue recognized in this period (by paid_at)
-  const { deferredSalesMap: revenueDeferredMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
+  const { deferredSaleIds: revenueDeferredIds, deferredSalesMap: revenueDeferredMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
+
+  // Set of completed sale IDs for split adjustment
+  const completedSaleIds = useMemo(() => new Set(completedRevenueSales.map((s: any) => s.id)), [completedRevenueSales]);
 
   const totalRevenue = useMemo(() => {
     const completedTotal = completedRevenueSales.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
@@ -149,23 +152,35 @@ export default function Financial() {
     return completedTotal + deferredTotal;
   }, [completedRevenueSales, revenueDeferredMap]);
 
-  // Calculate financial summary
+  // Calculate financial summary (regime de caixa: scale splits for pending sales)
   const financialSummary = useMemo(() => {
     let netProfit = 0;
     let costToRecover = 0;
     let payablesToPartners = 0;
 
     for (const split of receivedSplits) {
-      if (split.type === 'profit_share') netProfit += split.amount;
-      else if (split.type === 'group_commission') netProfit += split.amount;
-      else if (split.type === 'cost_recovery') costToRecover += split.amount;
+      let ratio = 1;
+      if (!completedSaleIds.has(split.sale_id)) {
+        const deferredInfo = revenueDeferredMap.get(split.sale_id);
+        if (!deferredInfo) continue; // pending with no paid installments: skip
+        ratio = deferredInfo.costRatioInPeriod;
+      }
+      if (split.type === 'profit_share') netProfit += split.amount * ratio;
+      else if (split.type === 'group_commission') netProfit += split.amount * ratio;
+      else if (split.type === 'cost_recovery') costToRecover += split.amount * ratio;
     }
 
     for (const split of allSplits) {
       if (split.user_id !== user?.id) {
+        let ratio = 1;
+        if (!completedSaleIds.has(split.sale_id)) {
+          const deferredInfo = revenueDeferredMap.get(split.sale_id);
+          if (!deferredInfo) continue;
+          ratio = deferredInfo.costRatioInPeriod;
+        }
         const isFromMyProduct = (split.description || '').includes('(dono)') ||
                                 (split.description || '').includes('Comissão de grupo');
-        if (isFromMyProduct) payablesToPartners += split.amount;
+        if (isFromMyProduct) payablesToPartners += split.amount * ratio;
       }
     }
 
@@ -178,21 +193,28 @@ export default function Financial() {
       .reduce((sum: number, p: any) => sum + (p.cost_price || 0), 0);
 
     return { netProfit, costToRecover, payablesToPartners, externalStockValue };
-  }, [receivedSplits, allSplits, myProducts, productPartnerships, user?.id]);
+  }, [receivedSplits, allSplits, myProducts, productPartnerships, user?.id, completedSaleIds, revenueDeferredMap]);
 
-  // Profit origin for pie chart
+  // Profit origin for pie chart (regime de caixa: scale for pending sales)
   const profitOrigin = useMemo(() => {
     let ownSales = 0, partnerships = 0, groupCommissions = 0;
     for (const split of receivedSplits) {
+      let ratio = 1;
+      if (!completedSaleIds.has(split.sale_id)) {
+        const deferredInfo = revenueDeferredMap.get(split.sale_id);
+        if (!deferredInfo) continue;
+        ratio = deferredInfo.costRatioInPeriod;
+      }
+      const amount = split.amount * ratio;
       if (split.type === 'profit_share') {
-        if ((split.description || '').includes('Lucro da venda')) ownSales += split.amount;
-        else partnerships += split.amount;
+        if ((split.description || '').includes('Lucro da venda')) ownSales += amount;
+        else partnerships += amount;
       } else if (split.type === 'group_commission') {
-        groupCommissions += split.amount;
+        groupCommissions += amount;
       }
     }
     return { ownSales, partnerships, groupCommissions };
-  }, [receivedSplits]);
+  }, [receivedSplits, completedSaleIds, revenueDeferredMap]);
 
   const pieChartData = useMemo(() => {
     const data = [];
