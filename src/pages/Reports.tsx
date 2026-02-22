@@ -305,16 +305,43 @@ export default function Reports() {
     enabled: !!user,
   });
 
-  // Create map: sale_id -> user's splits total, and whether sale has partnership splits
+  // Create map: sale_id -> detailed splits breakdown
   const splitsBySale = useMemo(() => {
-    const map = new Map<string, { myTotal: number; hasPartnership: boolean; partnerAmount: number }>();
+    const map = new Map<string, { 
+      myTotal: number; 
+      hasPartnership: boolean; 
+      partnerAmount: number;
+      hasSplits: boolean;
+      feeAmount: number;
+      partnerCommission: number;
+      myCostRecovery: number;
+      myProfitShare: number;
+    }>();
     for (const split of financialSplitsData) {
-      const existing = map.get(split.sale_id) || { myTotal: 0, hasPartnership: false, partnerAmount: 0 };
+      const existing = map.get(split.sale_id) || { 
+        myTotal: 0, hasPartnership: false, partnerAmount: 0, hasSplits: false,
+        feeAmount: 0, partnerCommission: 0, myCostRecovery: 0, myProfitShare: 0
+      };
+      existing.hasSplits = true;
+      
       if (split.user_id === user?.id) {
+        if (split.type === 'payment_fee') {
+          existing.feeAmount += Math.abs(split.amount);
+        } else if (split.type === 'cost_recovery') {
+          existing.myCostRecovery += split.amount;
+        } else if (split.type === 'profit_share') {
+          existing.myProfitShare += split.amount;
+        }
         existing.myTotal += split.amount;
       } else {
         existing.partnerAmount += split.amount;
         existing.hasPartnership = true;
+        if (split.type === 'group_commission') {
+          existing.partnerCommission += Math.abs(split.amount);
+        } else {
+          // cost_recovery + profit_share for partner
+          existing.partnerCommission += split.amount;
+        }
       }
       map.set(split.sale_id, existing);
     }
@@ -420,6 +447,7 @@ export default function Reports() {
       const saleDiscount = Number(sale.discount_amount) || 0;
       const saleSubtotal = Number(sale.subtotal) || 0;
       const saleInfo = splitsBySale.get(sale.id);
+      const hasSplits = saleInfo?.hasSplits ?? false;
       const hasPartnership = saleInfo?.hasPartnership ?? false;
       
       return sale.sale_items.map(item => {
@@ -434,17 +462,27 @@ export default function Reports() {
         const totalSaleAfterDiscount = itemTotal - itemDiscount;
         
         const grossProfit = totalSaleAfterDiscount - totalCost;
-        const feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
-        const realProfit = grossProfit - feeAmount;
-
-        // If this sale has partnership splits, calculate real profit from splits
-        let myRealProfit = realProfit;
-        if (hasPartnership && saleInfo) {
-          // Distribute my split total proportionally across items
-          const saleItemsCount = sale.sale_items.length;
-          const myProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 1 / saleItemsCount;
-          myRealProfit = saleInfo.myTotal * myProportion;
+        
+        // Use financial_splits as source of truth when available
+        const itemProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 1 / sale.sale_items.length;
+        
+        let feeAmount: number;
+        let partnerCommission: number;
+        let myRealProfit: number;
+        
+        if (hasSplits && saleInfo) {
+          // Use actual recorded splits
+          feeAmount = saleInfo.feeAmount * itemProportion;
+          partnerCommission = hasPartnership ? saleInfo.partnerCommission * itemProportion : 0;
+          myRealProfit = saleInfo.myProfitShare * itemProportion;
+        } else {
+          // Fallback: calculate from fee map (own stock, no splits recorded)
+          feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
+          partnerCommission = 0;
+          myRealProfit = grossProfit - feeAmount;
         }
+        
+        const realProfit = grossProfit - feeAmount - partnerCommission;
 
         return {
           saleId: sale.id,
@@ -459,10 +497,12 @@ export default function Reports() {
           grossProfit,
           feePercent,
           feeAmount,
+          partnerCommission,
           realProfit,
           myRealProfit,
           hasPartnership,
-          partnerAmount: hasPartnership ? (saleInfo?.partnerAmount ?? 0) * (saleSubtotal > 0 ? itemTotal / saleSubtotal : 0) : 0,
+          hasSplits,
+          partnerAmount: hasPartnership ? (saleInfo?.partnerAmount ?? 0) * itemProportion : 0,
           paymentMethod: sale.payment_method,
         };
       });
@@ -484,12 +524,13 @@ export default function Reports() {
     const totalItemDiscount = detailedSalesData.reduce((sum, d) => sum + d.itemDiscount, 0);
     const totalGrossProfit = detailedSalesData.reduce((sum, d) => sum + d.grossProfit, 0);
     const totalFees = detailedSalesData.reduce((sum, d) => sum + d.feeAmount, 0);
+    const totalPartnerCommission = detailedSalesData.reduce((sum, d) => sum + d.partnerCommission, 0);
     const totalRealProfit = detailedSalesData.reduce((sum, d) => sum + d.realProfit, 0);
     const totalMyRealProfit = detailedSalesData.reduce((sum, d) => sum + d.myRealProfit, 0);
     const totalPartnerAmount = detailedSalesData.reduce((sum, d) => sum + d.partnerAmount, 0);
     const hasAnyPartnership = detailedSalesData.some(d => d.hasPartnership);
 
-    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalRealProfit, totalMyRealProfit, totalPartnerAmount, hasAnyPartnership };
+    return { totalRevenue, totalSales, totalItems, totalDiscount, avgTicket, uniqueCustomers, totalCost, totalItemDiscount, totalGrossProfit, totalFees, totalPartnerCommission, totalRealProfit, totalMyRealProfit, totalPartnerAmount, hasAnyPartnership };
   }, [filteredSales, detailedSalesData]);
 
   // Chart data: Sales over time
@@ -614,17 +655,13 @@ export default function Reports() {
       "Venda Após Desconto",
       "Lucro Bruto",
       "Forma de Pagamento",
-      "Taxa Pagamento (%)",
-      "Valor da Taxa",
-      "Lucro Real",
-      "Meu Lucro (split)",
-      "Parte Parceiro",
+      "Taxa Pagamento",
+      "Comissão Parceiro",
+      "Meu Lucro",
       "Parceria?",
     ];
 
     const rows = detailedSalesData.map(d => {
-      const product = productMap.get(d.productName ? "" : "");
-      // find product by name from sale items
       const matchedProduct = products.find(p => p.name === d.productName);
       const costPrice = matchedProduct?.cost_price || 0;
       const unitPrice = d.totalSale / (d.quantity || 1);
@@ -642,11 +679,9 @@ export default function Reports() {
         d.totalSaleAfterDiscount,
         d.grossProfit,
         d.paymentMethod,
-        d.feePercent,
         d.feeAmount,
-        d.realProfit,
+        d.partnerCommission,
         d.myRealProfit,
-        d.partnerAmount,
         d.hasPartnership ? "Sim" : "Não",
       ];
     });
@@ -666,11 +701,9 @@ export default function Reports() {
       stats.totalRevenue,
       stats.totalGrossProfit,
       "",
-      "",
       stats.totalFees,
-      stats.totalRealProfit,
+      stats.totalPartnerCommission,
       stats.totalMyRealProfit,
-      stats.totalPartnerAmount,
       "",
     ]);
 
@@ -850,7 +883,7 @@ export default function Reports() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6 mb-6">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-7 mb-6">
         <div className="rounded-xl bg-card p-5 shadow-soft">
           <p className="text-sm text-muted-foreground">Receita Bruta</p>
           <p className="text-2xl font-bold text-foreground">
@@ -859,7 +892,7 @@ export default function Reports() {
         </div>
         <div className="rounded-xl bg-card p-5 shadow-soft">
           <p className="text-sm text-muted-foreground">Descontos Cedidos</p>
-          <p className="text-2xl font-bold text-orange-500">
+          <p className="text-2xl font-bold text-destructive">
             - R$ {stats.totalDiscount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
@@ -878,30 +911,30 @@ export default function Reports() {
         </div>
         <div className="rounded-xl bg-card p-5 shadow-soft">
           <p className="text-sm text-muted-foreground flex items-center gap-1">
-            <Percent className="h-3 w-3" /> Taxas de Pagamento
+            <Percent className="h-3 w-3" /> Taxas Pagamento
           </p>
           <p className="text-2xl font-bold text-destructive">
             - R$ {stats.totalFees.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="rounded-xl bg-card p-5 shadow-soft border-2 border-green-500/30">
-          <p className="text-sm text-muted-foreground font-medium">
-            {stats.hasAnyPartnership ? "Meu Lucro Real" : "Lucro Real"}
-          </p>
-          <p className="text-2xl font-bold text-green-600">
-            R$ {(stats.hasAnyPartnership ? stats.totalMyRealProfit : stats.totalRealProfit).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+        {stats.totalPartnerCommission > 0 && (
+          <div className="rounded-xl bg-card p-5 shadow-soft">
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Users className="h-3 w-3" /> Comissão Parceiros
+            </p>
+            <p className="text-2xl font-bold text-destructive">
+              - R$ {stats.totalPartnerCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+        )}
+        <div className="rounded-xl bg-card p-5 shadow-soft border-2 border-primary/30">
+          <p className="text-sm text-muted-foreground font-medium">Meu Lucro Real</p>
+          <p className="text-2xl font-bold text-primary">
+            R$ {stats.totalMyRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-muted-foreground">
-            {stats.hasAnyPartnership 
-              ? "(Sua parte, após parceria + taxas)" 
-              : "(Descontos + Taxas abatidos)"}
+            (Após custo, taxas e comissões)
           </p>
-          {stats.hasAnyPartnership && stats.totalPartnerAmount > 0 && (
-            <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
-              <Users className="h-3 w-3" />
-              R$ {stats.totalPartnerAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} para parceira(s)
-            </p>
-          )}
         </div>
       </div>
 
@@ -944,21 +977,21 @@ export default function Reports() {
                 <TableHead className="text-right">Venda</TableHead>
                 <TableHead className="text-right">Desconto</TableHead>
                 <TableHead className="text-right">Lucro Bruto</TableHead>
-                <TableHead className="text-right">Taxa</TableHead>
-                <TableHead className="text-right">Lucro Real</TableHead>
+                <TableHead className="text-right">Taxa Pgto</TableHead>
+                <TableHead className="text-right">Comissão Parceiro</TableHead>
                 <TableHead className="text-right">Meu Lucro</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {salesLoading ? (
                 <TableRow>
-                   <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                   <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : detailedSalesData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     Nenhuma venda encontrada no período
                   </TableCell>
                 </TableRow>
@@ -987,28 +1020,20 @@ export default function Reports() {
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.totalSale.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap text-orange-500">
+                    <TableCell className="text-right whitespace-nowrap text-destructive">
                       {item.itemDiscount > 0 ? `- R$ ${item.itemDiscount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       R$ {item.grossProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap text-destructive">
-                      {item.feePercent > 0 ? `${item.feePercent}% (-R$ ${item.feeAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "-"}
+                      {item.feeAmount > 0.01 ? `- R$ ${item.feeAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap font-medium text-green-600">
-                      R$ {item.realProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    <TableCell className="text-right whitespace-nowrap text-destructive">
+                      {item.partnerCommission > 0.01 ? `- R$ ${item.partnerCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap font-medium">
-                      {item.hasPartnership ? (
-                        <span className="text-primary">
-                          R$ {item.myRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </span>
-                      ) : (
-                        <span className="text-green-600">
-                          R$ {item.myRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </span>
-                      )}
+                    <TableCell className="text-right whitespace-nowrap font-medium text-primary">
+                      R$ {item.myRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </TableCell>
                   </TableRow>
                 ))
