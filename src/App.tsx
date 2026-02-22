@@ -16,6 +16,8 @@ import PartnerReports from "./pages/PartnerReports";
 import PartnerPointReports from "./pages/PartnerPointReports";
 import Financial from "./pages/Financial";
 import Partnerships from "./pages/Partnerships";
+import PartnershipsSociedade from "./pages/PartnershipsSociedade";
+import PartnershipsParceria from "./pages/PartnershipsParceria";
 import Settings from "./pages/Settings";
 import StockControl from "./pages/StockControl";
 import StockRequests from "./pages/StockRequests";
@@ -148,6 +150,8 @@ const AppRoutes = () => (
     <Route path="/reports/partner-points" element={<ProtectedRoute><PartnerPointReports /></ProtectedRoute>} />
     <Route path="/financial" element={<ProtectedRoute><Financial /></ProtectedRoute>} />
     <Route path="/partnerships" element={<ProtectedRoute><Partnerships /></ProtectedRoute>} />
+    <Route path="/partnerships/sociedade" element={<ProtectedRoute><PartnershipsSociedade /></ProtectedRoute>} />
+    <Route path="/partnerships/parceria" element={<ProtectedRoute><PartnershipsParceria /></ProtectedRoute>} />
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
