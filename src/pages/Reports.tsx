@@ -182,7 +182,7 @@ export default function Reports() {
         `)
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString())
-        .eq("status", "completed")
+        .in("status", ["completed", "pending"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as SaleWithItems[];

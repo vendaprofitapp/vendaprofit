@@ -61,7 +61,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           id, customer_name, payment_method, subtotal, discount_amount, total, status, created_at, sale_source, event_name, shipping_cost, shipping_payer,
           sale_items (id, product_id, product_name, quantity, unit_price, total)
         `)
-        .eq("status", "completed")
+        .in("status", ["completed", "pending"])
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false });
