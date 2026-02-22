@@ -9,8 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users } from "lucide-react";
+import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users, Pencil, Trash2, ShoppingCart } from "lucide-react";
 import { BazarPermissionsTab } from "@/components/bazar/BazarPermissionsTab";
+import { BazarItemEditDialog } from "@/components/bazar/BazarItemEditDialog";
+import { BazarMarkSoldDialog } from "@/components/bazar/BazarMarkSoldDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Pendente", variant: "secondary" },
@@ -19,7 +22,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
   sold: { label: "Vendido", variant: "outline" },
 };
 
-function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onReject, isPending }: any) {
+function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onReject, isPending, onEdit, onDelete, onMarkSold }: any) {
   const imgs = [item.image_url, item.image_url_2, item.image_url_3].filter(Boolean) as string[];
   const commVal = commissions[item.id] ?? "";
   const commNum = parseFloat((commVal || "0").replace(",", "."));
@@ -112,6 +115,31 @@ function BazarItemCard({ item, tab, commissions, setCommissions, onApprove, onRe
             </Button>
             <Button size="sm" variant="destructive" className="flex-1" onClick={() => onReject(item.id)} disabled={isPending}>
               <XCircle className="h-4 w-4 mr-1" /> Rejeitar
+            </Button>
+          </div>
+        )}
+
+        {/* Actions for non-pending/non-sold tabs */}
+        {(tab === "approved" || tab === "rejected") && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => onEdit(item)}>
+              <Pencil className="h-4 w-4 mr-1" /> Editar
+            </Button>
+            {tab === "approved" && (
+              <Button size="sm" className="flex-1" onClick={() => onMarkSold(item)}>
+                <ShoppingCart className="h-4 w-4 mr-1" /> Vendido
+              </Button>
+            )}
+            <Button size="sm" variant="destructive" onClick={() => onDelete(item)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {tab === "sold" && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" onClick={() => onDelete(item)}>
+              <Trash2 className="h-4 w-4 mr-1" /> Excluir
             </Button>
           </div>
         )}
@@ -224,6 +252,10 @@ export default function BazarAdmin() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("permissions");
   const [commissions, setCommissions] = useState<Record<string, string>>({});
+  const [editItem, setEditItem] = useState<any>(null);
+  const [soldItem, setSoldItem] = useState<any>(null);
+  const [deleteItem, setDeleteItem] = useState<any>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["bazar-items", user?.id, tab],
@@ -266,6 +298,24 @@ export default function BazarAdmin() {
 
   const handleReject = (id: string) => updateMutation.mutate({ id, status: "rejected" });
 
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("bazar_items").delete().eq("id", deleteItem.id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+      toast.success("Item excluído!");
+      setDeleteItem(null);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao excluir");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const refreshList = () => queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -306,6 +356,9 @@ export default function BazarAdmin() {
                     onApprove={handleApprove}
                     onReject={handleReject}
                     isPending={updateMutation.isPending}
+                    onEdit={setEditItem}
+                    onDelete={setDeleteItem}
+                    onMarkSold={setSoldItem}
                   />
                 ))}
               </div>
@@ -313,6 +366,44 @@ export default function BazarAdmin() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Dialog */}
+      {editItem && (
+        <BazarItemEditDialog
+          item={editItem}
+          open={!!editItem}
+          onOpenChange={(o) => { if (!o) setEditItem(null); }}
+          onSaved={refreshList}
+        />
+      )}
+
+      {/* Mark Sold Dialog */}
+      {soldItem && (
+        <BazarMarkSoldDialog
+          item={soldItem}
+          open={!!soldItem}
+          onOpenChange={(o) => { if (!o) setSoldItem(null); }}
+          onSaved={refreshList}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir item do Bazar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O item "{deleteItem?.title}" será excluído permanentemente. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
