@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Download, DollarSign, TrendingUp, CreditCard, Percent, BarChart3, ShoppingCart } from "lucide-react";
+import { Download, DollarSign, TrendingUp, CreditCard, Percent, BarChart3, ShoppingCart, Truck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { downloadXlsx } from "@/utils/xlsExport";
@@ -33,6 +33,8 @@ interface SaleWithItems {
   created_at: string;
   sale_source: string | null;
   event_name: string | null;
+  shipping_cost: number | null;
+  shipping_payer: string | null;
   sale_items: {
     id: string;
     product_id: string;
@@ -56,7 +58,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
       let query = supabase
         .from("sales")
         .select(`
-          id, customer_name, payment_method, subtotal, discount_amount, total, status, created_at, sale_source, event_name,
+          id, customer_name, payment_method, subtotal, discount_amount, total, status, created_at, sale_source, event_name, shipping_cost, shipping_payer,
           sale_items (id, product_id, product_name, quantity, unit_price, total)
         `)
         .eq("status", "completed")
@@ -186,8 +188,11 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
       const discount = Number(sale.discount_amount) || 0;
       const subtotal = Number(sale.subtotal) || 0;
       const saleInfo = splitsBySale.get(sale.id);
+      const shippingCost = Number(sale.shipping_cost) || 0;
+      const shippingPayer = sale.shipping_payer || null;
+      const isSellerShipping = shippingPayer === 'seller' && shippingCost > 0;
 
-      return sale.sale_items.map(item => {
+      return sale.sale_items.map((item, idx) => {
         const costPrice = costMap.get(item.product_id) || 0;
         const totalCost = costPrice * item.quantity;
         const itemTotal = Number(item.total);
@@ -195,6 +200,10 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
         const itemDiscount = discount * proportion;
         const afterDiscount = itemTotal - itemDiscount;
         const grossProfit = afterDiscount - totalCost;
+
+        // Distribute shipping proportionally across items (only first item gets it to avoid duplication, or proportionally)
+        const itemShipping = shippingCost * proportion;
+        const itemSellerShipping = isSellerShipping ? itemShipping : 0;
 
         let feeAmount: number;
         let partnerCommission: number;
@@ -208,7 +217,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           partnerCommission = 0;
         }
 
-        const netProfit = grossProfit - feeAmount - partnerCommission;
+        const netProfit = grossProfit - feeAmount - partnerCommission - itemSellerShipping;
 
         return {
           saleId: sale.id,
@@ -224,6 +233,9 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           grossProfit,
           feeAmount,
           partnerCommission,
+          shippingCost: itemShipping,
+          shippingPayer,
+          sellerShipping: itemSellerShipping,
           netProfit,
           paymentMethod: sale.payment_method,
         };
@@ -238,9 +250,11 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     const totalCost = detailedRows.reduce((s, d) => s + d.totalCost, 0);
     const totalFees = detailedRows.reduce((s, d) => s + d.feeAmount, 0);
     const totalCommission = detailedRows.reduce((s, d) => s + d.partnerCommission, 0);
+    const totalShipping = detailedRows.reduce((s, d) => s + d.shippingCost, 0);
+    const totalSellerShipping = detailedRows.reduce((s, d) => s + d.sellerShipping, 0);
     const totalNet = detailedRows.reduce((s, d) => s + d.netProfit, 0);
     const grossProfit = revenue - totalCost;
-    return { revenue, totalDiscount, totalCost, grossProfit, totalFees, totalCommission, totalNet, count: filtered.length, items: detailedRows.reduce((s, d) => s + d.quantity, 0) };
+    return { revenue, totalDiscount, totalCost, grossProfit, totalFees, totalCommission, totalShipping, totalSellerShipping, totalNet, count: filtered.length, items: detailedRows.reduce((s, d) => s + d.quantity, 0) };
   }, [filtered, detailedRows]);
 
   // Event summary (only for event source)
@@ -270,17 +284,17 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     const isEvent = saleSource === "event";
     const headers = [
       "Data", ...(isEvent ? ["Evento"] : []), "Cliente", "Produto", "Qtd", "Custo", "Venda", "Desconto",
-      "Após Desconto", "Lucro Bruto", "Taxa Pgto", "Comissão", "Lucro Líquido", "Forma Pgto"
+      "Após Desconto", "Lucro Bruto", "Taxa Pgto", "Frete", "Pagador Frete", "Comissão", "Lucro Líquido", "Forma Pgto"
     ];
     const rows = detailedRows.map(d => [
       format(parseISO(d.date), "dd/MM/yyyy HH:mm"),
       ...(isEvent ? [d.eventName || "—"] : []),
       d.customer, d.productName, d.quantity, d.totalCost, d.totalSale, d.itemDiscount,
-      d.afterDiscount, d.grossProfit, d.feeAmount, d.partnerCommission, d.netProfit, d.paymentMethod,
+      d.afterDiscount, d.grossProfit, d.feeAmount, d.shippingCost, d.shippingPayer || "—", d.partnerCommission, d.netProfit, d.paymentMethod,
     ]);
     rows.push([
       "TOTAIS", ...(isEvent ? [""] : []), "", "", summary.items, summary.totalCost, summary.revenue + summary.totalDiscount,
-      summary.totalDiscount, summary.revenue, summary.grossProfit, summary.totalFees, summary.totalCommission, summary.totalNet, ""
+      summary.totalDiscount, summary.revenue, summary.grossProfit, summary.totalFees, summary.totalShipping, "", summary.totalCommission, summary.totalNet, ""
     ]);
     downloadXlsx([headers, ...rows], title, `relatorio-${saleSource}-${dateFrom}-a-${dateTo}.xlsx`);
     toast.success("Relatório exportado!");
@@ -330,7 +344,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
         </Card>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <Card><CardContent className="pt-4 pb-4 text-center">
             <DollarSign className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
             <p className="text-xs text-muted-foreground">Faturamento</p>
@@ -350,13 +364,23 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           <Card><CardContent className="pt-4 pb-4 text-center">
             <CreditCard className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
             <p className="text-xs text-muted-foreground">Taxas Pgto</p>
-            <p className="text-lg font-bold text-orange-500">{fmt(summary.totalFees)}</p>
+            <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalFees)}</p>
           </CardContent></Card>
+          {summary.totalShipping > 0 && (
+            <Card><CardContent className="pt-4 pb-4 text-center">
+              <Truck className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
+              <p className="text-xs text-muted-foreground">Frete Total</p>
+              <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalShipping)}</p>
+              {summary.totalSellerShipping > 0 && (
+                <p className="text-xs text-muted-foreground">Vendedora: {fmt(summary.totalSellerShipping)}</p>
+              )}
+            </CardContent></Card>
+          )}
           {summary.totalCommission > 0 && (
             <Card><CardContent className="pt-4 pb-4 text-center">
               <Percent className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
               <p className="text-xs text-muted-foreground">Comissões</p>
-              <p className="text-lg font-bold text-orange-500">{fmt(summary.totalCommission)}</p>
+              <p className="text-lg font-bold text-destructive/70">{fmt(summary.totalCommission)}</p>
             </CardContent></Card>
           )}
           <Card className="border-2 border-primary/30"><CardContent className="pt-4 pb-4 text-center">
@@ -422,6 +446,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
                       <TableHead className="text-right">Custo</TableHead>
                       <TableHead className="text-right">Venda</TableHead>
                       <TableHead className="text-right">Taxa</TableHead>
+                      {summary.totalShipping > 0 && <TableHead className="text-right">Frete</TableHead>}
                       {summary.totalCommission > 0 && <TableHead className="text-right">Comissão</TableHead>}
                       <TableHead className="text-right">Lucro Líq.</TableHead>
                       <TableHead>Pgto</TableHead>
@@ -437,8 +462,18 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
                         <TableCell className="text-right">{row.quantity}</TableCell>
                         <TableCell className="text-right text-destructive text-xs">{fmt(row.totalCost)}</TableCell>
                         <TableCell className="text-right text-xs">{fmt(row.afterDiscount)}</TableCell>
-                        <TableCell className="text-right text-orange-500 text-xs">{fmt(row.feeAmount)}</TableCell>
-                        {summary.totalCommission > 0 && <TableCell className="text-right text-orange-500 text-xs">{fmt(row.partnerCommission)}</TableCell>}
+                        <TableCell className="text-right text-destructive/70 text-xs">{fmt(row.feeAmount)}</TableCell>
+                        {summary.totalShipping > 0 && (
+                          <TableCell className="text-right text-xs">
+                            {row.shippingCost > 0 ? (
+                              <span className={row.shippingPayer === 'seller' ? 'text-destructive' : 'text-muted-foreground'}>
+                                {fmt(row.shippingCost)}
+                                <span className="block text-[10px]">{row.shippingPayer === 'seller' ? 'vendedora' : 'compradora'}</span>
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                        )}
+                        {summary.totalCommission > 0 && <TableCell className="text-right text-destructive/70 text-xs">{fmt(row.partnerCommission)}</TableCell>}
                         <TableCell className={`text-right font-bold text-xs ${row.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>{fmt(row.netProfit)}</TableCell>
                         <TableCell className="text-xs">{row.paymentMethod}</TableCell>
                       </TableRow>
