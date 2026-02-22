@@ -50,6 +50,7 @@ import PartnerPointDetail from "./pages/PartnerPointDetail";
 import PartnerCatalog from "./pages/PartnerCatalog";
 import PartnerContract from "./pages/PartnerContract";
 import StockSetDetector from "./pages/StockSetDetector";
+import FeaturedProducts from "./pages/FeaturedProducts";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
@@ -143,6 +144,7 @@ const AppRoutes = () => (
     <Route path="/tutorial" element={<ProtectedRoute><Tutorial /></ProtectedRoute>} />
     <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
     <Route path="/marketing/whatsapp" element={<ProtectedRoute><WhatsAppCRM /></ProtectedRoute>} />
+    <Route path="/marketing/destaques" element={<ProtectedRoute><FeaturedProducts /></ProtectedRoute>} />
     <Route path="/admin/fidelidade" element={<ProtectedRoute><LoyaltyAdmin /></ProtectedRoute>} />
     <Route path="/admin/bazar" element={<ProtectedRoute><BazarAdmin /></ProtectedRoute>} />
     <Route path="/b2b-orders" element={<ProtectedRoute><B2BOrders /></ProtectedRoute>} />
