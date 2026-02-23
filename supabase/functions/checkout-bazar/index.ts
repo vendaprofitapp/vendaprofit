@@ -84,6 +84,63 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Create sale record with sale_source="bazar"
+    const sellerPrice = Number(item.seller_price) || 0;
+    const storeCommission = Number(item.store_commission) || 0;
+    const finalPrice = Number(item.final_price) || (sellerPrice + storeCommission);
+
+    const { error: saleError } = await supabase.rpc("create_sale_transaction", {
+      payload: {
+        owner_id: item.owner_id,
+        sale: {
+          customer_name: buyer_name,
+          customer_phone: buyer_phone,
+          payment_method: "Dinheiro",
+          subtotal: finalPrice,
+          discount_type: null,
+          discount_value: 0,
+          discount_amount: 0,
+          total: finalPrice,
+          notes: `Venda Bazar VIP (catálogo): ${item.title}`,
+          status: "completed",
+          sale_source: "bazar",
+          shipping_cost: shipping_cost || 0,
+          shipping_company: shipping_carrier || null,
+          shipping_payer: "buyer",
+        },
+        items: [
+          {
+            product_id: null,
+            product_name: item.title,
+            quantity: 1,
+            unit_price: finalPrice,
+            total: finalPrice,
+            source: "bazar",
+          },
+        ],
+        stock_updates: [],
+        financial_splits: [
+          {
+            user_id: item.owner_id,
+            amount: -sellerPrice,
+            type: "cost_recovery",
+            description: `Custo Bazar VIP - repasse ao vendedor: ${item.seller_name || item.seller_phone}`,
+          },
+          {
+            user_id: item.owner_id,
+            amount: storeCommission,
+            type: "profit_share",
+            description: `Comissão Bazar VIP: ${item.title}`,
+          },
+        ],
+      },
+    });
+
+    if (saleError) {
+      console.error("Error creating sale for bazar:", saleError);
+      // Don't fail the checkout — item is already sold
+    }
+
     return new Response(
       JSON.stringify({ success: true, item: updated }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
