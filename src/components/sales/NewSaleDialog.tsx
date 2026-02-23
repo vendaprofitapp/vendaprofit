@@ -157,6 +157,16 @@ interface ConsortiumSaleData {
   customerPhone: string;
 }
 
+interface BazarItemData {
+  bazarItemId: string;
+  title: string;
+  sellerPrice: number;   // cost
+  storeCommission: number; // profit
+  finalPrice: number;     // sale price
+  sellerName: string | null;
+  sellerPhone: string | null;
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -181,6 +191,8 @@ interface NewSaleDialogProps {
   onPartnerPointOrderProcessed?: () => void;
   consortiumSaleData?: ConsortiumSaleData | null;
   onConsortiumSaleProcessed?: () => void;
+  bazarItemData?: BazarItemData | null;
+  onBazarItemProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -200,6 +212,8 @@ export default function NewSaleDialog({
   onPartnerPointOrderProcessed,
   consortiumSaleData,
   onConsortiumSaleProcessed,
+  bazarItemData,
+  onBazarItemProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -251,7 +265,7 @@ export default function NewSaleDialog({
   // Auto-detect active event session from localStorage
   useEffect(() => {
     if (!open) return;
-    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData) return;
+    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData || bazarItemData) return;
     const activeEvent = localStorage.getItem("vp_active_event_name") || localStorage.getItem("vp_last_event_name");
     if (activeEvent && manualSaleSource === "manual") {
       setManualSaleSource("event");
@@ -859,6 +873,40 @@ export default function NewSaleDialog({
     }
   }, [open, consignmentProcessed, onConsignmentProcessed]);
 
+  // ─── Load bazar item data into cart ────────────────────────
+  const [bazarItemProcessed, setBazarItemProcessed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !bazarItemData || bazarItemProcessed || !user) return;
+
+    const bazarProduct: Product = {
+      id: `bazar_${bazarItemData.bazarItemId}`,
+      name: bazarItemData.title,
+      price: bazarItemData.finalPrice,
+      cost_price: bazarItemData.sellerPrice, // seller_price = custo
+      stock_quantity: 1,
+      owner_id: user.id,
+      group_id: null,
+      category: "Bazar VIP",
+      color: null,
+      size: null,
+    };
+    (bazarProduct as any)._isExternalItem = true;
+
+    setCart([{ product: bazarProduct, quantity: 1, isPartnerStock: false }]);
+    setCustomerName("");
+    setCustomerPhone("");
+    setNotes(`Venda Bazar VIP: ${bazarItemData.title}`);
+    setBazarItemProcessed(true);
+  }, [open, bazarItemData, bazarItemProcessed, user]);
+
+  useEffect(() => {
+    if (!open && bazarItemProcessed) {
+      setBazarItemProcessed(false);
+      onBazarItemProcessed?.();
+    }
+  }, [open, bazarItemProcessed, onBazarItemProcessed]);
+
   // ─── Load catalog order data into cart ─────────────────────
   const [catalogOrderProcessed, setCatalogOrderProcessed] = useState(false);
 
@@ -1276,7 +1324,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
@@ -1363,6 +1411,17 @@ export default function NewSaleDialog({
         }
         queryClient.invalidateQueries({ queryKey: ["consortium-items"] });
         queryClient.invalidateQueries({ queryKey: ["consortium-participants"] });
+      }
+      // Mark bazar item as sold after successful sale
+      if (bazarItemData?.bazarItemId) {
+        await supabase
+          .from("bazar_items")
+          .update({
+            status: "sold",
+            sold_at: new Date().toISOString(),
+          })
+          .eq("id", bazarItemData.bazarItemId);
+        queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
       }
 
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
@@ -1841,7 +1900,7 @@ export default function NewSaleDialog({
               />
 
               {/* Sale Origin Selector - only for manual sales */}
-              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && (
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
                 <div className="space-y-2">
                   <Label>Origem da Venda</Label>
                   <Select value={manualSaleSource} onValueChange={(v) => { setManualSaleSource(v); if (v !== "event") setManualEventName(""); }}>
@@ -1871,6 +1930,16 @@ export default function NewSaleDialog({
                   <Badge variant="secondary" className="bg-purple-500/10 text-purple-600">Consórcio</Badge>
                   <span className="text-sm text-muted-foreground">
                     Crédito de R$ {consortiumSaleData.creditAmount.toFixed(2)} aplicado como desconto
+                  </span>
+                </div>
+              )}
+
+              {/* Bazar sale indicator */}
+              {bazarItemData && (
+                <div className="bg-primary/10 rounded-lg p-3 flex items-center gap-2">
+                  <Badge variant="secondary">Bazar VIP</Badge>
+                  <span className="text-sm text-muted-foreground">
+                    Custo vendedor: R$ {bazarItemData.sellerPrice.toFixed(2).replace(".", ",")} • Comissão: R$ {bazarItemData.storeCommission.toFixed(2).replace(".", ",")}
                   </span>
                 </div>
               )}

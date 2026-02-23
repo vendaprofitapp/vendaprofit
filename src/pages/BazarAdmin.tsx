@@ -11,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users, Pencil, Trash2, ShoppingCart } from "lucide-react";
+import { CheckCircle, XCircle, Package, Phone, User, Loader2, Truck, Tag, DollarSign, Users, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { BazarPermissionsTab } from "@/components/bazar/BazarPermissionsTab";
 import { BazarItemEditDialog } from "@/components/bazar/BazarItemEditDialog";
-import { BazarMarkSoldDialog } from "@/components/bazar/BazarMarkSoldDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -153,7 +153,7 @@ function BazarItemCard({ item, tab, commissions, setCommissions, subcategories: 
             </Button>
             {tab === "approved" && (
               <Button size="sm" className="flex-1" onClick={() => onMarkSold(item)}>
-                <ShoppingCart className="h-4 w-4 mr-1" /> Vendido
+                <ArrowRightLeft className="h-4 w-4 mr-1" /> Converter em Venda
               </Button>
             )}
             <Button size="sm" variant="destructive" onClick={() => onDelete(item)}>
@@ -275,11 +275,11 @@ function SoldDetails({ item }: { item: any }) {
 
 export default function BazarAdmin() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("permissions");
   const [commissions, setCommissions] = useState<Record<string, string>>({});
   const [editItem, setEditItem] = useState<any>(null);
-  const [soldItem, setSoldItem] = useState<any>(null);
   const [deleteItem, setDeleteItem] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedSubcategories, setSelectedSubcategories] = useState<Record<string, string>>({});
@@ -360,6 +360,30 @@ export default function BazarAdmin() {
     }
   };
 
+  const handleConvertToSale = (item: any) => {
+    // Clear any persisted sale form data so bazar data takes priority
+    const keysToClean = [
+      "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
+      "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
+      "sales_notes", "sales_dueDate", "sales_installments", "sales_installmentDetails",
+      "sales_shippingData",
+    ];
+    keysToClean.forEach(k => sessionStorage.removeItem(k));
+
+    navigate("/sales", {
+      state: {
+        fromBazarItem: true,
+        bazarItemId: item.id,
+        bazarTitle: item.title,
+        bazarSellerPrice: Number(item.seller_price),
+        bazarStoreCommission: Number(item.store_commission || 0),
+        bazarFinalPrice: Number(item.final_price || item.seller_price),
+        bazarSellerName: item.seller_name || null,
+        bazarSellerPhone: item.seller_phone || null,
+      },
+    });
+  };
+
   const refreshList = () => queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
 
   return (
@@ -407,7 +431,7 @@ export default function BazarAdmin() {
                     isPending={updateMutation.isPending}
                     onEdit={setEditItem}
                     onDelete={setDeleteItem}
-                    onMarkSold={setSoldItem}
+                    onMarkSold={handleConvertToSale}
                   />
                 ))}
               </div>
@@ -426,15 +450,6 @@ export default function BazarAdmin() {
         />
       )}
 
-      {/* Mark Sold Dialog */}
-      {soldItem && (
-        <BazarMarkSoldDialog
-          item={soldItem}
-          open={!!soldItem}
-          onOpenChange={(o) => { if (!o) setSoldItem(null); }}
-          onSaved={refreshList}
-        />
-      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
