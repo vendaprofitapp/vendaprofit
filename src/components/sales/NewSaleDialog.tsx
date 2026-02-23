@@ -236,7 +236,7 @@ export default function NewSaleDialog({
   const [discountType, setDiscountType, clearDiscountType] = useFormPersistence("sales_discountType", "fixed");
   const [discountValue, setDiscountValue, clearDiscountValue] = useFormPersistence("sales_discountValue", 0);
   const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
-  const [manualSaleSource, setManualSaleSource, clearManualSaleSource] = useFormPersistence("sales_manualSource", "manual");
+  const [manualSaleSource, setManualSaleSource, clearManualSaleSource] = useFormPersistence("sales_manualSource", "");
   const [manualEventName, setManualEventName, clearManualEventName] = useFormPersistence("sales_manualEventName", "");
   const [dueDate, setDueDate, clearDueDate] = useFormPersistence("sales_dueDate", "");
   const [installments, setInstallments, clearInstallments] = useFormPersistence("sales_installments", 1);
@@ -275,7 +275,7 @@ export default function NewSaleDialog({
     if (!open) return;
     if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData || bazarItemData) return;
     const activeEvent = localStorage.getItem("vp_active_event_name") || localStorage.getItem("vp_last_event_name");
-    if (activeEvent && manualSaleSource === "manual") {
+    if (activeEvent && (!manualSaleSource || manualSaleSource === "manual")) {
       setManualSaleSource("event");
       setManualEventName(activeEvent);
     }
@@ -317,6 +317,7 @@ export default function NewSaleDialog({
 
   // ─── Manual consortium selection (from sale source selector) ──
   const [manualConsortiumParticipantId, setManualConsortiumParticipantId, clearManualConsortiumParticipantId] = useFormPersistence("sales_manualConsortiumPId", "");
+  const [manualBazarItems, setManualBazarItems] = useState<Array<{ id: string; title: string; final_price: number; seller_price: number; store_commission: number; image_url: string | null; seller_name: string | null; seller_phone: string | null; status: string }>>([]);
 
   // ─── Data queries ──────────────────────────────────────────
   const { data: ownProducts = [] } = useQuery({
@@ -502,6 +503,22 @@ export default function NewSaleDialog({
     enabled: !!user && open,
   });
 
+  // ─── Bazar items for manual bazar sale source ─────────────
+  const { data: bazarItemsForSale = [] } = useQuery({
+    queryKey: ["bazar-items-for-manual-sale", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bazar_items")
+        .select("id, title, final_price, seller_price, store_commission, image_url, seller_name, seller_phone, status")
+        .eq("owner_id", user?.id)
+        .eq("status", "approved")
+        .order("title");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user && open && manualSaleSource === "bazar",
+  });
+
   const { data: ownProductPartnerships = [] } = useQuery({
     queryKey: ["own-product-partnerships", user?.id],
     queryFn: async () => {
@@ -557,23 +574,79 @@ export default function NewSaleDialog({
   }, [cart, discountType, discountValue, shippingData]);
 
   // ─── Filtered products (debounced + sliced to 30) ─────────
+  // When bazar source is active, filter bazar items instead
+  const filteredBazarItems = useMemo(() => {
+    if (manualSaleSource !== "bazar" || !debouncedSearch || debouncedSearch.length < 2) return [];
+    const search = debouncedSearch.toLowerCase();
+    return bazarItemsForSale.filter(b => b.title.toLowerCase().includes(search)).slice(0, 30);
+  }, [bazarItemsForSale, debouncedSearch, manualSaleSource]);
+
   const filteredOwnProducts = useMemo(() => {
+    if (manualSaleSource === "bazar") return []; // Block normal products in bazar mode
     if (!debouncedSearch || debouncedSearch.length < 2) return [];
     const search = debouncedSearch.toLowerCase();
     return ownProducts.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
-  }, [ownProducts, debouncedSearch]);
+  }, [ownProducts, debouncedSearch, manualSaleSource]);
 
   const filteredPartnerProducts = useMemo(() => {
+    if (manualSaleSource === "bazar") return []; // Block partner products in bazar mode
     if (!debouncedSearch || debouncedSearch.length < 2) return [];
     const search = debouncedSearch.toLowerCase();
     return partnerProductsForList.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
-  }, [partnerProductsForList, debouncedSearch]);
+  }, [partnerProductsForList, debouncedSearch, manualSaleSource]);
 
   const combinedProductsList = useMemo(() => {
     const ownIds = new Set(filteredOwnProducts.map(p => p.id));
     const uniquePartnerProducts = filteredPartnerProducts.filter(pp => !ownIds.has(pp.id));
     return { ownProducts: filteredOwnProducts, partnerProducts: uniquePartnerProducts };
   }, [filteredOwnProducts, filteredPartnerProducts]);
+
+  // ─── Add bazar item to cart ─────────────────────────────────
+  const addBazarItemToCart = useCallback((bazarItem: typeof bazarItemsForSale[0]) => {
+    const price = Number(bazarItem.final_price || bazarItem.seller_price);
+    const bazarProduct: Product = {
+      id: `bazar_${bazarItem.id}`,
+      name: bazarItem.title,
+      price,
+      stock_quantity: 1,
+      owner_id: user?.id || "",
+      group_id: null,
+      category: "",
+      color: null,
+      size: null,
+    } as any;
+    (bazarProduct as any)._isExternalItem = true;
+    (bazarProduct as any)._bazarMeta = {
+      bazarItemId: bazarItem.id,
+      sellerPrice: bazarItem.seller_price || 0,
+      storeCommission: bazarItem.store_commission || 0,
+      sellerName: bazarItem.seller_name,
+      sellerPhone: bazarItem.seller_phone,
+    };
+    setCart(prev => {
+      if (prev.some(i => i.product.id === bazarProduct.id)) {
+        toast({ title: "Item já está no carrinho", variant: "destructive" });
+        return prev;
+      }
+      return [...prev, { product: bazarProduct, quantity: 1, isPartnerStock: false }];
+    });
+    setProductSearch("");
+  }, [user, setCart]);
+
+  // ─── Sale source change handler (clears cart on incompatible switch) ──
+  const handleSaleSourceChange = useCallback((newSource: string) => {
+    const currentIsBazar = manualSaleSource === "bazar";
+    const newIsBazar = newSource === "bazar";
+    // If switching between bazar and non-bazar and cart has items, clear it
+    if (cart.length > 0 && currentIsBazar !== newIsBazar) {
+      setCart([]);
+      toast({ title: "Carrinho limpo", description: currentIsBazar ? "Itens do Bazar removidos ao trocar a origem." : "Itens removidos ao entrar no modo Bazar VIP." });
+    }
+    setManualSaleSource(newSource);
+    if (newSource !== "event") setManualEventName("");
+    if (newSource !== "partner_point") { setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); }
+    if (newSource !== "consortium") { setManualConsortiumParticipantId(""); }
+  }, [manualSaleSource, cart.length, setCart, setManualSaleSource, setManualEventName, setManualPartnerPointId, setManualPartnerPointCommType, setManualConsortiumParticipantId]);
 
   // ─── Cart functions (useCallback) ─────────────────────────
   const addToCart = useCallback((product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
@@ -1173,9 +1246,10 @@ export default function NewSaleDialog({
     clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
     setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
-    setDiscountValue(0); setNotes(""); setManualSaleSource("manual"); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
+    setDiscountValue(0); setNotes(""); setManualSaleSource(""); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
     setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); setManualConsortiumParticipantId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
+    setManualBazarItems([]);
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
     setImportCartCode(""); setImportedCartId(null);
   }, [clearCart, clearCustomerName, clearCustomerPhone, clearCustomerInstagram, clearPaymentMethodId, clearDiscountType, clearDiscountValue, clearNotes, clearDueDate, clearInstallments, clearShippingData, setCart, setCustomerName, setCustomerPhone, setCustomerInstagram, setSelectedPaymentMethodId, setInstallments, setDiscountType, setDiscountValue, setNotes, setDueDate, setShippingData]);
@@ -1592,6 +1666,26 @@ export default function NewSaleDialog({
         queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
       }
 
+      // Mark bazar items as sold for MANUAL bazar sales
+      if (!bazarItemData && manualSaleSource === "bazar" && cart.length > 0) {
+        const manualBazarItemIds = cart
+          .map(item => (item.product as any)?._bazarMeta?.bazarItemId)
+          .filter(Boolean) as string[];
+        if (manualBazarItemIds.length > 0) {
+          await supabase
+            .from("bazar_items")
+            .update({
+              status: "sold",
+              sold_at: new Date().toISOString(),
+              buyer_name: customerName || null,
+              buyer_phone: customerPhone || null,
+            })
+            .in("id", manualBazarItemIds);
+          queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+          queryClient.invalidateQueries({ queryKey: ["bazar-items-for-manual-sale"] });
+        }
+      }
+
       // Deduct consortium participant balance for manual consortium sales
       if (!consortiumSaleData && manualSaleSource === "consortium" && manualConsortiumParticipantId) {
         const participant = consortiumParticipantsWithCredit.find(p => p.id === manualConsortiumParticipantId);
@@ -1759,19 +1853,59 @@ export default function NewSaleDialog({
             {/* Left: Product Selection */}
             <div className="space-y-4">
               <div>
-                <Label>Buscar Produto</Label>
+                <Label>{manualSaleSource === "bazar" ? "Buscar Item do Bazar" : "Buscar Produto"}</Label>
                 <Input
                   ref={productSearchInputRef}
-                  placeholder="Digite o nome do produto..."
+                  placeholder={manualSaleSource === "bazar" ? "Buscar item aprovado no Bazar VIP..." : "Digite o nome do produto..."}
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  onKeyUp={(e) => { if (e.key === 'Enter' && productSearch.length >= 2) handleProductSearch(productSearch); }}
+                  onKeyUp={(e) => { if (e.key === 'Enter' && productSearch.length >= 2 && manualSaleSource !== "bazar") handleProductSearch(productSearch); }}
                   autoComplete="off"
                 />
-                {directGroupIds.length > 0 && <p className="text-xs text-muted-foreground mt-1">Mostrando seu estoque e de parceiras 1-1</p>}
+                {manualSaleSource === "bazar" && <p className="text-xs text-muted-foreground mt-1">Mostrando apenas itens aprovados do Bazar VIP</p>}
+                {manualSaleSource !== "bazar" && directGroupIds.length > 0 && <p className="text-xs text-muted-foreground mt-1">Mostrando seu estoque e de parceiras 1-1</p>}
               </div>
 
-              {debouncedSearch && debouncedSearch.length >= 2 && (
+              {/* Bazar items search results */}
+              {manualSaleSource === "bazar" && debouncedSearch && debouncedSearch.length >= 2 && (
+                <div className="border rounded-lg max-h-64 overflow-y-auto">
+                  {filteredBazarItems.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground">Nenhum item aprovado encontrado no Bazar VIP</p>
+                  ) : (
+                    <>
+                      <div className="px-3 py-1.5 bg-secondary/30 text-xs font-medium text-muted-foreground">🛍️ Itens do Bazar VIP</div>
+                      {filteredBazarItems.map((item) => {
+                        const price = Number(item.final_price || item.seller_price);
+                        const alreadyInCart = cart.some(c => c.product.id === `bazar_${item.id}`);
+                        return (
+                          <button
+                            type="button"
+                            key={item.id}
+                            disabled={alreadyInCart}
+                            className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0 disabled:opacity-50"
+                            onClick={() => addBazarItemToCart(item)}
+                          >
+                            <div className="flex items-center gap-2">
+                              {item.image_url && <img src={item.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
+                              <div>
+                                <p className="font-medium">{item.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.seller_name || "Vendedor"} • Comissão: R$ {(item.store_commission || 0).toFixed(2).replace(".", ",")}
+                                  {alreadyInCart && <span className="text-primary ml-1">• Já no carrinho</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <p className="font-semibold">R$ {price.toFixed(2).replace(".", ",")}</p>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Normal products search results (hidden in bazar mode) */}
+              {manualSaleSource !== "bazar" && debouncedSearch && debouncedSearch.length >= 2 && (
                 <div className="border rounded-lg max-h-64 overflow-y-auto">
                   {combinedProductsList.ownProducts.length === 0 && combinedProductsList.partnerProducts.length === 0 ? (
                     <div className="p-3">
@@ -1883,6 +2017,107 @@ export default function NewSaleDialog({
 
             {/* Right: Sale Details */}
             <div className="space-y-4">
+              {/* Sale Origin Selector - BEFORE customer, only for manual sales */}
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
+                <div className="space-y-2">
+                  <Label>Origem da Venda <span className="text-destructive">*</span></Label>
+                  <Select value={manualSaleSource} onValueChange={handleSaleSourceChange}>
+                    <SelectTrigger className={!manualSaleSource ? "border-destructive" : ""}>
+                      <SelectValue placeholder="Selecione a origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Venda Direta</SelectItem>
+                      <SelectItem value="catalog">Minha Loja</SelectItem>
+                      <SelectItem value="event">Evento</SelectItem>
+                      <SelectItem value="consignment">Bolsa Consignada</SelectItem>
+                      <SelectItem value="consortium">Consórcio</SelectItem>
+                      <SelectItem value="bazar">Bazar VIP</SelectItem>
+                      <SelectItem value="partner_point">Ponto Parceiro</SelectItem>
+                      <SelectItem value="instagram">Instagram / Redes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {!manualSaleSource && <p className="text-xs text-destructive">Selecione a origem da venda para continuar</p>}
+
+                  {/* Event name input */}
+                  {manualSaleSource === "event" && (
+                    <Input placeholder="Nome do evento..." value={manualEventName} onChange={(e) => setManualEventName(e.target.value)} />
+                  )}
+
+                  {/* Partner Point selector */}
+                  {manualSaleSource === "partner_point" && (
+                    <div className="space-y-2">
+                      <Select value={manualPartnerPointId} onValueChange={(v) => {
+                        setManualPartnerPointId(v);
+                        const pp = userPartnerPoints.find(p => p.id === v);
+                        if (pp && pp.rack_commission_pct === pp.pickup_commission_pct) setManualPartnerPointCommType("rack");
+                      }}>
+                        <SelectTrigger><SelectValue placeholder="Selecione o ponto parceiro..." /></SelectTrigger>
+                        <SelectContent>
+                          {userPartnerPoints.map(pp => (
+                            <SelectItem key={pp.id} value={pp.id}>{pp.name} {pp.contact_name ? `(${pp.contact_name})` : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {manualPartnerPointId && (() => {
+                        const pp = userPartnerPoints.find(p => p.id === manualPartnerPointId);
+                        if (!pp) return null;
+                        const rack = pp.rack_commission_pct ?? 0;
+                        const pickup = pp.pickup_commission_pct ?? 0;
+                        if (rack === pickup) return <p className="text-xs text-muted-foreground">Comissão: {rack}%</p>;
+                        return (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Tipo de Comissão</Label>
+                            <Select value={manualPartnerPointCommType} onValueChange={(v: "rack" | "pickup") => setManualPartnerPointCommType(v)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="rack">Arara ({rack}%)</SelectItem>
+                                <SelectItem value="pickup">Retirada ({pickup}%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Consortium participant selector */}
+                  {manualSaleSource === "consortium" && (
+                    <div className="space-y-2">
+                      {consortiumParticipantsWithCredit.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhum participante contemplado com crédito disponível.</p>
+                      ) : (
+                        <Select value={manualConsortiumParticipantId} onValueChange={(v) => {
+                          setManualConsortiumParticipantId(v);
+                          const participant = consortiumParticipantsWithCredit.find(p => p.id === v);
+                          if (participant) {
+                            setCustomerName(participant.customerName || "");
+                            setCustomerPhone(participant.customerPhone || "");
+                            const creditToApply = Math.min(participant.balance, subtotal);
+                            setDiscountType("fixed");
+                            setDiscountValue(creditToApply);
+                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} disponível`);
+                          }
+                        }}>
+                          <SelectTrigger><SelectValue placeholder="Selecione o participante..." /></SelectTrigger>
+                          <SelectContent>
+                            {consortiumParticipantsWithCredit.map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.customerName} — {p.consortiumName} (R$ {p.balance.toFixed(2)})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bazar mode indicator */}
+                  {manualSaleSource === "bazar" && (
+                    <div className="bg-primary/10 rounded-lg p-2 text-xs text-muted-foreground">
+                      🛍️ Modo Bazar VIP ativo — apenas itens aprovados do bazar podem ser adicionados.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Customer Selection */}
               <div>
                 <Label>Selecionar Cliente Cadastrado</Label>
@@ -2082,129 +2317,7 @@ export default function NewSaleDialog({
                 saleId={saleIdForShipping}
               />
 
-              {/* Sale Origin Selector - only for manual sales */}
-              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
-                <div className="space-y-2">
-                  <Label>Origem da Venda</Label>
-                  <Select value={manualSaleSource} onValueChange={(v) => {
-                    setManualSaleSource(v);
-                    if (v !== "event") setManualEventName("");
-                    if (v !== "partner_point") { setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); }
-                    if (v !== "consortium") { setManualConsortiumParticipantId(""); }
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a origem" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Venda Direta</SelectItem>
-                      <SelectItem value="catalog">Minha Loja</SelectItem>
-                      <SelectItem value="event">Evento</SelectItem>
-                      <SelectItem value="consignment">Bolsa Consignada</SelectItem>
-                      <SelectItem value="consortium">Consórcio</SelectItem>
-                      <SelectItem value="bazar">Bazar VIP</SelectItem>
-                      <SelectItem value="partner_point">Ponto Parceiro</SelectItem>
-                      <SelectItem value="instagram">Instagram / Redes</SelectItem>
-                    </SelectContent>
-                  </Select>
 
-                  {/* Event name input */}
-                  {manualSaleSource === "event" && (
-                    <Input
-                      placeholder="Nome do evento..."
-                      value={manualEventName}
-                      onChange={(e) => setManualEventName(e.target.value)}
-                    />
-                  )}
-
-                  {/* Partner Point selector */}
-                  {manualSaleSource === "partner_point" && (
-                    <div className="space-y-2">
-                      <Select value={manualPartnerPointId} onValueChange={(v) => {
-                        setManualPartnerPointId(v);
-                        // Auto-detect if commissions differ
-                        const pp = userPartnerPoints.find(p => p.id === v);
-                        if (pp && pp.rack_commission_pct === pp.pickup_commission_pct) {
-                          setManualPartnerPointCommType("rack");
-                        }
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o ponto parceiro..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {userPartnerPoints.map(pp => (
-                            <SelectItem key={pp.id} value={pp.id}>
-                              {pp.name} {pp.contact_name ? `(${pp.contact_name})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      {/* Commission type selector - only if rack != pickup */}
-                      {manualPartnerPointId && (() => {
-                        const pp = userPartnerPoints.find(p => p.id === manualPartnerPointId);
-                        if (!pp) return null;
-                        const rack = pp.rack_commission_pct ?? 0;
-                        const pickup = pp.pickup_commission_pct ?? 0;
-                        if (rack === pickup) {
-                          return (
-                            <p className="text-xs text-muted-foreground">
-                              Comissão: {rack}%
-                            </p>
-                          );
-                        }
-                        return (
-                          <div className="space-y-1">
-                            <Label className="text-xs">Tipo de Comissão</Label>
-                            <Select value={manualPartnerPointCommType} onValueChange={(v: "rack" | "pickup") => setManualPartnerPointCommType(v)}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="rack">Arara ({rack}%)</SelectItem>
-                                <SelectItem value="pickup">Retirada ({pickup}%)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Consortium participant selector */}
-                  {manualSaleSource === "consortium" && (
-                    <div className="space-y-2">
-                      {consortiumParticipantsWithCredit.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">Nenhum participante contemplado com crédito disponível.</p>
-                      ) : (
-                        <Select value={manualConsortiumParticipantId} onValueChange={(v) => {
-                          setManualConsortiumParticipantId(v);
-                          // Apply credit as discount
-                          const participant = consortiumParticipantsWithCredit.find(p => p.id === v);
-                          if (participant) {
-                            setCustomerName(participant.customerName || "");
-                            setCustomerPhone(participant.customerPhone || "");
-                            const creditToApply = Math.min(participant.balance, subtotal);
-                            setDiscountType("fixed");
-                            setDiscountValue(creditToApply);
-                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} disponível`);
-                          }
-                        }}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o participante..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {consortiumParticipantsWithCredit.map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.customerName} — {p.consortiumName} (R$ {p.balance.toFixed(2)})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Consortium sale indicator */}
               {consortiumSaleData && (
@@ -2258,9 +2371,13 @@ export default function NewSaleDialog({
               )}
 
               <Button className="w-full" size="lg"
-                disabled={cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 || createSaleMutation.isPending}
+                disabled={
+                  cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
+                  createSaleMutation.isPending ||
+                  (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !manualSaleSource)
+                }
                 onClick={() => createSaleMutation.mutate()}>
-                {createSaleMutation.isPending ? "Registrando..." : "Finalizar Venda"}
+                {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData ? "Selecione a Origem" : "Finalizar Venda"}
               </Button>
             </div>
           </div>
