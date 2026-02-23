@@ -311,6 +311,13 @@ export default function NewSaleDialog({
   const [showVoiceSaleDialog, setShowVoiceSaleDialog] = useState(false);
   const [voiceSaleCommand, setVoiceSaleCommand] = useState<NewSaleDialogProps["voiceCommand"]>(null);
 
+  // ─── Manual partner point selection (from sale source selector) ──
+  const [manualPartnerPointId, setManualPartnerPointId, clearManualPartnerPointId] = useFormPersistence("sales_manualPartnerPointId", "");
+  const [manualPartnerPointCommType, setManualPartnerPointCommType, clearManualPartnerPointCommType] = useFormPersistence<"rack" | "pickup">("sales_manualPPCommType", "rack");
+
+  // ─── Manual consortium selection (from sale source selector) ──
+  const [manualConsortiumParticipantId, setManualConsortiumParticipantId, clearManualConsortiumParticipantId] = useFormPersistence("sales_manualConsortiumPId", "");
+
   // ─── Data queries ──────────────────────────────────────────
   const { data: ownProducts = [] } = useQuery({
     queryKey: ["own-products-for-sale"],
@@ -453,6 +460,46 @@ export default function NewSaleDialog({
       return Array.from(uniqueById.values()) as (Product & { isPartner: boolean; ownerName: string })[];
     },
     enabled: !!user && open && directGroupIds.length > 0 && profiles.length > 0,
+  });
+
+  // ─── Partner Points for manual sale source selector ────────
+  const { data: userPartnerPoints = [] } = useQuery({
+    queryKey: ["partner-points-for-sale", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partner_points")
+        .select("id, name, rack_commission_pct, pickup_commission_pct, contact_name")
+        .eq("owner_id", user?.id)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && open,
+  });
+
+  // ─── Consortium participants with credit for manual sale source selector ──
+  const { data: consortiumParticipantsWithCredit = [] } = useQuery({
+    queryKey: ["consortium-participants-with-credit", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("consortium_participants")
+        .select(`id, customer_name, customer_phone, current_balance, consortium_id, consortiums!inner(name, owner_id)`)
+        .gt("current_balance", 0)
+        .eq("is_drawn", true)
+        .eq("status", "active");
+      if (error) throw error;
+      // Filter by owner
+      return (data as any[] || []).filter(p => p.consortiums?.owner_id === user?.id).map(p => ({
+        id: p.id,
+        customerName: p.customer_name,
+        customerPhone: p.customer_phone,
+        balance: p.current_balance,
+        consortiumId: p.consortium_id,
+        consortiumName: p.consortiums.name,
+      }));
+    },
+    enabled: !!user && open,
   });
 
   const { data: ownProductPartnerships = [] } = useQuery({
@@ -1122,10 +1169,12 @@ export default function NewSaleDialog({
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
     clearPaymentMethodId(); clearDiscountType(); clearDiscountValue(); clearNotes();
     clearManualSaleSource(); clearManualEventName();
+    clearManualPartnerPointId(); clearManualPartnerPointCommType(); clearManualConsortiumParticipantId();
     clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
     setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
     setDiscountValue(0); setNotes(""); setManualSaleSource("manual"); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
+    setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); setManualConsortiumParticipantId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
     setImportCartCode(""); setImportedCartId(null);
@@ -1302,6 +1351,46 @@ export default function NewSaleDialog({
         }
       }
 
+      // Override financial splits for MANUAL partner point selection
+      if (!partnerPointOrderData && manualSaleSource === "partner_point" && manualPartnerPointId) {
+        const selectedPP = userPartnerPoints.find(pp => pp.id === manualPartnerPointId);
+        if (selectedPP) {
+          financialSplitsPayload.length = 0;
+          const commPct = manualPartnerPointCommType === "pickup"
+            ? (selectedPP.pickup_commission_pct ?? selectedPP.rack_commission_pct ?? 0)
+            : (selectedPP.rack_commission_pct ?? 0);
+          const paymentFeeAmount = (feePercent / 100) * total;
+          const netAfterFees = total - paymentFeeAmount;
+          const partnerCommission = netAfterFees * (commPct / 100);
+          const sellerNet = netAfterFees - partnerCommission;
+
+          financialSplitsPayload.push({
+            user_id: user.id,
+            amount: sellerNet,
+            type: 'profit_share',
+            description: `Receita líquida — venda no ${selectedPP.name}`,
+          });
+
+          if (partnerCommission > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: -partnerCommission,
+              type: 'group_commission',
+              description: `Comissão ${commPct}% — ${selectedPP.name}`,
+            });
+          }
+
+          if (paymentFeeAmount > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: -paymentFeeAmount,
+              type: 'payment_fee',
+              description: `Taxa ${feePercent.toFixed(1)}% ${paymentMethodName} — ${selectedPP.name}`,
+            });
+          }
+        }
+      }
+
       // Build a set of known product IDs from ownProducts + partnerProducts
       const knownProductIds = new Set([
         ...ownProducts.map(p => p.id),
@@ -1386,7 +1475,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
@@ -1501,6 +1590,21 @@ export default function NewSaleDialog({
           })
           .eq("id", bazarItemData.bazarItemId);
         queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+      }
+
+      // Deduct consortium participant balance for manual consortium sales
+      if (!consortiumSaleData && manualSaleSource === "consortium" && manualConsortiumParticipantId) {
+        const participant = consortiumParticipantsWithCredit.find(p => p.id === manualConsortiumParticipantId);
+        if (participant) {
+          const creditUsed = Math.min(participant.balance, total + discountAmount);
+          const remaining = Math.max(0, participant.balance - creditUsed);
+          await supabase
+            .from("consortium_participants")
+            .update({ current_balance: remaining })
+            .eq("id", manualConsortiumParticipantId);
+          queryClient.invalidateQueries({ queryKey: ["consortium-participants"] });
+          queryClient.invalidateQueries({ queryKey: ["consortium-participants-with-credit"] });
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
@@ -1982,23 +2086,122 @@ export default function NewSaleDialog({
               {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
                 <div className="space-y-2">
                   <Label>Origem da Venda</Label>
-                  <Select value={manualSaleSource} onValueChange={(v) => { setManualSaleSource(v); if (v !== "event") setManualEventName(""); }}>
+                  <Select value={manualSaleSource} onValueChange={(v) => {
+                    setManualSaleSource(v);
+                    if (v !== "event") setManualEventName("");
+                    if (v !== "partner_point") { setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); }
+                    if (v !== "consortium") { setManualConsortiumParticipantId(""); }
+                  }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a origem" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="manual">Venda Direta</SelectItem>
-                      <SelectItem value="event">Evento</SelectItem>
                       <SelectItem value="catalog">Minha Loja</SelectItem>
-                      <SelectItem value="instagram">Instagram / Rede Social</SelectItem>
+                      <SelectItem value="event">Evento</SelectItem>
+                      <SelectItem value="consignment">Bolsa Consignada</SelectItem>
+                      <SelectItem value="consortium">Consórcio</SelectItem>
+                      <SelectItem value="bazar">Bazar VIP</SelectItem>
+                      <SelectItem value="partner_point">Ponto Parceiro</SelectItem>
+                      <SelectItem value="instagram">Instagram / Redes</SelectItem>
                     </SelectContent>
                   </Select>
+
+                  {/* Event name input */}
                   {manualSaleSource === "event" && (
                     <Input
                       placeholder="Nome do evento..."
                       value={manualEventName}
                       onChange={(e) => setManualEventName(e.target.value)}
                     />
+                  )}
+
+                  {/* Partner Point selector */}
+                  {manualSaleSource === "partner_point" && (
+                    <div className="space-y-2">
+                      <Select value={manualPartnerPointId} onValueChange={(v) => {
+                        setManualPartnerPointId(v);
+                        // Auto-detect if commissions differ
+                        const pp = userPartnerPoints.find(p => p.id === v);
+                        if (pp && pp.rack_commission_pct === pp.pickup_commission_pct) {
+                          setManualPartnerPointCommType("rack");
+                        }
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o ponto parceiro..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {userPartnerPoints.map(pp => (
+                            <SelectItem key={pp.id} value={pp.id}>
+                              {pp.name} {pp.contact_name ? `(${pp.contact_name})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Commission type selector - only if rack != pickup */}
+                      {manualPartnerPointId && (() => {
+                        const pp = userPartnerPoints.find(p => p.id === manualPartnerPointId);
+                        if (!pp) return null;
+                        const rack = pp.rack_commission_pct ?? 0;
+                        const pickup = pp.pickup_commission_pct ?? 0;
+                        if (rack === pickup) {
+                          return (
+                            <p className="text-xs text-muted-foreground">
+                              Comissão: {rack}%
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Tipo de Comissão</Label>
+                            <Select value={manualPartnerPointCommType} onValueChange={(v: "rack" | "pickup") => setManualPartnerPointCommType(v)}>
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="rack">Arara ({rack}%)</SelectItem>
+                                <SelectItem value="pickup">Retirada ({pickup}%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Consortium participant selector */}
+                  {manualSaleSource === "consortium" && (
+                    <div className="space-y-2">
+                      {consortiumParticipantsWithCredit.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhum participante contemplado com crédito disponível.</p>
+                      ) : (
+                        <Select value={manualConsortiumParticipantId} onValueChange={(v) => {
+                          setManualConsortiumParticipantId(v);
+                          // Apply credit as discount
+                          const participant = consortiumParticipantsWithCredit.find(p => p.id === v);
+                          if (participant) {
+                            setCustomerName(participant.customerName || "");
+                            setCustomerPhone(participant.customerPhone || "");
+                            const creditToApply = Math.min(participant.balance, subtotal);
+                            setDiscountType("fixed");
+                            setDiscountValue(creditToApply);
+                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} disponível`);
+                          }
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o participante..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {consortiumParticipantsWithCredit.map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.customerName} — {p.consortiumName} (R$ {p.balance.toFixed(2)})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
