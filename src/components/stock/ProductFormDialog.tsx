@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import imageCompression from "browser-image-compression";
 import { Button } from "@/components/ui/button";
 import {
@@ -114,7 +115,7 @@ export function ProductFormDialog({
   const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
   const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
 
-  const [form, setForm] = useState({
+  const defaultForm = {
     name: "",
     description: "",
     mainCategory: "",
@@ -133,7 +134,13 @@ export function ProductFormDialog({
     width_cm: "",
     height_cm: "",
     length_cm: "",
-  });
+  };
+
+  // Only persist for new product creation (not edit/duplicate)
+  const shouldPersist = !editingProduct && !duplicatingProduct;
+  const persistKey = shouldPersist ? `stock_form_${user?.id || "anon"}` : `stock_form_noop_${Date.now()}`;
+
+  const [form, setForm, clearFormPersistence] = useFormPersistence(persistKey, defaultForm);
 
   // --- React Query: suppliers with 5min staleTime ---
   const { data: suppliers = [] } = useQuery({
@@ -244,12 +251,20 @@ export function ProductFormDialog({
       setProductVariants(createDefaultVariants());
       setExistingImageUrls([]);
     } else {
-      resetForm();
-      if (initialProductName) {
+      // New product: only reset if no persisted data exists
+      const hasPersistedData = form.name || form.price || form.mainCategory || form.description;
+      if (!hasPersistedData) {
+        resetForm();
+      }
+      if (initialProductName && !form.name) {
         setForm(prev => ({ ...prev, name: initialProductName }));
       }
+      // Initialize default variants if empty
+      if (productVariants.length === 0) {
+        setProductVariants(createDefaultVariants());
+      }
     }
-  }, [editingProduct, duplicatingProduct, open, initialProductName]);
+  }, [editingProduct, duplicatingProduct, open]);
 
   const resetForm = () => {
     setForm({
@@ -258,6 +273,7 @@ export function ProductFormDialog({
       video_url: null, model: "", color_label: "", custom_detail: "",
       weight_grams: "", width_cm: "", height_cm: "", length_cm: "",
     });
+    clearFormPersistence();
     newImagePreviews.forEach(url => URL.revokeObjectURL(url));
     setExistingImageUrls([]);
     setNewImageFiles([]);
