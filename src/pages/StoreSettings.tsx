@@ -848,12 +848,12 @@ export default function StoreSettings() {
         </Card>
 
         {/* 2 - Informações Básicas (URL + WhatsApp) */}
-        {(!formData.store_slug || !formData.store_name) && (
+        {!formData.store_slug && (
           <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/50 bg-destructive/5 text-destructive text-sm">
             <span className="text-base">⚠️</span>
             <div>
-              <p className="font-semibold">Campos obrigatórios não preenchidos</p>
-              <p className="text-muted-foreground mt-0.5">Preencha o <strong>Nome da Loja</strong> e a <strong>URL da Loja</strong> abaixo para habilitar o botão "Salvar Configurações".</p>
+              <p className="font-semibold">Campo obrigatório não preenchido</p>
+              <p className="text-muted-foreground mt-0.5">Preencha a <strong>URL da Loja</strong> abaixo para habilitar o botão "Salvar Configurações".</p>
             </div>
           </div>
         )}
@@ -864,13 +864,12 @@ export default function StoreSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="store_name">Nome da Loja *</Label>
+              <Label htmlFor="store_name">Nome da Loja</Label>
               <Input
                 id="store_name"
                 value={formData.store_name}
                 onChange={(e) => setFormData(prev => ({ ...prev, store_name: e.target.value }))}
                 placeholder="Ex: Loja da Maria"
-                className={!formData.store_name ? "border-destructive" : ""}
               />
             </div>
 
@@ -1536,7 +1535,7 @@ export default function StoreSettings() {
         <div className="sticky bottom-0 z-10 flex justify-end bg-background/95 backdrop-blur border-t border-border py-3 px-1 -mx-1">
           <Button 
             onClick={() => saveMutation.mutate()}
-            disabled={!formData.store_slug || !formData.store_name || saveMutation.isPending}
+            disabled={!formData.store_slug || saveMutation.isPending}
             size="lg"
           >
             {saveMutation.isPending ? "Salvando..." : "Salvar Configurações"}
