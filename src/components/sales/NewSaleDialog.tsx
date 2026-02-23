@@ -783,14 +783,16 @@ export default function NewSaleDialog({
         } else {
           matchedProduct = ownProducts.find(p => p.id === sci.product_id);
         }
+        const isRealProduct = !!matchedProduct;
         const product: Product = matchedProduct ? {
           ...matchedProduct,
           isB2B: sci.source === "b2b" ? true : (matchedProduct.isB2B || !!matchedProduct.b2b_source_product_id),
         } : {
           id: sci.product_id || crypto.randomUUID(), name: sci.product_name, price: sci.unit_price,
-          stock_quantity: 0, owner_id: user?.id || "", group_id: null, category: "", color: sci.variant_color,
+          stock_quantity: 999, owner_id: user?.id || "", group_id: null, category: "", color: sci.variant_color,
           size: sci.selected_size, isB2B: sci.source === "b2b", b2b_source_product_id: sci.source === "b2b" ? "imported" : null,
-        };
+          _isExternalItem: true,
+        } as any;
         items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: null });
       }
       setCart(items);
@@ -889,7 +891,8 @@ export default function NewSaleDialog({
               category: "",
               color: item.variant_color || null,
               size: item.selected_size || null,
-            };
+              _isExternalItem: true,
+            } as any;
         return { product, quantity: item.quantity, isPartnerStock: false };
       });
 
@@ -1000,7 +1003,8 @@ export default function NewSaleDialog({
               category: "",
               color: item.variant_color || null,
               size: item.selected_size || null,
-            };
+              _isExternalItem: true,
+            } as any;
         return { product, quantity: item.quantity, isPartnerStock: false };
       });
 
@@ -1201,15 +1205,19 @@ export default function NewSaleDialog({
         if (item.isPartnerStock) { itemSource = 'partner'; }
         else if (item.product.isB2B || !!item.product.b2b_source_product_id) { itemSource = 'b2b'; itemB2bStatus = 'pending'; }
         else if (item.product.owner_id === user.id && item.product.stock_quantity <= 0) { itemSource = 'b2b'; itemB2bStatus = 'pending'; }
-        return { product_id: item.product.id, product_name: productName, quantity: item.quantity, unit_price: item.product.price, total: item.product.price * item.quantity, source: itemSource, b2b_status: itemB2bStatus };
+        // External items (bazar, etc.) don't exist in products table — set product_id to null
+        const isExternal = !!(item.product as any)._isExternalItem;
+        return { product_id: isExternal ? null : item.product.id, product_name: productName, quantity: item.quantity, unit_price: item.product.price, total: item.product.price * item.quantity, source: isExternal ? 'bazar' : itemSource, b2b_status: itemB2bStatus };
       });
 
       // ── Build stock updates payload ──
-      const stockUpdates = ownStockItems.map(item => ({
-        product_id: item.product.id,
-        variant_id: item.variant?.id || null,
-        quantity: item.quantity,
-      }));
+      const stockUpdates = ownStockItems
+        .filter(item => !(item.product as any)._isExternalItem)
+        .map(item => ({
+          product_id: item.product.id,
+          variant_id: item.variant?.id || null,
+          quantity: item.quantity,
+        }));
 
       // ── Build new_customer payload ──
       let newCustomerPayload = null;
