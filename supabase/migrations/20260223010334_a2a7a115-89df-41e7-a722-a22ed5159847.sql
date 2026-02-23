@@ -1,0 +1,1 @@
+ALTER TABLE public.sale_items ALTER COLUMN product_id DROP NOT NULL;
