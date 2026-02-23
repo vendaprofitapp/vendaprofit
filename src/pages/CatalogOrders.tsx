@@ -149,98 +149,26 @@ export default function CatalogOrders() {
     setConvertingOrderId(order.id);
 
     try {
-      // Fetch approved bazar items for this owner to detect matches
+      // Fetch approved bazar items for this owner to detect matches by product_id
       const { data: bazarItems } = await supabase
         .from("bazar_items")
         .select("id, title, seller_price, store_commission, final_price, seller_name, seller_phone, owner_id")
         .eq("owner_id", user.id)
         .eq("status", "approved");
 
+      // Build map by title (lowercase) for matching
       const bazarMap = new Map<string, any>();
       for (const bi of bazarItems || []) {
         bazarMap.set(bi.title.trim().toLowerCase(), bi);
       }
 
       const orderItems = order.saved_cart_items || [];
-      const bazarMatched: Array<{ orderItem: any; bazarItem: any }> = [];
-      const regularItems: any[] = [];
 
-      for (const item of orderItems) {
+      // Enrich items with bazar metadata when detected
+      const items = orderItems.map((item: any) => {
         const matchKey = (item.product_name || "").trim().toLowerCase();
         const bazarItem = bazarMap.get(matchKey);
-        if (bazarItem) {
-          bazarMatched.push({ orderItem: item, bazarItem });
-        } else {
-          regularItems.push(item);
-        }
-      }
-
-      // Auto-register bazar items as separate sales
-      for (const { orderItem, bazarItem } of bazarMatched) {
-        const sellerPrice = Number(bazarItem.seller_price) || 0;
-        const storeCommission = Number(bazarItem.store_commission) || 0;
-        const finalPrice = Number(bazarItem.final_price) || (sellerPrice + storeCommission);
-
-        const { error: saleError } = await supabase.rpc("create_sale_transaction", {
-          payload: {
-            owner_id: user.id,
-            sale: {
-              customer_name: order.customer_name,
-              customer_phone: order.customer_phone,
-              payment_method: "Dinheiro",
-              subtotal: finalPrice * orderItem.quantity,
-              discount_type: null,
-              discount_value: 0,
-              discount_amount: 0,
-              total: finalPrice * orderItem.quantity,
-              notes: `Venda Bazar VIP (via pedido catálogo #${order.short_code}): ${bazarItem.title}`,
-              status: "completed",
-              sale_source: "bazar",
-            },
-            items: [{
-              product_id: null,
-              product_name: bazarItem.title,
-              quantity: orderItem.quantity,
-              unit_price: finalPrice,
-              total: finalPrice * orderItem.quantity,
-              source: "bazar",
-            }],
-            stock_updates: [],
-            financial_splits: [
-              {
-                user_id: user.id,
-                amount: sellerPrice * orderItem.quantity,
-                type: "cost_recovery",
-                description: `Custo Bazar VIP - repasse ao vendedor: ${bazarItem.seller_name || bazarItem.seller_phone || ""}`,
-              },
-              {
-                user_id: user.id,
-                amount: storeCommission * orderItem.quantity,
-                type: "profit_share",
-                description: `Comissão Bazar VIP: ${bazarItem.title}`,
-              },
-            ],
-          },
-        });
-
-        if (!saleError) {
-          // Mark bazar item as sold
-          await supabase
-            .from("bazar_items")
-            .update({ status: "sold", sold_at: new Date().toISOString(), buyer_name: order.customer_name, buyer_phone: order.customer_phone })
-            .eq("id", bazarItem.id);
-        }
-      }
-
-      if (bazarMatched.length > 0) {
-        toast.success(`${bazarMatched.length} item(ns) do Bazar registrados automaticamente como venda(s) separada(s)`);
-        queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
-        queryClient.invalidateQueries({ queryKey: ["sales"] });
-      }
-
-      if (regularItems.length > 0) {
-        // Navigate to PDV with non-bazar items
-        const items = regularItems.map((item: any) => ({
+        return {
           product_id: item.product_id,
           product_name: item.product_name,
           quantity: item.quantity,
@@ -248,26 +176,42 @@ export default function CatalogOrders() {
           variant_color: item.variant_color,
           selected_size: item.selected_size,
           source: item.source,
-        }));
-        const regularTotal = regularItems.reduce((sum: number, i: any) => sum + (i.unit_price * i.quantity), 0);
-        navigate("/sales", {
-          state: {
-            fromCatalogOrder: true,
-            catalogOrderId: order.id,
-            customer_name: order.customer_name,
-            customer_phone: order.customer_phone,
-            items,
-            total: regularTotal,
-          },
-        });
-      } else {
-        // All items were bazar — mark order as converted directly
-        await supabase.from("saved_carts").update({ status: "converted" } as any).eq("id", order.id);
-        queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
-        toast.success("Pedido convertido! Todas as vendas do Bazar foram registradas.");
-      }
+          // Bazar metadata (null if not a bazar item)
+          ...(bazarItem ? {
+            isBazarItem: true,
+            bazarItemId: bazarItem.id,
+            bazarSellerPrice: Number(bazarItem.seller_price) || 0,
+            bazarStoreCommission: Number(bazarItem.store_commission) || 0,
+            bazarFinalPrice: Number(bazarItem.final_price) || (Number(bazarItem.seller_price) + Number(bazarItem.store_commission)),
+            bazarSellerName: bazarItem.seller_name,
+            bazarSellerPhone: bazarItem.seller_phone,
+          } : {}),
+        };
+      });
+
+      const orderTotal = orderItems.reduce((sum: number, i: any) => sum + (i.unit_price * i.quantity), 0);
+
+      // Clear persisted sale form and navigate ALL items to PDV
+      const keysToClean = [
+        "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
+        "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
+        "sales_notes", "sales_dueDate", "sales_installments", "sales_installmentDetails",
+        "sales_shippingData",
+      ];
+      keysToClean.forEach(k => sessionStorage.removeItem(k));
+
+      navigate("/sales", {
+        state: {
+          fromCatalogOrder: true,
+          catalogOrderId: order.id,
+          customer_name: order.customer_name,
+          customer_phone: order.customer_phone,
+          items,
+          total: orderTotal,
+        },
+      });
     } catch (err: any) {
-      console.error("Error converting order with bazar detection:", err);
+      console.error("Error converting order:", err);
       toast.error("Erro ao converter pedido");
     } finally {
       setConvertingOrderId(null);
