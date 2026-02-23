@@ -2705,7 +2705,7 @@ export type Database = {
           b2b_status: string | null
           created_at: string
           id: string
-          product_id: string
+          product_id: string | null
           product_name: string
           quantity: number
           sale_id: string
@@ -2717,7 +2717,7 @@ export type Database = {
           b2b_status?: string | null
           created_at?: string
           id?: string
-          product_id: string
+          product_id?: string | null
           product_name: string
           quantity?: number
           sale_id: string
@@ -2729,7 +2729,7 @@ export type Database = {
           b2b_status?: string | null
           created_at?: string
           id?: string
-          product_id?: string
+          product_id?: string | null
           product_name?: string
           quantity?: number
           sale_id?: string
