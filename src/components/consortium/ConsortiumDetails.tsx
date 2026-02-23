@@ -86,7 +86,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
   const queryClient = useQueryClient();
   const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
   const [isDrawingOpen, setIsDrawingOpen] = useState(false);
-  const [selectedWinner, setSelectedWinner] = useState<{ winnerId: string; participantName: string; balance: number } | null>(null);
+  const [selectedWinner, setSelectedWinner] = useState<{ winnerId: string; participantId: string; participantName: string; balance: number } | null>(null);
   const [selectedPaymentParticipant, setSelectedPaymentParticipant] = useState<{ id: string; name: string; paymentDueDay: number } | null>(null);
   const [selectedWithdrawParticipant, setSelectedWithdrawParticipant] = useState<{ id: string; name: string } | null>(null);
   const [participantForm, setParticipantForm] = useState({
@@ -615,6 +615,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                       })}
                       onViewItems={() => winner && setSelectedWinner({ 
                         winnerId: winner.id, 
+                        participantId: p.id,
                         participantName: p.customer_name,
                         balance: p.current_balance
                       })}
@@ -704,6 +705,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                                     size="sm"
                                     onClick={() => setSelectedWinner({ 
                                       winnerId: winner.id, 
+                                      participantId: p.id,
                                       participantName: p.customer_name,
                                       balance: p.current_balance
                                     })}
@@ -774,6 +776,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                               const participant = participants.find((p) => p.id === w.participant_id);
                               setSelectedWinner({ 
                                 winnerId: w.id, 
+                                participantId: w.participant_id,
                                 participantName: w.participant_name,
                                 balance: participant?.current_balance || 0
                               });
@@ -835,6 +838,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
                                   const participant = participants.find((p) => p.id === w.participant_id);
                                   setSelectedWinner({ 
                                     winnerId: w.id, 
+                                    participantId: w.participant_id,
                                     participantName: w.participant_name,
                                     balance: participant?.current_balance || 0
                                   });
@@ -864,7 +868,9 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
       {selectedWinner && (
         <ConsortiumItemsDialog
           winnerId={selectedWinner.winnerId}
+          participantId={selectedWinner.participantId}
           participantName={selectedWinner.participantName}
+          consortiumId={consortium.id}
           consortiumValue={consortium.total_value}
           participantBalance={selectedWinner.balance}
           open={!!selectedWinner}

@@ -136,6 +136,27 @@ interface PartnerPointOrderData {
   rackCommissionPct: number;
 }
 
+interface ConsortiumSaleData {
+  consortiumId: string;
+  winnerId: string;
+  participantId: string;
+  participantName: string;
+  cartId: string;
+  creditAmount: number;
+  cartTotal: number;
+  items: Array<{
+    product_id: string | null;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    variant_color?: string | null;
+    selected_size?: string | null;
+    source?: string | null;
+  }>;
+  customerName: string;
+  customerPhone: string;
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -158,6 +179,8 @@ interface NewSaleDialogProps {
   onCatalogOrderProcessed?: () => void;
   partnerPointOrderData?: PartnerPointOrderData | null;
   onPartnerPointOrderProcessed?: () => void;
+  consortiumSaleData?: ConsortiumSaleData | null;
+  onConsortiumSaleProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -175,6 +198,8 @@ export default function NewSaleDialog({
   onCatalogOrderProcessed,
   partnerPointOrderData,
   onPartnerPointOrderProcessed,
+  consortiumSaleData,
+  onConsortiumSaleProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -226,7 +251,7 @@ export default function NewSaleDialog({
   // Auto-detect active event session from localStorage
   useEffect(() => {
     if (!open) return;
-    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData) return;
+    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData) return;
     const activeEvent = localStorage.getItem("vp_active_event_name") || localStorage.getItem("vp_last_event_name");
     if (activeEvent && manualSaleSource === "manual") {
       setManualSaleSource("event");
@@ -944,6 +969,64 @@ export default function NewSaleDialog({
     }
   }, [open, partnerPointProcessed, onPartnerPointOrderProcessed]);
 
+  // ─── Load consortium sale data into cart ──────────────────
+  const [consortiumProcessed, setConsortiumProcessed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !consortiumSaleData || consortiumProcessed || !user) return;
+
+    const loadConsortiumItems = async () => {
+      const productIds = consortiumSaleData.items.map(i => i.product_id).filter(Boolean) as string[];
+      let products: any[] = [];
+      if (productIds.length > 0) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds);
+        if (!error && data) products = data;
+      }
+
+      const cartItems: CartItem[] = consortiumSaleData.items.map(item => {
+        const dbProduct = products.find(p => p.id === item.product_id);
+        const product: Product = dbProduct
+          ? { ...dbProduct, isB2B: false }
+          : {
+              id: item.product_id || crypto.randomUUID(),
+              name: item.product_name,
+              price: item.unit_price,
+              stock_quantity: item.quantity,
+              owner_id: user.id,
+              group_id: null,
+              category: "",
+              color: item.variant_color || null,
+              size: item.selected_size || null,
+            };
+        return { product, quantity: item.quantity, isPartnerStock: false };
+      });
+
+      setCart(cartItems);
+      setCustomerName(consortiumSaleData.customerName || "");
+      setCustomerPhone(consortiumSaleData.customerPhone || "");
+      
+      // Apply consortium credit as fixed discount
+      const creditToApply = Math.min(consortiumSaleData.creditAmount, consortiumSaleData.cartTotal);
+      setDiscountType("fixed");
+      setDiscountValue(creditToApply);
+      setNotes(`Venda consórcio — Crédito R$ ${creditToApply.toFixed(2)} aplicado como desconto`);
+      setManualSaleSource("consortium");
+      setConsortiumProcessed(true);
+    };
+
+    loadConsortiumItems();
+  }, [open, consortiumSaleData, consortiumProcessed, user]);
+
+  useEffect(() => {
+    if (!open && consortiumProcessed) {
+      setConsortiumProcessed(false);
+      onConsortiumSaleProcessed?.();
+    }
+  }, [open, consortiumProcessed, onConsortiumSaleProcessed]);
+
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
@@ -1179,7 +1262,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "catalog" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
@@ -1248,6 +1331,24 @@ export default function NewSaleDialog({
           } as any)
           .eq("id", partnerPointOrderData.partnerPointSaleId);
         queryClient.invalidateQueries({ queryKey: ["partner-point-orders"] });
+      }
+      // Mark consortium cart as converted and update participant balance
+      if (consortiumSaleData?.cartId) {
+        await supabase
+          .from("saved_carts")
+          .update({ status: "converted" } as any)
+          .eq("id", consortiumSaleData.cartId);
+        
+        // If credit > cart total, save remaining as participant balance
+        const creditRemaining = consortiumSaleData.creditAmount - consortiumSaleData.cartTotal;
+        if (creditRemaining > 0) {
+          await supabase
+            .from("consortium_participants")
+            .update({ current_balance: creditRemaining })
+            .eq("id", consortiumSaleData.participantId);
+        }
+        queryClient.invalidateQueries({ queryKey: ["consortium-items"] });
+        queryClient.invalidateQueries({ queryKey: ["consortium-participants"] });
       }
 
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
@@ -1720,7 +1821,7 @@ export default function NewSaleDialog({
               />
 
               {/* Sale Origin Selector - only for manual sales */}
-              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && (
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && (
                 <div className="space-y-2">
                   <Label>Origem da Venda</Label>
                   <Select value={manualSaleSource} onValueChange={(v) => { setManualSaleSource(v); if (v !== "event") setManualEventName(""); }}>
@@ -1744,7 +1845,16 @@ export default function NewSaleDialog({
                 </div>
               )}
 
-              {/* Notes */}
+              {/* Consortium sale indicator */}
+              {consortiumSaleData && (
+                <div className="bg-primary/10 rounded-lg p-3 flex items-center gap-2">
+                  <Badge variant="secondary" className="bg-purple-500/10 text-purple-600">Consórcio</Badge>
+                  <span className="text-sm text-muted-foreground">
+                    Crédito de R$ {consortiumSaleData.creditAmount.toFixed(2)} aplicado como desconto
+                  </span>
+                </div>
+              )}
+
               <div>
                 <Label>Observações</Label>
                 <Textarea placeholder="Observações da venda..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
