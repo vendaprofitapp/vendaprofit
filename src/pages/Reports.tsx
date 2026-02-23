@@ -34,6 +34,28 @@ import { useConsortiumPaymentsInPeriod } from "@/hooks/useConsortiumPaymentsInPe
 
 const COLORS = ["hsl(15, 90%, 55%)", "hsl(25, 95%, 60%)", "hsl(145, 65%, 42%)", "hsl(38, 92%, 50%)", "hsl(220, 10%, 50%)", "hsl(280, 60%, 55%)", "hsl(190, 70%, 45%)"];
 
+const saleSourceLabels: Record<string, string> = {
+  manual: "Venda Direta",
+  catalog: "Minha Loja",
+  event: "Evento",
+  instagram: "Instagram",
+  consignment: "Consignação",
+  bazar: "Bazar VIP",
+  partner_point: "Ponto Parceiro",
+  consortium: "Consórcio",
+  b2b: "B2B",
+  voice: "Voz",
+  estoque_proprio: "Estoque Próprio",
+  estoque_parceria: "Estoque Parceria",
+  estoque_grupo: "Estoque Grupo",
+};
+
+function formatSaleSource(source: string | null, eventName?: string | null): string {
+  if (!source) return "—";
+  if (source === "event" && eventName) return `Evento: ${eventName}`;
+  return saleSourceLabels[source] || source;
+}
+
 const paymentMethodsLabels: Record<string, string> = {
   dinheiro: "Dinheiro",
   pix: "PIX",
@@ -599,6 +621,8 @@ export default function Reports() {
           partnerAmount: hasPartnership ? (saleInfo?.partnerAmount ?? 0) * itemProportion : 0,
           paymentMethod: sale.payment_method,
           isConsortium: false,
+          saleSource: (sale as any).sale_source as string | null,
+          eventName: (sale as any).event_name as string | null,
         };
       });
     });
@@ -628,6 +652,8 @@ export default function Reports() {
       partnerAmount: 0,
       paymentMethod: "Consórcio",
       isConsortium: true,
+      saleSource: "consortium" as string | null,
+      eventName: null as string | null,
     }));
 
     return [...salesEntries, ...consortiumEntries].sort((a, b) => 
@@ -1111,6 +1137,7 @@ export default function Reports() {
             <TableHeader>
               <TableRow>
                 <TableHead>Data</TableHead>
+                <TableHead>Origem</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Produto</TableHead>
                 <TableHead className="text-right">Qtd</TableHead>
@@ -1142,6 +1169,9 @@ export default function Reports() {
                   <TableRow key={`${item.saleId}-${index}`}>
                     <TableCell className="whitespace-nowrap">
                       {format(parseISO(item.date), "dd/MM/yyyy HH:mm")}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {formatSaleSource(item.saleSource, item.eventName)}
                     </TableCell>
                     <TableCell className="max-w-[120px] truncate">{item.customer}</TableCell>
                     <TableCell className="max-w-[150px] truncate">
