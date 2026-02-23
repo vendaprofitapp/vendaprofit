@@ -288,7 +288,7 @@ export function ConsortiumDetails({ consortium, onBack }: Props) {
 
         await supabase
           .from("consortium_participants")
-          .update({ is_drawn: true, drawn_at: new Date().toISOString() })
+          .update({ is_drawn: true, drawn_at: new Date().toISOString(), current_balance: consortium.total_value })
           .eq("id", winner.id);
       }
 
