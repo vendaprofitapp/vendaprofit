@@ -93,6 +93,7 @@ export default function Sales() {
   const [catalogOrderData, setCatalogOrderData] = useState<any>(null);
   const [partnerPointOrderData, setPartnerPointOrderData] = useState<any>(null);
   const [consortiumSaleData, setConsortiumSaleData] = useState<any>(null);
+  const [bazarItemData, setBazarItemData] = useState<any>(null);
 
   // Voice command state for passing to NewSaleDialog
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<{
@@ -218,6 +219,18 @@ export default function Sales() {
     const state = location.state as any;
     if (state?.consignmentData) {
       setConsignmentData(state.consignmentData);
+      setIsNewSaleOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (state?.fromBazarItem) {
+      setBazarItemData({
+        bazarItemId: state.bazarItemId,
+        title: state.bazarTitle,
+        sellerPrice: state.bazarSellerPrice,
+        storeCommission: state.bazarStoreCommission,
+        finalPrice: state.bazarFinalPrice,
+        sellerName: state.bazarSellerName,
+        sellerPhone: state.bazarSellerPhone,
+      });
       setIsNewSaleOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     } else if (state?.fromPartnerPointOrder) {
@@ -433,6 +446,8 @@ export default function Sales() {
         onPartnerPointOrderProcessed={() => setPartnerPointOrderData(null)}
         consortiumSaleData={consortiumSaleData}
         onConsortiumSaleProcessed={() => setConsortiumSaleData(null)}
+        bazarItemData={bazarItemData}
+        onBazarItemProcessed={() => setBazarItemData(null)}
       />
 
       {/* View Sale Dialog */}
