@@ -1709,14 +1709,13 @@ export default function NewSaleDialog({
 
               {/* Deferred payment fields */}
               {customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.is_deferred && (
-                <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden">
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-200">💳 Pagamento a prazo</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
+                  <div className="space-y-3">
+                    <div className="min-w-0">
                       <Label>1ª Data de Vencimento</Label>
-                      <Input type="date" value={dueDate} onChange={(e) => {
+                      <Input type="date" className="w-full min-w-0" value={dueDate} onChange={(e) => {
                         setDueDate(e.target.value);
-                        // Auto-generate installments when date changes
                         if (installments > 1 && e.target.value) {
                           const details = [];
                           const installmentAmount = Math.floor((total / installments) * 100) / 100;
@@ -1733,10 +1732,10 @@ export default function NewSaleDialog({
                         }
                       }} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <Label>Parcelas</Label>
-                      <Input type="number" min="1" max="24" value={installments} onChange={(e) => {
-                        const n = Math.max(1, Math.min(24, Number(e.target.value)));
+                      <Select value={String(installments)} onValueChange={(v) => {
+                        const n = Number(v);
                         setInstallments(n);
                         if (n > 1 && dueDate) {
                           const details = [];
@@ -1754,7 +1753,14 @@ export default function NewSaleDialog({
                         } else {
                           setInstallmentDetails([]);
                         }
-                      }} />
+                      }}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                            <SelectItem key={n} value={String(n)}>{n}x</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   {/* Editable installment details */}
@@ -1763,12 +1769,12 @@ export default function NewSaleDialog({
                       <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Detalhes das parcelas (editável):</p>
                       <div className="max-h-48 overflow-y-auto space-y-1.5">
                         {installmentDetails.map((inst, idx) => (
-                          <div key={idx} className="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_1fr] gap-2 items-center">
+                          <div key={idx} className="space-y-1 sm:space-y-0 sm:grid sm:grid-cols-[auto_1fr_1fr] sm:gap-2 sm:items-center">
                             <span className="text-xs font-medium text-muted-foreground w-6">{idx + 1}x</span>
                             <Input
                               type="date"
                               value={inst.dueDate}
-                              className="h-8 text-sm"
+                              className="h-8 text-sm w-full min-w-0"
                               onChange={(e) => {
                                 setInstallmentDetails(prev => prev.map((item, i) => i === idx ? { ...item, dueDate: e.target.value } : item));
                               }}
@@ -1781,7 +1787,7 @@ export default function NewSaleDialog({
                                 step="0.01"
                                 min="0"
                                 value={inst.amount}
-                                className="h-8 text-sm pl-8"
+                                className="h-8 text-sm pl-8 w-full min-w-0"
                                 onChange={(e) => {
                                   setInstallmentDetails(prev => prev.map((item, i) => i === idx ? { ...item, amount: Number(e.target.value) } : item));
                                 }}
