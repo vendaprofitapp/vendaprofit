@@ -1711,7 +1711,7 @@ export default function NewSaleDialog({
               {customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.is_deferred && (
                 <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-200">💳 Pagamento a prazo</p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label>1ª Data de Vencimento</Label>
                       <Input type="date" value={dueDate} onChange={(e) => {
@@ -1763,7 +1763,7 @@ export default function NewSaleDialog({
                       <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Detalhes das parcelas (editável):</p>
                       <div className="max-h-48 overflow-y-auto space-y-1.5">
                         {installmentDetails.map((inst, idx) => (
-                          <div key={idx} className="grid grid-cols-[auto_1fr_1fr] gap-2 items-center">
+                          <div key={idx} className="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_1fr] gap-2 items-center">
                             <span className="text-xs font-medium text-muted-foreground w-6">{idx + 1}x</span>
                             <Input
                               type="date"
@@ -1802,7 +1802,7 @@ export default function NewSaleDialog({
               )}
 
               {/* Discount */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Tipo de Desconto</Label>
                   <Select value={discountType} onValueChange={(v) => setDiscountType(v)}>
