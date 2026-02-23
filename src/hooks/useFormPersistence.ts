@@ -1,9 +1,10 @@
 import { useState, useCallback } from "react";
 
 /**
- * Substitui useState com persistência automática no sessionStorage.
- * Os dados sobrevivem a recarregamentos de aba (ex: Safari descarrega abas da memória)
- * e são limpos quando a aba é fechada.
+ * Substitui useState com persistência automática no localStorage.
+ * Os dados sobrevivem a recarregamentos, descartes de aba (Memory Saver do Chrome/Edge),
+ * troca de abas e até fechar/reabrir o navegador.
+ * O rascunho só é apagado quando clearValue() é chamado (ex: após submit bem-sucedido).
  *
  * Uso:
  *   const [value, setValue, clearValue] = useFormPersistence("minha_chave", "");
@@ -15,7 +16,7 @@ export function useFormPersistence<T>(
 ): [T, (value: T | ((prev: T) => T)) => void, () => void] {
   const [state, setStateRaw] = useState<T>(() => {
     try {
-      const stored = sessionStorage.getItem(key);
+      const stored = localStorage.getItem(key);
       if (stored === null) return defaultValue;
       return JSON.parse(stored) as T;
     } catch {
@@ -31,9 +32,9 @@ export function useFormPersistence<T>(
             ? (value as (p: T) => T)(prev)
             : value;
         try {
-          sessionStorage.setItem(key, JSON.stringify(next));
+          localStorage.setItem(key, JSON.stringify(next));
         } catch {
-          // sessionStorage indisponível (modo privado, etc.) — sem problema
+          // localStorage indisponível (modo privado, quota excedida) — sem problema
         }
         return next;
       });
@@ -43,7 +44,7 @@ export function useFormPersistence<T>(
 
   const clearPersistence = useCallback(() => {
     try {
-      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
     } catch {
       // sem problema
     }

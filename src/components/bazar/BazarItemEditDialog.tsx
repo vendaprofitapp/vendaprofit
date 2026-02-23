@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,24 @@ interface BazarItemEditDialogProps {
 }
 
 export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: BazarItemEditDialogProps) {
-  const [title, setTitle] = useState(item?.title || "");
-  const [description, setDescription] = useState(item?.description || "");
-  const [sellerPrice, setSellerPrice] = useState(item?.seller_price?.toString().replace(".", ",") || "");
-  const [commission, setCommission] = useState(item?.store_commission?.toString().replace(".", ",") || "0");
-  const [subcategory, setSubcategory] = useState(item?.subcategory || "");
+  const persistKey = item?.id ? `bazar_edit_${item.id}` : `bazar_edit_noop`;
+  const [title, setTitle, clearTitle] = useFormPersistence(persistKey + "_title", item?.title || "");
+  const [description, setDescription, clearDesc] = useFormPersistence(persistKey + "_desc", item?.description || "");
+  const [sellerPrice, setSellerPrice, clearPrice] = useFormPersistence(persistKey + "_price", item?.seller_price?.toString().replace(".", ",") || "");
+  const [commission, setCommission, clearComm] = useFormPersistence(persistKey + "_comm", item?.store_commission?.toString().replace(".", ",") || "0");
+  const [subcategory, setSubcategory, clearSubcat] = useFormPersistence(persistKey + "_subcat", item?.subcategory || "");
   const [saving, setSaving] = useState(false);
+
+  // Sync when item changes
+  useEffect(() => {
+    if (item) {
+      setTitle(item.title || "");
+      setDescription(item.description || "");
+      setSellerPrice(item.seller_price?.toString().replace(".", ",") || "");
+      setCommission(item.store_commission?.toString().replace(".", ",") || "0");
+      setSubcategory(item.subcategory || "");
+    }
+  }, [item?.id]);
 
   // Fetch subcategories for "Bazar VIP"
   const { data: bazarSubcategories = [] } = useQuery({
@@ -61,6 +74,7 @@ export function BazarItemEditDialog({ item, open, onOpenChange, onSaved }: Bazar
 
       if (error) throw error;
       toast.success("Item atualizado!");
+      clearTitle(); clearDesc(); clearPrice(); clearComm(); clearSubcat();
       onSaved();
       onOpenChange(false);
     } catch (err: any) {

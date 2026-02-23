@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,7 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
   const [customMethods, setCustomMethods] = useState<CustomPaymentMethod[]>([]);
   const [selectedMethodIds, setSelectedMethodIds] = useState<string[]>([]);
   const [methodMinAmounts, setMethodMinAmounts] = useState<Record<string, string>>({});
-  const [form, setForm] = useState({
+  const defaultPartnerForm = {
     name: "",
     contact_name: "",
     contact_phone: "",
@@ -45,7 +46,8 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
     notes: "",
     payment_receiver: "partner" as "partner" | "seller",
     cpf_cnpj: "",
-  });
+  };
+  const [form, setForm, clearFormDraft] = useFormPersistence(`partner_form_${user?.id || "anon"}`, defaultPartnerForm);
 
   const set = (field: string, value: string | boolean) =>
     setForm((f) => ({ ...f, [field]: value }));
@@ -117,12 +119,8 @@ export function NewPartnerDialog({ open, onOpenChange, onCreated }: NewPartnerDi
     toast.success("Parceiro cadastrado com sucesso!");
     onCreated();
     onOpenChange(false);
-    setForm({
-      name: "", contact_name: "", contact_phone: "", address: "",
-      rack_commission_pct: "10", pickup_commission_pct: "5", payment_fee_pct: "2",
-      loss_risk_enabled: false, replenishment_cycle_days: "30", min_stock_alert: "3",
-      notes: "", payment_receiver: "partner", cpf_cnpj: "",
-    });
+    setForm(defaultPartnerForm);
+    clearFormDraft();
     setSelectedMethodIds([]);
     setMethodMinAmounts({});
   };

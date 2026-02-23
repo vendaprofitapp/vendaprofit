@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Plus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,19 +58,51 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [categoryType, setCategoryType] = useState("variable");
-  const [category, setCategory] = useState("");
-  const [customCategory, setCustomCategory] = useState("");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split("T")[0]);
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [recurringDay, setRecurringDay] = useState("10");
-  const [splitMode, setSplitMode] = useState("none");
-  const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [customSplitPercent, setCustomSplitPercent] = useState([50]);
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentCount, setInstallmentCount] = useState("2");
+  const persistKey = editingExpense ? `expense_noop_${Date.now()}` : `expense_draft_${user?.id || "anon"}`;
+  const [formDraft, setFormDraft, clearFormDraft] = useFormPersistence(persistKey, {
+    categoryType: "variable",
+    category: "",
+    customCategory: "",
+    amount: "",
+    description: "",
+    expenseDate: new Date().toISOString().split("T")[0],
+    isRecurring: false,
+    recurringDay: "10",
+    splitMode: "none",
+    selectedGroupId: "",
+    customSplitPercent: [50],
+    isInstallment: false,
+    installmentCount: "2",
+  });
+
+  const categoryType = formDraft.categoryType;
+  const category = formDraft.category;
+  const customCategory = formDraft.customCategory;
+  const amount = formDraft.amount;
+  const description = formDraft.description;
+  const expenseDate = formDraft.expenseDate;
+  const isRecurring = formDraft.isRecurring;
+  const recurringDay = formDraft.recurringDay;
+  const splitMode = formDraft.splitMode;
+  const selectedGroupId = formDraft.selectedGroupId;
+  const customSplitPercent = formDraft.customSplitPercent;
+  const isInstallment = formDraft.isInstallment;
+  const installmentCount = formDraft.installmentCount;
+
+  const setCategoryType = (v: string) => setFormDraft(p => ({ ...p, categoryType: v }));
+  const setCategory = (v: string) => setFormDraft(p => ({ ...p, category: v }));
+  const setCustomCategory = (v: string) => setFormDraft(p => ({ ...p, customCategory: v }));
+  const setAmount = (v: string) => setFormDraft(p => ({ ...p, amount: v }));
+  const setDescription = (v: string) => setFormDraft(p => ({ ...p, description: v }));
+  const setExpenseDate = (v: string) => setFormDraft(p => ({ ...p, expenseDate: v }));
+  const setIsRecurring = (v: boolean) => setFormDraft(p => ({ ...p, isRecurring: v }));
+  const setRecurringDay = (v: string) => setFormDraft(p => ({ ...p, recurringDay: v }));
+  const setSplitMode = (v: string) => setFormDraft(p => ({ ...p, splitMode: v }));
+  const setSelectedGroupId = (v: string) => setFormDraft(p => ({ ...p, selectedGroupId: v }));
+  const setCustomSplitPercent = (v: number[]) => setFormDraft(p => ({ ...p, customSplitPercent: v }));
+  const setIsInstallment = (v: boolean) => setFormDraft(p => ({ ...p, isInstallment: v }));
+  const setInstallmentCount = (v: string) => setFormDraft(p => ({ ...p, installmentCount: v }));
+
   const [installments, setInstallments] = useState<Installment[]>([]);
 
   // Fetch user's active partnerships/groups
@@ -143,19 +176,22 @@ export function ExpenseFormDialog({ open, onOpenChange, editingExpense }: Expens
   }, [editingExpense, open]);
 
   const resetForm = () => {
-    setCategoryType("variable");
-    setCategory("");
-    setCustomCategory("");
-    setAmount("");
-    setDescription("");
-    setExpenseDate(new Date().toISOString().split("T")[0]);
-    setIsRecurring(false);
-    setRecurringDay("10");
-    setSplitMode("none");
-    setSelectedGroupId("");
-    setCustomSplitPercent([50]);
-    setIsInstallment(false);
-    setInstallmentCount("2");
+    setFormDraft({
+      categoryType: "variable",
+      category: "",
+      customCategory: "",
+      amount: "",
+      description: "",
+      expenseDate: new Date().toISOString().split("T")[0],
+      isRecurring: false,
+      recurringDay: "10",
+      splitMode: "none",
+      selectedGroupId: "",
+      customSplitPercent: [50],
+      isInstallment: false,
+      installmentCount: "2",
+    });
+    clearFormDraft();
     setInstallments([]);
   };
 
