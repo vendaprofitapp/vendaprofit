@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,9 +59,9 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   const { user } = useAuth();
   const { createConsignment, addItem, requestApproval } = useConsignment();
   const [step, setStep] = useState<"details" | "products" | "review">("details");
-  const [customerId, setCustomerId] = useState<string>("");
-  const [deadlineDays, setDeadlineDays] = useState("7");
-  const [shippingCost, setShippingCost] = useState("");
+  const [customerId, setCustomerId, clearCustomerId] = useFormPersistence(`consignment_customer_${user?.id || "anon"}`, "");
+  const [deadlineDays, setDeadlineDays, clearDeadlineDays] = useFormPersistence(`consignment_deadline_${user?.id || "anon"}`, "7");
+  const [shippingCost, setShippingCost, clearShippingCost] = useFormPersistence(`consignment_shipping_${user?.id || "anon"}`, "");
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -283,8 +284,11 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   const handleClose = () => {
     setStep("details");
     setCustomerId("");
+    clearCustomerId();
     setDeadlineDays("7");
+    clearDeadlineDays();
     setShippingCost("");
+    clearShippingCost();
     setSelectedItems([]);
     setProductSearch("");
     setCreatedConsignment(null);
