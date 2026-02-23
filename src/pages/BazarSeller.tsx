@@ -235,8 +235,8 @@ export default function BazarSeller() {
           open={submissionOpen}
           onOpenChange={setSubmissionOpen}
           ownerId={permission.owner_id}
-          sellerPhone={phone}
-          sellerName={name || undefined}
+          sellerPhone={customer?.phone || phone}
+          sellerName={name || customer?.name || undefined}
           storeSlug={storeInfo?.store_slug || "store"}
         />
       )}
