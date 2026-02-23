@@ -1192,6 +1192,12 @@ export default function NewSaleDialog({
         }
       }
 
+      // Build a set of known product IDs from ownProducts + partnerProducts
+      const knownProductIds = new Set([
+        ...ownProducts.map(p => p.id),
+        ...partnerProductsForList.map(p => p.id),
+      ]);
+
       const itemsPayload = cart.map((item) => {
         let productName = item.product.name;
         if (item.variant) {
@@ -1206,13 +1212,13 @@ export default function NewSaleDialog({
         else if (item.product.isB2B || !!item.product.b2b_source_product_id) { itemSource = 'b2b'; itemB2bStatus = 'pending'; }
         else if (item.product.owner_id === user.id && item.product.stock_quantity <= 0) { itemSource = 'b2b'; itemB2bStatus = 'pending'; }
         // External items (bazar, etc.) don't exist in products table — set product_id to null
-        const isExternal = !!(item.product as any)._isExternalItem;
+        const isExternal = !!(item.product as any)._isExternalItem || !knownProductIds.has(item.product.id);
         return { product_id: isExternal ? null : item.product.id, product_name: productName, quantity: item.quantity, unit_price: item.product.price, total: item.product.price * item.quantity, source: isExternal ? 'bazar' : itemSource, b2b_status: itemB2bStatus };
       });
 
       // ── Build stock updates payload ──
       const stockUpdates = ownStockItems
-        .filter(item => !(item.product as any)._isExternalItem)
+        .filter(item => !(item.product as any)._isExternalItem && knownProductIds.has(item.product.id))
         .map(item => ({
           product_id: item.product.id,
           variant_id: item.variant?.id || null,
