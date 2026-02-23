@@ -1,58 +1,66 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Package, AlertTriangle, ShoppingCart, Clock } from "lucide-react";
+import { Package, AlertTriangle, ShoppingCart, Search, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface Props {
   winnerId: string;
+  participantId: string;
   participantName: string;
+  consortiumId: string;
   consortiumValue: number;
   participantBalance?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-interface ConsortiumItem {
+interface CartItemData {
   id: string;
   product_id: string | null;
   product_name: string;
   quantity: number;
   unit_price: number;
-  total: number;
-  notes: string | null;
+  variant_color: string | null;
+  selected_size: string | null;
+  source: string | null;
 }
 
-interface Product {
+interface ImportedCart {
   id: string;
-  name: string;
-  price: number;
-  stock_quantity: number;
+  short_code: string;
+  customer_name: string;
+  customer_phone: string;
+  total: number;
+  items: CartItemData[];
 }
 
-export function ConsortiumItemsDialog({ 
-  winnerId, 
-  participantName, 
-  consortiumValue, 
+export function ConsortiumItemsDialog({
+  winnerId,
+  participantId,
+  participantName,
+  consortiumId,
+  consortiumValue,
   participantBalance = 0,
-  open, 
-  onOpenChange 
+  open,
+  onOpenChange,
 }: Props) {
   const queryClient = useQueryClient();
-  const [selectedProductId, setSelectedProductId] = useState<string>("");
-  const [manualProduct, setManualProduct] = useState({ name: "", price: "", quantity: "1" });
-  const [isOnOrder, setIsOnOrder] = useState(false);
+  const navigate = useNavigate();
+  const [cartCode, setCartCode] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [importedCart, setImportedCart] = useState<ImportedCart | null>(null);
 
-  // Buscar itens já cadastrados
-  const { data: items = [] } = useQuery({
+  // Buscar itens já cadastrados (para histórico)
+  const { data: existingItems = [] } = useQuery({
     queryKey: ["consortium-items", winnerId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -61,134 +69,124 @@ export function ConsortiumItemsDialog({
         .eq("winner_id", winnerId)
         .order("created_at");
       if (error) throw error;
-      return data as ConsortiumItem[];
+      return data;
     },
     enabled: open,
   });
 
-  // Buscar produtos disponíveis
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-for-consortium"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, price, stock_quantity")
-        .eq("is_active", true)
-        .order("name");
-      if (error) throw error;
-      return data as Product[];
-    },
-    enabled: open,
-  });
-
-  // Calcular valores
-  const totalUsed = items.reduce((sum, item) => sum + Number(item.total), 0);
   const creditAvailable = Number(consortiumValue) + participantBalance;
+  const cartTotal = importedCart?.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0) || 0;
+  const existingTotal = existingItems.reduce((sum, i) => sum + Number(i.total), 0);
+  const totalUsed = cartTotal + existingTotal;
   const remaining = creditAvailable - totalUsed;
   const hasDebt = remaining < 0;
+  const hasCredit = remaining > 0;
 
-  // Adicionar item do catálogo
-  const addFromCatalogMutation = useMutation({
-    mutationFn: async () => {
-      const product = products.find((p) => p.id === selectedProductId);
-      if (!product) throw new Error("Produto não encontrado");
+  // Buscar carrinho por código
+  const handleSearchCart = async () => {
+    if (!cartCode.trim()) return;
+    setIsSearching(true);
+    try {
+      const { data: savedCart, error } = await supabase
+        .from("saved_carts")
+        .select("id, short_code, customer_name, customer_phone, total, status, saved_cart_items(id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source)")
+        .eq("short_code", cartCode.trim().toUpperCase())
+        .maybeSingle();
 
-      const outOfStock = product.stock_quantity <= 0;
-      
-      const { error } = await supabase.from("consortium_items").insert({
-        winner_id: winnerId,
-        product_id: product.id,
-        product_name: product.name,
-        quantity: 1,
-        unit_price: product.price,
-        total: product.price,
-        notes: outOfStock ? "Pedido sob encomenda" : null,
-      });
       if (error) throw error;
-
-      // Se tiver estoque, baixar do estoque
-      if (!outOfStock) {
-        await supabase
-          .from("products")
-          .update({ stock_quantity: product.stock_quantity - 1 })
-          .eq("id", product.id);
+      if (!savedCart) {
+        toast.error("Carrinho não encontrado. Verifique o código.");
+        return;
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["consortium-items", winnerId] });
-      queryClient.invalidateQueries({ queryKey: ["products-for-consortium"] });
-      setSelectedProductId("");
-      toast.success("Produto adicionado!");
-    },
-    onError: (error) => {
-      toast.error("Erro: " + error.message);
-    },
-  });
-
-  // Adicionar item manual
-  const addManualMutation = useMutation({
-    mutationFn: async () => {
-      const quantity = parseInt(manualProduct.quantity) || 1;
-      const unitPrice = parseFloat(manualProduct.price) || 0;
-
-      const { error } = await supabase.from("consortium_items").insert({
-        winner_id: winnerId,
-        product_id: null,
-        product_name: manualProduct.name,
-        quantity,
-        unit_price: unitPrice,
-        total: quantity * unitPrice,
-        notes: isOnOrder ? "Pedido sob encomenda" : null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["consortium-items", winnerId] });
-      setManualProduct({ name: "", price: "", quantity: "1" });
-      setIsOnOrder(false);
-      toast.success("Item adicionado!");
-    },
-    onError: (error) => {
-      toast.error("Erro: " + error.message);
-    },
-  });
-
-  // Remover item
-  const removeItemMutation = useMutation({
-    mutationFn: async (item: ConsortiumItem) => {
-      const { error } = await supabase.from("consortium_items").delete().eq("id", item.id);
-      if (error) throw error;
-
-      // Se tinha produto vinculado e não era encomenda, devolver ao estoque
-      if (item.product_id && !item.notes?.includes("encomenda")) {
-        const product = products.find((p) => p.id === item.product_id);
-        if (product) {
-          await supabase
-            .from("products")
-            .update({ stock_quantity: product.stock_quantity + item.quantity })
-            .eq("id", item.product_id);
-        }
+      if ((savedCart as any).status === "converted") {
+        toast.error("Este carrinho já foi convertido em venda.");
+        return;
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["consortium-items", winnerId] });
-      queryClient.invalidateQueries({ queryKey: ["products-for-consortium"] });
-      toast.success("Item removido!");
-    },
-  });
 
-  // Abrir WhatsApp para cobrar diferença
-  const handlePayDifference = () => {
-    const message = encodeURIComponent(
-      `Olá ${participantName}! 😊\n\nSuas peças do consórcio foram selecionadas e o valor total ficou R$ ${Math.abs(remaining).toFixed(2)} acima do seu crédito.\n\nPodemos acertar essa diferença?`
-    );
-    window.open(`https://wa.me/?text=${message}`, "_blank");
+      setImportedCart({
+        id: savedCart.id,
+        short_code: (savedCart as any).short_code,
+        customer_name: (savedCart as any).customer_name || "",
+        customer_phone: (savedCart as any).customer_phone || "",
+        total: (savedCart as any).total || 0,
+        items: ((savedCart as any).saved_cart_items || []) as CartItemData[],
+      });
+      toast.success(`Carrinho ${cartCode.toUpperCase()} importado!`);
+    } catch (err: any) {
+      toast.error("Erro ao buscar carrinho: " + err.message);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
-  // Verificar se um produto está sem estoque
-  const getProductStock = (productId: string) => {
-    const product = products.find((p) => p.id === productId);
-    return product?.stock_quantity || 0;
+  // Converter em venda
+  const handleConvertToSale = async () => {
+    if (!importedCart || importedCart.items.length === 0) {
+      toast.error("Importe um carrinho primeiro.");
+      return;
+    }
+
+    // Salvar itens na tabela consortium_items para histórico
+    for (const item of importedCart.items) {
+      await supabase.from("consortium_items").insert({
+        winner_id: winnerId,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total: item.unit_price * item.quantity,
+        notes: item.source === "b2b" ? "Pedido sob encomenda" : null,
+      });
+    }
+
+    // Se sobrou crédito, atualizar current_balance do participante
+    if (hasCredit) {
+      await supabase
+        .from("consortium_participants")
+        .update({ current_balance: remaining })
+        .eq("id", participantId);
+    }
+
+    // Preparar dados para o NewSaleDialog via sessionStorage
+    const consortiumSaleData = {
+      consortiumId,
+      winnerId,
+      participantId,
+      participantName,
+      cartId: importedCart.id,
+      creditAmount: creditAvailable,
+      cartTotal,
+      items: importedCart.items.map((item) => ({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        variant_color: item.variant_color,
+        selected_size: item.selected_size,
+        source: item.source,
+      })),
+      customerName: importedCart.customer_name || participantName,
+      customerPhone: importedCart.customer_phone || "",
+    };
+
+    // Limpar dados de venda manual pendente
+    sessionStorage.removeItem("sales_cart");
+    sessionStorage.removeItem("sales_customerName");
+    sessionStorage.removeItem("sales_customerPhone");
+    sessionStorage.removeItem("sales_notes");
+    sessionStorage.removeItem("sales_discountType");
+    sessionStorage.removeItem("sales_discountValue");
+    sessionStorage.removeItem("sales_paymentMethodId");
+
+    // Salvar dados do consórcio
+    sessionStorage.setItem("consortium_sale_data", JSON.stringify(consortiumSaleData));
+
+    queryClient.invalidateQueries({ queryKey: ["consortium-items", winnerId] });
+    onOpenChange(false);
+
+    // Navegar para a página de vendas
+    navigate("/sales");
+    toast.success("Redirecionando para registro de venda...");
   };
 
   return (
@@ -202,8 +200,8 @@ export function ConsortiumItemsDialog({
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Resumo */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Resumo de crédito */}
+          <div className="grid grid-cols-3 gap-3">
             <Card className="bg-muted">
               <CardContent className="p-3 text-center">
                 <p className="text-xs text-muted-foreground">Crédito Total</p>
@@ -219,212 +217,177 @@ export function ConsortiumItemsDialog({
             <Card className={`${hasDebt ? "bg-destructive/10" : "bg-green-500/10"}`}>
               <CardContent className="p-3 text-center">
                 <p className="text-xs text-muted-foreground">
-                  {hasDebt ? "Débito" : "Restante"}
+                  {hasDebt ? "A Pagar" : "Restante"}
                 </p>
                 <p className={`text-lg font-bold ${hasDebt ? "text-destructive" : "text-green-500"}`}>
                   R$ {Math.abs(remaining).toFixed(2)}
                 </p>
               </CardContent>
             </Card>
-            {participantBalance > 0 && (
-              <Card className="bg-primary/10">
-                <CardContent className="p-3 text-center">
-                  <p className="text-xs text-muted-foreground">Bônus Desistência</p>
-                  <p className="text-lg font-bold text-primary">R$ {participantBalance.toFixed(2)}</p>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
-          {/* Alerta de débito com botão de cobrança */}
+          {/* Alerta de débito */}
           {hasDebt && (
             <Card className="bg-destructive/5 border-destructive/20">
-              <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  <div>
-                    <p className="font-medium text-destructive">Valor excede o crédito</p>
-                    <p className="text-sm text-muted-foreground">
-                      Cliente deve pagar R$ {Math.abs(remaining).toFixed(2)} de diferença
-                    </p>
-                  </div>
+              <CardContent className="p-4 flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                <div>
+                  <p className="font-medium text-destructive">Valor excede o crédito</p>
+                  <p className="text-sm text-muted-foreground">
+                    A diferença de R$ {Math.abs(remaining).toFixed(2)} será cobrada na venda
+                  </p>
                 </div>
-                <Button onClick={handlePayDifference} variant="destructive" size="sm" className="gap-2">
-                  <ShoppingCart className="h-4 w-4" />
-                  Cobrar Diferença
-                </Button>
               </CardContent>
             </Card>
           )}
 
-          {/* Adicionar do catálogo */}
-          <div className="space-y-2">
-            <Label>Adicionar do Catálogo</Label>
-            <div className="flex gap-2">
-              <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Selecione um produto" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <div className="flex items-center gap-2">
-                        {p.name} - R$ {Number(p.price).toFixed(2)}
-                        {p.stock_quantity <= 0 && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Encomenda
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button onClick={() => addFromCatalogMutation.mutate()} disabled={!selectedProductId}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          {/* Alerta de crédito restante */}
+          {hasCredit && importedCart && (
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="p-4 flex items-center gap-3">
+                <ShoppingCart className="h-5 w-5 text-primary shrink-0" />
+                <div>
+                  <p className="font-medium text-primary">Crédito restante</p>
+                  <p className="text-sm text-muted-foreground">
+                    R$ {remaining.toFixed(2)} ficará como crédito no consórcio
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Adicionar manual */}
+          {/* Campo de código do carrinho */}
           <div className="space-y-2">
-            <Label>Adicionar Item Manual</Label>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <Label>Código do Carrinho (Minha Loja)</Label>
+            <div className="flex gap-2">
               <Input
-                placeholder="Nome do produto"
-                value={manualProduct.name}
-                onChange={(e) => setManualProduct({ ...manualProduct, name: e.target.value })}
+                placeholder="Ex: VP-A3F2"
+                value={cartCode}
+                onChange={(e) => setCartCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchCart()}
                 className="flex-1"
               />
-              <Input
-                placeholder="Preço"
-                type="number"
-                value={manualProduct.price}
-                onChange={(e) => setManualProduct({ ...manualProduct, price: e.target.value })}
-                className="w-24"
-              />
-              <Input
-                placeholder="Qtd"
-                type="number"
-                value={manualProduct.quantity}
-                onChange={(e) => setManualProduct({ ...manualProduct, quantity: e.target.value })}
-                className="w-16"
-              />
-              <label className="flex items-center gap-2 text-sm whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  checked={isOnOrder}
-                  onChange={(e) => setIsOnOrder(e.target.checked)}
-                />
-                Encomenda
-              </label>
               <Button
-                onClick={() => addManualMutation.mutate()}
-                disabled={!manualProduct.name || !manualProduct.price}
+                onClick={handleSearchCart}
+                disabled={isSearching || !cartCode.trim()}
+                className="gap-2"
               >
-                <Plus className="h-4 w-4" />
+                <Search className="h-4 w-4" />
+                {isSearching ? "Buscando..." : "Buscar"}
               </Button>
             </div>
           </div>
 
-          {/* Lista de itens - Mobile Cards */}
-          <div className="block sm:hidden space-y-2">
-            <Label className="mb-2 block">Itens Cadastrados ({items.length})</Label>
-            {items.length === 0 ? (
-              <Card className="bg-muted/50">
-                <CardContent className="p-4 text-center text-muted-foreground">
-                  Nenhum item cadastrado
-                </CardContent>
-              </Card>
-            ) : (
-              items.map((item) => (
-                <Card key={item.id} className="bg-card">
-                  <CardContent className="p-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{item.product_name}</p>
-                          {item.notes?.includes("encomenda") && (
-                            <Badge variant="secondary" className="text-xs">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Encomenda
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {item.quantity}x R$ {Number(item.unit_price).toFixed(2)}
-                        </p>
-                        <p className="text-sm font-medium">
-                          Total: R$ {Number(item.total).toFixed(2)}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeItemMutation.mutate(item)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+          {/* Itens do carrinho importado */}
+          {importedCart && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Itens do Carrinho ({importedCart.short_code})</Label>
+                <Badge variant="secondary">{importedCart.items.length} itens</Badge>
+              </div>
 
-          {/* Lista de itens - Desktop Table */}
-          <div className="hidden sm:block">
-            <Label className="mb-2 block">Itens Cadastrados</Label>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Produto</TableHead>
-                  <TableHead className="text-center">Qtd</TableHead>
-                  <TableHead className="text-right">Valor Un.</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
-                      Nenhum item cadastrado
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.product_name}</span>
-                          {item.notes?.includes("encomenda") && (
-                            <Badge variant="secondary" className="text-xs">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Encomenda
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">{item.quantity}</TableCell>
-                      <TableCell className="text-right">R$ {Number(item.unit_price).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">R$ {Number(item.total).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeItemMutation.mutate(item)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+              {/* Mobile cards */}
+              <div className="block sm:hidden space-y-2">
+                {importedCart.items.map((item) => (
+                  <Card key={item.id} className="bg-card">
+                    <CardContent className="p-3">
+                      <p className="font-medium">{item.product_name}</p>
+                      {(item.variant_color || item.selected_size) && (
+                        <p className="text-xs text-muted-foreground">
+                          {[item.variant_color, item.selected_size].filter(Boolean).join(" / ")}
+                        </p>
+                      )}
+                      <div className="flex justify-between mt-1">
+                        <span className="text-sm text-muted-foreground">{item.quantity}x R$ {Number(item.unit_price).toFixed(2)}</span>
+                        <span className="text-sm font-medium">R$ {(item.quantity * item.unit_price).toFixed(2)}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="text-center">Qtd</TableHead>
+                      <TableHead className="text-right">Valor Un.</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                     </TableRow>
-                  ))
+                  </TableHeader>
+                  <TableBody>
+                    {importedCart.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{item.product_name}</span>
+                            {(item.variant_color || item.selected_size) && (
+                              <p className="text-xs text-muted-foreground">
+                                {[item.variant_color, item.selected_size].filter(Boolean).join(" / ")}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-right">R$ {Number(item.unit_price).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">R$ {(item.quantity * item.unit_price).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Resumo e botão de conversão */}
+              <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Total do Carrinho</span>
+                  <span className="font-medium">R$ {cartTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-primary">
+                  <span>Crédito do Consórcio</span>
+                  <span className="font-medium">- R$ {Math.min(creditAvailable, cartTotal).toFixed(2)}</span>
+                </div>
+                {hasDebt && (
+                  <div className="flex justify-between text-sm text-destructive border-t pt-2">
+                    <span className="font-bold">A Pagar</span>
+                    <span className="font-bold">R$ {Math.abs(remaining).toFixed(2)}</span>
+                  </div>
                 )}
-              </TableBody>
-            </Table>
-          </div>
+                {!hasDebt && (
+                  <div className="flex justify-between text-sm text-primary border-t pt-2">
+                    <span className="font-bold">Valor Coberto</span>
+                    <span className="font-bold">✓ Crédito cobre 100%</span>
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={handleConvertToSale}
+                className="w-full gap-2"
+                size="lg"
+              >
+                <ArrowRight className="h-4 w-4" />
+                Converter em Venda
+              </Button>
+            </div>
+          )}
+
+          {/* Itens já cadastrados (histórico) */}
+          {existingItems.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Itens Anteriores</Label>
+              <div className="text-sm space-y-1">
+                {existingItems.map((item: any) => (
+                  <div key={item.id} className="flex justify-between text-muted-foreground">
+                    <span>{item.product_name} (x{item.quantity})</span>
+                    <span>R$ {Number(item.total).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

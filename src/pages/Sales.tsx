@@ -92,6 +92,7 @@ export default function Sales() {
   const [consignmentData, setConsignmentData] = useState<any>(null);
   const [catalogOrderData, setCatalogOrderData] = useState<any>(null);
   const [partnerPointOrderData, setPartnerPointOrderData] = useState<any>(null);
+  const [consortiumSaleData, setConsortiumSaleData] = useState<any>(null);
 
   // Voice command state for passing to NewSaleDialog
   const [pendingVoiceCommand, setPendingVoiceCommand] = useState<{
@@ -264,6 +265,19 @@ export default function Sales() {
     }
   }, [location.state]);
 
+  // Handle consortium sale data from sessionStorage
+  useEffect(() => {
+    const raw = sessionStorage.getItem("consortium_sale_data");
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        setConsortiumSaleData(data);
+        setIsNewSaleOpen(true);
+        sessionStorage.removeItem("consortium_sale_data");
+      } catch { /* ignore */ }
+    }
+  }, []);
+
   return (
     <MainLayout>
       <VoiceCommandFeedback isListening={isListening || isProcessing} transcript={transcript} />
@@ -417,6 +431,8 @@ export default function Sales() {
         onCatalogOrderProcessed={() => setCatalogOrderData(null)}
         partnerPointOrderData={partnerPointOrderData}
         onPartnerPointOrderProcessed={() => setPartnerPointOrderData(null)}
+        consortiumSaleData={consortiumSaleData}
+        onConsortiumSaleProcessed={() => setConsortiumSaleData(null)}
       />
 
       {/* View Sale Dialog */}
