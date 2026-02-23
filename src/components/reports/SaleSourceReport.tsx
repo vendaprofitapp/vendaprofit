@@ -38,7 +38,7 @@ interface SaleWithItems {
   shipping_payer: string | null;
   sale_items: {
     id: string;
-    product_id: string;
+    product_id: string | null;
     product_name: string;
     quantity: number;
     unit_price: number;
@@ -217,13 +217,14 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
 
   // Splits by sale
   const splitsBySale = useMemo(() => {
-    const map = new Map<string, { feeAmount: number; partnerCommission: number; myProfit: number; hasSplits: boolean }>();
+    const map = new Map<string, { feeAmount: number; partnerCommission: number; myProfit: number; costRecovery: number; hasSplits: boolean }>();
     for (const split of splitsData) {
-      const existing = map.get(split.sale_id) || { feeAmount: 0, partnerCommission: 0, myProfit: 0, hasSplits: false };
+      const existing = map.get(split.sale_id) || { feeAmount: 0, partnerCommission: 0, myProfit: 0, costRecovery: 0, hasSplits: false };
       existing.hasSplits = true;
       if (split.user_id === user?.id) {
         if (split.type === "payment_fee") existing.feeAmount += Math.abs(split.amount);
         else if (split.type === "group_commission") existing.partnerCommission += Math.abs(split.amount);
+        else if (split.type === "cost_recovery") existing.costRecovery += Math.abs(split.amount);
         existing.myProfit += split.amount;
       } else {
         if (split.type === "group_commission") existing.partnerCommission += Math.abs(split.amount);
@@ -259,9 +260,13 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
       const isSellerShipping = shippingPayer === 'seller' && shippingCost > 0;
 
       return sale.sale_items.map((item, idx) => {
-        const costPrice = costMap.get(item.product_id) || 0;
         const costRatio = (sale as any)._costRatio ?? 1;
-        const totalCost = costPrice * item.quantity * costRatio;
+        // For bazar/external items (no product_id), use cost_recovery from splits
+        const hasCostFromSplits = !item.product_id && saleInfo?.hasSplits && saleInfo.costRecovery > 0;
+        const costPrice = hasCostFromSplits ? 0 : (costMap.get(item.product_id) || 0);
+        const totalCost = hasCostFromSplits
+          ? saleInfo.costRecovery * (Number(item.total) / (Number(sale.subtotal) || 1))
+          : costPrice * item.quantity * costRatio;
         const itemTotal = Number(item.total);
         const proportion = subtotal > 0 ? itemTotal / subtotal : 1 / sale.sale_items.length;
         const itemDiscount = discount * proportion;
