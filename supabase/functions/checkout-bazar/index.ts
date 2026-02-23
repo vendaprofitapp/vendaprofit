@@ -57,34 +57,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update item to sold
-    const { data: updated, error: updateError } = await supabase
-      .from("bazar_items")
-      .update({
-        status: "sold",
-        buyer_name,
-        buyer_phone,
-        buyer_zip,
-        shipping_cost: shipping_cost || 0,
-        shipping_carrier: shipping_carrier || null,
-        shipping_service: shipping_service || null,
-        shipping_source: shipping_source || null,
-        shipping_service_id: shipping_service_id || null,
-        sold_at: new Date().toISOString(),
-      })
-      .eq("id", bazar_item_id)
-      .eq("status", "approved") // Optimistic lock
-      .select()
-      .single();
-
-    if (updateError || !updated) {
-      return new Response(
-        JSON.stringify({ error: "Não foi possível concluir a compra. O item pode já ter sido vendido." }),
-        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Create sale record with sale_source="bazar"
+    // Create sale record FIRST (before marking as sold)
     const sellerPrice = Number(item.seller_price) || 0;
     const storeCommission = Number(item.store_commission) || 0;
     const finalPrice = Number(item.final_price) || (sellerPrice + storeCommission);
@@ -138,7 +111,34 @@ Deno.serve(async (req) => {
 
     if (saleError) {
       console.error("Error creating sale for bazar:", saleError);
-      // Don't fail the checkout — item is already sold
+      return new Response(
+        JSON.stringify({ error: "Erro ao registrar venda. Tente novamente." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Only update item to sold AFTER sale is confirmed
+    const { data: updated, error: updateError } = await supabase
+      .from("bazar_items")
+      .update({
+        status: "sold",
+        buyer_name,
+        buyer_phone,
+        buyer_zip,
+        shipping_cost: shipping_cost || 0,
+        shipping_carrier: shipping_carrier || null,
+        shipping_service: shipping_service || null,
+        shipping_source: shipping_source || null,
+        shipping_service_id: shipping_service_id || null,
+        sold_at: new Date().toISOString(),
+      })
+      .eq("id", bazar_item_id)
+      .eq("status", "approved")
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error("Sale created but failed to update bazar item:", updateError);
     }
 
     return new Response(

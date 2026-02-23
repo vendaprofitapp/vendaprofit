@@ -28,23 +28,11 @@ export function BazarMarkSoldDialog({ item, open, onOpenChange, onSaved }: Bazar
 
     setSaving(true);
     try {
-      // 1. Mark bazar item as sold
-      const { error: updateError } = await supabase.from("bazar_items").update({
-        status: "sold",
-        buyer_name: buyerName.trim(),
-        buyer_phone: buyerPhone.trim() || null,
-        buyer_zip: buyerZip.trim() || null,
-        sold_at: new Date().toISOString(),
-      }).eq("id", item.id);
-
-      if (updateError) throw updateError;
-
-      // 2. Create a sale record with sale_source="bazar"
-      // Cost = seller_price (what the seller receives), Commission = store_commission (store profit)
       const sellerPrice = Number(item.seller_price) || 0;
       const storeCommission = Number(item.store_commission) || 0;
       const finalPrice = Number(item.final_price) || (sellerPrice + storeCommission);
 
+      // 1. Create sale record FIRST (before marking as sold)
       const { data: saleResult, error: saleError } = await supabase.rpc("create_sale_transaction", {
         payload: {
           owner_id: user.id,
@@ -73,14 +61,12 @@ export function BazarMarkSoldDialog({ item, open, onOpenChange, onSaved }: Bazar
           ],
           stock_updates: [],
           financial_splits: [
-            // Cost recovery = seller_price (what goes to the seller, i.e. the "cost")
             {
               user_id: user.id,
               amount: -sellerPrice,
               type: "cost_recovery",
               description: `Custo Bazar VIP - repasse ao vendedor: ${item.seller_name || item.seller_phone}`,
             },
-            // Profit share = store_commission (the store's profit)
             {
               user_id: user.id,
               amount: storeCommission,
@@ -93,11 +79,25 @@ export function BazarMarkSoldDialog({ item, open, onOpenChange, onSaved }: Bazar
 
       if (saleError) throw saleError;
 
+      // 2. Only mark bazar item as sold AFTER sale is confirmed
+      const { error: updateError } = await supabase.from("bazar_items").update({
+        status: "sold",
+        buyer_name: buyerName.trim(),
+        buyer_phone: buyerPhone.trim() || null,
+        buyer_zip: buyerZip.trim() || null,
+        sold_at: new Date().toISOString(),
+      }).eq("id", item.id);
+
+      if (updateError) {
+        console.error("Item sold but failed to update bazar_items:", updateError);
+      }
+
       toast.success("Item vendido e venda registrada!");
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Erro ao marcar como vendido");
+      console.error("Bazar sale error:", err);
+      toast.error(err.message || "Erro ao registrar venda do Bazar");
     } finally {
       setSaving(false);
     }
