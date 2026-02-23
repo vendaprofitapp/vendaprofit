@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from "date-fns";
 import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
+import { useConsortiumPaymentsInPeriod } from "@/hooks/useConsortiumPaymentsInPeriod";
 import { ptBR } from "date-fns/locale";
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { ExpenseSummaryCards, useExpenseTotals } from "@/components/financial/ExpenseSummaryCards";
@@ -142,6 +143,9 @@ export default function Financial() {
   // Fetch deferred revenue recognized in this period (by paid_at)
   const { deferredSaleIds: revenueDeferredIds, deferredSalesMap: revenueDeferredMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
 
+  // Consortium payments in period
+  const { totalConsortiumRevenue } = useConsortiumPaymentsInPeriod(user?.id, dateRange);
+
   // Set of completed sale IDs for split adjustment
   const completedSaleIds = useMemo(() => new Set(completedRevenueSales.map((s: any) => s.id)), [completedRevenueSales]);
 
@@ -149,8 +153,8 @@ export default function Financial() {
     const completedTotal = completedRevenueSales.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
     let deferredTotal = 0;
     revenueDeferredMap.forEach(info => { deferredTotal += info.revenueInPeriod; });
-    return completedTotal + deferredTotal;
-  }, [completedRevenueSales, revenueDeferredMap]);
+    return completedTotal + deferredTotal + totalConsortiumRevenue;
+  }, [completedRevenueSales, revenueDeferredMap, totalConsortiumRevenue]);
 
   // Calculate financial summary (regime de caixa: scale splits for pending sales)
   const financialSummary = useMemo(() => {

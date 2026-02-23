@@ -3,7 +3,7 @@ import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Download, Filter, X, Percent, Users, FileText, BarChart3, Truck } from "lucide-react";
+import { Download, Filter, X, Percent, Users, FileText, BarChart3, Truck, Gift } from "lucide-react";
 import { downloadXlsx } from "@/utils/xlsExport";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountSettlement } from "@/components/reports/AccountSettlement";
@@ -30,6 +30,7 @@ import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, s
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
+import { useConsortiumPaymentsInPeriod } from "@/hooks/useConsortiumPaymentsInPeriod";
 
 const COLORS = ["hsl(15, 90%, 55%)", "hsl(25, 95%, 60%)", "hsl(145, 65%, 42%)", "hsl(38, 92%, 50%)", "hsl(220, 10%, 50%)", "hsl(280, 60%, 55%)", "hsl(190, 70%, 45%)"];
 
@@ -194,6 +195,9 @@ export default function Reports() {
 
   // 2. Fetch deferred revenue recognized in this period (by paid_at)
   const { deferredSaleIds, deferredSalesMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
+
+  // Fetch consortium payments in period
+  const { consortiumPayments, totalConsortiumRevenue } = useConsortiumPaymentsInPeriod(user?.id, dateRange);
 
   // 3. Fetch the pending sales that had installments paid in this period
   const { data: deferredSalesData = [] } = useQuery({
@@ -526,7 +530,7 @@ export default function Reports() {
 
   // Detailed sales data for table - includes discount proportionally distributed
   const detailedSalesData = useMemo(() => {
-    return filteredSales.flatMap(sale => {
+    const salesEntries = filteredSales.flatMap(sale => {
       const feePercent = feesMap.get(sale.payment_method) || 0;
       const saleDiscount = Number(sale.discount_amount) || 0;
       const saleSubtotal = Number(sale.subtotal) || 0;
@@ -544,17 +548,14 @@ export default function Reports() {
         const totalCost = costPrice * item.quantity * costRatio;
         const itemTotal = Number(item.total);
         
-        // Proportionally distribute the sale discount across items
         const discountProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 0;
         const itemDiscount = saleDiscount * discountProportion;
         const totalSaleAfterDiscount = itemTotal - itemDiscount;
         
         const grossProfit = totalSaleAfterDiscount - totalCost;
         
-        // Use financial_splits as source of truth when available
         const itemProportion = saleSubtotal > 0 ? itemTotal / saleSubtotal : 1 / sale.sale_items.length;
         
-        // Distribute shipping proportionally
         const itemShipping = shippingCost * itemProportion;
         const itemSellerShipping = isSellerShipping ? itemShipping : 0;
         
@@ -563,12 +564,10 @@ export default function Reports() {
         let myRealProfit: number;
         
         if (hasSplits && saleInfo) {
-          // Use actual recorded splits
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
           myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
         } else {
-          // Fallback: calculate from fee map
           feeAmount = (totalSaleAfterDiscount * feePercent) / 100;
           partnerCommission = 0;
           myRealProfit = grossProfit - feeAmount - itemSellerShipping;
@@ -599,15 +598,47 @@ export default function Reports() {
           hasSplits,
           partnerAmount: hasPartnership ? (saleInfo?.partnerAmount ?? 0) * itemProportion : 0,
           paymentMethod: sale.payment_method,
+          isConsortium: false,
         };
       });
     });
-  }, [filteredSales, productMap, feesMap, splitsBySale]);
+
+    // Add consortium payments as entries
+    const consortiumEntries = consortiumPayments.map(p => ({
+      saleId: `consortium-${p.id}`,
+      date: p.paid_at,
+      customer: p.participant_name,
+      productName: `Consórcio: ${p.consortium_name} (${p.installment_number}ª parcela)`,
+      quantity: 1,
+      totalCost: 0,
+      totalSale: p.amount,
+      itemDiscount: 0,
+      totalSaleAfterDiscount: p.amount,
+      grossProfit: p.amount,
+      feePercent: 0,
+      feeAmount: 0,
+      partnerCommission: 0,
+      shippingCost: 0,
+      shippingPayer: null as string | null,
+      sellerShipping: 0,
+      realProfit: p.amount,
+      myRealProfit: p.amount,
+      hasPartnership: false,
+      hasSplits: false,
+      partnerAmount: 0,
+      paymentMethod: "Consórcio",
+      isConsortium: true,
+    }));
+
+    return [...salesEntries, ...consortiumEntries].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [filteredSales, productMap, feesMap, splitsBySale, consortiumPayments]);
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
-    const totalSales = filteredSales.length;
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0) + totalConsortiumRevenue;
+    const totalSales = filteredSales.length + consortiumPayments.length;
     const totalItems = filteredSales.reduce((sum, sale) => 
       sum + sale.sale_items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
     const totalDiscount = filteredSales.reduce((sum, sale) => sum + (Number(sale.discount_amount) || 0), 0);
@@ -1116,6 +1147,12 @@ export default function Reports() {
                     <TableCell className="max-w-[150px] truncate">
                       <span className="flex items-center gap-1">
                         {item.productName}
+                        {(item as any).isConsortium && (
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            <Gift className="h-2.5 w-2.5 mr-0.5" />
+                            Consórcio
+                          </Badge>
+                        )}
                         {item.hasPartnership && (
                           <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
                             <Users className="h-2.5 w-2.5 mr-0.5" />

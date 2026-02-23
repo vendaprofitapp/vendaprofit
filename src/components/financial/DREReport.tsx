@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useExpenseTotals } from "./ExpenseSummaryCards";
 import { useDeferredRevenueInPeriod } from "@/hooks/useDeferredPaidAmounts";
+import { useConsortiumPaymentsInPeriod } from "@/hooks/useConsortiumPaymentsInPeriod";
 
 interface DREReportProps {
   dateRange: { start: Date; end: Date };
@@ -33,6 +34,9 @@ export function DREReport({ dateRange }: DREReportProps) {
 
   // 2. Fetch deferred revenue recognized in this period (by paid_at)
   const { deferredSaleIds, deferredSalesMap } = useDeferredRevenueInPeriod(user?.id, dateRange);
+
+  // Consortium payments
+  const { totalConsortiumRevenue } = useConsortiumPaymentsInPeriod(user?.id, dateRange);
 
   // 3. Fetch pending sales that had installments paid in this period
   const { data: deferredSalesRaw = [] } = useQuery({
@@ -147,8 +151,11 @@ export function DREReport({ dateRange }: DREReportProps) {
       }
     }
 
+    // Add consortium revenue (pure cash, no cost, no fee)
+    rev += totalConsortiumRevenue;
+
     return { grossRevenue: rev, totalFees: fees, cmv: cost };
-  }, [salesWithItems, feeMap, productCostMap]);
+  }, [salesWithItems, feeMap, productCostMap, totalConsortiumRevenue]);
 
   const netRevenue = grossRevenue - totalFees;
   const grossProfit = netRevenue - cmv;
