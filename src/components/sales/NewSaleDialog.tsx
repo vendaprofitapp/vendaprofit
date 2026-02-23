@@ -114,6 +114,14 @@ interface CatalogOrderData {
     variant_color?: string | null;
     selected_size?: string | null;
     source?: string | null;
+    // Bazar metadata (when detected)
+    isBazarItem?: boolean;
+    bazarItemId?: string;
+    bazarSellerPrice?: number;
+    bazarStoreCommission?: number;
+    bazarFinalPrice?: number;
+    bazarSellerName?: string | null;
+    bazarSellerPhone?: string | null;
   }>;
   total: number;
 }
@@ -914,7 +922,9 @@ export default function NewSaleDialog({
     if (!open || !catalogOrderData || catalogOrderProcessed || !user) return;
 
     const loadCatalogOrderItems = async () => {
-      const productIds = catalogOrderData.items.map(i => i.product_id).filter(Boolean);
+      const productIds = catalogOrderData.items
+        .filter(i => i.product_id && !i.isBazarItem)
+        .map(i => i.product_id);
       
       let products: any[] = [];
       if (productIds.length > 0) {
@@ -926,6 +936,32 @@ export default function NewSaleDialog({
       }
 
       const cartItems: CartItem[] = catalogOrderData.items.map(item => {
+        if (item.isBazarItem) {
+          // Bazar item: create external product with bazar pricing
+          const bazarProduct: Product = {
+            id: `bazar_${item.bazarItemId}`,
+            name: item.product_name,
+            price: item.bazarFinalPrice || item.unit_price,
+            cost_price: item.bazarSellerPrice || 0,
+            stock_quantity: item.quantity,
+            owner_id: user.id,
+            group_id: null,
+            category: "Bazar VIP",
+            color: item.variant_color || null,
+            size: item.selected_size || null,
+          };
+          (bazarProduct as any)._isExternalItem = true;
+          (bazarProduct as any)._bazarMeta = {
+            bazarItemId: item.bazarItemId,
+            sellerPrice: item.bazarSellerPrice || 0,
+            storeCommission: item.bazarStoreCommission || 0,
+            sellerName: item.bazarSellerName,
+            sellerPhone: item.bazarSellerPhone,
+          };
+          return { product: bazarProduct, quantity: item.quantity, isPartnerStock: false };
+        }
+
+        // Regular product
         const dbProduct = products.find(p => p.id === item.product_id);
         const product: Product = dbProduct
           ? { ...dbProduct, isB2B: false }
@@ -947,7 +983,9 @@ export default function NewSaleDialog({
       setCart(cartItems);
       setCustomerName(catalogOrderData.customerName || "");
       setCustomerPhone(catalogOrderData.customerPhone || "");
-      setNotes(`Pedido do catálogo #${catalogOrderData.catalogOrderId.slice(0, 8)}`);
+      
+      const hasBazar = catalogOrderData.items.some(i => i.isBazarItem);
+      setNotes(`Pedido do catálogo #${catalogOrderData.catalogOrderId.slice(0, 8)}${hasBazar ? ' (contém itens do Bazar VIP)' : ''}`);
       setCatalogOrderProcessed(true);
     };
 
@@ -1146,6 +1184,30 @@ export default function NewSaleDialog({
       const financialSplitsPayload: Array<{ user_id: string; amount: number; type: string; description: string }> = [];
 
       for (const item of cart) {
+        // ── Bazar items: use specific seller/commission splits ──
+        const bazarMeta = (item.product as any)?._bazarMeta;
+        if (bazarMeta) {
+          const sellerPrice = (bazarMeta.sellerPrice || 0) * item.quantity;
+          const storeCommission = (bazarMeta.storeCommission || 0) * item.quantity;
+          if (sellerPrice > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: sellerPrice,
+              type: 'cost_recovery',
+              description: `Custo Bazar VIP - repasse ao vendedor: ${bazarMeta.sellerName || bazarMeta.sellerPhone || ''} - ${item.product.name}`,
+            });
+          }
+          if (storeCommission > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: storeCommission,
+              type: 'profit_share',
+              description: `Comissão Bazar VIP: ${item.product.name}`,
+            });
+          }
+          continue; // Skip standard split logic for bazar items
+        }
+
         const salePriceGross = item.product.price * item.quantity;
         const salePriceAfterDiscount = salePriceGross * saleNetMultiplier;
         const costPrice = (item.product.cost_price ?? 0) * item.quantity;
@@ -1382,6 +1444,23 @@ export default function NewSaleDialog({
           .update({ status: "converted" } as any)
           .eq("id", catalogOrderData.catalogOrderId);
         queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
+
+        // Mark bazar items as sold if any were in the catalog order
+        const bazarItemIds = catalogOrderData.items
+          .filter(i => i.isBazarItem && i.bazarItemId)
+          .map(i => i.bazarItemId!);
+        if (bazarItemIds.length > 0) {
+          await supabase
+            .from("bazar_items")
+            .update({
+              status: "sold",
+              sold_at: new Date().toISOString(),
+              buyer_name: catalogOrderData.customerName || null,
+              buyer_phone: catalogOrderData.customerPhone || null,
+            })
+            .in("id", bazarItemIds);
+          queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+        }
       }
       // Mark partner point sale as completed after successful sale
       if (partnerPointOrderData?.partnerPointSaleId) {
