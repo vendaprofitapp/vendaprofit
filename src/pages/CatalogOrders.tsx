@@ -142,26 +142,136 @@ export default function CatalogOrders() {
     onError: () => toast.error("Erro ao cancelar pedido"),
   });
 
-  const handleConvertToSale = (order: any) => {
-    const items = (order.saved_cart_items || []).map((item: any) => ({
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      variant_color: item.variant_color,
-      selected_size: item.selected_size,
-      source: item.source,
-    }));
-    navigate("/sales", {
-      state: {
-        fromCatalogOrder: true,
-        catalogOrderId: order.id,
-        customer_name: order.customer_name,
-        customer_phone: order.customer_phone,
-        items,
-        total: order.total,
-      },
-    });
+  const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+
+  const handleConvertToSale = async (order: any) => {
+    if (!user) return;
+    setConvertingOrderId(order.id);
+
+    try {
+      // Fetch approved bazar items for this owner to detect matches
+      const { data: bazarItems } = await supabase
+        .from("bazar_items")
+        .select("id, title, seller_price, store_commission, final_price, seller_name, seller_phone, owner_id")
+        .eq("owner_id", user.id)
+        .eq("status", "approved");
+
+      const bazarMap = new Map<string, any>();
+      for (const bi of bazarItems || []) {
+        bazarMap.set(bi.title.trim().toLowerCase(), bi);
+      }
+
+      const orderItems = order.saved_cart_items || [];
+      const bazarMatched: Array<{ orderItem: any; bazarItem: any }> = [];
+      const regularItems: any[] = [];
+
+      for (const item of orderItems) {
+        const matchKey = (item.product_name || "").trim().toLowerCase();
+        const bazarItem = bazarMap.get(matchKey);
+        if (bazarItem) {
+          bazarMatched.push({ orderItem: item, bazarItem });
+        } else {
+          regularItems.push(item);
+        }
+      }
+
+      // Auto-register bazar items as separate sales
+      for (const { orderItem, bazarItem } of bazarMatched) {
+        const sellerPrice = Number(bazarItem.seller_price) || 0;
+        const storeCommission = Number(bazarItem.store_commission) || 0;
+        const finalPrice = Number(bazarItem.final_price) || (sellerPrice + storeCommission);
+
+        const { error: saleError } = await supabase.rpc("create_sale_transaction", {
+          payload: {
+            owner_id: user.id,
+            sale: {
+              customer_name: order.customer_name,
+              customer_phone: order.customer_phone,
+              payment_method: "Dinheiro",
+              subtotal: finalPrice * orderItem.quantity,
+              discount_type: null,
+              discount_value: 0,
+              discount_amount: 0,
+              total: finalPrice * orderItem.quantity,
+              notes: `Venda Bazar VIP (via pedido catálogo #${order.short_code}): ${bazarItem.title}`,
+              status: "completed",
+              sale_source: "bazar",
+            },
+            items: [{
+              product_id: null,
+              product_name: bazarItem.title,
+              quantity: orderItem.quantity,
+              unit_price: finalPrice,
+              total: finalPrice * orderItem.quantity,
+              source: "bazar",
+            }],
+            stock_updates: [],
+            financial_splits: [
+              {
+                user_id: user.id,
+                amount: sellerPrice * orderItem.quantity,
+                type: "cost_recovery",
+                description: `Custo Bazar VIP - repasse ao vendedor: ${bazarItem.seller_name || bazarItem.seller_phone || ""}`,
+              },
+              {
+                user_id: user.id,
+                amount: storeCommission * orderItem.quantity,
+                type: "profit_share",
+                description: `Comissão Bazar VIP: ${bazarItem.title}`,
+              },
+            ],
+          },
+        });
+
+        if (!saleError) {
+          // Mark bazar item as sold
+          await supabase
+            .from("bazar_items")
+            .update({ status: "sold", sold_at: new Date().toISOString(), buyer_name: order.customer_name, buyer_phone: order.customer_phone })
+            .eq("id", bazarItem.id);
+        }
+      }
+
+      if (bazarMatched.length > 0) {
+        toast.success(`${bazarMatched.length} item(ns) do Bazar registrados automaticamente como venda(s) separada(s)`);
+        queryClient.invalidateQueries({ queryKey: ["bazar-items"] });
+        queryClient.invalidateQueries({ queryKey: ["sales"] });
+      }
+
+      if (regularItems.length > 0) {
+        // Navigate to PDV with non-bazar items
+        const items = regularItems.map((item: any) => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          variant_color: item.variant_color,
+          selected_size: item.selected_size,
+          source: item.source,
+        }));
+        const regularTotal = regularItems.reduce((sum: number, i: any) => sum + (i.unit_price * i.quantity), 0);
+        navigate("/sales", {
+          state: {
+            fromCatalogOrder: true,
+            catalogOrderId: order.id,
+            customer_name: order.customer_name,
+            customer_phone: order.customer_phone,
+            items,
+            total: regularTotal,
+          },
+        });
+      } else {
+        // All items were bazar — mark order as converted directly
+        await supabase.from("saved_carts").update({ status: "converted" } as any).eq("id", order.id);
+        queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
+        toast.success("Pedido convertido! Todas as vendas do Bazar foram registradas.");
+      }
+    } catch (err: any) {
+      console.error("Error converting order with bazar detection:", err);
+      toast.error("Erro ao converter pedido");
+    } finally {
+      setConvertingOrderId(null);
+    }
   };
 
   const toggleOrder = (id: string) => {
@@ -338,10 +448,15 @@ export default function CatalogOrders() {
                             <Button
                               size="sm"
                               className="gap-1.5"
+                              disabled={convertingOrderId === order.id}
                               onClick={(e) => { e.stopPropagation(); handleConvertToSale(order); }}
                             >
-                              <DollarSign className="h-3.5 w-3.5" />
-                              Converter em Venda
+                              {convertingOrderId === order.id ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <DollarSign className="h-3.5 w-3.5" />
+                              )}
+                              {convertingOrderId === order.id ? "Processando..." : "Converter em Venda"}
                             </Button>
                             <Button
                               size="sm"
