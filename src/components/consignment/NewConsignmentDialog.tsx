@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useConsignment } from "@/hooks/useConsignment";
 import { getAvailableStock } from "@/utils/stockHelpers";
-import { Search, Plus, Trash2, Package, Send, MessageCircle, Copy, Check, Star } from "lucide-react";
+import { Search, Plus, Trash2, Package, Send, MessageCircle, Copy, Check, Star, Download } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { Switch } from "@/components/ui/switch";
 
@@ -67,6 +67,9 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdConsignment, setCreatedConsignment] = useState<{ id: string; access_token: string } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [importOrderCode, setImportOrderCode] = useState("");
+  const [isImportingOrder, setIsImportingOrder] = useState(false);
+  const [importedOrderId, setImportedOrderId] = useState<string | null>(null);
 
   const [filterByCustomerSize, setFilterByCustomerSize] = useState(true);
 
@@ -200,6 +203,80 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
     setSelectedItems(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleImportOrder = async () => {
+    if (!importOrderCode.trim()) return;
+    setIsImportingOrder(true);
+    try {
+      const { data: savedCart, error: cartError } = await supabase
+        .from("saved_carts")
+        .select("id, customer_name, customer_phone, status, saved_cart_items(id, product_id, product_name, variant_color, selected_size, quantity, unit_price)")
+        .eq("short_code", importOrderCode.trim().toUpperCase())
+        .single() as any;
+
+      if (cartError || !savedCart) {
+        toast.error("Pedido não encontrado. Verifique o código.");
+        return;
+      }
+
+      if (savedCart.status === "converted" || savedCart.status === "consignment") {
+        toast.error("Este pedido já foi utilizado.");
+        return;
+      }
+
+      const items = savedCart.saved_cart_items || [];
+      if (items.length === 0) {
+        toast.error("Pedido sem itens.");
+        return;
+      }
+
+      // Load product data
+      const productIds = items.map((i: any) => i.product_id).filter(Boolean);
+      let productsData: any[] = [];
+      if (productIds.length > 0) {
+        const { data } = await supabase
+          .from("products")
+          .select("id, name, price, image_url, size, color, stock_quantity, product_variants(id, size, stock_quantity)")
+          .in("id", productIds);
+        productsData = data || [];
+      }
+
+      // Add items from order
+      const newItems: SelectedItem[] = [];
+      for (const item of items) {
+        const product = productsData.find((p: any) => p.id === item.product_id);
+        if (!product) continue;
+
+        // Check if already in selected items
+        const alreadyAdded = selectedItems.some(si => si.product.id === item.product_id);
+        if (alreadyAdded) continue;
+
+        const availableStock = await getAvailableStock(product.id);
+        newItems.push({
+          product: product as Product,
+          size: item.selected_size || product.size,
+          color: item.variant_color || product.color,
+          price: product.price,
+          availableStock,
+        });
+      }
+
+      if (newItems.length > 0) {
+        setSelectedItems(prev => [...prev, ...newItems]);
+        setImportedOrderId(savedCart.id);
+        toast.success(`${newItems.length} item(ns) importados do pedido ${importOrderCode.trim().toUpperCase()}`);
+      } else {
+        toast.info("Nenhum novo item para importar.");
+      }
+
+      setImportOrderCode("");
+    } catch (err: any) {
+      toast.error("Erro ao importar pedido");
+      console.error(err);
+    } finally {
+      setIsImportingOrder(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!customerId) {
       toast.error("Selecione um cliente");
@@ -234,6 +311,14 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
 
       // Request approval
       await requestApproval(consignment.id);
+
+      // Mark imported order as converted to consignment
+      if (importedOrderId) {
+        await supabase
+          .from("saved_carts")
+          .update({ status: "consignment" } as any)
+          .eq("id", importedOrderId);
+      }
 
       setCreatedConsignment({
         id: consignment.id,
@@ -292,6 +377,8 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
     setSelectedItems([]);
     setProductSearch("");
     setCreatedConsignment(null);
+    setImportOrderCode("");
+    setImportedOrderId(null);
     onOpenChange(false);
     if (createdConsignment) {
       onSuccess();
@@ -371,6 +458,23 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
 
         {step === "products" && (
           <div className="flex flex-col flex-1 overflow-hidden">
+            {/* Import order field */}
+            <div className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <Download className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Importar pedido (ex: VP-A3F2)"
+                  className="pl-10"
+                  value={importOrderCode}
+                  onChange={(e) => setImportOrderCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleImportOrder()}
+                />
+              </div>
+              <Button variant="outline" onClick={handleImportOrder} disabled={isImportingOrder || !importOrderCode.trim()}>
+                {isImportingOrder ? "..." : "Importar"}
+              </Button>
+            </div>
+
             <div className="flex gap-2 mb-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

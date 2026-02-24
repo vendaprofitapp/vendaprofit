@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,10 +42,21 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 
 export default function Consignments() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [selectedConsignment, setSelectedConsignment] = useState<Consignment | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const { groupedByProduct, pendingCount, markNotified, dismissNotification } = useWaitlistNotifications();
+
+  // Handle navigation state to open new consignment dialog
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.openNewConsignment) {
+      setNewDialogOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   const { data: consignments = [], isLoading, refetch } = useQuery({
     queryKey: ["consignments", user?.id],
