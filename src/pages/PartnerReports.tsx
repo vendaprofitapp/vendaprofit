@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
-import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Building2 } from "lucide-react";
+import { Users, TrendingUp, DollarSign, Calendar, Filter, X, Share2, Building2, ChevronDown, ChevronUp, ShoppingBag, Receipt } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +23,13 @@ interface SaleWithItems {
   total: number;
   subtotal: number;
   created_at: string;
+  customer_name: string | null;
+  payment_method: string;
+  sale_source: string;
+  event_name: string | null;
+  shipping_cost: number | null;
+  shipping_payer: string | null;
+  discount_amount: number | null;
   sale_items: {
     id: string;
     product_id: string;
@@ -107,6 +116,16 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
   const [selectedGroupId, setSelectedGroupId] = useFormPersistence("partnerReports_groupId", "all");
   const [selectedPartnerId, setSelectedPartnerId] = useFormPersistence("partnerReports_partnerId", "all");
   const [activeTab, setActiveTab] = useFormPersistence("partnerReports_activeTab", filterMode || "all");
+  const [expandedSales, setExpandedSales] = useState<Set<string>>(new Set());
+
+  const toggleSaleExpanded = (saleId: string) => {
+    setExpandedSales(prev => {
+      const next = new Set(prev);
+      if (next.has(saleId)) next.delete(saleId);
+      else next.add(saleId);
+      return next;
+    });
+  };
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -174,6 +193,13 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           total,
           subtotal,
           created_at,
+          customer_name,
+          payment_method,
+          sale_source,
+          event_name,
+          shipping_cost,
+          shipping_payer,
+          discount_amount,
           sale_items (
             id,
             product_id,
@@ -756,6 +782,190 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     </div>
   );
 
+  const saleSourceLabel = (source: string, eventName?: string | null) => {
+    const map: Record<string, string> = {
+      manual: "Venda Direta",
+      catalog: "Minha Loja",
+      partner_point: "Ponto Parceiro",
+      b2b: "B2B",
+      event: eventName ? `Evento: ${eventName}` : "Evento",
+      instagram: "Instagram",
+      consignment: "Consignação",
+      consortium: "Consórcio",
+      bazar: "Bazar VIP",
+    };
+    return map[source] || source;
+  };
+
+  const splitTypeLabel = (type: string) => {
+    const map: Record<string, string> = {
+      cost_recovery: "Recuperação de Custo",
+      profit_share: "Participação no Lucro",
+      group_commission: "Comissão",
+      payment_fee: "Taxa de Pagamento",
+    };
+    return map[type] || type;
+  };
+
+  const splitTypeBadgeVariant = (type: string): "default" | "secondary" | "destructive" | "outline" => {
+    if (type === "profit_share") return "default";
+    if (type === "cost_recovery") return "secondary";
+    if (type === "group_commission") return "outline";
+    return "destructive";
+  };
+
+  const renderDetailedSales = (kind: ReportKind) => {
+    if (!user) return null;
+
+    const relevantSales = salesData.filter((sale) => {
+      const saleKind = detectKindBySplits(sale.id);
+      if (kind === "all") return saleKind !== "own";
+      return saleKind === kind;
+    });
+
+    if (relevantSales.length === 0) {
+      return (
+        <Card className="mt-6">
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Nenhuma venda com divisão de lucros no período selecionado.
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-primary" />
+            Detalhamento de Vendas ({relevantSales.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 p-3 sm:p-6">
+          {relevantSales.map((sale) => {
+            const splits = splitsBySaleId.get(sale.id) ?? [];
+            const sellerProfile = profileMap.get(sale.owner_id);
+            const sellerName = sellerProfile?.full_name ?? "Vendedora";
+            const isExpanded = expandedSales.has(sale.id);
+            const isDeferred = unpaidDeferredSaleIds.has(sale.id);
+
+            // Group splits by user
+            const splitsByUser = new Map<string, FinancialSplit[]>();
+            for (const s of splits) {
+              const arr = splitsByUser.get(s.user_id) ?? [];
+              arr.push(s);
+              splitsByUser.set(s.user_id, arr);
+            }
+
+            return (
+              <Collapsible key={sale.id} open={isExpanded} onOpenChange={() => toggleSaleExpanded(sale.id)}>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <ShoppingBag className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">
+                            {format(new Date(sale.created_at), "dd/MM/yyyy HH:mm")}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {saleSourceLabel(sale.sale_source, sale.event_name)}
+                          </Badge>
+                          {isDeferred && (
+                            <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
+                              A prazo
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {sale.customer_name ? `Cliente: ${sale.customer_name} • ` : ""}
+                          Vendido por: {sellerName} • {sale.payment_method}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-semibold text-sm">{formatCurrency(sale.total)}</span>
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    </div>
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border border-t-0 rounded-b-lg p-4 space-y-4 bg-muted/20">
+                    {/* Items */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Itens da Venda</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="text-xs">Produto</TableHead>
+                            <TableHead className="text-xs text-right">Qtd</TableHead>
+                            <TableHead className="text-xs text-right">Unitário</TableHead>
+                            <TableHead className="text-xs text-right">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sale.sale_items.map((item) => (
+                            <TableRow key={item.id} className="hover:bg-transparent">
+                              <TableCell className="text-sm py-1.5">{item.product_name}</TableCell>
+                              <TableCell className="text-sm text-right py-1.5">{item.quantity}</TableCell>
+                              <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.unit_price)}</TableCell>
+                              <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.total)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {(sale.discount_amount && sale.discount_amount > 0) ? (
+                        <p className="text-xs text-muted-foreground mt-1">Desconto: -{formatCurrency(sale.discount_amount)}</p>
+                      ) : null}
+                      {(sale.shipping_cost && sale.shipping_cost > 0) ? (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Frete: {formatCurrency(sale.shipping_cost)} ({sale.shipping_payer === "seller" ? "pago pela vendedora" : "pago pelo comprador"})
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Financial Splits */}
+                    {splits.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Divisão de Lucros</h4>
+                        <div className="space-y-2">
+                          {Array.from(splitsByUser.entries()).map(([userId, userSplits]) => {
+                            const profile = profileMap.get(userId);
+                            const personName = userId === user.id ? `${currentUserName} (Você)` : (profile?.full_name ?? "Parceiro");
+                            const personTotal = userSplits.reduce((sum, s) => sum + s.amount, 0);
+                            const isCurrentUser = userId === user.id;
+
+                            return (
+                              <div key={userId} className={`p-3 rounded-md border ${isCurrentUser ? "bg-primary/5 border-primary/20" : "bg-card"}`}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-sm font-medium">{personName}</span>
+                                  <span className={`text-sm font-bold ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
+                                    {formatCurrency(personTotal)}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {userSplits.map((split) => (
+                                    <Badge key={split.id} variant={splitTypeBadgeVariant(split.type)} className="text-xs font-normal gap-1">
+                                      {splitTypeLabel(split.type)}: {formatCurrency(split.amount)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <MainLayout>
       {/* Page Header */}
@@ -895,6 +1105,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           {renderSummaryCards(allTotals, false)}
           <Separator className="my-6" />
           {renderTables(allSummaries, false)}
+          {renderDetailedSales("all")}
         </TabsContent>
 
         <TabsContent value="partnerships">
@@ -905,6 +1116,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           {renderSummaryCards(partnershipTotals, true)}
           <Separator className="my-6" />
           {renderTables(partnershipSummaries, true)}
+          {renderDetailedSales("partnerships")}
         </TabsContent>
 
         <TabsContent value="groups">
@@ -915,6 +1127,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           {renderSummaryCards(groupTotals, false)}
           <Separator className="my-6" />
           {renderTables(groupSummaries, false)}
+          {renderDetailedSales("groups")}
         </TabsContent>
       </Tabs>
 
