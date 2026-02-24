@@ -46,6 +46,8 @@ interface Sale {
   total: number;
   status: string;
   notes: string | null;
+  sale_source?: string | null;
+  event_name?: string | null;
   created_at: string;
   shipping_method?: string | null;
   shipping_company?: string | null;
@@ -82,6 +84,19 @@ interface EditSaleDialogProps {
   userId: string;
 }
 
+const SALE_SOURCE_LABELS: Record<string, string> = {
+  manual: "Manual",
+  event: "Evento",
+  consortium: "Consórcio",
+  bazar: "Bazar VIP",
+  partner_point: "Ponto Parceiro",
+  catalog: "Catálogo",
+  consignment: "Consignação",
+  instagram: "Instagram",
+  b2b: "B2B",
+  estoque_proprio: "Estoque Próprio",
+};
+
 export function EditSaleDialog({
   open,
   onOpenChange,
@@ -100,6 +115,17 @@ export function EditSaleDialog({
   const [discountValue, setDiscountValue] = useState(0);
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("completed");
+  const [saleSource, setSaleSource] = useState("manual");
+  const [eventName, setEventName] = useState("");
+
+  // Shipping state
+  const [shippingMethod, setShippingMethod] = useState("presencial");
+  const [shippingCompany, setShippingCompany] = useState("");
+  const [shippingCost, setShippingCost] = useState(0);
+  const [shippingPayer, setShippingPayer] = useState("seller");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [shippingNotes, setShippingNotes] = useState("");
+  const [shippingTracking, setShippingTracking] = useState("");
   
   // Delete state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -118,6 +144,15 @@ export function EditSaleDialog({
       setDiscountValue(sale.discount_value || 0);
       setNotes(sale.notes || "");
       setStatus(sale.status);
+      setSaleSource(sale.sale_source || "manual");
+      setEventName(sale.event_name || "");
+      setShippingMethod(sale.shipping_method || "presencial");
+      setShippingCompany(sale.shipping_company || "");
+      setShippingCost(sale.shipping_cost || 0);
+      setShippingPayer(sale.shipping_payer || "seller");
+      setShippingAddress(sale.shipping_address || "");
+      setShippingNotes(sale.shipping_notes || "");
+      setShippingTracking(sale.shipping_tracking || "");
       setSelectedItemsToDelete([]);
       setDeleteMode("all");
     }
@@ -128,12 +163,12 @@ export function EditSaleDialog({
     setIsSaving(true);
 
     try {
-      // Recalculate totals
       const subtotal = saleItems.reduce((sum, item) => sum + Number(item.total), 0);
       const discountAmount = discountType === "percentage" 
         ? (subtotal * discountValue) / 100 
         : discountValue;
-      const total = Math.max(0, subtotal - discountAmount);
+      const shippingForBuyer = shippingPayer === "buyer" && shippingMethod !== "presencial" ? shippingCost : 0;
+      const total = Math.max(0, subtotal - discountAmount + shippingForBuyer);
 
       const { error } = await supabase
         .from("sales")
@@ -147,6 +182,15 @@ export function EditSaleDialog({
           total,
           notes: notes || null,
           status,
+          sale_source: saleSource,
+          event_name: saleSource === "event" ? (eventName || null) : null,
+          shipping_method: shippingMethod || null,
+          shipping_company: shippingMethod !== "presencial" ? (shippingCompany || null) : null,
+          shipping_cost: shippingMethod !== "presencial" ? shippingCost : 0,
+          shipping_payer: shippingMethod !== "presencial" ? shippingPayer : null,
+          shipping_address: shippingMethod !== "presencial" ? (shippingAddress || null) : null,
+          shipping_notes: shippingMethod !== "presencial" ? (shippingNotes || null) : null,
+          shipping_tracking: shippingMethod !== "presencial" ? (shippingTracking || null) : null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sale.id);
@@ -182,7 +226,6 @@ export function EditSaleDialog({
   };
 
   const returnItemToStock = async (item: SaleItem) => {
-    // Check if product still exists and belongs to user
     const { data: product } = await supabase
       .from("products")
       .select("id, stock_quantity, owner_id")
@@ -191,11 +234,9 @@ export function EditSaleDialog({
       .maybeSingle();
 
     if (product) {
-      // Check if it's a variant by looking for variant info in product_name
       const variantMatch = item.product_name.match(/\(([^)]+)\)/);
       
       if (variantMatch) {
-        // Try to find the variant
         const variantInfo = variantMatch[1];
         const parts = variantInfo.split(' - ');
         
@@ -205,13 +246,11 @@ export function EditSaleDialog({
           .eq("product_id", item.product_id);
 
         if (variants) {
-          // Find matching variant by size
           const matchingVariant = variants.find(v => {
             return parts.some(p => v.size === p);
           });
 
           if (matchingVariant) {
-            // Update variant stock
             await supabase
               .from("product_variants")
               .update({ stock_quantity: matchingVariant.stock_quantity + item.quantity })
@@ -220,7 +259,6 @@ export function EditSaleDialog({
         }
       }
 
-      // Always update product total stock
       await supabase
         .from("products")
         .update({ stock_quantity: product.stock_quantity + item.quantity })
@@ -243,79 +281,43 @@ export function EditSaleDialog({
         return;
       }
 
-      // Return items to stock
       for (const item of itemsToDelete) {
-        // Check if it's partner stock (has [Parceiro: ...] in name)
         const isPartnerStock = item.product_name.includes("[Parceiro:");
-        
         if (!isPartnerStock) {
           await returnItemToStock(item);
         }
       }
 
-      // Delete financial splits for this sale
       await supabase
         .from("financial_splits")
         .delete()
         .eq("sale_id", sale.id);
 
       if (deleteMode === "all" || itemsToDelete.length === saleItems.length) {
-        // Delete entire sale
-        await supabase
-          .from("payment_reminders")
-          .delete()
-          .eq("sale_id", sale.id);
-
-        await supabase
-          .from("sale_items")
-          .delete()
-          .eq("sale_id", sale.id);
-
-        await supabase
-          .from("sales")
-          .delete()
-          .eq("id", sale.id);
-
+        await supabase.from("payment_reminders").delete().eq("sale_id", sale.id);
+        await supabase.from("sale_items").delete().eq("sale_id", sale.id);
+        await supabase.from("sales").delete().eq("id", sale.id);
         toast({ title: "Venda excluída e estoque restaurado!" });
       } else {
-        // Partial delete - only selected items
         for (const item of itemsToDelete) {
-          await supabase
-            .from("sale_items")
-            .delete()
-            .eq("id", item.id);
+          await supabase.from("sale_items").delete().eq("id", item.id);
         }
 
-        // Recalculate sale totals
-        const remainingItems = saleItems.filter(
-          item => !selectedItemsToDelete.includes(item.id)
-        );
+        const remainingItems = saleItems.filter(item => !selectedItemsToDelete.includes(item.id));
         const newSubtotal = remainingItems.reduce((sum, item) => sum + Number(item.total), 0);
-        const discountAmount = discountType === "percentage"
+        const discountAmt = discountType === "percentage"
           ? (newSubtotal * discountValue) / 100
           : Math.min(discountValue, newSubtotal);
-        const newTotal = Math.max(0, newSubtotal - discountAmount);
+        const newTotal = Math.max(0, newSubtotal - discountAmt);
 
         await supabase
           .from("sales")
-          .update({
-            subtotal: newSubtotal,
-            discount_amount: discountAmount,
-            total: newTotal,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ subtotal: newSubtotal, discount_amount: discountAmt, total: newTotal, updated_at: new Date().toISOString() })
           .eq("id", sale.id);
 
-        // Update payment reminder if exists
-        await supabase
-          .from("payment_reminders")
-          .update({ amount: newTotal })
-          .eq("sale_id", sale.id);
+        await supabase.from("payment_reminders").update({ amount: newTotal }).eq("sale_id", sale.id);
 
-        toast({ 
-          title: "Itens excluídos e estoque restaurado!",
-          description: `${itemsToDelete.length} item(s) removido(s) da venda.`
-        });
+        toast({ title: "Itens excluídos e estoque restaurado!", description: `${itemsToDelete.length} item(s) removido(s) da venda.` });
       }
 
       queryClient.invalidateQueries({ queryKey: ["sales"] });
@@ -328,11 +330,7 @@ export function EditSaleDialog({
       setShowDeleteDialog(false);
       onOpenChange(false);
     } catch (error: any) {
-      toast({ 
-        title: "Erro ao excluir", 
-        description: error.message, 
-        variant: "destructive" 
-      });
+      toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" });
     } finally {
       setIsDeleting(false);
     }
@@ -340,9 +338,7 @@ export function EditSaleDialog({
 
   const toggleItemSelection = (itemId: string) => {
     setSelectedItemsToDelete(prev => 
-      prev.includes(itemId) 
-        ? prev.filter(id => id !== itemId)
-        : [...prev, itemId]
+      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
     );
   };
 
@@ -360,7 +356,8 @@ export function EditSaleDialog({
   const calculatedDiscount = discountType === "percentage" 
     ? (subtotal * discountValue) / 100 
     : discountValue;
-  const total = Math.max(0, subtotal - calculatedDiscount);
+  const shippingForBuyer = shippingPayer === "buyer" && shippingMethod !== "presencial" ? shippingCost : 0;
+  const total = Math.max(0, subtotal - calculatedDiscount + shippingForBuyer);
 
   return (
     <>
@@ -388,6 +385,27 @@ export function EditSaleDialog({
               </div>
             </div>
 
+            {/* Sale Source */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Origem da Venda</Label>
+                <Select value={saleSource} onValueChange={(v) => { setSaleSource(v); if (v !== "event") setEventName(""); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SALE_SOURCE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {saleSource === "event" && (
+                <div>
+                  <Label>Nome do Evento</Label>
+                  <Input value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="Ex: Feira de Inverno" />
+                </div>
+              )}
+            </div>
+
             {/* Items (read-only display) */}
             <div>
               <Label className="flex items-center gap-2 mb-2">
@@ -396,10 +414,7 @@ export function EditSaleDialog({
               </Label>
               <div className="border rounded-lg max-h-48 overflow-y-auto">
                 {saleItems.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="p-3 flex justify-between items-center border-b last:border-b-0"
-                  >
+                  <div key={item.id} className="p-3 flex justify-between items-center border-b last:border-b-0">
                     <div>
                       <p className="font-medium">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">
@@ -418,37 +433,24 @@ export function EditSaleDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Nome do Cliente</Label>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Nome do cliente"
-                />
+                <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nome do cliente" />
               </div>
               <div>
                 <Label>Telefone</Label>
-                <Input
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="(00) 00000-0000"
-                />
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(00) 00000-0000" />
               </div>
             </div>
 
-            {/* Payment & Discount */}
+            {/* Payment & Status */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Forma de Pagamento</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {customPaymentMethods.map((method) => (
-                      <SelectItem key={method.id} value={method.name}>
-                        {method.name}
-                      </SelectItem>
+                      <SelectItem key={method.id} value={method.name}>{method.name}</SelectItem>
                     ))}
-                    {/* Also allow current payment method if not in list */}
                     {!customPaymentMethods.find(m => m.name === paymentMethod) && (
                       <SelectItem value={paymentMethod}>{paymentMethod}</SelectItem>
                     )}
@@ -458,9 +460,7 @@ export function EditSaleDialog({
               <div>
                 <Label>Status</Label>
                 <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="completed">Concluída</SelectItem>
                     <SelectItem value="pending">Pendente</SelectItem>
@@ -470,60 +470,88 @@ export function EditSaleDialog({
               </div>
             </div>
 
+            {/* Discount */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Tipo de Desconto</Label>
                 <Select value={discountType} onValueChange={setDiscountType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="fixed">Valor Fixo (R$)</SelectItem>
                     <SelectItem value="percentage">Percentual (%)</SelectItem>
+                    <SelectItem value="consortium_credit">Crédito de Consórcio</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Valor do Desconto</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(Number(e.target.value))}
-                />
+                <Label>{discountType === "consortium_credit" ? "Crédito Utilizado" : "Valor do Desconto"}</Label>
+                <Input type="number" min="0" value={discountValue} onChange={(e) => setDiscountValue(Number(e.target.value))} />
               </div>
+            </div>
+
+            {/* Shipping */}
+            <div className="space-y-3 p-3 bg-muted/30 rounded-lg border">
+              <p className="text-sm font-medium flex items-center gap-1">
+                <Truck className="h-4 w-4" />
+                Frete / Envio
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>Método</Label>
+                  <Select value={shippingMethod} onValueChange={setShippingMethod}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="presencial">Presencial</SelectItem>
+                      <SelectItem value="postagem">Postagem</SelectItem>
+                      <SelectItem value="app">Aplicativo</SelectItem>
+                      <SelectItem value="outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {shippingMethod !== "presencial" && (
+                  <div>
+                    <Label>Transportadora</Label>
+                    <Input value={shippingCompany} onChange={(e) => setShippingCompany(e.target.value)} placeholder="Ex: Correios, Jadlog..." />
+                  </div>
+                )}
+              </div>
+
+              {shippingMethod !== "presencial" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label>Custo do Frete (R$)</Label>
+                    <Input type="number" min="0" step="0.01" value={shippingCost || ""} onChange={(e) => setShippingCost(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <Label>Quem Paga</Label>
+                    <Select value={shippingPayer} onValueChange={setShippingPayer}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="seller">Vendedora</SelectItem>
+                        <SelectItem value="buyer">Compradora</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label>Endereço de Envio</Label>
+                    <Input value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} placeholder="Endereço completo" />
+                  </div>
+                  <div>
+                    <Label>Código de Rastreio</Label>
+                    <Input value={shippingTracking} onChange={(e) => setShippingTracking(e.target.value)} placeholder="Ex: BR123456789" />
+                  </div>
+                  <div>
+                    <Label>Obs. do Frete</Label>
+                    <Input value={shippingNotes} onChange={(e) => setShippingNotes(e.target.value)} placeholder="Observações..." />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
               <Label>Observações</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Observações sobre a venda..."
-              />
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações sobre a venda..." />
             </div>
-
-            {/* Shipping Info (read-only) */}
-            {sale.shipping_method && sale.shipping_method !== "presencial" && (
-              <div className="p-3 bg-muted/50 rounded-lg space-y-1">
-                <p className="text-sm font-medium flex items-center gap-1">
-                  <Truck className="h-3.5 w-3.5" />
-                  Envio: {sale.shipping_method === "postagem" ? "Postagem" : sale.shipping_method === "app" ? "Aplicativo" : "Outros"}
-                  {sale.shipping_company && ` - ${sale.shipping_company}`}
-                </p>
-                {sale.shipping_address && (
-                  <p className="text-xs text-muted-foreground">{sale.shipping_address}</p>
-                )}
-                {Number(sale.shipping_cost) > 0 && (
-                  <p className="text-xs">
-                    Frete: R$ {Number(sale.shipping_cost).toFixed(2).replace(".", ",")} ({sale.shipping_payer === "buyer" ? "compradora" : "vendedora"})
-                  </p>
-                )}
-                {sale.shipping_notes && (
-                  <p className="text-xs text-muted-foreground">{sale.shipping_notes}</p>
-                )}
-              </div>
-            )}
 
             {/* Totals */}
             <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
@@ -533,8 +561,14 @@ export function EditSaleDialog({
               </div>
               {calculatedDiscount > 0 && (
                 <div className="flex justify-between text-sm text-destructive">
-                  <span>Desconto</span>
+                  <span>Desconto {discountType === "consortium_credit" ? "(Crédito Consórcio)" : ""}</span>
                   <span>- R$ {calculatedDiscount.toFixed(2).replace(".", ",")}</span>
+                </div>
+              )}
+              {shippingForBuyer > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Frete (compradora)</span>
+                  <span>+ R$ {shippingForBuyer.toFixed(2).replace(".", ",")}</span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -545,20 +579,12 @@ export function EditSaleDialog({
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="destructive"
-              onClick={() => setShowDeleteDialog(true)}
-              className="sm:mr-auto"
-            >
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} className="sm:mr-auto">
               <Trash2 className="h-4 w-4 mr-2" />
               Excluir Venda
             </Button>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Salvando..." : "Salvar Alterações"}
-            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar Alterações"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -578,23 +604,11 @@ export function EditSaleDialog({
           </AlertDialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Delete mode selection */}
             <div className="flex gap-2">
-              <Button
-                variant={deleteMode === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setDeleteMode("all");
-                  setSelectedItemsToDelete([]);
-                }}
-              >
+              <Button variant={deleteMode === "all" ? "default" : "outline"} size="sm" onClick={() => { setDeleteMode("all"); setSelectedItemsToDelete([]); }}>
                 Excluir Tudo
               </Button>
-              <Button
-                variant={deleteMode === "partial" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setDeleteMode("partial")}
-              >
+              <Button variant={deleteMode === "partial" ? "default" : "outline"} size="sm" onClick={() => setDeleteMode("partial")}>
                 Escolher Itens
               </Button>
             </div>
@@ -603,37 +617,20 @@ export function EditSaleDialog({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Selecione os itens a excluir:</Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={selectAllItems}
-                  >
-                    {selectedItemsToDelete.length === saleItems.length 
-                      ? "Desmarcar todos" 
-                      : "Selecionar todos"}
+                  <Button variant="ghost" size="sm" onClick={selectAllItems}>
+                    {selectedItemsToDelete.length === saleItems.length ? "Desmarcar todos" : "Selecionar todos"}
                   </Button>
                 </div>
                 
                 <div className="border rounded-lg max-h-48 overflow-y-auto">
                   {saleItems.map((item) => (
-                    <div 
-                      key={item.id}
-                      className="p-3 flex items-center gap-3 border-b last:border-b-0 hover:bg-muted/50 cursor-pointer"
-                      onClick={() => toggleItemSelection(item.id)}
-                    >
-                      <Checkbox
-                        checked={selectedItemsToDelete.includes(item.id)}
-                        onCheckedChange={() => toggleItemSelection(item.id)}
-                      />
+                    <div key={item.id} className="p-3 flex items-center gap-3 border-b last:border-b-0 hover:bg-muted/50 cursor-pointer" onClick={() => toggleItemSelection(item.id)}>
+                      <Checkbox checked={selectedItemsToDelete.includes(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} />
                       <div className="flex-1">
                         <p className="font-medium text-sm">{item.product_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.quantity}x R$ {Number(item.unit_price).toFixed(2).replace(".", ",")}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{item.quantity}x R$ {Number(item.unit_price).toFixed(2).replace(".", ",")}</p>
                       </div>
-                      <Badge variant="secondary">
-                        R$ {Number(item.total).toFixed(2).replace(".", ",")}
-                      </Badge>
+                      <Badge variant="secondary">R$ {Number(item.total).toFixed(2).replace(".", ",")}</Badge>
                     </div>
                   ))}
                 </div>
@@ -641,8 +638,7 @@ export function EditSaleDialog({
                 {selectedItemsToDelete.length > 0 && (
                   <p className="text-sm text-muted-foreground">
                     {selectedItemsToDelete.length} item(s) selecionado(s)
-                    {selectedItemsToDelete.length === saleItems.length && 
-                      " - A venda inteira será excluída"}
+                    {selectedItemsToDelete.length === saleItems.length && " - A venda inteira será excluída"}
                   </p>
                 )}
               </div>

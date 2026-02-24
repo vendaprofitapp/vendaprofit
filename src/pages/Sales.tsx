@@ -42,6 +42,8 @@ interface Sale {
   total: number;
   status: string;
   notes: string | null;
+  sale_source: string | null;
+  event_name: string | null;
   created_at: string;
   shipping_method: string | null;
   shipping_company: string | null;
