@@ -1690,7 +1690,7 @@ export default function NewSaleDialog({
       if (!consortiumSaleData && manualSaleSource === "consortium" && manualConsortiumParticipantId) {
         const participant = consortiumParticipantsWithCredit.find(p => p.id === manualConsortiumParticipantId);
         if (participant) {
-          const creditUsed = Math.min(participant.balance, total + discountAmount);
+          const creditUsed = Math.min(participant.balance, total);
           const remaining = Math.max(0, participant.balance - creditUsed);
           await supabase
             .from("consortium_participants")
@@ -2092,10 +2092,7 @@ export default function NewSaleDialog({
                           if (participant) {
                             setCustomerName(participant.customerName || "");
                             setCustomerPhone(participant.customerPhone || "");
-                            const creditToApply = Math.min(participant.balance, subtotal);
-                            setDiscountType("fixed");
-                            setDiscountValue(creditToApply);
-                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} disponível`);
+                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} aplicado como pagamento`);
                           }
                         }}>
                           <SelectTrigger><SelectValue placeholder="Selecione o participante..." /></SelectTrigger>
@@ -2106,6 +2103,23 @@ export default function NewSaleDialog({
                           </SelectContent>
                         </Select>
                       )}
+                      {manualConsortiumParticipantId && (() => {
+                        const p = consortiumParticipantsWithCredit.find(x => x.id === manualConsortiumParticipantId);
+                        if (!p) return null;
+                        const creditUsed = Math.min(p.balance, subtotal);
+                        const clientPays = Math.max(0, subtotal - creditUsed);
+                        return (
+                          <div className="bg-primary/10 rounded-lg p-3 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="bg-purple-500/10 text-purple-600">Consórcio</Badge>
+                              <span className="text-sm font-medium">Crédito: R$ {p.balance.toFixed(2)}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              R$ {creditUsed.toFixed(2)} do crédito + R$ {clientPays.toFixed(2)} a pagar pelo cliente
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
