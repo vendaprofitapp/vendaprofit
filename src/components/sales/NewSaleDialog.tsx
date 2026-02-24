@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
-import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin } from "lucide-react";
+import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin, DollarSign } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { Button } from "@/components/ui/button";
@@ -226,6 +227,7 @@ export default function NewSaleDialog({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
 
   // ─── Form state (persisted in sessionStorage) ──────────────
   const [cart, setCart, clearCart] = useFormPersistence<CartItem[]>("sales_cart", []);
@@ -318,6 +320,85 @@ export default function NewSaleDialog({
   // ─── Manual consortium selection (from sale source selector) ──
   const [manualConsortiumParticipantId, setManualConsortiumParticipantId, clearManualConsortiumParticipantId] = useFormPersistence("sales_manualConsortiumPId", "");
   const [manualBazarItems, setManualBazarItems] = useState<Array<{ id: string; title: string; final_price: number; seller_price: number; store_commission: number; image_url: string | null; seller_name: string | null; seller_phone: string | null; status: string }>>([]);
+
+  // ─── Manual consignment selection (from sale source selector) ──
+  const [consignmentSubMode, setConsignmentSubMode] = useState<"register" | "create" | "">("");
+  const [selectedConsignmentId, setSelectedConsignmentId] = useState("");
+
+  // ─── Finalized consignments query ──────────────────────────
+  const { data: finalizedConsignments = [] } = useQuery({
+    queryKey: ["finalized-consignments-for-sale", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from("consignments")
+        .select(`
+          id, created_at, customer_id, status,
+          customers!consignments_customer_id_fkey(name, phone),
+          consignment_items(id, product_id, original_price, variant_id, status,
+            products!consignment_items_product_id_fkey(name, color, size))
+        `)
+        .eq("seller_id", user.id)
+        .eq("status", "finalized_by_client")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map((c: any) => {
+        const keptItems = (c.consignment_items || []).filter((i: any) => i.status === "kept");
+        return {
+          id: c.id,
+          created_at: c.created_at,
+          customerName: c.customers?.name || "Cliente",
+          customerPhone: c.customers?.phone || "",
+          itemCount: keptItems.length,
+          items: keptItems.map((i: any) => ({
+            product_id: i.product_id,
+            product_name: i.products?.name || "Produto",
+            price: i.original_price,
+            size: i.products?.size || null,
+            color: i.products?.color || null,
+            variant_id: i.variant_id,
+          })),
+        };
+      }).filter(c => c.itemCount > 0);
+    },
+    enabled: !!user && open && manualSaleSource === "consignment",
+  });
+
+  const loadConsignmentForSale = useCallback((consignment: typeof finalizedConsignments[0]) => {
+    // Load items into cart as consignment sale data
+    const consData: ConsignmentSaleData = {
+      consignmentId: consignment.id,
+      customerName: consignment.customerName,
+      customerPhone: consignment.customerPhone,
+      items: consignment.items,
+    };
+    // Manually trigger same flow as external consignmentData
+    setCustomerName(consignment.customerName || "");
+    setCustomerPhone(consignment.customerPhone || "");
+    setNotes(`Venda originada da Bolsa Consignada #${consignment.id.slice(0, 8)}`);
+    // Load products into cart
+    const loadItems = async () => {
+      const productIds = consignment.items.map(i => i.product_id).filter(Boolean);
+      if (productIds.length === 0) return;
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+        .in("id", productIds);
+      const cartItems: CartItem[] = consignment.items.map(item => {
+        const dbProduct = (products || []).find(p => p.id === item.product_id);
+        const product: Product = dbProduct
+          ? { ...dbProduct, isB2B: false }
+          : { id: item.product_id, name: item.product_name, price: item.price, stock_quantity: 1, owner_id: user?.id || "", group_id: null, category: "", color: item.color, size: item.size };
+        return { product, quantity: 1, isPartnerStock: false };
+      });
+      setCart(cartItems);
+    };
+    loadItems();
+    // Store consignment ID for marking as completed after sale
+    setInlineConsignmentId(consignment.id);
+  }, [user, setCart, setCustomerName, setCustomerPhone, setNotes]);
+
+  const [inlineConsignmentId, setInlineConsignmentId] = useState<string | null>(null);
 
   // ─── Data queries ──────────────────────────────────────────
   const { data: ownProducts = [] } = useQuery({
@@ -645,6 +726,7 @@ export default function NewSaleDialog({
     setManualSaleSource(newSource);
     if (newSource !== "event") setManualEventName("");
     if (newSource !== "partner_point") { setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); }
+    if (newSource !== "consignment") { setConsignmentSubMode(""); setSelectedConsignmentId(""); setInlineConsignmentId(null); }
     if (newSource !== "consortium") {
       setManualConsortiumParticipantId("");
       // Reset discount if it was consortium credit
@@ -1555,7 +1637,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : inlineConsignmentId ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
@@ -1605,6 +1687,16 @@ export default function NewSaleDialog({
           .update({ status: "completed", updated_at: new Date().toISOString() })
           .eq("id", consignmentData.consignmentId);
         queryClient.invalidateQueries({ queryKey: ["consignments"] });
+      }
+      // Mark inline-selected consignment as completed
+      if (inlineConsignmentId) {
+        await supabase
+          .from("consignments")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", inlineConsignmentId);
+        queryClient.invalidateQueries({ queryKey: ["consignments"] });
+        queryClient.invalidateQueries({ queryKey: ["finalized-consignments-for-sale"] });
+        setInlineConsignmentId(null);
       }
       // Mark catalog order as converted after successful sale
       if (catalogOrderData?.catalogOrderId) {
@@ -2081,6 +2173,61 @@ export default function NewSaleDialog({
                   {/* Event name input */}
                   {manualSaleSource === "event" && (
                     <Input placeholder="Nome do evento..." value={manualEventName} onChange={(e) => setManualEventName(e.target.value)} />
+                  )}
+
+                  {/* Consignment sub-options */}
+                  {manualSaleSource === "consignment" && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={consignmentSubMode === "register" ? "default" : "outline"}
+                          className="h-auto py-3 flex flex-col gap-1"
+                          onClick={() => setConsignmentSubMode("register")}
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          <span className="text-xs">Registrar Venda</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={consignmentSubMode === "create" ? "default" : "outline"}
+                          className="h-auto py-3 flex flex-col gap-1"
+                          onClick={() => {
+                            // Navigate to consignments page to create new consignment
+                            onOpenChange(false);
+                            navigate("/consignments", { state: { openNewConsignment: true, cartItems: cart.length > 0 ? cart.map(c => ({ product_id: c.product.id, product_name: c.product.name, price: c.product.price, variant_id: c.variant?.id || null })) : undefined } });
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span className="text-xs">Criar Nova</span>
+                        </Button>
+                      </div>
+
+                      {consignmentSubMode === "register" && (
+                        <div className="space-y-2">
+                          {finalizedConsignments.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Nenhuma malinha finalizada pelo cliente encontrada.</p>
+                          ) : (
+                            <Select value={selectedConsignmentId} onValueChange={(v) => {
+                              setSelectedConsignmentId(v);
+                              const c = finalizedConsignments.find(fc => fc.id === v);
+                              if (c) {
+                                loadConsignmentForSale(c);
+                              }
+                            }}>
+                              <SelectTrigger><SelectValue placeholder="Selecione a malinha..." /></SelectTrigger>
+                              <SelectContent>
+                                {finalizedConsignments.map(c => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.customerName} — {c.itemCount} {c.itemCount === 1 ? "item" : "itens"} ({new Date(c.created_at).toLocaleDateString("pt-BR")})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Partner Point selector */}
