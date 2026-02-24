@@ -585,7 +585,7 @@ export default function Reports() {
         let partnerCommission: number;
         let myRealProfit: number;
         
-        if (hasSplits && saleInfo) {
+        if (hasSplits && saleInfo && (saleInfo.myProfitShare !== 0 || saleInfo.myCostRecovery !== 0)) {
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
           myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
