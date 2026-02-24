@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Users, TrendingUp, Building2, Wallet, Receipt } from "lucide-react";
+import { Users, TrendingUp, Building2, Wallet, Receipt, MapPin } from "lucide-react";
 import { calculateSaleSplits, SaleSplitResult, formatCurrency } from "@/utils/profitEngine";
 
 interface CartItemWithCost {
@@ -50,6 +50,11 @@ interface ProfitBreakdownCardProps {
   productPartnerships?: Map<string, ProductPartnershipInfo>;
   /** Profiles for name resolution */
   profiles?: ProfileInfo[];
+  /** Partner point commission info */
+  partnerPointCommission?: {
+    pointName: string;
+    commissionPercent: number;
+  } | null;
 }
 
 interface DetailItem {
@@ -96,6 +101,7 @@ export function ProfitBreakdownCard({
   saleNetMultiplier = 1,
   productPartnerships,
   profiles = [],
+  partnerPointCommission = null,
 }: ProfitBreakdownCardProps) {
 
   const getProfileName = (userId: string): string => {
@@ -204,19 +210,27 @@ export function ProfitBreakdownCard({
     productPartnerships?.has(item.product.id)
   );
   const hasPaymentFee = paymentFeePercent > 0;
-  const shouldShow = hasPartnershipItems || hasActivePartnership || hasPaymentFee;
+  const hasPartnerPointComm = !!partnerPointCommission && partnerPointCommission.commissionPercent > 0;
+  const shouldShow = hasPartnershipItems || hasActivePartnership || hasPaymentFee || hasPartnerPointComm;
 
   if (!shouldShow && aggregatedSplits.scenarios.has('OWN_STOCK') && aggregatedSplits.scenarios.size === 1) {
     return null;
   }
 
-  // Calculate total net profit (gross - cost - fees)
-  const totalNetProfit = aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.totalCost - aggregatedSplits.paymentFeesTotal;
+  // Calculate partner point commission amount
+  const ppCommissionAmount = hasPartnerPointComm
+    ? ((aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.paymentFeesTotal) * partnerPointCommission!.commissionPercent / 100)
+    : 0;
+
+  // Calculate total net profit (gross - cost - fees - partner point commission)
+  const totalNetProfit = aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.totalCost - aggregatedSplits.paymentFeesTotal - ppCommissionAmount;
 
   // Build cost+fees label
-  const costFeesLabel = aggregatedSplits.paymentFeesTotal > 0
-    ? `Custo ${formatCurrency(aggregatedSplits.totalCost)} + Taxas ${formatCurrency(aggregatedSplits.paymentFeesTotal)}`
-    : `Custo ${formatCurrency(aggregatedSplits.totalCost)}`;
+  const costFeesLabels: string[] = [];
+  if (aggregatedSplits.totalCost > 0) costFeesLabels.push(`Custo ${formatCurrency(aggregatedSplits.totalCost)}`);
+  if (aggregatedSplits.paymentFeesTotal > 0) costFeesLabels.push(`Taxas ${formatCurrency(aggregatedSplits.paymentFeesTotal)}`);
+  if (ppCommissionAmount > 0) costFeesLabels.push(`Comissão ${formatCurrency(ppCommissionAmount)}`);
+  const costFeesLabel = costFeesLabels.length > 0 ? costFeesLabels.join(' + ') : `Custo ${formatCurrency(0)}`;
 
   // Find partner user id from partnership items for naming
   const getPartnerUserId = (): string | null => {
@@ -334,14 +348,25 @@ export function ProfitBreakdownCard({
             </div>
           )}
 
-          {/* OWN_STOCK with fees - simple display */}
-          {aggregatedSplits.scenarios.has('OWN_STOCK') && !aggregatedSplits.scenarios.has('A') && !aggregatedSplits.scenarios.has('B') && hasPaymentFee && (
+          {/* OWN_STOCK with fees/commission - simple display */}
+          {aggregatedSplits.scenarios.has('OWN_STOCK') && !aggregatedSplits.scenarios.has('A') && !aggregatedSplits.scenarios.has('B') && (hasPaymentFee || hasPartnerPointComm) && (
             <Badge
               variant="outline"
               className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
             >
               <Wallet className="h-3.5 w-3.5 mr-1.5" />
-              Lucro Líquido Real: {formatCurrency(aggregatedSplits.sellerProfitOnly)}
+              Lucro Líquido Real: {formatCurrency(totalNetProfit)}
+            </Badge>
+          )}
+
+          {/* Partner Point Commission badge */}
+          {hasPartnerPointComm && (
+            <Badge
+              variant="outline"
+              className="bg-orange-500/10 text-orange-700 border-orange-500/30 px-3 py-1.5 text-sm font-medium"
+            >
+              <MapPin className="h-3.5 w-3.5 mr-1.5" />
+              Comissão {partnerPointCommission!.pointName} ({partnerPointCommission!.commissionPercent}%): -{formatCurrency(ppCommissionAmount)}
             </Badge>
           )}
         </div>

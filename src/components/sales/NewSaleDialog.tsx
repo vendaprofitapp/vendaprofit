@@ -1705,6 +1705,40 @@ export default function NewSaleDialog({
         }
       }
 
+      // Insert partner_point_sales record for MANUAL partner point sales
+      if (!partnerPointOrderData && manualSaleSource === "partner_point" && manualPartnerPointId && result?.sale_id) {
+        const selectedPP = userPartnerPoints.find(pp => pp.id === manualPartnerPointId);
+        if (selectedPP) {
+          const commPct = manualPartnerPointCommType === "pickup"
+            ? (selectedPP.pickup_commission_pct ?? selectedPP.rack_commission_pct ?? 0)
+            : (selectedPP.rack_commission_pct ?? 0);
+          const ppFeePercent = selectedPaymentMethodId
+            ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0)
+            : 0;
+          const itemsForPP = cart.map(item => ({
+            product_id: item.product.id,
+            product_name: item.product.name,
+            quantity: item.quantity,
+            unit_price: item.product.price,
+          }));
+          const ppPaymentMethodName = customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.name || "Dinheiro";
+          await supabase.from("partner_point_sales").insert({
+            partner_point_id: manualPartnerPointId,
+            owner_id: user.id,
+            customer_name: customerName || "Cliente",
+            customer_phone: customerPhone || "",
+            items: itemsForPP as any,
+            total_gross: total,
+            payment_method: ppPaymentMethodName,
+            payment_fee_applied: ppFeePercent,
+            pass_status: "completed",
+            converted_sale_id: result.sale_id,
+            custom_payment_method_id: selectedPaymentMethodId || null,
+          });
+          queryClient.invalidateQueries({ queryKey: ["partner-point-sales"] });
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["partner-sales"] });
@@ -2410,6 +2444,24 @@ export default function NewSaleDialog({
                   saleNetMultiplier={subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1}
                   productPartnerships={productPartnershipsMap}
                   profiles={profiles}
+                  partnerPointCommission={
+                    manualSaleSource === "partner_point" && manualPartnerPointId
+                      ? (() => {
+                          const pp = userPartnerPoints.find(p => p.id === manualPartnerPointId);
+                          if (!pp) return null;
+                          const commPct = manualPartnerPointCommType === "pickup"
+                            ? (pp.pickup_commission_pct ?? pp.rack_commission_pct ?? 0)
+                            : (pp.rack_commission_pct ?? 0);
+                          return commPct > 0 ? { pointName: pp.name, commissionPercent: commPct } : null;
+                        })()
+                      : partnerPointOrderData
+                        ? (() => {
+                            return partnerPointOrderData.rackCommissionPct > 0
+                              ? { pointName: partnerPointOrderData.partnerName, commissionPercent: partnerPointOrderData.rackCommissionPct }
+                              : null;
+                          })()
+                        : null
+                  }
                 />
               )}
 
