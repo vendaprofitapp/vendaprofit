@@ -74,11 +74,12 @@ export function ConsortiumItemsDialog({
     enabled: open,
   });
 
-  const creditAvailable = participantBalance;
+  const creditTotal = Number(consortiumValue);
+  const usedFromBalance = creditTotal - participantBalance;
   const cartTotal = importedCart?.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0) || 0;
   const existingTotal = existingItems.reduce((sum, i) => sum + Number(i.total), 0);
-  const totalUsed = cartTotal + existingTotal;
-  const remaining = creditAvailable - totalUsed;
+  const totalUsed = usedFromBalance + cartTotal + existingTotal;
+  const remaining = creditTotal - totalUsed;
   const hasDebt = remaining < 0;
   const hasCredit = remaining > 0;
 
@@ -154,7 +155,7 @@ export function ConsortiumItemsDialog({
       participantId,
       participantName,
       cartId: importedCart.id,
-      creditAmount: creditAvailable,
+      creditAmount: participantBalance,
       cartTotal,
       items: importedCart.items.map((item) => ({
         product_id: item.product_id,
@@ -205,7 +206,7 @@ export function ConsortiumItemsDialog({
             <Card className="bg-muted">
               <CardContent className="p-3 text-center">
                 <p className="text-xs text-muted-foreground">Crédito Total</p>
-                <p className="text-lg font-bold text-primary">R$ {creditAvailable.toFixed(2)}</p>
+                <p className="text-lg font-bold text-primary">R$ {creditTotal.toFixed(2)}</p>
               </CardContent>
             </Card>
             <Card className="bg-muted">
@@ -347,7 +348,7 @@ export function ConsortiumItemsDialog({
                 </div>
                 <div className="flex justify-between text-sm text-primary">
                   <span>Crédito do Consórcio</span>
-                  <span className="font-medium">- R$ {Math.min(creditAvailable, cartTotal).toFixed(2)}</span>
+                  <span className="font-medium">- R$ {Math.min(participantBalance, cartTotal).toFixed(2)}</span>
                 </div>
                 {hasDebt && (
                   <div className="flex justify-between text-sm text-destructive border-t pt-2">
