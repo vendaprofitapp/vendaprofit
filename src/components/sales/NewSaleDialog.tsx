@@ -1433,6 +1433,10 @@ export default function NewSaleDialog({
         const isPartnershipStock = item.isPartnerStock || isInPartnership;
         const partnershipGroup = productPartnershipData?.group as any;
 
+        // Calculate seller shipping cost per item (proportional)
+        const isSellerShipping = shippingData.method !== "presencial" && shippingData.payer === "seller" && shippingData.cost > 0;
+        const itemShippingCost = isSellerShipping ? (shippingData.cost * (salePriceAfterDiscount / (subtotal - discountAmount || 1))) : 0;
+
         const splitResult = calculateSaleSplits({
           salePrice: salePriceAfterDiscount,
           costPrice,
@@ -1442,6 +1446,7 @@ export default function NewSaleDialog({
           hasActivePartnership: isInPartnership || userGroups.length > 0,
           isDirectPartnership: partnershipGroup?.is_direct ?? false,
           paymentMethodFee: feePercent,
+          sellerShippingCost: itemShippingCost,
           partnership: partnershipGroup ? {
             cost_split_ratio: partnershipGroup.cost_split_ratio,
             profit_share_seller: partnershipGroup.profit_share_seller,
@@ -1456,16 +1461,25 @@ export default function NewSaleDialog({
 
         if (splitResult.scenario === 'A' && isInPartnership && groupMembers.length >= 2) {
           const partnerUserId = groupMembers.find(m => m.user_id !== user.id)?.user_id;
-          if (splitResult.seller.costRecovery > 0) financialSplitsPayload.push({ user_id: user.id, amount: splitResult.seller.costRecovery, type: 'cost_recovery', description: `Recuperação de custo ${((partnershipGroup?.cost_split_ratio ?? 0.5) * 100).toFixed(0)}% ${profiles.find(p => p.id === user.id)?.full_name || 'Vendedora'} (parceria) - ${item.product.name}` });
+          // Scenario A: only profit_share splits (no cost_recovery), fees/shipping already deducted
           if (splitResult.seller.profitShare > 0) financialSplitsPayload.push({ user_id: user.id, amount: splitResult.seller.profitShare, type: 'profit_share', description: `Lucro ${((partnershipGroup?.profit_share_seller ?? 0.7) * 100).toFixed(0)}% ${profiles.find(p => p.id === user.id)?.full_name || 'Vendedora'} (parceria) - ${item.product.name}` });
-          if (partnerUserId && splitResult.partner.costRecovery > 0) financialSplitsPayload.push({ user_id: partnerUserId, amount: splitResult.partner.costRecovery, type: 'cost_recovery', description: `Recuperação de custo ${((1 - (partnershipGroup?.cost_split_ratio ?? 0.5)) * 100).toFixed(0)}% ${profiles.find(p => p.id === partnerUserId)?.full_name || 'Sócia'} (parceria) - ${item.product.name}` });
           if (partnerUserId && splitResult.partner.profitShare > 0) financialSplitsPayload.push({ user_id: partnerUserId, amount: splitResult.partner.profitShare, type: 'profit_share', description: `Lucro ${((partnershipGroup?.profit_share_partner ?? 0.3) * 100).toFixed(0)}% ${profiles.find(p => p.id === partnerUserId)?.full_name || 'Sócia'} (parceria) - ${item.product.name}` });
+          // Do NOT add payment_fee split for Scenario A — already deducted from net profit
         } else if (splitResult.scenario === 'C' && isPartnershipStock && groupMembers.length >= 2) {
           const ownerUserId = item.product.owner_id;
           const partnerUserId = groupMembers.find(m => m.user_id !== ownerUserId)?.user_id;
           if (splitResult.owner.total > 0) financialSplitsPayload.push({ user_id: ownerUserId, amount: splitResult.owner.total, type: 'cost_recovery', description: `Comissão de Cessão de Estoque (Peça vendida por terceiro) - ${item.product.name}` });
           if (partnerUserId && splitResult.partner.total > 0) financialSplitsPayload.push({ user_id: partnerUserId, amount: splitResult.partner.total, type: 'cost_recovery', description: `Comissão de Cessão de Estoque (Peça vendida por terceiro) - ${item.product.name}` });
           if (splitResult.seller.profitShare > 0) financialSplitsPayload.push({ user_id: user.id, amount: splitResult.seller.profitShare, type: 'profit_share', description: `Lucro da venda (após pagamento à parceria) - ${item.product.name}` });
+          // Record payment fee for non-partnership scenarios
+          if (splitResult.paymentFeeAmount > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: -splitResult.paymentFeeAmount,
+              type: 'payment_fee',
+              description: `Taxa ${feePercent.toFixed(1)}% ${paymentMethodName} - ${item.product.name}`,
+            });
+          }
         } else {
           if (splitResult.seller.costRecovery > 0) financialSplitsPayload.push({ user_id: user.id, amount: splitResult.seller.costRecovery, type: 'cost_recovery', description: `Recuperação de custo - ${item.product.name}` });
           if (splitResult.seller.profitShare > 0) financialSplitsPayload.push({ user_id: user.id, amount: splitResult.seller.profitShare, type: 'profit_share', description: `Lucro da venda - ${item.product.name}` });
@@ -1473,16 +1487,15 @@ export default function NewSaleDialog({
             if (splitResult.owner.costRecovery > 0) financialSplitsPayload.push({ user_id: item.product.owner_id, amount: splitResult.owner.costRecovery, type: 'cost_recovery', description: `Recuperação de custo (dono) - ${item.product.name}` });
             if (splitResult.owner.groupCommission > 0) financialSplitsPayload.push({ user_id: item.product.owner_id, amount: splitResult.owner.groupCommission, type: 'group_commission', description: `Comissão de grupo - ${item.product.name}` });
           }
-        }
-
-        // Record payment fee as separate split for reporting
-        if (splitResult.paymentFeeAmount > 0) {
-          financialSplitsPayload.push({
-            user_id: user.id,
-            amount: -splitResult.paymentFeeAmount,
-            type: 'payment_fee',
-            description: `Taxa ${feePercent.toFixed(1)}% ${paymentMethodName} - ${item.product.name}`,
-          });
+          // Record payment fee for non-partnership scenarios
+          if (splitResult.paymentFeeAmount > 0) {
+            financialSplitsPayload.push({
+              user_id: user.id,
+              amount: -splitResult.paymentFeeAmount,
+              type: 'payment_fee',
+              description: `Taxa ${feePercent.toFixed(1)}% ${paymentMethodName} - ${item.product.name}`,
+            });
+          }
         }
       }
 
@@ -2593,6 +2606,8 @@ export default function NewSaleDialog({
                   saleNetMultiplier={subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1}
                   productPartnerships={productPartnershipsMap}
                   profiles={profiles}
+                  sellerShippingCost={shippingData.method !== "presencial" && shippingData.payer === "seller" ? shippingData.cost : 0}
+                  totalAfterDiscount={subtotal - discountAmount}
                   partnerPointCommission={
                     manualSaleSource === "partner_point" && manualPartnerPointId
                       ? (() => {

@@ -55,6 +55,10 @@ interface ProfitBreakdownCardProps {
     pointName: string;
     commissionPercent: number;
   } | null;
+  /** Frete pago pela vendedora (total) */
+  sellerShippingCost?: number;
+  /** Subtotal after discount for proportional shipping calc */
+  totalAfterDiscount?: number;
 }
 
 interface DetailItem {
@@ -102,6 +106,8 @@ export function ProfitBreakdownCard({
   productPartnerships,
   profiles = [],
   partnerPointCommission = null,
+  sellerShippingCost = 0,
+  totalAfterDiscount = 0,
 }: ProfitBreakdownCardProps) {
 
   const getProfileName = (userId: string): string => {
@@ -133,6 +139,11 @@ export function ProfitBreakdownCard({
       const isInPartnership = !!partnershipInfo;
       const isPartnershipStock = item.isPartnerStock || isInPartnership;
 
+      // Proportional shipping cost for this item
+      const itemShippingCost = sellerShippingCost > 0 && totalAfterDiscount > 0
+        ? sellerShippingCost * (salePriceAfterDiscount / totalAfterDiscount)
+        : 0;
+
       const splitResult = calculateSaleSplits({
         salePrice: salePriceAfterDiscount,
         costPrice,
@@ -142,6 +153,7 @@ export function ProfitBreakdownCard({
         hasActivePartnership: isInPartnership || hasActivePartnership,
         isDirectPartnership: partnershipInfo?.isDirect ?? false,
         paymentMethodFee: paymentFeePercent,
+        sellerShippingCost: itemShippingCost,
         partnership: partnershipInfo ? {
           cost_split_ratio: partnershipInfo.costSplitRatio,
           profit_share_seller: partnershipInfo.profitShareSeller,
@@ -189,7 +201,7 @@ export function ProfitBreakdownCard({
     });
 
     return result;
-  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier, productPartnerships]);
+  }, [cart, currentUserId, groupCommissionPercent, hasActivePartnership, paymentFeePercent, saleNetMultiplier, productPartnerships, sellerShippingCost, totalAfterDiscount]);
 
   // Group details by owner for multi-stock display (must be before early returns)
   const groupedByOwner = useMemo(() => {
@@ -222,13 +234,14 @@ export function ProfitBreakdownCard({
     ? ((aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.paymentFeesTotal) * partnerPointCommission!.commissionPercent / 100)
     : 0;
 
-  // Calculate total net profit (gross - cost - fees - partner point commission)
-  const totalNetProfit = aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.totalCost - aggregatedSplits.paymentFeesTotal - ppCommissionAmount;
+  // Calculate total net profit (gross - cost - fees - shipping - partner point commission)
+  const totalNetProfit = aggregatedSplits.totalGross * saleNetMultiplier - aggregatedSplits.totalCost - aggregatedSplits.paymentFeesTotal - sellerShippingCost - ppCommissionAmount;
 
   // Build cost+fees label
   const costFeesLabels: string[] = [];
   if (aggregatedSplits.totalCost > 0) costFeesLabels.push(`Custo ${formatCurrency(aggregatedSplits.totalCost)}`);
   if (aggregatedSplits.paymentFeesTotal > 0) costFeesLabels.push(`Taxas ${formatCurrency(aggregatedSplits.paymentFeesTotal)}`);
+  if (sellerShippingCost > 0) costFeesLabels.push(`Frete ${formatCurrency(sellerShippingCost)}`);
   if (ppCommissionAmount > 0) costFeesLabels.push(`Comissão ${formatCurrency(ppCommissionAmount)}`);
   const costFeesLabel = costFeesLabels.length > 0 ? costFeesLabels.join(' + ') : `Custo ${formatCurrency(0)}`;
 
@@ -277,10 +290,8 @@ export function ProfitBreakdownCard({
             // Get config from first scenario A detail
             const configDetail = aggregatedSplits.details.find(d => d.scenario === 'A');
             const config = configDetail?.appliedConfig;
-            const costPct = config ? (config.costSplitRatio * 100).toFixed(0) : "50";
             const profitSellerPct = config ? (config.profitShareSeller * 100).toFixed(0) : "70";
             const profitPartnerPct = config ? (config.profitSharePartner * 100).toFixed(0) : "30";
-            const costPartnerPct = config ? ((1 - config.costSplitRatio) * 100).toFixed(0) : "50";
 
             return (
               <>
@@ -289,14 +300,14 @@ export function ProfitBreakdownCard({
                   className="bg-green-500/10 text-green-700 border-green-500/30 px-3 py-1.5 text-sm font-medium"
                 >
                   <Receipt className="h-3.5 w-3.5 mr-1.5" />
-                  {sellerName} recebe ({costPct}% custo + {profitSellerPct}% lucro) = {formatCurrency(aggregatedSplits.sellerTotalReceive)}
+                  {sellerName} recebe {profitSellerPct}% do lucro = {formatCurrency(aggregatedSplits.sellerTotalReceive)}
                 </Badge>
                 <Badge
                   variant="outline"
                   className="bg-amber-500/10 text-amber-700 border-amber-500/30 px-3 py-1.5 text-sm font-medium"
                 >
                   <Users className="h-3.5 w-3.5 mr-1.5" />
-                  {partnerName} recebe ({costPartnerPct}% custo + {profitPartnerPct}% lucro) = {formatCurrency(aggregatedSplits.partnerTotalReceive)}
+                  {partnerName} recebe {profitPartnerPct}% do lucro = {formatCurrency(aggregatedSplits.partnerTotalReceive)}
                 </Badge>
               </>
             );
