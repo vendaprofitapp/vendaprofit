@@ -273,22 +273,27 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   }
 
   // Scenario B: Third-party stock via group (seller is NOT the owner)
-  // Owner gets: Cost + (TotalProfit * GroupCommission%)
-  // Seller keeps: remaining profit
+  // Owner gets: Cost + (GrossProfit * GroupCommission%)
+  // Seller keeps: GrossProfit - OwnerCommission - Fees - Shipping
+  // Commission is calculated on GROSS profit (sale - cost), NOT net profit
   if (!sellerIsOwner && !isPartnershipStock) {
     result.scenario = 'B';
-    result.scenarioDescription = `Venda de estoque de terceiro via grupo - Dono recebe custo + ${(groupCommission * 100).toFixed(0)}% comissão`;
     
-    const ownerCommission = totalProfit * groupCommission;
+    // Gross profit = sale price - cost (before fees and shipping)
+    const grossProfit = Math.max(0, grossSalePrice - costPrice);
+    const ownerCommission = grossProfit * groupCommission;
     const ownerTotal = costPrice + ownerCommission;
-    const sellerProfit = totalProfit - ownerCommission;
+    // Seller bears fees and shipping from their portion
+    const sellerProfit = Math.max(0, grossProfit - ownerCommission - paymentFeeAmount - sellerShippingCost);
+    
+    result.scenarioDescription = `Venda de estoque de terceiro via grupo - Dono recebe custo + ${(groupCommission * 100).toFixed(0)}% comissão do lucro bruto`;
     
     // Owner gets cost recovery + group commission
     result.owner.costRecovery = costPrice;
     result.owner.groupCommission = ownerCommission;
     result.owner.total = ownerTotal;
     
-    // Seller keeps remaining profit
+    // Seller keeps remaining profit after commission, fees and shipping
     result.seller.profitShare = sellerProfit;
     result.seller.total = sellerProfit;
     
