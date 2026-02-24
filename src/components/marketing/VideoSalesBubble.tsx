@@ -11,8 +11,36 @@ export function VideoSalesBubble({ previewUrl, fullUrl }: VideoSalesBubbleProps)
   const [isOpen, setIsOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [hasNotification, setHasNotification] = useState(true);
+  const [progress, setProgress] = useState(0);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const fullVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Play the full video once the modal is open and ref is available
+  useEffect(() => {
+    if (!isOpen || !fullVideoRef.current) return;
+    const video = fullVideoRef.current;
+    video.currentTime = 0;
+    video.muted = false;
+    setIsMuted(false);
+    video.play().catch(() => {
+      video.muted = true;
+      video.play().catch(() => {});
+      setIsMuted(true);
+    });
+  }, [isOpen]);
+
+  // Progress tracking for stories-style progress bar
+  useEffect(() => {
+    if (!isOpen || !fullVideoRef.current) return;
+    const video = fullVideoRef.current;
+    const updateProgress = () => {
+      if (video.duration) {
+        setProgress((video.currentTime / video.duration) * 100);
+      }
+    };
+    video.addEventListener("timeupdate", updateProgress);
+    return () => video.removeEventListener("timeupdate", updateProgress);
+  }, [isOpen]);
 
   // Don't render if no videos provided
   if (!previewUrl && !fullUrl) {
@@ -23,19 +51,6 @@ export function VideoSalesBubble({ previewUrl, fullUrl }: VideoSalesBubbleProps)
   const handleOpen = () => {
     setIsOpen(true);
     setHasNotification(false);
-    // Start playing full video with sound
-    if (fullVideoRef.current) {
-      fullVideoRef.current.currentTime = 0;
-      fullVideoRef.current.muted = false;
-      fullVideoRef.current.play().catch(() => {
-        // Autoplay was blocked, start muted
-        if (fullVideoRef.current) {
-          fullVideoRef.current.muted = true;
-          fullVideoRef.current.play();
-          setIsMuted(true);
-        }
-      });
-    }
   };
 
   // Handle closing the modal
@@ -59,23 +74,6 @@ export function VideoSalesBubble({ previewUrl, fullUrl }: VideoSalesBubbleProps)
   const handleVideoEnded = () => {
     handleClose();
   };
-
-  // Progress tracking for stories-style progress bar
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (!isOpen || !fullVideoRef.current) return;
-
-    const video = fullVideoRef.current;
-    const updateProgress = () => {
-      if (video.duration) {
-        setProgress((video.currentTime / video.duration) * 100);
-      }
-    };
-
-    video.addEventListener("timeupdate", updateProgress);
-    return () => video.removeEventListener("timeupdate", updateProgress);
-  }, [isOpen]);
 
   return (
     <>
