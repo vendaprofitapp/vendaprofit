@@ -588,7 +588,13 @@ export default function Reports() {
         let partnerCommission: number;
         let myRealProfit: number;
         
-        if (hasSplits && saleInfo && saleInfo.hasProfitShare) {
+        if (hasSplits && saleInfo && saleInfo.hasProfitShare && !hasPartnership && saleInfo.partnerCommission > 0) {
+          // Partner point sales: has profit_share + group_commission from same user (no partnership)
+          // Use calculated profit to handle both old (incorrect) and new (correct) splits
+          feeAmount = saleInfo.feeAmount * itemProportion;
+          partnerCommission = saleInfo.partnerCommission * itemProportion;
+          myRealProfit = grossProfit - feeAmount - partnerCommission - itemSellerShipping;
+        } else if (hasSplits && saleInfo && saleInfo.hasProfitShare) {
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
           myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
