@@ -1407,16 +1407,17 @@ export default function NewSaleDialog({
       // Override financial splits for partner point orders
       if (partnerPointOrderData) {
         financialSplitsPayload.length = 0;
+        const ppTotalCost = cart.reduce((sum, item) => sum + (item.product.cost_price ?? 0) * item.quantity, 0);
         const paymentFeeAmount = (feePercent / 100) * total;
         const netAfterFees = total - paymentFeeAmount;
         const partnerCommission = netAfterFees * (partnerPointOrderData.rackCommissionPct / 100);
-        const sellerNet = netAfterFees - partnerCommission;
+        const sellerNet = netAfterFees - partnerCommission - ppTotalCost;
 
         financialSplitsPayload.push({
           user_id: user.id,
           amount: sellerNet,
           type: 'profit_share',
-          description: `Receita líquida — venda no ${partnerPointOrderData.partnerName}`,
+          description: `Lucro líquido — venda no ${partnerPointOrderData.partnerName}`,
         });
 
         if (partnerCommission > 0) {
@@ -1434,19 +1435,20 @@ export default function NewSaleDialog({
         const selectedPP = userPartnerPoints.find(pp => pp.id === manualPartnerPointId);
         if (selectedPP) {
           financialSplitsPayload.length = 0;
+          const ppTotalCost = cart.reduce((sum, item) => sum + (item.product.cost_price ?? 0) * item.quantity, 0);
           const commPct = manualPartnerPointCommType === "pickup"
             ? (selectedPP.pickup_commission_pct ?? selectedPP.rack_commission_pct ?? 0)
             : (selectedPP.rack_commission_pct ?? 0);
           const paymentFeeAmount = (feePercent / 100) * total;
           const netAfterFees = total - paymentFeeAmount;
           const partnerCommission = netAfterFees * (commPct / 100);
-          const sellerNet = netAfterFees - partnerCommission;
+          const sellerNet = netAfterFees - partnerCommission - ppTotalCost;
 
           financialSplitsPayload.push({
             user_id: user.id,
             amount: sellerNet,
             type: 'profit_share',
-            description: `Receita líquida — venda no ${selectedPP.name}`,
+            description: `Lucro líquido — venda no ${selectedPP.name}`,
           });
 
           if (partnerCommission > 0) {
