@@ -814,6 +814,126 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     return "destructive";
   };
 
+  const renderSaleCard = (sale: SaleWithItems) => {
+    const splits = splitsBySaleId.get(sale.id) ?? [];
+    const sellerProfile = profileMap.get(sale.owner_id);
+    const sellerName = sellerProfile?.full_name ?? "Vendedora";
+    const isExpanded = expandedSales.has(sale.id);
+    const isDeferred = unpaidDeferredSaleIds.has(sale.id);
+
+    // Group splits by user
+    const splitsByUser = new Map<string, FinancialSplit[]>();
+    for (const s of splits) {
+      const arr = splitsByUser.get(s.user_id) ?? [];
+      arr.push(s);
+      splitsByUser.set(s.user_id, arr);
+    }
+
+    return (
+      <Collapsible key={sale.id} open={isExpanded} onOpenChange={() => toggleSaleExpanded(sale.id)}>
+        <CollapsibleTrigger asChild>
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <ShoppingBag className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-sm">
+                    {format(new Date(sale.created_at), "dd/MM/yyyy HH:mm")}
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {saleSourceLabel(sale.sale_source, sale.event_name)}
+                  </Badge>
+                  {isDeferred && (
+                    <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
+                      A prazo
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  {sale.customer_name ? `Cliente: ${sale.customer_name} • ` : ""}
+                  {sale.payment_method}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-semibold text-sm">{formatCurrency(sale.total)}</span>
+              {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border border-t-0 rounded-b-lg p-4 space-y-4 bg-muted/20">
+            {/* Items */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Itens da Venda</h4>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-xs">Produto</TableHead>
+                    <TableHead className="text-xs text-right">Qtd</TableHead>
+                    <TableHead className="text-xs text-right">Unitário</TableHead>
+                    <TableHead className="text-xs text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sale.sale_items.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-transparent">
+                      <TableCell className="text-sm py-1.5">{item.product_name}</TableCell>
+                      <TableCell className="text-sm text-right py-1.5">{item.quantity}</TableCell>
+                      <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.unit_price)}</TableCell>
+                      <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {(sale.discount_amount && sale.discount_amount > 0) ? (
+                <p className="text-xs text-muted-foreground mt-1">Desconto: -{formatCurrency(sale.discount_amount)}</p>
+              ) : null}
+              {(sale.shipping_cost && sale.shipping_cost > 0) ? (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Frete: {formatCurrency(sale.shipping_cost)} ({sale.shipping_payer === "seller" ? "pago pela vendedora" : "pago pelo comprador"})
+                </p>
+              ) : null}
+            </div>
+
+            {/* Financial Splits */}
+            {splits.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Divisão de Lucros</h4>
+                <div className="space-y-2">
+                  {Array.from(splitsByUser.entries()).map(([userId, userSplits]) => {
+                    const profile = profileMap.get(userId);
+                    const personName = userId === user!.id ? `${currentUserName} (Você)` : (profile?.full_name ?? "Parceiro");
+                    const personTotal = userSplits.reduce((sum, s) => sum + s.amount, 0);
+                    const isCurrentUser = userId === user!.id;
+
+                    return (
+                      <div key={userId} className={`p-3 rounded-md border ${isCurrentUser ? "bg-primary/5 border-primary/20" : "bg-card"}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-medium">{personName}</span>
+                          <span className={`text-sm font-bold ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
+                            {formatCurrency(personTotal)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {userSplits.map((split) => (
+                            <Badge key={split.id} variant={splitTypeBadgeVariant(split.type)} className="text-xs font-normal gap-1">
+                              {splitTypeLabel(split.type)}: {formatCurrency(split.amount)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  };
+
   const renderDetailedSales = (kind: ReportKind) => {
     if (!user) return null;
 
@@ -833,136 +953,57 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
       );
     }
 
-    return (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-primary" />
-            Detalhamento de Vendas ({relevantSales.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 p-3 sm:p-6">
-          {relevantSales.map((sale) => {
-            const splits = splitsBySaleId.get(sale.id) ?? [];
-            const sellerProfile = profileMap.get(sale.owner_id);
-            const sellerName = sellerProfile?.full_name ?? "Vendedora";
-            const isExpanded = expandedSales.has(sale.id);
-            const isDeferred = unpaidDeferredSaleIds.has(sale.id);
+    // Group sales by seller (owner_id)
+    const salesByOwner = new Map<string, SaleWithItems[]>();
+    for (const sale of relevantSales) {
+      const arr = salesByOwner.get(sale.owner_id) ?? [];
+      arr.push(sale);
+      salesByOwner.set(sale.owner_id, arr);
+    }
 
-            // Group splits by user
-            const splitsByUser = new Map<string, FinancialSplit[]>();
-            for (const s of splits) {
-              const arr = splitsByUser.get(s.user_id) ?? [];
-              arr.push(s);
-              splitsByUser.set(s.user_id, arr);
-            }
+    // Sort owners: current user first, then alphabetically
+    const ownerIds = Array.from(salesByOwner.keys()).sort((a, b) => {
+      if (a === user.id) return -1;
+      if (b === user.id) return 1;
+      const nameA = profileMap.get(a)?.full_name ?? "";
+      const nameB = profileMap.get(b)?.full_name ?? "";
+      return nameA.localeCompare(nameB);
+    });
+
+    return (
+      <div className="mt-6">
+        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+          <Receipt className="h-5 w-5 text-primary" />
+          Detalhamento de Vendas ({relevantSales.length})
+        </h3>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {ownerIds.map((ownerId) => {
+            const ownerSales = salesByOwner.get(ownerId) ?? [];
+            const ownerProfile = profileMap.get(ownerId);
+            const ownerName = ownerId === user.id ? `${currentUserName} (Você)` : (ownerProfile?.full_name ?? "Vendedora");
+            const ownerTotal = ownerSales.reduce((sum, s) => sum + s.total, 0);
 
             return (
-              <Collapsible key={sale.id} open={isExpanded} onOpenChange={() => toggleSaleExpanded(sale.id)}>
-                <CollapsibleTrigger asChild>
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <ShoppingBag className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">
-                            {format(new Date(sale.created_at), "dd/MM/yyyy HH:mm")}
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            {saleSourceLabel(sale.sale_source, sale.event_name)}
-                          </Badge>
-                          {isDeferred && (
-                            <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
-                              A prazo
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {sale.customer_name ? `Cliente: ${sale.customer_name} • ` : ""}
-                          Vendido por: {sellerName} • {sale.payment_method}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-semibold text-sm">{formatCurrency(sale.total)}</span>
-                      {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                    </div>
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="border border-t-0 rounded-b-lg p-4 space-y-4 bg-muted/20">
-                    {/* Items */}
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Itens da Venda</h4>
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead className="text-xs">Produto</TableHead>
-                            <TableHead className="text-xs text-right">Qtd</TableHead>
-                            <TableHead className="text-xs text-right">Unitário</TableHead>
-                            <TableHead className="text-xs text-right">Total</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {sale.sale_items.map((item) => (
-                            <TableRow key={item.id} className="hover:bg-transparent">
-                              <TableCell className="text-sm py-1.5">{item.product_name}</TableCell>
-                              <TableCell className="text-sm text-right py-1.5">{item.quantity}</TableCell>
-                              <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.unit_price)}</TableCell>
-                              <TableCell className="text-sm text-right py-1.5">{formatCurrency(item.total)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      {(sale.discount_amount && sale.discount_amount > 0) ? (
-                        <p className="text-xs text-muted-foreground mt-1">Desconto: -{formatCurrency(sale.discount_amount)}</p>
-                      ) : null}
-                      {(sale.shipping_cost && sale.shipping_cost > 0) ? (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Frete: {formatCurrency(sale.shipping_cost)} ({sale.shipping_payer === "seller" ? "pago pela vendedora" : "pago pelo comprador"})
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {/* Financial Splits */}
-                    {splits.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Divisão de Lucros</h4>
-                        <div className="space-y-2">
-                          {Array.from(splitsByUser.entries()).map(([userId, userSplits]) => {
-                            const profile = profileMap.get(userId);
-                            const personName = userId === user.id ? `${currentUserName} (Você)` : (profile?.full_name ?? "Parceiro");
-                            const personTotal = userSplits.reduce((sum, s) => sum + s.amount, 0);
-                            const isCurrentUser = userId === user.id;
-
-                            return (
-                              <div key={userId} className={`p-3 rounded-md border ${isCurrentUser ? "bg-primary/5 border-primary/20" : "bg-card"}`}>
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <span className="text-sm font-medium">{personName}</span>
-                                  <span className={`text-sm font-bold ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
-                                    {formatCurrency(personTotal)}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {userSplits.map((split) => (
-                                    <Badge key={split.id} variant={splitTypeBadgeVariant(split.type)} className="text-xs font-normal gap-1">
-                                      {splitTypeLabel(split.type)}: {formatCurrency(split.amount)}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
+              <Card key={ownerId}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <ShoppingBag className="h-4 w-4 text-primary" />
+                      Vendas de {ownerName}
+                    </span>
+                    <Badge variant="secondary" className="text-xs">
+                      {ownerSales.length} {ownerSales.length === 1 ? "venda" : "vendas"} • {formatCurrency(ownerTotal)}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 p-3 sm:p-6 pt-0 sm:pt-0">
+                  {ownerSales.map((sale) => renderSaleCard(sale))}
+                </CardContent>
+              </Card>
             );
           })}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   };
 
