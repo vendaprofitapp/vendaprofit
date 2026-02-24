@@ -397,6 +397,7 @@ export default function Reports() {
       hasPartnership: boolean; 
       partnerAmount: number;
       hasSplits: boolean;
+      hasProfitShare: boolean;
       feeAmount: number;
       partnerCommission: number;
       myCostRecovery: number;
@@ -405,6 +406,7 @@ export default function Reports() {
     for (const split of financialSplitsData) {
       const existing = map.get(split.sale_id) || { 
         myTotal: 0, hasPartnership: false, partnerAmount: 0, hasSplits: false,
+        hasProfitShare: false,
         feeAmount: 0, partnerCommission: 0, myCostRecovery: 0, myProfitShare: 0
       };
       existing.hasSplits = true;
@@ -418,6 +420,7 @@ export default function Reports() {
           existing.myCostRecovery += split.amount;
         } else if (split.type === 'profit_share') {
           existing.myProfitShare += split.amount;
+          existing.hasProfitShare = true;
         }
         existing.myTotal += split.amount;
       } else {
@@ -585,7 +588,7 @@ export default function Reports() {
         let partnerCommission: number;
         let myRealProfit: number;
         
-        if (hasSplits && saleInfo && (saleInfo.myProfitShare !== 0 || saleInfo.myCostRecovery !== 0)) {
+        if (hasSplits && saleInfo && saleInfo.hasProfitShare) {
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
           myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
