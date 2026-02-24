@@ -320,22 +320,22 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   }
 
   // Scenario C: Third party sells partnership stock
-  // Partnership receives: Cost + (TotalProfit * PartnershipCommission%)
-  // This amount is then split internally between the two partners using their partnership rules
+  // Commission is calculated on GROSS profit (sale - cost), fees/shipping are seller's responsibility
   if (!sellerIsOwner && isPartnershipStock) {
     result.scenario = 'C';
     
-    // What the external seller pays to the partnership
-    const partnershipCommissionAmount = totalProfit * partnershipCommission;
+    // Gross profit = sale price - cost (before fees and shipping)
+    const grossProfit = Math.max(0, grossSalePrice - costPrice);
+    const partnershipCommissionAmount = grossProfit * partnershipCommission;
     const partnershipTotalReceived = costPrice + partnershipCommissionAmount;
     
     // Store for display in sales interface
     result.partnershipPaymentDue = partnershipTotalReceived;
     
-    result.scenarioDescription = `Terceiro vende peça da Parceria - Pagamento devido à Sociedade: R$ ${partnershipTotalReceived.toFixed(2)} (custo + ${(partnershipCommission * 100).toFixed(0)}% do lucro)`;
+    result.scenarioDescription = `Terceiro vende peça da Parceria - Pagamento devido à Sociedade: R$ ${partnershipTotalReceived.toFixed(2)} (custo + ${(partnershipCommission * 100).toFixed(0)}% do lucro bruto)`;
     
-    // What the seller keeps
-    const sellerProfit = totalProfit - partnershipCommissionAmount;
+    // Seller bears fees and shipping from their portion
+    const sellerProfit = Math.max(0, grossProfit - partnershipCommissionAmount - paymentFeeAmount - sellerShippingCost);
     
     // Internal partnership split of the received amount
     // Cost is split according to costSplitRatio
