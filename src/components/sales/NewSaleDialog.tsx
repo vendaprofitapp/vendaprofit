@@ -567,7 +567,7 @@ export default function NewSaleDialog({
   // ─── Totals (useMemo) ─────────────────────────────────────
   const { subtotal, discountAmount, shippingCostForBuyer, total } = useMemo(() => {
     const calculatedSubtotal = cart.reduce((sum, item) => sum + (item.product.price || 0) * item.quantity, 0);
-    const calculatedDiscount = discountType === "percentage" ? (calculatedSubtotal * discountValue) / 100 : discountValue;
+    const calculatedDiscount = discountType === "percentage" ? (calculatedSubtotal * discountValue) / 100 : discountValue; // consortium_credit acts like fixed
     const shippingForBuyer = shippingData.payer === "buyer" && shippingData.method !== "presencial" ? shippingData.cost : 0;
     const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount + shippingForBuyer);
     return { subtotal: calculatedSubtotal, discountAmount: calculatedDiscount, shippingCostForBuyer: shippingForBuyer, total: calculatedTotal };
@@ -645,8 +645,12 @@ export default function NewSaleDialog({
     setManualSaleSource(newSource);
     if (newSource !== "event") setManualEventName("");
     if (newSource !== "partner_point") { setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); }
-    if (newSource !== "consortium") { setManualConsortiumParticipantId(""); }
-  }, [manualSaleSource, cart.length, setCart, setManualSaleSource, setManualEventName, setManualPartnerPointId, setManualPartnerPointCommType, setManualConsortiumParticipantId]);
+    if (newSource !== "consortium") {
+      setManualConsortiumParticipantId("");
+      // Reset discount if it was consortium credit
+      if (discountType === "consortium_credit") { setDiscountType("fixed"); setDiscountValue(0); }
+    }
+  }, [manualSaleSource, cart.length, setCart, setManualSaleSource, setManualEventName, setManualPartnerPointId, setManualPartnerPointCommType, setManualConsortiumParticipantId, discountType, setDiscountType, setDiscountValue]);
 
   // ─── Cart functions (useCallback) ─────────────────────────
   const addToCart = useCallback((product: Product, isPartnerStock: boolean = false, ownerName?: string) => {
@@ -1687,10 +1691,10 @@ export default function NewSaleDialog({
       }
 
       // Deduct consortium participant balance for manual consortium sales
-      if (!consortiumSaleData && manualSaleSource === "consortium" && manualConsortiumParticipantId) {
+      if (!consortiumSaleData && manualSaleSource === "consortium" && manualConsortiumParticipantId && discountType === "consortium_credit") {
         const participant = consortiumParticipantsWithCredit.find(p => p.id === manualConsortiumParticipantId);
         if (participant) {
-          const creditUsed = Math.min(participant.balance, total);
+          const creditUsed = Math.min(discountValue, participant.balance);
           const remaining = Math.max(0, participant.balance - creditUsed);
           await supabase
             .from("consortium_participants")
@@ -2089,11 +2093,13 @@ export default function NewSaleDialog({
                         <Select value={manualConsortiumParticipantId} onValueChange={(v) => {
                           setManualConsortiumParticipantId(v);
                           const participant = consortiumParticipantsWithCredit.find(p => p.id === v);
-                          if (participant) {
+                            if (participant) {
                             setCustomerName(participant.customerName || "");
                             setCustomerPhone(participant.customerPhone || "");
-                            setNotes(`Venda consórcio (${participant.consortiumName}) — Crédito R$ ${participant.balance.toFixed(2)} aplicado como pagamento`);
-                          }
+                            setDiscountType("consortium_credit");
+                            setDiscountValue(participant.balance);
+                            setNotes(`Venda consórcio (${participant.consortiumName})`);
+                           }
                         }}>
                           <SelectTrigger><SelectValue placeholder="Selecione o participante..." /></SelectTrigger>
                           <SelectContent>
@@ -2106,16 +2112,10 @@ export default function NewSaleDialog({
                       {manualConsortiumParticipantId && (() => {
                         const p = consortiumParticipantsWithCredit.find(x => x.id === manualConsortiumParticipantId);
                         if (!p) return null;
-                        const creditUsed = Math.min(p.balance, subtotal);
-                        const clientPays = Math.max(0, subtotal - creditUsed);
                         return (
-                          <div className="bg-primary/10 rounded-lg p-3 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="bg-purple-500/10 text-purple-600">Consórcio</Badge>
-                              <span className="text-sm font-medium">Crédito: R$ {p.balance.toFixed(2)}</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              R$ {creditUsed.toFixed(2)} do crédito + R$ {clientPays.toFixed(2)} a pagar pelo cliente
+                          <div className="bg-purple-500/10 rounded-lg p-3 space-y-1">
+                            <p className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                              {p.customerName} possui <strong>R$ {p.balance.toFixed(2)}</strong> em crédito de consórcio.
                             </p>
                           </div>
                         );
@@ -2307,12 +2307,41 @@ export default function NewSaleDialog({
                     <SelectContent portal={!isMobile}>
                       <SelectItem value="fixed">R$ Fixo</SelectItem>
                       <SelectItem value="percentage">% Percentual</SelectItem>
+                      {manualSaleSource === "consortium" && manualConsortiumParticipantId && (
+                        <SelectItem value="consortium_credit">Crédito de Consórcio</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Valor do Desconto</Label>
-                  <Input type="number" inputMode="decimal" min="0" placeholder="0" value={discountValue || ""} onChange={(e) => setDiscountValue(Number(e.target.value))} />
+                  <Label>{discountType === "consortium_credit" ? "Crédito Utilizado" : "Valor do Desconto"}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    max={discountType === "consortium_credit" ? (() => {
+                      const p = consortiumParticipantsWithCredit.find(x => x.id === manualConsortiumParticipantId);
+                      return p?.balance || 0;
+                    })() : undefined}
+                    placeholder="0"
+                    value={discountValue || ""}
+                    onChange={(e) => {
+                      let val = Number(e.target.value);
+                      if (discountType === "consortium_credit") {
+                        const p = consortiumParticipantsWithCredit.find(x => x.id === manualConsortiumParticipantId);
+                        if (p) val = Math.min(val, p.balance);
+                      }
+                      setDiscountValue(val);
+                    }}
+                  />
+                  {discountType === "consortium_credit" && (() => {
+                    const p = consortiumParticipantsWithCredit.find(x => x.id === manualConsortiumParticipantId);
+                    if (!p) return null;
+                    const remaining = Math.max(0, p.balance - discountValue);
+                    return remaining > 0 ? (
+                      <p className="text-xs text-muted-foreground mt-1">Saldo restante após a venda: R$ {remaining.toFixed(2)}</p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
 
