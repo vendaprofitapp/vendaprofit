@@ -34,6 +34,8 @@ export interface SaleSplitInput {
   isDirectPartnership?: boolean; // Flag to identify direct partnerships
   /** Taxa do método de pagamento em % (ex: 10 para 10%) */
   paymentMethodFee?: number;
+  /** Frete pago pela vendedora (deduzido do lucro antes da divisão) */
+  sellerShippingCost?: number;
   // Full objects from database
   partnership?: PartnershipConfig | null;
   group?: GroupConfig | null;
@@ -52,8 +54,9 @@ export interface SaleSplitResult {
   // Financial breakdown
   grossSalePrice: number;     // Preço bruto da venda
   paymentFeeAmount: number;   // Valor da taxa do método de pagamento
+  sellerShippingCost: number; // Frete pago pela vendedora
   netRevenue: number;         // Receita líquida após taxa
-  totalProfit: number;        // Lucro após taxa e custo
+  totalProfit: number;        // Lucro após taxa, custo e frete
   costPrice: number;
   salePrice: number;          // Alias para netRevenue (compatibilidade)
   
@@ -158,7 +161,8 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
     isPartnershipStock, 
     sellerIsOwner,
     hasActivePartnership,
-    paymentMethodFee = 0
+    paymentMethodFee = 0,
+    sellerShippingCost = 0
   } = input;
 
   // Get configuration with fallbacks
@@ -169,8 +173,8 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   const paymentFeeAmount = grossSalePrice * (paymentMethodFee / 100);
   const netRevenue = grossSalePrice - paymentFeeAmount;
   
-  // Profit is calculated on net revenue (after fee) minus cost
-  const totalProfit = Math.max(0, netRevenue - costPrice);
+  // Profit is calculated on net revenue (after fee) minus cost minus seller shipping
+  const totalProfit = Math.max(0, netRevenue - costPrice - sellerShippingCost);
 
   // Initialize result structure
   const result: SaleSplitResult = {
@@ -178,6 +182,7 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
     scenarioDescription: '',
     grossSalePrice,
     paymentFeeAmount,
+    sellerShippingCost,
     netRevenue,
     totalProfit,
     costPrice,
@@ -232,43 +237,30 @@ export function calculateSaleSplits(input: SaleSplitInput): SaleSplitResult {
   }
 
   // Scenario A: Partnership stock sold by partner
-  // Split: Configurable cost split, configurable profit split
+  // NEW: All costs (product cost, payment fee, shipping) are deducted first.
+  // Only the NET PROFIT is split between partners by percentage.
   if (isPartnershipStock && (sellerIsOwner || input.isDirectPartnership) && hasActivePartnership) {
     result.scenario = 'A';
-    result.scenarioDescription = `Venda de estoque parceria pelo sócio - Split ${(costSplitRatio * 100).toFixed(0)}/${((1 - costSplitRatio) * 100).toFixed(0)} custo, ${(profitShareSeller * 100).toFixed(0)}/${(profitSharePartner * 100).toFixed(0)} lucro`;
+    result.scenarioDescription = `Venda de estoque parceria - Lucro líquido dividido ${(profitShareSeller * 100).toFixed(0)}/${(profitSharePartner * 100).toFixed(0)}`;
     
-    const sellerCostRecovery = costPrice * costSplitRatio;
-    const partnerCostRecovery = costPrice * (1 - costSplitRatio);
+    // totalProfit already has cost, fees, and shipping deducted
     const sellerProfitShare = totalProfit * profitShareSeller;
     const partnerProfitShare = totalProfit * profitSharePartner;
     
-    // Seller gets their cost share + their profit share
-    result.seller.costRecovery = sellerCostRecovery;
+    // Each partner only receives their share of net profit
+    result.seller.costRecovery = 0;
     result.seller.profitShare = sellerProfitShare;
-    result.seller.total = sellerCostRecovery + sellerProfitShare;
+    result.seller.total = sellerProfitShare;
     
-    // Partner gets their cost share + their profit share
-    result.partner.costRecovery = partnerCostRecovery;
+    result.partner.costRecovery = 0;
     result.partner.profitShare = partnerProfitShare;
-    result.partner.total = partnerCostRecovery + partnerProfitShare;
+    result.partner.total = partnerProfitShare;
     
-    result.splits.push({
-      recipientType: 'seller',
-      type: 'cost_recovery',
-      amount: sellerCostRecovery,
-      description: `Recuperação de custo ${(costSplitRatio * 100).toFixed(0)}% - parceria`
-    });
     result.splits.push({
       recipientType: 'seller',
       type: 'profit_share',
       amount: sellerProfitShare,
       description: `Lucro ${(profitShareSeller * 100).toFixed(0)}% vendedora - parceria`
-    });
-    result.splits.push({
-      recipientType: 'partner',
-      type: 'cost_recovery',
-      amount: partnerCostRecovery,
-      description: `Recuperação de custo ${((1 - costSplitRatio) * 100).toFixed(0)}% - parceria`
     });
     result.splits.push({
       recipientType: 'partner',
@@ -482,7 +474,12 @@ export function formatCurrency(value: number): string {
  */
 export function validateSplits(result: SaleSplitResult): boolean {
   const totalDistributed = result.seller.total + result.owner.total + result.partner.total;
-  const tolerance = 0.01; // Allow for floating point errors
+  const tolerance = 0.01;
+  
+  // For Scenario A, splits sum to totalProfit (not netRevenue)
+  if (result.scenario === 'A') {
+    return Math.abs(totalDistributed - result.totalProfit) < tolerance;
+  }
   
   return Math.abs(totalDistributed - result.salePrice) < tolerance;
 }
