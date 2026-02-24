@@ -597,7 +597,7 @@ export default function Reports() {
         } else if (hasSplits && saleInfo && saleInfo.hasProfitShare) {
           feeAmount = saleInfo.feeAmount * itemProportion;
           partnerCommission = saleInfo.partnerCommission * itemProportion;
-          myRealProfit = saleInfo.myProfitShare * itemProportion - itemSellerShipping;
+          myRealProfit = saleInfo.myProfitShare * itemProportion;
         } else if (hasSplits && saleInfo && saleInfo.partnerCommission > 0) {
           // Partner point sales: has group_commission but no profit_share
           feeAmount = saleInfo.feeAmount * itemProportion;
