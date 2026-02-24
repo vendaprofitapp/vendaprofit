@@ -1313,6 +1313,34 @@ export default function StoreCatalog() {
     });
   }, [catalogItems]);
 
+  // Filter system main categories to only those with in-stock products
+  const visibleMainCategories = useMemo(() => {
+    const usedMainCats = new Set(
+      enrichedCatalogItems
+        .filter(item => item.totalStock > 0)
+        .map(item => item.main_category?.toLowerCase())
+        .filter(Boolean)
+    );
+    const hasLaunches = enrichedCatalogItems.some(item =>
+      item.totalStock > 0 && (item.is_new_release || Object.values(item.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
+    );
+    return systemMainCategories.filter(cat => {
+      if (cat.name.toLowerCase() === "lançamentos") return hasLaunches;
+      return usedMainCats.has(cat.name.toLowerCase());
+    });
+  }, [enrichedCatalogItems, systemMainCategories]);
+
+  // Filter subcategories to only those with in-stock products
+  const visibleSubcategories = useMemo(() => {
+    const usedSubcats = new Set(
+      enrichedCatalogItems
+        .filter(item => item.totalStock > 0)
+        .map(item => item.subcategory?.toLowerCase())
+        .filter(Boolean)
+    );
+    return systemSubcategories.filter(sc => usedSubcats.has(sc.name.toLowerCase()));
+  }, [enrichedCatalogItems, systemSubcategories]);
+
   // Get unique categories - sorted alphabetically, excluding "oportunidades"
   const categories = useMemo(() => {
     const allCats = enrichedCatalogItems.flatMap(p => [p.category, p.category_2, p.category_3].filter(Boolean));
@@ -2217,11 +2245,11 @@ export default function StoreCatalog() {
           const filterConfig = store.filter_buttons_config || defaultFilterButtonsConfig;
           const categoriesConfig = filterConfig.categories;
           
-          if (!categoriesConfig.visible || systemMainCategories.length === 0) return null;
+          if (!categoriesConfig.visible || visibleMainCategories.length === 0) return null;
           
           const activeMainCatName = bazarMode ? "Bazar VIP" : selectedMainCategory;
           const subcatsForSelected = activeMainCatName 
-            ? systemSubcategories.filter(sc => {
+            ? visibleSubcategories.filter(sc => {
                 const mainCat = systemMainCategories.find(mc => mc.name === activeMainCatName);
                 return mainCat && sc.main_category_id === mainCat.id;
               })
@@ -2232,7 +2260,7 @@ export default function StoreCatalog() {
               {/* Main Categories */}
               <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
                 <div className="flex gap-2 min-w-max">
-                  {systemMainCategories.map(cat => (
+                  {visibleMainCategories.map(cat => (
                     <button
                       key={cat.id}
                       className={cn(
