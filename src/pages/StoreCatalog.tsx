@@ -2510,34 +2510,7 @@ export default function StoreCatalog() {
         </div>
       )}
 
-      {/* Secret Area Floating Badge */}
-      {store.secret_area_active && store.secret_area_password && !viewingSecretArea && (
-        <button
-          onClick={() => {
-            if (secretAreaUnlocked) {
-              setViewingSecretArea(true);
-              setSelectedMarketingFilter("secret");
-            } else {
-              setShowSecretDialog(true);
-            }
-          }}
-          className={cn(
-            "fixed z-50 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg text-white font-semibold text-sm transition-all hover:scale-105 hover:shadow-xl",
-            "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]",
-            "bottom-20 right-4 md:bottom-6 md:right-6"
-          )}
-          style={{ 
-            backgroundColor: primaryColor,
-            boxShadow: `0 0 20px ${primaryColor}40, 0 4px 20px rgba(0,0,0,0.2)`
-          }}
-        >
-          <Lock className="h-4 w-4" />
-          <span>{store.secret_area_name || "Área VIP"}</span>
-          {secretAreaUnlocked && (
-            <span className="ml-1 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          )}
-        </button>
-      )}
+      {/* Secret Area Floating Badge removed — only the top bar button remains */}
 
       {/* Exit Secret Area Banner */}
       {viewingSecretArea && (
