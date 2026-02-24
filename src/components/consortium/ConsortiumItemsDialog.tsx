@@ -74,7 +74,7 @@ export function ConsortiumItemsDialog({
     enabled: open,
   });
 
-  const creditAvailable = Number(consortiumValue) + participantBalance;
+  const creditAvailable = participantBalance;
   const cartTotal = importedCart?.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0) || 0;
   const existingTotal = existingItems.reduce((sum, i) => sum + Number(i.total), 0);
   const totalUsed = cartTotal + existingTotal;
