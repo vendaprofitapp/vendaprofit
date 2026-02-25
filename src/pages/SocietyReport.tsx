@@ -36,16 +36,26 @@ interface Group {
 interface GroupMember { group_id: string; user_id: string; }
 interface Profile { id: string; full_name: string | null; email: string; }
 interface FinancialSplit {
-  id: string;
   sale_id: string;
   user_id: string;
   amount: number;
-  type: string;
+}
+interface SaleItem {
+  quantity: number;
+  products: { cost_price: number | null } | null;
 }
 interface Sale {
   id: string;
   owner_id: string;
   total: number;
+  sale_items: SaleItem[];
+  financial_splits: FinancialSplit[];
+}
+interface PartnershipRule {
+  owner_cost_percent: number;
+  seller_cost_percent: number;
+  owner_profit_percent: number;
+  seller_profit_percent: number;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -154,123 +164,133 @@ export default function SocietyReport() {
   }, [socioA, socioB]);
 
   const { data: salesData = [], isLoading: salesLoading } = useQuery<Sale[]>({
-    queryKey: ["society-sales-v2", selectedGroupId, dateRange.start.toISOString(), dateRange.end.toISOString()],
+    queryKey: ["society-sales-v3", selectedGroupId, dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
-        .select("id, owner_id, total")
+        .select(`
+          id, owner_id, total,
+          sale_items(quantity, products(cost_price)),
+          financial_splits(sale_id, user_id, amount)
+        `)
         .eq("status", "completed")
         .in("owner_id", partnerIds)
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
       if (error) throw error;
-      return data as Sale[];
+      return data as unknown as Sale[];
     },
     enabled: partnerIds.length === 2,
   });
 
-  // ── financial splits for these sales ─────────────────────────────────
-  // Fetch in chunks of 500 to avoid URL length limits
-  const saleIds = useMemo(() => salesData.map(s => s.id), [salesData]);
-
-  const { data: allSplits = [], isLoading: splitsLoading } = useQuery<FinancialSplit[]>({
-    queryKey: ["society-splits-v2", saleIds],
+  // ── partnership rules (fallback for cost ratio) ───────────────────────
+  const { data: partnershipRules } = useQuery<PartnershipRule | null>({
+    queryKey: ["society-rules", selectedGroupId],
     queryFn: async () => {
-      if (saleIds.length === 0) return [];
-      const chunkSize = 500;
-      const results: FinancialSplit[] = [];
-      for (let i = 0; i < saleIds.length; i += chunkSize) {
-        const chunk = saleIds.slice(i, i + chunkSize);
-        const { data, error } = await supabase
-          .from("financial_splits")
-          .select("id, sale_id, user_id, amount, type")
-          .in("sale_id", chunk);
-        if (error) throw error;
-        results.push(...(data as FinancialSplit[]));
-      }
-      return results;
+      const { data, error } = await supabase
+        .from("partnership_rules")
+        .select("owner_cost_percent, seller_cost_percent, owner_profit_percent, seller_profit_percent")
+        .eq("group_id", selectedGroupId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as PartnershipRule | null;
     },
-    enabled: saleIds.length > 0,
+    enabled: selectedGroupId !== "none",
   });
 
-  // ── THE BULLETPROOF REDUCE ────────────────────────────────────────────
+  // ── HYBRID ENGINE ─────────────────────────────────────────────────────
   const metrics = useMemo(() => {
     if (!socioA || !socioB) return null;
 
     const id_A = socioA.id;
     const id_B = socioB.id;
-
-    // Build a map: sale_id → splits
-    const splitsBySale = new Map<string, FinancialSplit[]>();
-    allSplits.forEach(split => {
-      const arr = splitsBySale.get(split.sale_id) ?? [];
-      arr.push(split);
-      splitsBySale.set(split.sale_id, arr);
-    });
-
-    // Deduplicate sales by id (safety net)
-    const uniqueSales = Array.from(new Map(salesData.map(s => [s.id, s])).values());
+    const currentRules = partnershipRules ?? null;
 
     const stats = {
-      totalSales:    0,
-      totalCosts:    0,
-      totalProfit:   0,
+      totalSales:  0,
+      totalCosts:  0,
+      totalProfit: 0,
       socioA: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
       socioB: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
     };
 
+    // Deduplicate sales by id (safety net against fan-out)
+    const uniqueSales = Array.from(new Map(salesData.map(s => [s.id, s])).values());
+
     uniqueSales.forEach(sale => {
-      // Receita Bruta — somada UMA vez por venda
       stats.totalSales += sale.total;
 
-      const isOwnerA = sale.owner_id === id_A;
-      if (isOwnerA) stats.socioA.salesGenerated += sale.total;
-      else          stats.socioB.salesGenerated += sale.total;
+      // 1. Dynamic CMV — read directly from sale_items
+      let saleCost = 0;
+      if (sale.sale_items) {
+        sale.sale_items.forEach((item) => {
+          const costPrice = item.products?.cost_price || 0;
+          saleCost += item.quantity * costPrice;
+        });
+      }
+      stats.totalCosts += saleCost;
 
-      let saleProfitTotal = 0;
-
-      const splitsDaVenda = splitsBySale.get(sale.id) ?? [];
-      splitsDaVenda.forEach(split => {
-        if (split.type === "cost_recovery") {
-          // Custo — soma ao total de custos
-          stats.totalCosts += split.amount;
-          if (split.user_id === id_A) stats.socioA.costRecovery += split.amount;
-          if (split.user_id === id_B) stats.socioB.costRecovery += split.amount;
-
-        } else if (split.type === "profit_share") {
-          // Lucro — soma ao total de lucros
-          stats.totalProfit += split.amount;
-          saleProfitTotal   += split.amount;
-
-          // Acerto Final (Card 4): quem recebeu quanto
-          if (split.user_id === id_A) stats.socioA.totalProfit += split.amount;
-          if (split.user_id === id_B) stats.socioB.totalProfit += split.amount;
-
-          // Performance (Cards 2 e 3): rateio da venda pelo dono
-          if (isOwnerA) {
-            if (split.user_id === id_A) stats.socioA.fatiaParaA += split.amount;
-            if (split.user_id === id_B) stats.socioA.fatiaParaB += split.amount;
-          } else {
-            if (split.user_id === id_A) stats.socioB.fatiaParaA += split.amount;
-            if (split.user_id === id_B) stats.socioB.fatiaParaB += split.amount;
-          }
-        }
+      // 2. Infer historical split ratio from financial_splits
+      const splits = sale.financial_splits || [];
+      let splitA = 0;
+      let splitB = 0;
+      splits.forEach((s) => {
+        if (s.user_id === id_A) splitA += s.amount;
+        if (s.user_id === id_B) splitB += s.amount;
       });
 
-      // Lucro gerado pela venda → atribuído ao dono da venda
-      if (isOwnerA) stats.socioA.profitGenerated += saleProfitTotal;
-      else          stats.socioB.profitGenerated += saleProfitTotal;
+      const totalSplit = splitA + splitB; // Revenue minus fees as recorded
+      const saleRealProfit = totalSplit - saleCost; // Real profit after dynamic CMV
+      stats.totalProfit += saleRealProfit;
+
+      // Historical ratio — fallback to current rules if no splits exist
+      let ratioA = (currentRules?.owner_profit_percent ?? 50) / 100;
+      let ratioB = (currentRules?.seller_profit_percent ?? 50) / 100;
+      if (totalSplit > 0) {
+        ratioA = splitA / totalSplit;
+        ratioB = splitB / totalSplit;
+      }
+
+      // Profit attribution
+      const profitA = saleRealProfit * ratioA;
+      const profitB = saleRealProfit * ratioB;
+
+      // Cost attribution using current rules
+      const costPercA = (currentRules?.owner_cost_percent ?? 50) / 100;
+      const costPercB = (currentRules?.seller_cost_percent ?? 50) / 100;
+      const costA = saleCost * costPercA;
+      const costB = saleCost * costPercB;
+
+      // Card 4 — Settlement
+      stats.socioA.costRecovery += costA;
+      stats.socioB.costRecovery += costB;
+      stats.socioA.totalProfit  += profitA;
+      stats.socioB.totalProfit  += profitB;
+
+      // Cards 2 & 3 — Performance by sale owner
+      const isOwnerA = sale.owner_id === id_A;
+      if (isOwnerA) {
+        stats.socioA.salesGenerated  += sale.total;
+        stats.socioA.profitGenerated += saleRealProfit;
+        stats.socioA.fatiaParaA      += profitA;
+        stats.socioA.fatiaParaB      += profitB;
+      } else {
+        stats.socioB.salesGenerated  += sale.total;
+        stats.socioB.profitGenerated += saleRealProfit;
+        stats.socioB.fatiaParaA      += profitA;
+        stats.socioB.fatiaParaB      += profitB;
+      }
     });
 
     return stats;
-  }, [socioA, socioB, salesData, allSplits]);
+  }, [socioA, socioB, salesData, partnershipRules]);
 
   const handleRefresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["society-"] });
     toast({ title: "Relatório atualizado" });
   };
 
-  const isLoading = salesLoading || splitsLoading;
+  const isLoading = salesLoading;
   const nameA = socioA?.full_name ?? "Sócio A";
   const nameB = socioB?.full_name ?? "Sócio B";
 
