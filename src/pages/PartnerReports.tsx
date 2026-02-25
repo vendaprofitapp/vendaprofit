@@ -694,7 +694,8 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           }
         }
 
-        const lucroTotal = sellerProfitShare + partnerProfitShare;
+        // Lucro real = Receita - CMV - Taxas - Descontos (fonte de verdade, independente dos splits)
+        const lucroTotal = totalVendas - totalCustos - totalTaxas - totalDescontos;
 
         return { totalVendas, totalCustos, totalTaxas, totalDescontos, lucroTotal, sellerProfitShare, partnerProfitShare, salesCount: sellerSales.length };
       };
