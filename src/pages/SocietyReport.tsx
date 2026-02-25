@@ -43,11 +43,16 @@ interface FinancialSplit {
   amount: number;
   type: string;
 }
+interface SaleItem {
+  product_id: string | null;
+  quantity: number;
+  products: { cost_price: number | null } | null;
+}
 interface Sale {
   id: string;
   owner_id: string;
   total: number;
-  sale_items: { product_id: string | null }[];
+  sale_items: SaleItem[];
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -161,7 +166,7 @@ export default function SocietyReport() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
-        .select("id, owner_id, total, sale_items(product_id)")
+        .select("id, owner_id, total, sale_items(product_id, quantity, products(cost_price))")
         .eq("status", "completed")
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
@@ -228,10 +233,15 @@ export default function SocietyReport() {
     const totalSalesB = salesByB.reduce((sum, s) => sum + s.total, 0);
     const totalSalesAll = totalSalesA + totalSalesB;
 
-    // Cost recovery from splits (type = 'cost_recovery')
-    const totalCostRecovery = splits
-      .filter(s => s.type === "cost_recovery")
-      .reduce((sum, s) => sum + (s.amount ?? 0), 0);
+    // CMV: sum (quantity * cost_price) across all society sale items
+    const totalCostRecovery = societySales.reduce((total, sale) => {
+      const saleCost = sale.sale_items.reduce((sum, item) => {
+        const costPrice = item.products?.cost_price ?? 0;
+        const qty = item.quantity ?? 1;
+        return sum + costPrice * qty;
+      }, 0);
+      return total + saleCost;
+    }, 0);
 
     // Profit shares from splits
     const profitShareSplits = splits.filter(s => s.type === "profit_share");
