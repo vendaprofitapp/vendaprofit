@@ -39,6 +39,7 @@ interface FinancialSplit {
   sale_id: string;
   user_id: string;
   amount: number;
+  type: string | null;
 }
 interface SaleItem {
   quantity: number;
@@ -48,6 +49,9 @@ interface Sale {
   id: string;
   owner_id: string;
   total: number;
+  payment_fee: number | null;
+  shipping_cost: number | null;
+  shipping_payer: string | null;
   sale_items: SaleItem[];
   financial_splits: FinancialSplit[];
 }
@@ -169,9 +173,9 @@ export default function SocietyReport() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, owner_id, total,
+          id, owner_id, total, payment_fee, shipping_cost, shipping_payer,
           sale_items(quantity, products(cost_price)),
-          financial_splits(sale_id, user_id, amount)
+          financial_splits(sale_id, user_id, amount, type)
         `)
         .eq("status", "completed")
         .in("owner_id", partnerIds)
@@ -218,32 +222,40 @@ export default function SocietyReport() {
     const uniqueSales = Array.from(new Map(salesData.map(s => [s.id, s])).values());
 
     uniqueSales.forEach(sale => {
-      stats.totalSales += sale.total;
+      // 1. Receita Bruta
+      const receita = sale.total || 0;
+      stats.totalSales += receita;
 
-      // 1. Dynamic CMV — read directly from sale_items
-      let saleCost = 0;
+      // 2. CMV Dinâmico
+      let custo = 0;
       if (sale.sale_items) {
         sale.sale_items.forEach((item) => {
           const costPrice = item.products?.cost_price || 0;
-          saleCost += item.quantity * costPrice;
+          custo += item.quantity * costPrice;
         });
       }
-      stats.totalCosts += saleCost;
+      stats.totalCosts += custo;
 
-      // 2. Infer historical split ratio from financial_splits
+      // 3. Taxas e Frete (tratados como 0 se nulos)
+      const taxas = sale.payment_fee || 0;
+      const frete = (sale.shipping_payer === "seller" ? sale.shipping_cost : 0) || 0;
+
+      // 4. Lucro Real da Venda (alinhado com Minha Performance)
+      const lucroReal = receita - custo - taxas - frete;
+      stats.totalProfit += lucroReal;
+
+      // 5. Inferir proporção histórica pelos profit_share splits
       const splits = sale.financial_splits || [];
       let splitA = 0;
       let splitB = 0;
       splits.forEach((s) => {
-        if (s.user_id === id_A) splitA += s.amount;
-        if (s.user_id === id_B) splitB += s.amount;
+        if (s.type === "profit_share" || s.type === null) {
+          if (s.user_id === id_A) splitA += s.amount;
+          if (s.user_id === id_B) splitB += s.amount;
+        }
       });
 
-      const totalSplit = splitA + splitB; // Revenue minus fees as recorded
-      const saleRealProfit = totalSplit - saleCost; // Real profit after dynamic CMV
-      stats.totalProfit += saleRealProfit;
-
-      // Historical ratio — fallback to current rules if no splits exist
+      const totalSplit = splitA + splitB;
       let ratioA = (currentRules?.owner_profit_percent ?? 50) / 100;
       let ratioB = (currentRules?.seller_profit_percent ?? 50) / 100;
       if (totalSplit > 0) {
@@ -251,32 +263,32 @@ export default function SocietyReport() {
         ratioB = splitB / totalSplit;
       }
 
-      // Profit attribution
-      const profitA = saleRealProfit * ratioA;
-      const profitB = saleRealProfit * ratioB;
+      // 6. Rateio do Lucro Real
+      const profitA = lucroReal * ratioA;
+      const profitB = lucroReal * ratioB;
 
-      // Cost attribution using current rules
+      // 7. Rateio da Reposição de Custo
       const costPercA = (currentRules?.owner_cost_percent ?? 50) / 100;
       const costPercB = (currentRules?.seller_cost_percent ?? 50) / 100;
-      const costA = saleCost * costPercA;
-      const costB = saleCost * costPercB;
+      const costA = custo * costPercA;
+      const costB = custo * costPercB;
 
-      // Card 4 — Settlement
+      // Card 4 — Acerto de Contas
       stats.socioA.costRecovery += costA;
       stats.socioB.costRecovery += costB;
       stats.socioA.totalProfit  += profitA;
       stats.socioB.totalProfit  += profitB;
 
-      // Cards 2 & 3 — Performance by sale owner
+      // Cards 2 & 3 — Performance por dono da venda
       const isOwnerA = sale.owner_id === id_A;
       if (isOwnerA) {
-        stats.socioA.salesGenerated  += sale.total;
-        stats.socioA.profitGenerated += saleRealProfit;
+        stats.socioA.salesGenerated  += receita;
+        stats.socioA.profitGenerated += lucroReal;
         stats.socioA.fatiaParaA      += profitA;
         stats.socioA.fatiaParaB      += profitB;
       } else {
-        stats.socioB.salesGenerated  += sale.total;
-        stats.socioB.profitGenerated += saleRealProfit;
+        stats.socioB.salesGenerated  += receita;
+        stats.socioB.profitGenerated += lucroReal;
         stats.socioB.fatiaParaA      += profitA;
         stats.socioB.fatiaParaB      += profitB;
       }
