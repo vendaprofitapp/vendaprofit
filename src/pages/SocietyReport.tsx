@@ -237,6 +237,25 @@ export default function SocietyReport() {
     enabled: selectedGroupId !== "none",
   });
 
+  // ── Normaliza payment_method da venda para chave da tabela payment_fees ──
+  const normalizePaymentMethod = (method: string | null): string => {
+    if (!method) return '';
+    const m = method.toLowerCase().trim();
+    if (m.includes('débito') || m.includes('debito') || m === 'cartão débito' || m === 'cartao debito') return 'debito';
+    if (m === 'pix' || m === 'pix a prazo') return 'pix';
+    if (m === 'dinheiro') return 'dinheiro';
+    // Crédito parcelado: extrair número de parcelas
+    const matchCredito = m.match(/cr[eé]dito\s*(\d+)x/);
+    if (matchCredito) return `credito_${matchCredito[1]}x`;
+    if (m.includes('crédito') || m.includes('credito')) return 'credito_1x';
+    if (m.includes('link') && m.includes('2x')) return 'credito_2x';
+    if (m.includes('link') && m.includes('3x')) return 'credito_3x';
+    if (m.includes('link') && m.includes('4x')) return 'credito_4x';
+    if (m.includes('link') && m.includes('5x')) return 'credito_5x';
+    if (m.includes('link') && m.includes('6x')) return 'credito_6x';
+    return m;
+  };
+
   // ── HYBRID ENGINE ─────────────────────────────────────────────────────
   const metrics = useMemo(() => {
     if (!socioA || !socioB) return null;
@@ -278,8 +297,9 @@ export default function SocietyReport() {
       stats.totalCosts += custo;
 
       // 3. Taxa da Maquininha — usando as taxas do DONO da venda (não misturar sócias)
+      const normalizedMethod = normalizePaymentMethod(sale.payment_method);
       const feeRule = paymentFees?.find(
-        (f: any) => f.owner_id === sale.owner_id && f.payment_method === sale.payment_method
+        (f: any) => f.owner_id === sale.owner_id && f.payment_method === normalizedMethod
       );
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
