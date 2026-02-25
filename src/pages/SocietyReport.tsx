@@ -278,12 +278,10 @@ export default function SocietyReport() {
       }
       stats.totalCosts += custo;
 
-      // 3. Taxa da Maquininha — busca primeiro pelo owner_id da venda, depois por qualquer sócia
-      // (na sociedade o owner_id é sempre do dono do produto, não de quem vendeu)
+      // 3. Taxa da Maquininha — busca apenas pelo owner_id da venda (sem fallback)
+      // Isso garante que o Card 1 seja idêntico independente de quem está logado
       const feeRule = paymentFees?.find(
         (f: any) => f.owner_id === sale.owner_id && f.name === sale.payment_method
-      ) ?? paymentFees?.find(
-        (f: any) => f.name === sale.payment_method
       );
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
