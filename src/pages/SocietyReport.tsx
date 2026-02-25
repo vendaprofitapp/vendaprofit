@@ -56,6 +56,7 @@ interface Sale {
   financial_splits: FinancialSplit[];
 }
 interface PaymentFee {
+  owner_id: string;
   payment_method: string;
   fee_percent: number;
 }
@@ -207,17 +208,18 @@ export default function SocietyReport() {
     enabled: partnerIds.length === 2,
   });
 
-  // ── payment fees table ────────────────────────────────────────────────
+  // ── payment fees table (por owner_id para separar taxas de cada sócia) ──
   const { data: paymentFees = [] } = useQuery<PaymentFee[]>({
-    queryKey: ["society-payment-fees"],
+    queryKey: ["society-payment-fees", socioA?.id, socioB?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payment_fees")
-        .select("payment_method, fee_percent");
+        .select("owner_id, payment_method, fee_percent")
+        .in("owner_id", partnerIds);
       if (error) throw error;
       return data as PaymentFee[];
     },
-    enabled: !!user,
+    enabled: partnerIds.length === 2,
   });
 
   // ── partnership rules (fallback for cost ratio) ───────────────────────
@@ -244,12 +246,13 @@ export default function SocietyReport() {
     const currentRules = partnershipRules ?? null;
 
     const stats = {
-      totalSales:  0,
-      totalCosts:  0,
+      totalSales:     0,
+      totalCosts:     0,
       totalDiscounts: 0,
-      totalProfit: 0,
-      socioA: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
-      socioB: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
+      totalFees:      0, // taxas separadas do CMV
+      totalProfit:    0,
+      socioA: { salesGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
+      socioB: { salesGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
     };
 
     // Deduplicate sales by id (safety net against fan-out)
@@ -264,7 +267,7 @@ export default function SocietyReport() {
       const desconto = sale.discount_amount ?? 0;
       stats.totalDiscounts += desconto;
 
-      // 2. CMV Dinâmico
+      // 2. CMV Dinâmico (apenas custo do produto)
       let custo = 0;
       if (sale.sale_items) {
         sale.sale_items.forEach((item: any) => {
@@ -274,10 +277,13 @@ export default function SocietyReport() {
       }
       stats.totalCosts += custo;
 
-      // 3. Taxa da Maquininha (Dinâmica baseada no método de pagamento + tabela payment_fees)
-      const feeRule = paymentFees?.find((f: any) => f.payment_method === sale.payment_method);
+      // 3. Taxa da Maquininha — usando as taxas do DONO da venda (não misturar sócias)
+      const feeRule = paymentFees?.find(
+        (f: any) => f.owner_id === sale.owner_id && f.payment_method === sale.payment_method
+      );
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
+      stats.totalFees += taxas;
 
       // 4. Lucro Real da Venda (Receita Bruta - CMV - Taxas - Desconto)
       const lucroReal = receita - custo - taxas - desconto;
@@ -318,15 +324,17 @@ export default function SocietyReport() {
       stats.socioA.totalProfit  += profitA;
       stats.socioB.totalProfit  += profitB;
 
-      // Cards 2 & 3 — Performance por dono da venda
+      // Cards 2 & 3 — Performance por dono da venda (taxas separadas por sócia)
       const isOwnerA = sale.owner_id === id_A;
       if (isOwnerA) {
         stats.socioA.salesGenerated  += receita;
+        stats.socioA.feesGenerated   += taxas;
         stats.socioA.profitGenerated += lucroReal;
         stats.socioA.fatiaParaA      += profitA;
         stats.socioA.fatiaParaB      += profitB;
       } else {
         stats.socioB.salesGenerated  += receita;
+        stats.socioB.feesGenerated   += taxas;
         stats.socioB.profitGenerated += lucroReal;
         stats.socioB.fatiaParaA      += profitA;
         stats.socioB.fatiaParaB      += profitB;
@@ -461,13 +469,19 @@ export default function SocietyReport() {
                   <span className="text-sm font-semibold">{fmt(metrics.totalSales)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-sm text-muted-foreground">Custos Totais (CMV)</span>
-                  <span className="text-sm font-semibold text-destructive">{fmt(metrics.totalCosts)}</span>
+                  <span className="text-sm text-muted-foreground">(-) Custos (CMV)</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalCosts)}</span>
                 </div>
                 {metrics.totalDiscounts > 0 && (
                   <div className="flex justify-between items-center py-1">
-                    <span className="text-sm text-muted-foreground">Descontos Concedidos</span>
-                    <span className="text-sm font-semibold text-destructive">{fmt(metrics.totalDiscounts)}</span>
+                    <span className="text-sm text-muted-foreground">(-) Descontos Concedidos</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalDiscounts)}</span>
+                  </div>
+                )}
+                {metrics.totalFees > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalFees)}</span>
                   </div>
                 )}
                 <Separator />
@@ -494,6 +508,12 @@ export default function SocietyReport() {
                   <span className="text-sm font-medium">Total de Vendas</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.salesGenerated)}</span>
                 </div>
+                {metrics.socioA.feesGenerated > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.feesGenerated)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.profitGenerated)}</span>
@@ -527,6 +547,12 @@ export default function SocietyReport() {
                   <span className="text-sm font-medium">Total de Vendas</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.salesGenerated)}</span>
                 </div>
+                {metrics.socioB.feesGenerated > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.feesGenerated)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.profitGenerated)}</span>
