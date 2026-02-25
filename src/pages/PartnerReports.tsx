@@ -219,19 +219,28 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     enabled: !!user
   });
 
-  // Fetch financial splits (source of truth for earnings/divisions)
+  // Fetch financial splits filtered by sale_id (not by split created_at)
+  // This avoids issues where retroactively recalculated splits have a newer created_at
+  // than the sales they belong to, which would cause them to be excluded from period filters.
+  const saleIdsInPeriod = useMemo(() => salesData.map(s => s.id), [salesData]);
+
   const { data: financialSplits = [] } = useQuery({
-    queryKey: ["partner-financial-splits", dateRange.start, dateRange.end],
+    queryKey: ["partner-financial-splits", saleIdsInPeriod],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("financial_splits")
-        .select("id, sale_id, user_id, amount, type, description, created_at")
-        .gte("created_at", dateRange.start.toISOString())
-        .lte("created_at", dateRange.end.toISOString());
-      if (error) throw error;
-      return data as FinancialSplit[];
+      if (saleIdsInPeriod.length === 0) return [];
+      const results: FinancialSplit[] = [];
+      for (let i = 0; i < saleIdsInPeriod.length; i += 500) {
+        const chunk = saleIdsInPeriod.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("financial_splits")
+          .select("id, sale_id, user_id, amount, type, description, created_at")
+          .in("sale_id", chunk);
+        if (error) throw error;
+        if (data) results.push(...(data as FinancialSplit[]));
+      }
+      return results;
     },
-    enabled: !!user,
+    enabled: !!user && saleIdsInPeriod.length > 0,
   });
 
   // Fetch payment reminders to identify unpaid deferred sales
