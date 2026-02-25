@@ -260,26 +260,94 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     enabled: !!user
   });
 
-  // Fetch products for cost calculation
-  const { data: productsData = [] } = useQuery({
-    queryKey: ["products-for-partner-report"],
+  // Fetch OWN products for cost calculation
+  const { data: ownProductsData = [] } = useQuery({
+    queryKey: ["products-for-partner-report-own", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, cost_price");
+        .select("id, cost_price")
+        .eq("owner_id", user!.id)
+        .limit(5000);
       if (error) throw error;
       return data as { id: string; cost_price: number | null }[];
     },
     enabled: !!user
   });
 
+  // Fetch partner product IDs via product_partnerships
+  const partnerProductIdsForReport = useMemo(() => {
+    const userGroupIds = userGroupMemberships.filter(m => m.user_id === user?.id).map(m => m.group_id);
+    return userGroupIds;
+  }, [userGroupMemberships, user]);
+
+  const { data: partnerProductIds = [] } = useQuery({
+    queryKey: ["partner-product-ids-partner-report", partnerProductIdsForReport],
+    queryFn: async () => {
+      if (partnerProductIdsForReport.length === 0) return [];
+      const { data, error } = await supabase
+        .from("product_partnerships")
+        .select("product_id")
+        .in("group_id", partnerProductIdsForReport)
+        .limit(5000);
+      if (error) throw error;
+      return (data || []).map(d => d.product_id) as string[];
+    },
+    enabled: !!user && partnerProductIdsForReport.length > 0
+  });
+
+  // Fetch partner products data
+  const { data: partnerProductsData = [] } = useQuery({
+    queryKey: ["partner-products-partner-report", partnerProductIds],
+    queryFn: async () => {
+      if (partnerProductIds.length === 0) return [];
+      const results: { id: string; cost_price: number | null }[] = [];
+      for (let i = 0; i < partnerProductIds.length; i += 500) {
+        const chunk = partnerProductIds.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, cost_price")
+          .in("id", chunk);
+        if (error) throw error;
+        if (data) results.push(...(data as { id: string; cost_price: number | null }[]));
+      }
+      return results;
+    },
+    enabled: partnerProductIds.length > 0
+  });
+
   const productCostMap = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of productsData) {
+    for (const p of ownProductsData) {
       map.set(p.id, p.cost_price ?? 0);
     }
+    for (const p of partnerProductsData) {
+      if (!map.has(p.id)) {
+        map.set(p.id, p.cost_price ?? 0);
+      }
+    }
     return map;
-  }, [productsData]);
+  }, [ownProductsData, partnerProductsData]);
+
+  // Fetch custom payment methods for fee calculation
+  const { data: customPaymentMethods = [] } = useQuery({
+    queryKey: ["custom-payment-methods-partner-report", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_payment_methods")
+        .select("id, name, fee_percent, is_active")
+        .eq("owner_id", user!.id);
+      if (error) throw error;
+      return data as { id: string; name: string; fee_percent: number; is_active: boolean }[];
+    },
+    enabled: !!user
+  });
+
+  const feesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    customPaymentMethods.forEach(m => map.set(m.name, m.fee_percent));
+    return map;
+  }, [customPaymentMethods]);
 
   // Get user's groups separated by type
   const userGroups = useMemo(() => {
@@ -594,13 +662,22 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
 
       const computeSellerData = (sellerId: string) => {
         const sellerSales = partnershipSales.filter(s => s.owner_id === sellerId);
-        let totalVendas = 0;
+        let totalVendas = 0; // subtotal (receita bruta antes de descontos)
         let totalCustos = 0;
+        let totalDescontos = 0;
+        let totalTaxas = 0;
         let sellerProfitShare = 0;
         let partnerProfitShare = 0;
 
         for (const sale of sellerSales) {
-          totalVendas += sale.total;
+          // Receita bruta = subtotal (antes de descontos)
+          totalVendas += sale.subtotal || sale.total;
+          // Descontos
+          totalDescontos += Number(sale.discount_amount) || 0;
+          // Taxas reais do método de pagamento
+          const feePercent = feesMap.get(sale.payment_method) ?? 0;
+          totalTaxas += sale.total * (feePercent / 100);
+          // Custos dos produtos
           for (const item of sale.sale_items) {
             const costPrice = productCostMap.get(item.product_id) ?? 0;
             totalCustos += costPrice * item.quantity;
@@ -618,9 +695,8 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
         }
 
         const lucroTotal = sellerProfitShare + partnerProfitShare;
-        const totalTaxas = Math.max(0, totalVendas - totalCustos - lucroTotal);
 
-        return { totalVendas, totalCustos, totalTaxas, lucroTotal, sellerProfitShare, partnerProfitShare, salesCount: sellerSales.length };
+        return { totalVendas, totalCustos, totalTaxas, totalDescontos, lucroTotal, sellerProfitShare, partnerProfitShare, salesCount: sellerSales.length };
       };
 
       const dataA = computeSellerData(user.id);
@@ -645,6 +721,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
           totalVendas: dataA.totalVendas + dataB.totalVendas,
           totalCustos,
           totalTaxas: dataA.totalTaxas + dataB.totalTaxas,
+          totalDescontos: dataA.totalDescontos + dataB.totalDescontos,
           lucroTotal: dataA.lucroTotal + dataB.lucroTotal,
         },
         acerto: {
@@ -660,7 +737,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
         profitSharePartner: group.profit_share_partner,
       };
     }).filter(Boolean);
-  }, [user, directPartnerships, salesData, splitsBySaleId, productCostMap, userGroupMemberships, profileMap, currentUserName, detectKindBySplits, selectedGroupId]);
+  }, [user, directPartnerships, salesData, splitsBySaleId, productCostMap, feesMap, userGroupMemberships, profileMap, currentUserName, detectKindBySplits, selectedGroupId]);
 
   const renderPartnershipCards = () => {
     if (partnershipDetailedData.length === 0) {
@@ -706,6 +783,12 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
                   <span className="text-muted-foreground">Taxas Totais</span>
                   <span className="font-medium text-destructive">{formatCurrency(data.consolidated.totalTaxas)}</span>
                 </div>
+                {data.consolidated.totalDescontos > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Descontos</span>
+                    <span className="font-medium text-destructive">{formatCurrency(data.consolidated.totalDescontos)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between text-sm">
                   <span className="font-semibold">Lucro Total</span>
@@ -734,6 +817,12 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
                   <span className="text-muted-foreground">Taxas Totais</span>
                   <span className="font-medium">{formatCurrency(data.dataA.totalTaxas)}</span>
                 </div>
+                {data.dataA.totalDescontos > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Descontos</span>
+                    <span className="font-medium">{formatCurrency(data.dataA.totalDescontos)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between text-sm">
                   <span className="font-semibold">Lucro Total</span>
@@ -770,6 +859,12 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
                   <span className="text-muted-foreground">Taxas Totais</span>
                   <span className="font-medium">{formatCurrency(data.dataB.totalTaxas)}</span>
                 </div>
+                {data.dataB.totalDescontos > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Descontos</span>
+                    <span className="font-medium">{formatCurrency(data.dataB.totalDescontos)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between text-sm">
                   <span className="font-semibold">Lucro Total</span>
