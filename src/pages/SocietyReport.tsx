@@ -57,7 +57,7 @@ interface Sale {
 }
 interface PaymentFee {
   owner_id: string;
-  payment_method: string;
+  name: string;
   fee_percent: number;
 }
 interface PartnershipRule {
@@ -208,14 +208,15 @@ export default function SocietyReport() {
     enabled: partnerIds.length === 2,
   });
 
-  // ── payment fees table (por owner_id para separar taxas de cada sócia) ──
+  // ── custom_payment_methods (taxas reais por owner_id e nome exato) ──
   const { data: paymentFees = [] } = useQuery<PaymentFee[]>({
     queryKey: ["society-payment-fees", socioA?.id, socioB?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("payment_fees")
-        .select("owner_id, payment_method, fee_percent")
-        .in("owner_id", partnerIds);
+        .from("custom_payment_methods")
+        .select("owner_id, name, fee_percent")
+        .in("owner_id", partnerIds)
+        .eq("is_active", true);
       if (error) throw error;
       return data as PaymentFee[];
     },
@@ -236,25 +237,6 @@ export default function SocietyReport() {
     },
     enabled: selectedGroupId !== "none",
   });
-
-  // ── Normaliza payment_method da venda para chave da tabela payment_fees ──
-  const normalizePaymentMethod = (method: string | null): string => {
-    if (!method) return '';
-    const m = method.toLowerCase().trim();
-    if (m.includes('débito') || m.includes('debito') || m === 'cartão débito' || m === 'cartao debito') return 'debito';
-    if (m === 'pix' || m === 'pix a prazo') return 'pix';
-    if (m === 'dinheiro') return 'dinheiro';
-    // Crédito parcelado: extrair número de parcelas
-    const matchCredito = m.match(/cr[eé]dito\s*(\d+)x/);
-    if (matchCredito) return `credito_${matchCredito[1]}x`;
-    if (m.includes('crédito') || m.includes('credito')) return 'credito_1x';
-    if (m.includes('link') && m.includes('2x')) return 'credito_2x';
-    if (m.includes('link') && m.includes('3x')) return 'credito_3x';
-    if (m.includes('link') && m.includes('4x')) return 'credito_4x';
-    if (m.includes('link') && m.includes('5x')) return 'credito_5x';
-    if (m.includes('link') && m.includes('6x')) return 'credito_6x';
-    return m;
-  };
 
   // ── HYBRID ENGINE ─────────────────────────────────────────────────────
   const metrics = useMemo(() => {
@@ -296,10 +278,9 @@ export default function SocietyReport() {
       }
       stats.totalCosts += custo;
 
-      // 3. Taxa da Maquininha — usando as taxas do DONO da venda (não misturar sócias)
-      const normalizedMethod = normalizePaymentMethod(sale.payment_method);
+      // 3. Taxa da Maquininha — match exato pelo nome do método personalizado
       const feeRule = paymentFees?.find(
-        (f: any) => f.owner_id === sale.owner_id && f.payment_method === normalizedMethod
+        (f: any) => f.owner_id === sale.owner_id && f.name === sale.payment_method
       );
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
