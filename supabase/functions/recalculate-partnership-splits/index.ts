@@ -104,8 +104,21 @@ Deno.serve(async (req) => {
     const ownerId = ownerMember.user_id;
     const partnerId = partnerMember.user_id;
 
+    // 2b. Fetch custom payment methods for all group members to compute fees
+    const allMemberIds = [ownerId, partnerId];
+    const feeByMethod = new Map<string, number>();
+    for (const memberId of allMemberIds) {
+      const { data: pmData } = await supabase
+        .from("custom_payment_methods")
+        .select("name, fee_percent")
+        .eq("owner_id", memberId);
+      for (const pm of pmData ?? []) {
+        if (!feeByMethod.has(pm.name)) feeByMethod.set(pm.name, pm.fee_percent);
+      }
+    }
+
     // 3. Get sale IDs for these products in pages
-    const saleMap = new Map<string, { id: string; owner_id: string; subtotal: number; created_at: string }>();
+    const saleMap = new Map<string, { id: string; owner_id: string; subtotal: number; payment_method: string; discount_amount: number; created_at: string }>();
     const CHUNK = 200;
 
     for (let i = 0; i < allProductIds.length; i += CHUNK) {
@@ -114,7 +127,7 @@ Deno.serve(async (req) => {
       while (true) {
         const { data, error } = await supabase
           .from("sale_items")
-          .select("sale_id, sales!inner(id, owner_id, subtotal, created_at, status)")
+          .select("sale_id, sales!inner(id, owner_id, subtotal, payment_method, discount_amount, created_at, status)")
           .in("product_id", chunk)
           .eq("sales.status", "completed")
           .range(pageFrom, pageFrom + 499);
@@ -181,7 +194,11 @@ Deno.serve(async (req) => {
 
     for (const sale of saleMap.values()) {
       const cost = costBySale.get(sale.id) ?? 0;
-      const grossProfit = (sale.subtotal ?? 0) - cost;
+      const feePct = feeByMethod.get(sale.payment_method) ?? 0;
+      const feeAmount = (sale.subtotal ?? 0) * (feePct / 100);
+      const discount = sale.discount_amount ?? 0;
+      // Lucro Líquido = Subtotal - CMV - Taxas de pagamento - Descontos
+      const grossProfit = (sale.subtotal ?? 0) - cost - feeAmount - discount;
       if (grossProfit <= 0) continue;
 
       const isOwnerSale = sale.owner_id === ownerId;
