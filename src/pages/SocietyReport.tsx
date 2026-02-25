@@ -172,6 +172,8 @@ export default function SocietyReport() {
   const { data: salesData = [], isLoading: salesLoading } = useQuery<Sale[]>({
     queryKey: ["society-sales-v4", selectedGroupId, dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
+      // Only fetch sales that involved both partners (i.e. have financial_splits for both)
+      // We filter by sales that have at least one financial_split for each partner ID
       const { data, error } = await supabase
         .from("sales")
         .select(`
@@ -183,6 +185,20 @@ export default function SocietyReport() {
         .in("owner_id", partnerIds)
         .gte("created_at", dateRange.start.toISOString())
         .lte("created_at", dateRange.end.toISOString());
+
+      if (error) throw error;
+
+      // Post-filter: keep only sales where BOTH partner IDs appear in financial_splits
+      // This ensures we only count sales that actually involved the partnership stock
+      const [id_A, id_B] = partnerIds;
+      const filtered = (data as any[]).filter(sale => {
+        const splits = sale.financial_splits || [];
+        const hasA = splits.some((s: any) => s.user_id === id_A);
+        const hasB = splits.some((s: any) => s.user_id === id_B);
+        return hasA && hasB;
+      });
+
+      return filtered as unknown as Sale[];
       if (error) throw error;
       return data as unknown as Sale[];
     },
