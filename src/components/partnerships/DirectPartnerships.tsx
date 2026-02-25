@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle, FileText } from "lucide-react";
+import { UserPlus, Users, Copy, Check, X, Mail, Link2, Package, ChevronDown, ChevronUp, Percent, HelpCircle, FileText, Settings } from "lucide-react";
 import { PartnershipProposalCard } from "./PartnershipProposalCard";
 import { PartnershipRulesDialog } from "./PartnershipRulesDialog";
+import { EditPartnershipRulesDialog } from "./EditPartnershipRulesDialog";
 import { ProductPartnershipDialog } from "./ProductPartnershipDialog";
 import {
   Tooltip,
@@ -126,6 +127,7 @@ export function DirectPartnerships() {
   const [selectedPartner, setSelectedPartner] = useState<DirectPartner | null>(null);
   const [expandedPartners, setExpandedPartners] = useState<Set<string>>(new Set());
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
+  const [editRulesDialogOpen, setEditRulesDialogOpen] = useState(false);
   const [selectedPartnerForRules, setSelectedPartnerForRules] = useState<{
     partnerName: string;
     groupId: string;
@@ -868,22 +870,39 @@ export function DirectPartnerships() {
                   <CollapsibleContent>
                     <CardContent className="pt-0">
                       <div className="border-t pt-4 space-y-4">
-                        {/* View Rules Button */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            setSelectedPartnerForRules({
-                              partnerName: partner.partnerName,
-                              groupId: partner.groupId,
-                            });
-                            setRulesDialogOpen(true);
-                          }}
-                        >
-                          <FileText className="h-4 w-4 mr-2" />
-                          Ver Regras da Sociedade
-                        </Button>
+                        {/* View / Edit Rules Buttons */}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => {
+                              setSelectedPartnerForRules({
+                                partnerName: partner.partnerName,
+                                groupId: partner.groupId,
+                              });
+                              setRulesDialogOpen(true);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Ver Regras
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => {
+                              setSelectedPartnerForRules({
+                                partnerName: partner.partnerName,
+                                groupId: partner.groupId,
+                              });
+                              setEditRulesDialogOpen(true);
+                            }}
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            Editar Regras
+                          </Button>
+                        </div>
                         
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-medium">Seus produtos liberados para {partner.partnerName}</p>
@@ -1146,6 +1165,23 @@ export function DirectPartnerships() {
           {...getGroupConfig(selectedPartnerForRules.groupId)}
         />
       )}
+
+      {/* Edit Partnership Rules Dialog */}
+      {selectedPartnerForRules && (() => {
+        const cfg = getGroupConfig(selectedPartnerForRules.groupId);
+        return (
+          <EditPartnershipRulesDialog
+            open={editRulesDialogOpen}
+            onOpenChange={setEditRulesDialogOpen}
+            groupId={selectedPartnerForRules.groupId}
+            partnerName={selectedPartnerForRules.partnerName}
+            currentCostSplit={cfg.costSplitPercent}
+            currentProfitSeller={cfg.profitShareSeller}
+            currentProfitPartner={cfg.profitSharePartner}
+            currentThirdParty={cfg.thirdPartyCommission}
+          />
+        );
+      })()}
     </div>
   );
 }
