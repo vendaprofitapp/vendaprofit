@@ -39,7 +39,7 @@ interface FinancialSplit {
   sale_id: string;
   user_id: string;
   amount: number;
-  type: string | null;
+  split_type: string | null;
 }
 interface SaleItem {
   quantity: number;
@@ -49,11 +49,13 @@ interface Sale {
   id: string;
   owner_id: string;
   total: number;
-  payment_fee: number | null;
-  shipping_cost: number | null;
-  shipping_payer: string | null;
+  payment_method: string | null;
   sale_items: SaleItem[];
   financial_splits: FinancialSplit[];
+}
+interface PaymentFee {
+  payment_method: string;
+  fee_percent: number;
 }
 interface PartnershipRule {
   owner_cost_percent: number;
@@ -168,12 +170,12 @@ export default function SocietyReport() {
   }, [socioA, socioB]);
 
   const { data: salesData = [], isLoading: salesLoading } = useQuery<Sale[]>({
-    queryKey: ["society-sales-v3", selectedGroupId, dateRange.start.toISOString(), dateRange.end.toISOString()],
+    queryKey: ["society-sales-v4", selectedGroupId, dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, owner_id, total, payment_fee, shipping_cost, shipping_payer,
+          id, owner_id, total, payment_method,
           sale_items(quantity, products(cost_price)),
           financial_splits(sale_id, user_id, amount, type)
         `)
@@ -185,6 +187,19 @@ export default function SocietyReport() {
       return data as unknown as Sale[];
     },
     enabled: partnerIds.length === 2,
+  });
+
+  // ── payment fees table ────────────────────────────────────────────────
+  const { data: paymentFees = [] } = useQuery<PaymentFee[]>({
+    queryKey: ["society-payment-fees"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payment_fees")
+        .select("payment_method, fee_percent");
+      if (error) throw error;
+      return data as PaymentFee[];
+    },
+    enabled: !!user,
   });
 
   // ── partnership rules (fallback for cost ratio) ───────────────────────
@@ -229,29 +244,30 @@ export default function SocietyReport() {
       // 2. CMV Dinâmico
       let custo = 0;
       if (sale.sale_items) {
-        sale.sale_items.forEach((item) => {
+        sale.sale_items.forEach((item: any) => {
           const costPrice = item.products?.cost_price || 0;
           custo += item.quantity * costPrice;
         });
       }
       stats.totalCosts += custo;
 
-      // 3. Taxas e Frete (tratados como 0 se nulos)
-      const taxas = sale.payment_fee || 0;
-      const frete = (sale.shipping_payer === "seller" ? sale.shipping_cost : 0) || 0;
+      // 3. Taxa da Maquininha (Dinâmica baseada no método de pagamento + tabela payment_fees)
+      const feeRule = paymentFees?.find((f: any) => f.payment_method === sale.payment_method);
+      const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
+      const taxas = receita * (feePercent / 100);
 
       // 4. Lucro Real da Venda (alinhado com Minha Performance)
-      const lucroReal = receita - custo - taxas - frete;
+      const lucroReal = receita - custo - taxas;
       stats.totalProfit += lucroReal;
 
       // 5. Inferir proporção histórica pelos profit_share splits
-      const splits = sale.financial_splits || [];
+      const splits = (sale.financial_splits || []) as any[];
       let splitA = 0;
       let splitB = 0;
-      splits.forEach((s) => {
-        if (s.type === "profit_share" || s.type === null) {
-          if (s.user_id === id_A) splitA += s.amount;
-          if (s.user_id === id_B) splitB += s.amount;
+      splits.forEach((s: any) => {
+        if (s.split_type === "profit_share" || s.type === "profit_share" || !s.split_type) {
+          if (s.user_id === id_A) splitA += Number(s.amount);
+          if (s.user_id === id_B) splitB += Number(s.amount);
         }
       });
 
@@ -295,7 +311,7 @@ export default function SocietyReport() {
     });
 
     return stats;
-  }, [socioA, socioB, salesData, partnershipRules]);
+  }, [socioA, socioB, salesData, partnershipRules, paymentFees]);
 
   const handleRefresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["society-"] });
