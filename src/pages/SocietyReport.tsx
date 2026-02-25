@@ -478,12 +478,10 @@ export default function SocietyReport() {
                     <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalDiscounts)}</span>
                   </div>
                 )}
-                {metrics.totalFees > 0 && (
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
-                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalFees)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.totalFees)}</span>
+                </div>
                 <Separator />
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm font-semibold">Lucro Total</span>
@@ -508,12 +506,10 @@ export default function SocietyReport() {
                   <span className="text-sm font-medium">Total de Vendas</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.salesGenerated)}</span>
                 </div>
-                {metrics.socioA.feesGenerated > 0 && (
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
-                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.feesGenerated)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.feesGenerated)}</span>
+                </div>
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.profitGenerated)}</span>
@@ -547,12 +543,10 @@ export default function SocietyReport() {
                   <span className="text-sm font-medium">Total de Vendas</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.salesGenerated)}</span>
                 </div>
-                {metrics.socioB.feesGenerated > 0 && (
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
-                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.feesGenerated)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.feesGenerated)}</span>
+                </div>
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.profitGenerated)}</span>
