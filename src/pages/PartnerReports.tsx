@@ -260,6 +260,27 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     enabled: !!user
   });
 
+  // Fetch products for cost calculation
+  const { data: productsData = [] } = useQuery({
+    queryKey: ["products-for-partner-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, cost_price");
+      if (error) throw error;
+      return data as { id: string; cost_price: number | null }[];
+    },
+    enabled: !!user
+  });
+
+  const productCostMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of productsData) {
+      map.set(p.id, p.cost_price ?? 0);
+    }
+    return map;
+  }, [productsData]);
+
   // Get user's groups separated by type
   const userGroups = useMemo(() => {
     const userGroupIds = userGroupMemberships.filter(m => m.user_id === user?.id).map(m => m.group_id);
@@ -542,6 +563,269 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     totals.deferredIOwe > 0 || totals.deferredMyEarnings > 0 || totals.deferredOwnerEarnings > 0;
 
   const currentUserName = profiles.find(p => p.id === user?.id)?.full_name || "Você";
+
+  // Partnership detailed data for 4-card layout
+  const partnershipDetailedData = useMemo(() => {
+    if (!user || directPartnerships.length === 0) return [];
+
+    const filteredPartnerships = selectedGroupId !== "all"
+      ? directPartnerships.filter(g => g.id === selectedGroupId)
+      : directPartnerships;
+
+    return filteredPartnerships.map(group => {
+      const groupMemberIds = userGroupMemberships
+        .filter(m => m.group_id === group.id)
+        .map(m => m.user_id);
+
+      const partnerBId = groupMemberIds.find(id => id !== user.id);
+      if (!partnerBId) return null;
+
+      const partnerAName = currentUserName;
+      const partnerBName = profileMap.get(partnerBId)?.full_name ?? "Sócia";
+
+      // Find partnership sales for this group
+      const partnershipSales = salesData.filter(sale => {
+        if (detectKindBySplits(sale.id) !== "partnerships") return false;
+        if (!groupMemberIds.includes(sale.owner_id)) return false;
+        const splits = splitsBySaleId.get(sale.id) ?? [];
+        const splitUserIds = new Set(splits.map(s => s.user_id));
+        return groupMemberIds.some(id => id !== sale.owner_id && splitUserIds.has(id));
+      });
+
+      const computeSellerData = (sellerId: string) => {
+        const sellerSales = partnershipSales.filter(s => s.owner_id === sellerId);
+        let totalVendas = 0;
+        let totalCustos = 0;
+        let sellerProfitShare = 0;
+        let partnerProfitShare = 0;
+
+        for (const sale of sellerSales) {
+          totalVendas += sale.total;
+          for (const item of sale.sale_items) {
+            const costPrice = productCostMap.get(item.product_id) ?? 0;
+            totalCustos += costPrice * item.quantity;
+          }
+          const splits = splitsBySaleId.get(sale.id) ?? [];
+          for (const split of splits) {
+            if (split.type === 'profit_share') {
+              if (split.user_id === sellerId) {
+                sellerProfitShare += split.amount;
+              } else {
+                partnerProfitShare += split.amount;
+              }
+            }
+          }
+        }
+
+        const lucroTotal = sellerProfitShare + partnerProfitShare;
+        const totalTaxas = Math.max(0, totalVendas - totalCustos - lucroTotal);
+
+        return { totalVendas, totalCustos, totalTaxas, lucroTotal, sellerProfitShare, partnerProfitShare, salesCount: sellerSales.length };
+      };
+
+      const dataA = computeSellerData(user.id);
+      const dataB = computeSellerData(partnerBId);
+
+      const lucroTotalA = dataA.sellerProfitShare + dataB.partnerProfitShare;
+      const lucroTotalB = dataA.partnerProfitShare + dataB.sellerProfitShare;
+
+      const totalCustos = dataA.totalCustos + dataB.totalCustos;
+      const custosA = totalCustos * group.cost_split_ratio;
+      const custosB = totalCustos * (1 - group.cost_split_ratio);
+
+      return {
+        group,
+        partnerAId: user.id,
+        partnerBId,
+        partnerAName,
+        partnerBName,
+        dataA,
+        dataB,
+        consolidated: {
+          totalVendas: dataA.totalVendas + dataB.totalVendas,
+          totalCustos,
+          totalTaxas: dataA.totalTaxas + dataB.totalTaxas,
+          lucroTotal: dataA.lucroTotal + dataB.lucroTotal,
+        },
+        acerto: {
+          lucroTotalA,
+          lucroTotalB,
+          custosA,
+          custosB,
+          totalA: lucroTotalA + custosA,
+          totalB: lucroTotalB + custosB,
+          costSplitRatio: group.cost_split_ratio,
+        },
+        profitShareSeller: group.profit_share_seller,
+        profitSharePartner: group.profit_share_partner,
+      };
+    }).filter(Boolean);
+  }, [user, directPartnerships, salesData, splitsBySaleId, productCostMap, userGroupMemberships, profileMap, currentUserName, detectKindBySplits, selectedGroupId]);
+
+  const renderPartnershipCards = () => {
+    if (partnershipDetailedData.length === 0) {
+      return (
+        <Card className="mb-6">
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Nenhuma sociedade encontrada ou sem vendas no período.
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return partnershipDetailedData.map((data: any) => {
+      const sellerPct = Math.round(data.profitShareSeller * 100);
+      const partnerPct = Math.round(data.profitSharePartner * 100);
+      const costPctA = Math.round(data.acerto.costSplitRatio * 100);
+      const costPctB = 100 - costPctA;
+
+      return (
+        <div key={data.group.id} className="space-y-4 mb-6">
+          {partnershipDetailedData.length > 1 && (
+            <h3 className="text-lg font-semibold text-foreground">{data.group.name}</h3>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Card 1: Totais */}
+            <Card className="border-primary/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold uppercase text-primary">
+                  Totais de Vendas em Sociedade
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total de Vendas</span>
+                  <span className="font-semibold">{formatCurrency(data.consolidated.totalVendas)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custos Totais</span>
+                  <span className="font-medium text-destructive">{formatCurrency(data.consolidated.totalCustos)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxas Totais</span>
+                  <span className="font-medium text-destructive">{formatCurrency(data.consolidated.totalTaxas)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Lucro Total</span>
+                  <span className="font-bold text-primary">{formatCurrency(data.consolidated.lucroTotal)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 2: Vendas Sócia A */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold uppercase">
+                  Vendas {data.partnerAName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total de Vendas</span>
+                  <span className="font-semibold">{formatCurrency(data.dataA.totalVendas)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custos Produtos</span>
+                  <span className="font-medium">{formatCurrency(data.dataA.totalCustos)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxas Totais</span>
+                  <span className="font-medium">{formatCurrency(data.dataA.totalTaxas)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Lucro Total</span>
+                  <span className="font-bold">{formatCurrency(data.dataA.lucroTotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm pt-1">
+                  <span className="text-muted-foreground">Lucro {data.partnerAName} ({sellerPct}%)</span>
+                  <span className="font-semibold text-primary">{formatCurrency(data.dataA.sellerProfitShare)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Lucro {data.partnerBName} ({partnerPct}%)</span>
+                  <span className="font-medium">{formatCurrency(data.dataA.partnerProfitShare)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Vendas Sócia B */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold uppercase">
+                  Vendas {data.partnerBName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total de Vendas</span>
+                  <span className="font-semibold">{formatCurrency(data.dataB.totalVendas)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custos Produtos</span>
+                  <span className="font-medium">{formatCurrency(data.dataB.totalCustos)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxas Totais</span>
+                  <span className="font-medium">{formatCurrency(data.dataB.totalTaxas)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Lucro Total</span>
+                  <span className="font-bold">{formatCurrency(data.dataB.lucroTotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm pt-1">
+                  <span className="text-muted-foreground">Lucro {data.partnerBName} ({sellerPct}%)</span>
+                  <span className="font-semibold text-primary">{formatCurrency(data.dataB.sellerProfitShare)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Lucro {data.partnerAName} ({partnerPct}%)</span>
+                  <span className="font-medium">{formatCurrency(data.dataB.partnerProfitShare)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 4: Acerto de Contas */}
+            <Card className="border-green-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold uppercase text-green-700 dark:text-green-400">
+                  Acerto de Contas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Lucro Total {data.partnerAName}</span>
+                  <span className="font-medium">{formatCurrency(data.acerto.lucroTotalA)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Lucro Total {data.partnerBName}</span>
+                  <span className="font-medium">{formatCurrency(data.acerto.lucroTotalB)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custos {costPctA}% {data.partnerAName}</span>
+                  <span className="font-medium">{formatCurrency(data.acerto.custosA)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custos {costPctB}% {data.partnerBName}</span>
+                  <span className="font-medium">{formatCurrency(data.acerto.custosB)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm font-bold">
+                  <span className="text-primary">{data.partnerAName}</span>
+                  <span className="text-primary">{formatCurrency(data.acerto.totalA)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold">
+                  <span>{data.partnerBName}</span>
+                  <span>{formatCurrency(data.acerto.totalB)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
+    });
+  };
 
   const renderSummaryCards = (totals: ReturnType<typeof calculateTotals>, isPartnership: boolean) => (
     <div className="space-y-4 mb-6">
@@ -1154,7 +1438,7 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
             <DollarSign className="h-5 w-5" />
             Acerto entre Sócias (1-1)
           </h2>
-          {renderSummaryCards(partnershipTotals, true)}
+          {renderPartnershipCards()}
           <Separator className="my-6" />
           {renderTables(partnershipSummaries, true)}
           {renderDetailedSales("partnerships")}
