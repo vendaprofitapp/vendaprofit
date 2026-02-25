@@ -49,6 +49,7 @@ interface Sale {
   id: string;
   owner_id: string;
   total: number;
+  discount_amount: number | null;
   payment_method: string | null;
   sale_items: SaleItem[];
   financial_splits: FinancialSplit[];
@@ -177,7 +178,7 @@ export default function SocietyReport() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, owner_id, total, payment_method,
+          id, owner_id, total, discount_amount, payment_method,
           sale_items(quantity, products(cost_price)),
           financial_splits(sale_id, user_id, amount, type)
         `)
@@ -244,6 +245,7 @@ export default function SocietyReport() {
     const stats = {
       totalSales:  0,
       totalCosts:  0,
+      totalDiscounts: 0,
       totalProfit: 0,
       socioA: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
       socioB: { salesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
@@ -256,6 +258,9 @@ export default function SocietyReport() {
       // 1. Receita Bruta
       const receita = sale.total || 0;
       stats.totalSales += receita;
+
+      // 1b. Desconto
+      stats.totalDiscounts += sale.discount_amount ?? 0;
 
       // 2. CMV Dinâmico
       let custo = 0;
@@ -457,6 +462,12 @@ export default function SocietyReport() {
                   <span className="text-sm text-muted-foreground">Custos Totais (CMV)</span>
                   <span className="text-sm font-semibold text-destructive">{fmt(metrics.totalCosts)}</span>
                 </div>
+                {metrics.totalDiscounts > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">Descontos Concedidos</span>
+                    <span className="text-sm font-semibold text-destructive">{fmt(metrics.totalDiscounts)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm font-semibold">Lucro Total</span>

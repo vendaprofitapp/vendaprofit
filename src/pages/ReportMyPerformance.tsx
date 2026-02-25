@@ -34,6 +34,7 @@ interface Sale {
   id: string;
   total: number;
   subtotal: number;
+  discount_amount: number | null;
   shipping_cost: number | null;
   shipping_payer: string | null;
   payment_method: string;
@@ -185,7 +186,7 @@ export default function ReportMyPerformance() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, total, subtotal, shipping_cost, shipping_payer, payment_method, created_at,
+          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, created_at,
           sale_items ( product_id, quantity, unit_price, total )
         `)
         .eq("owner_id", user!.id)
@@ -263,10 +264,14 @@ export default function ReportMyPerformance() {
     let totalCMV = 0;
     let totalFees = 0;
     let totalShipping = 0;
+    let totalDiscounts = 0;
 
     for (const sale of sales) {
-      // Revenue
+      // Revenue (already post-discount)
       totalRevenue += sale.total;
+
+      // Discounts (for visibility)
+      totalDiscounts += sale.discount_amount ?? 0;
 
       // CMV
       for (const item of sale.sale_items) {
@@ -288,7 +293,7 @@ export default function ReportMyPerformance() {
     const netProfit = totalRevenue - totalCMV - totalFees - totalShipping;
     const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    return { totalRevenue, totalCMV, totalFees, totalShipping, netProfit, margin };
+    return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin };
   }, [sales, costMap, feesMap]);
 
   // ── 6. Daily chart data ──────────────────────────────────────────────────
@@ -392,8 +397,8 @@ export default function ReportMyPerformance() {
           </span>
         </div>
 
-        {/* 5 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        {/* 6 Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
           <MetricCard
             label="Receita Bruta"
             value={metrics.totalRevenue}
@@ -404,6 +409,13 @@ export default function ReportMyPerformance() {
             label="Custo dos Produtos (CMV)"
             value={metrics.totalCMV}
             icon={Package}
+            negative
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Descontos Concedidos"
+            value={metrics.totalDiscounts}
+            icon={TrendingDown}
             negative
             loading={isLoading}
           />
@@ -544,6 +556,7 @@ export default function ReportMyPerformance() {
               {[
                 { label: "Receita Bruta", value: metrics.totalRevenue, color: "text-card-foreground" },
                 { label: "− Custo dos Produtos (CMV)", value: -metrics.totalCMV, color: "text-destructive" },
+                { label: "− Descontos Concedidos", value: -metrics.totalDiscounts, color: "text-destructive" },
                 { label: "− Taxas de Pagamento", value: -metrics.totalFees, color: "text-destructive" },
                 { label: "− Custo com Frete", value: -metrics.totalShipping, color: "text-destructive" },
               ].map(row => (
