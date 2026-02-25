@@ -1,15 +1,18 @@
 import { useState, useMemo } from "react";
-import { PieChart, Users, TrendingUp, DollarSign, ArrowRightLeft, RefreshCw } from "lucide-react";
+import { PieChart, Users, TrendingUp, DollarSign, ArrowRightLeft, RefreshCw, CalendarIcon } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -21,6 +24,7 @@ const periodOptions = [
   { value: "week", label: "Esta Semana" },
   { value: "month", label: "Este Mês" },
   { value: "all", label: "Todo Período" },
+  { value: "custom", label: "Personalizado" },
 ];
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -61,6 +65,8 @@ export default function SocietyReport() {
   const queryClient = useQueryClient();
   const [selectedGroupId, setSelectedGroupId] = useState<string>("none");
   const [period, setPeriod] = useState("month");
+  const [customStart, setCustomStart] = useState<Date | undefined>(startOfMonth(new Date()));
+  const [customEnd, setCustomEnd] = useState<Date | undefined>(endOfMonth(new Date()));
 
   // ── date range ──────────────────────────────────────────────────────────
   const dateRange = useMemo(() => {
@@ -69,9 +75,13 @@ export default function SocietyReport() {
       case "today": return { start: startOfDay(now), end: endOfDay(now) };
       case "week":  return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
       case "month": return { start: startOfMonth(now), end: endOfMonth(now) };
+      case "custom": return {
+        start: customStart ? startOfDay(customStart) : new Date(2020, 0, 1),
+        end: customEnd ? endOfDay(customEnd) : now,
+      };
       default:      return { start: new Date(2020, 0, 1), end: now };
     }
-  }, [period]);
+  }, [period, customStart, customEnd]);
 
   // ── queries ─────────────────────────────────────────────────────────────
   const { data: memberships = [] } = useQuery<GroupMember[]>({
@@ -359,6 +369,52 @@ export default function SocietyReport() {
               ))}
             </SelectContent>
           </Select>
+
+          {period === "custom" && (
+            <>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn("w-full sm:w-44 justify-start text-left font-normal", !customStart && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {customStart ? format(customStart, "dd/MM/yyyy") : "Data início"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={customStart}
+                    onSelect={setCustomStart}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn("w-full sm:w-44 justify-start text-left font-normal", !customEnd && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {customEnd ? format(customEnd, "dd/MM/yyyy") : "Data fim"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={customEnd}
+                    onSelect={setCustomEnd}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </>
+          )}
         </div>
 
         {/* Empty state */}
