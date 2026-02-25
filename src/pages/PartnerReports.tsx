@@ -260,22 +260,38 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     enabled: !!user
   });
 
-  // Fetch OWN products for cost calculation
-  const { data: ownProductsData = [] } = useQuery({
-    queryKey: ["products-for-partner-report-own", user?.id],
+  // Collect all unique product IDs from sales data to fetch costs
+  const allSaleProductIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const sale of salesData) {
+      for (const item of sale.sale_items) {
+        if (item.product_id) ids.add(item.product_id);
+      }
+    }
+    return Array.from(ids);
+  }, [salesData]);
+
+  // Fetch product costs for ALL products appearing in sales (bypasses owner-based queries)
+  const { data: allProductCosts = [] } = useQuery({
+    queryKey: ["products-cost-for-partner-report", allSaleProductIds],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, cost_price")
-        .eq("owner_id", user!.id)
-        .limit(5000);
-      if (error) throw error;
-      return data as { id: string; cost_price: number | null }[];
+      if (allSaleProductIds.length === 0) return [];
+      const results: { id: string; cost_price: number | null }[] = [];
+      for (let i = 0; i < allSaleProductIds.length; i += 500) {
+        const chunk = allSaleProductIds.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, cost_price")
+          .in("id", chunk);
+        if (error) throw error;
+        if (data) results.push(...(data as { id: string; cost_price: number | null }[]));
+      }
+      return results;
     },
-    enabled: !!user
+    enabled: allSaleProductIds.length > 0
   });
 
-  // Fetch partner product IDs via product_partnerships
+  // Fetch partner product IDs via product_partnerships (still needed for sale filtering)
   const partnerProductIdsForReport = useMemo(() => {
     const userGroupIds = userGroupMemberships.filter(m => m.user_id === user?.id).map(m => m.group_id);
     return userGroupIds;
@@ -296,38 +312,13 @@ export default function PartnerReports({ filterMode }: PartnerReportsProps = {})
     enabled: !!user && partnerProductIdsForReport.length > 0
   });
 
-  // Fetch partner products data
-  const { data: partnerProductsData = [] } = useQuery({
-    queryKey: ["partner-products-partner-report", partnerProductIds],
-    queryFn: async () => {
-      if (partnerProductIds.length === 0) return [];
-      const results: { id: string; cost_price: number | null }[] = [];
-      for (let i = 0; i < partnerProductIds.length; i += 500) {
-        const chunk = partnerProductIds.slice(i, i + 500);
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, cost_price")
-          .in("id", chunk);
-        if (error) throw error;
-        if (data) results.push(...(data as { id: string; cost_price: number | null }[]));
-      }
-      return results;
-    },
-    enabled: partnerProductIds.length > 0
-  });
-
   const productCostMap = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of ownProductsData) {
+    for (const p of allProductCosts) {
       map.set(p.id, p.cost_price ?? 0);
     }
-    for (const p of partnerProductsData) {
-      if (!map.has(p.id)) {
-        map.set(p.id, p.cost_price ?? 0);
-      }
-    }
     return map;
-  }, [ownProductsData, partnerProductsData]);
+  }, [allProductCosts]);
 
   // Fetch custom payment methods for fee calculation
   const { data: customPaymentMethods = [] } = useQuery({
