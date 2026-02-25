@@ -252,8 +252,8 @@ export default function SocietyReport() {
       totalDiscounts: 0,
       totalFees:      0, // taxas separadas do CMV
       totalProfit:    0,
-      socioA: { salesGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
-      socioB: { salesGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
+      socioA: { salesGenerated: 0, costsGenerated: 0, discountsGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
+      socioB: { salesGenerated: 0, costsGenerated: 0, discountsGenerated: 0, feesGenerated: 0, profitGenerated: 0, fatiaParaA: 0, fatiaParaB: 0, costRecovery: 0, totalProfit: 0 },
     };
 
     // Deduplicate sales by id (safety net against fan-out)
@@ -278,9 +278,12 @@ export default function SocietyReport() {
       }
       stats.totalCosts += custo;
 
-      // 3. Taxa da Maquininha — match exato pelo nome do método personalizado
+      // 3. Taxa da Maquininha — busca primeiro pelo owner_id da venda, depois por qualquer sócia
+      // (na sociedade o owner_id é sempre do dono do produto, não de quem vendeu)
       const feeRule = paymentFees?.find(
         (f: any) => f.owner_id === sale.owner_id && f.name === sale.payment_method
+      ) ?? paymentFees?.find(
+        (f: any) => f.name === sale.payment_method
       );
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
@@ -328,17 +331,21 @@ export default function SocietyReport() {
       // Cards 2 & 3 — Performance por dono da venda (taxas separadas por sócia)
       const isOwnerA = sale.owner_id === id_A;
       if (isOwnerA) {
-        stats.socioA.salesGenerated  += receita;
-        stats.socioA.feesGenerated   += taxas;
-        stats.socioA.profitGenerated += lucroReal;
-        stats.socioA.fatiaParaA      += profitA;
-        stats.socioA.fatiaParaB      += profitB;
+        stats.socioA.salesGenerated     += receita;
+        stats.socioA.costsGenerated     += custo;
+        stats.socioA.discountsGenerated += desconto;
+        stats.socioA.feesGenerated      += taxas;
+        stats.socioA.profitGenerated    += lucroReal;
+        stats.socioA.fatiaParaA         += profitA;
+        stats.socioA.fatiaParaB         += profitB;
       } else {
-        stats.socioB.salesGenerated  += receita;
-        stats.socioB.feesGenerated   += taxas;
-        stats.socioB.profitGenerated += lucroReal;
-        stats.socioB.fatiaParaA      += profitA;
-        stats.socioB.fatiaParaB      += profitB;
+        stats.socioB.salesGenerated     += receita;
+        stats.socioB.costsGenerated     += custo;
+        stats.socioB.discountsGenerated += desconto;
+        stats.socioB.feesGenerated      += taxas;
+        stats.socioB.profitGenerated    += lucroReal;
+        stats.socioB.fatiaParaA         += profitA;
+        stats.socioB.fatiaParaB         += profitB;
       }
     });
 
@@ -508,11 +515,21 @@ export default function SocietyReport() {
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.salesGenerated)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">(-) Custos (CMV)</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.costsGenerated)}</span>
+                </div>
+                {metrics.socioA.discountsGenerated > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">(-) Descontos Cedidos</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.discountsGenerated)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
                   <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioA.feesGenerated)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-sm text-muted-foreground">Lucro Gerado</span>
+                  <span className="text-sm font-medium">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioA.profitGenerated)}</span>
                 </div>
                 <Separator />
@@ -545,11 +562,21 @@ export default function SocietyReport() {
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.salesGenerated)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">(-) Custos (CMV)</span>
+                  <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.costsGenerated)}</span>
+                </div>
+                {metrics.socioB.discountsGenerated > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-muted-foreground">(-) Descontos Cedidos</span>
+                    <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.discountsGenerated)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-muted-foreground">(-) Taxas de Pagamento</span>
                   <span className="text-sm font-semibold text-destructive">- {fmt(metrics.socioB.feesGenerated)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-sm text-muted-foreground">Lucro Gerado</span>
+                  <span className="text-sm font-medium">Lucro Gerado</span>
                   <span className="text-sm font-semibold">{fmt(metrics.socioB.profitGenerated)}</span>
                 </div>
                 <Separator />
