@@ -437,150 +437,149 @@ export default function SocietyReport() {
 
         {/* Dashboard */}
         {selectedGroupId !== "none" && !isLoading && metrics && socioA && socioB && (
-          <div className="grid gap-6">
+          <div className="grid gap-6 max-w-2xl">
 
-            {/* ── Card 1: Visão Consolidada ─────────────────────────────── */}
+            {/* ── Card 1: Total em Sociedade ────────────────────────────── */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <DollarSign className="h-5 w-5 text-primary" />
-                  Visão Consolidada
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Total em Sociedade
                 </CardTitle>
+                <p className="text-xs text-muted-foreground">Visão consolidada do período</p>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  <div className="text-center space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total de Vendas</p>
-                    <p className="text-2xl font-bold text-foreground">{fmt(metrics.totalSales)}</p>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total de Custos</p>
-                    <p className="text-2xl font-bold text-destructive">{fmt(metrics.totalCosts)}</p>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Lucro Total</p>
-                    <p className="text-2xl font-bold text-chart-2">{fmt(metrics.totalProfit)}</p>
-                  </div>
+              <CardContent className="space-y-2 pt-0">
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm font-medium">Total de Vendas</span>
+                  <span className="text-sm font-semibold">{fmt(metrics.totalSales)}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Custos Totais (CMV)</span>
+                  <span className="text-sm font-semibold text-destructive">{fmt(metrics.totalCosts)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm font-semibold">Lucro Total</span>
+                  <span className="text-sm font-bold text-success">{fmt(metrics.totalProfit)}</span>
                 </div>
               </CardContent>
             </Card>
 
-            {/* ── Cards 2 e 3: Performance dos Sócios ──────────────────── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* ── Card 2: Performance Sócio A ───────────────────────────── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Users className="h-4 w-4 text-primary" />
+                  Performance — {nameA}
+                </CardTitle>
+                <span className="inline-block text-xs bg-muted text-muted-foreground rounded px-2 py-0.5 w-fit">
+                  Sócio A · Dono do Grupo
+                </span>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm font-medium">Total de Vendas</span>
+                  <span className="text-sm font-semibold">{fmt(metrics.socioA.salesGenerated)}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Lucro Gerado</span>
+                  <span className="text-sm font-semibold">{fmt(metrics.socioA.profitGenerated)}</span>
+                </div>
+                <Separator />
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-1">Divisão do Lucro</p>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Fatia de {nameA}</span>
+                  <span className="text-sm font-semibold text-primary">{fmt(metrics.socioA.fatiaParaA)}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Fatia de {nameB}</span>
+                  <span className="text-sm font-semibold text-primary">{fmt(metrics.socioA.fatiaParaB)}</span>
+                </div>
+              </CardContent>
+            </Card>
 
-              {/* Card 2: Sócio A */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                    Performance — {nameA}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Vendas Geradas</span>
-                    <span className="font-semibold">{fmt(metrics.socioA.salesGenerated)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Lucro Gerado</span>
-                    <span className="font-semibold text-chart-2">{fmt(metrics.socioA.profitGenerated)}</span>
-                  </div>
-                  <Separator />
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Rateio das vendas de {nameA}</p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Fatia de {nameA}</span>
-                    <span className="font-semibold">{fmt(metrics.socioA.fatiaParaA)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Fatia de {nameB}</span>
-                    <span className="font-semibold">{fmt(metrics.socioA.fatiaParaB)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Card 3: Sócio B */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                    Performance — {nameB}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Vendas Geradas</span>
-                    <span className="font-semibold">{fmt(metrics.socioB.salesGenerated)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Lucro Gerado</span>
-                    <span className="font-semibold text-chart-2">{fmt(metrics.socioB.profitGenerated)}</span>
-                  </div>
-                  <Separator />
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Rateio das vendas de {nameB}</p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Fatia de {nameB}</span>
-                    <span className="font-semibold">{fmt(metrics.socioB.fatiaParaB)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Fatia de {nameA}</span>
-                    <span className="font-semibold">{fmt(metrics.socioB.fatiaParaA)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            {/* ── Card 3: Performance Sócio B ───────────────────────────── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Users className="h-4 w-4 text-primary" />
+                  Performance — {nameB}
+                </CardTitle>
+                <span className="inline-block text-xs bg-muted text-muted-foreground rounded px-2 py-0.5 w-fit">
+                  Sócio B · Parceiro
+                </span>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm font-medium">Total de Vendas</span>
+                  <span className="text-sm font-semibold">{fmt(metrics.socioB.salesGenerated)}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Lucro Gerado</span>
+                  <span className="text-sm font-semibold">{fmt(metrics.socioB.profitGenerated)}</span>
+                </div>
+                <Separator />
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-1">Divisão do Lucro</p>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Fatia de {nameB}</span>
+                  <span className="text-sm font-semibold text-primary">{fmt(metrics.socioB.fatiaParaB)}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-muted-foreground">Fatia de {nameA}</span>
+                  <span className="text-sm font-semibold text-primary">{fmt(metrics.socioB.fatiaParaA)}</span>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* ── Card 4: Acerto de Contas ──────────────────────────────── */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Users className="h-5 w-5 text-primary" />
+            <Card className="border-primary/30 bg-accent/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <DollarSign className="h-4 w-4 text-primary" />
                   Acerto de Contas
                 </CardTitle>
+                <p className="text-xs text-muted-foreground">Quanto pertence a cada sócio</p>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <CardContent className="space-y-4 pt-0">
 
-                  {/* Sócio A */}
-                  <div className="space-y-3">
-                    <p className="font-semibold text-foreground border-b border-border pb-2">{nameA}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Reposição de Custo</span>
-                      <span className="font-medium">{fmt(metrics.socioA.costRecovery)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Lucro (Fatia Total)</span>
-                      <span className="font-medium text-chart-2">{fmt(metrics.socioA.totalProfit)}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold">Total a Receber</span>
-                      <span className="text-lg font-bold text-primary">
-                        {fmt(metrics.socioA.costRecovery + metrics.socioA.totalProfit)}
-                      </span>
-                    </div>
+                {/* Sócio A */}
+                <div className="rounded-lg bg-card border border-border p-4 space-y-2">
+                  <p className="text-sm font-semibold text-foreground">{nameA}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Reposição de Custos</span>
+                    <span className="text-sm font-medium">{fmt(metrics.socioA.costRecovery)}</span>
                   </div>
-
-                  {/* Sócio B */}
-                  <div className="space-y-3">
-                    <p className="font-semibold text-foreground border-b border-border pb-2">{nameB}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Reposição de Custo</span>
-                      <span className="font-medium">{fmt(metrics.socioB.costRecovery)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Lucro (Fatia Total)</span>
-                      <span className="font-medium text-chart-2">{fmt(metrics.socioB.totalProfit)}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold">Total a Receber</span>
-                      <span className="text-lg font-bold text-primary">
-                        {fmt(metrics.socioB.costRecovery + metrics.socioB.totalProfit)}
-                      </span>
-                    </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Lucro Total</span>
+                    <span className="text-sm font-medium">{fmt(metrics.socioA.totalProfit)}</span>
                   </div>
-
+                  <div className="flex justify-between items-center rounded-md bg-success/10 px-3 py-2 mt-1">
+                    <span className="text-sm font-semibold text-success">TOTAL GERAL</span>
+                    <span className="text-sm font-bold text-success">
+                      {fmt(metrics.socioA.costRecovery + metrics.socioA.totalProfit)}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Sócio B */}
+                <div className="rounded-lg bg-card border border-border p-4 space-y-2">
+                  <p className="text-sm font-semibold text-foreground">{nameB}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Reposição de Custos</span>
+                    <span className="text-sm font-medium">{fmt(metrics.socioB.costRecovery)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Lucro Total</span>
+                    <span className="text-sm font-medium">{fmt(metrics.socioB.totalProfit)}</span>
+                  </div>
+                  <div className="flex justify-between items-center rounded-md bg-primary/10 px-3 py-2 mt-1">
+                    <span className="text-sm font-semibold text-primary">TOTAL GERAL</span>
+                    <span className="text-sm font-bold text-primary">
+                      {fmt(metrics.socioB.costRecovery + metrics.socioB.totalProfit)}
+                    </span>
+                  </div>
+                </div>
+
               </CardContent>
             </Card>
 
