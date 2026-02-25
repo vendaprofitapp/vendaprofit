@@ -108,10 +108,24 @@ export function EditPartnershipRulesDialog({
         );
       if (rulesErr) throw rulesErr;
 
-      // 3. Retroactive recalculation if needed
+      // 3. Retroactive recalculation via Edge Function (avoids URL length limits)
       let reprocessedCount = 0;
       if (retroScope !== "future_only") {
-        reprocessedCount = await recalculateSplits(groupId, costSplit, profitSeller, profitPartner, retroScope, fromDate);
+        const { data: fnData, error: fnErr } = await supabase.functions.invoke(
+          "recalculate-partnership-splits",
+          {
+            body: {
+              groupId,
+              costSplit,
+              profitSeller,
+              profitPartner,
+              scope: retroScope,
+              fromDate: fromDate ? fromDate.toISOString() : null,
+            },
+          }
+        );
+        if (fnErr) throw fnErr;
+        reprocessedCount = fnData?.count ?? 0;
       }
 
       // 4. Invalidate caches
