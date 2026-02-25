@@ -77,7 +77,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Relatórios",
     items: [
-      { icon: TrendingUp, label: "Geral", path: "/reports" },
+      { icon: TrendingUp, label: "Minha Performance", path: "/reports/performance" },
       { icon: ShoppingCart, label: "Venda Direta", path: "/reports/manual" },
       { icon: Store, label: "Minha Loja", path: "/reports/catalog" },
       { icon: Zap, label: "Eventos", path: "/reports/events" },
@@ -90,7 +90,6 @@ const navGroups: NavGroup[] = [
       { icon: Instagram, label: "Instagram / Redes", path: "/reports/instagram" },
       { icon: Package, label: "B2B", path: "/reports/b2b" },
       { icon: Clock, label: "Vendas a Prazo", path: "/reports/deferred" },
-      { icon: TrendingUp, label: "Minha Performance", path: "/reports/performance" },
     ],
   },
   {
