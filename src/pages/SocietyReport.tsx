@@ -49,6 +49,7 @@ interface Sale {
   id: string;
   owner_id: string;
   total: number;
+  subtotal: number | null;
   discount_amount: number | null;
   payment_method: string | null;
   sale_items: SaleItem[];
@@ -178,7 +179,7 @@ export default function SocietyReport() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, owner_id, total, discount_amount, payment_method,
+          id, owner_id, total, subtotal, discount_amount, payment_method,
           sale_items(quantity, products(cost_price)),
           financial_splits(sale_id, user_id, amount, type)
         `)
@@ -255,12 +256,13 @@ export default function SocietyReport() {
     const uniqueSales = Array.from(new Map(salesData.map(s => [s.id, s])).values());
 
     uniqueSales.forEach(sale => {
-      // 1. Receita Bruta
-      const receita = sale.total || 0;
+      // 1. Receita Bruta (subtotal = pré-desconto)
+      const receita = (sale.subtotal ?? sale.total) || 0;
       stats.totalSales += receita;
 
-      // 1b. Desconto
-      stats.totalDiscounts += sale.discount_amount ?? 0;
+      // 1b. Desconto explícito
+      const desconto = sale.discount_amount ?? 0;
+      stats.totalDiscounts += desconto;
 
       // 2. CMV Dinâmico
       let custo = 0;
@@ -277,8 +279,8 @@ export default function SocietyReport() {
       const feePercent = feeRule ? Number(feeRule.fee_percent) : 0;
       const taxas = receita * (feePercent / 100);
 
-      // 4. Lucro Real da Venda (alinhado com Minha Performance)
-      const lucroReal = receita - custo - taxas;
+      // 4. Lucro Real da Venda (Receita Bruta - CMV - Taxas - Desconto)
+      const lucroReal = receita - custo - taxas - desconto;
       stats.totalProfit += lucroReal;
 
       // 5. Inferir proporção histórica pelos profit_share splits
