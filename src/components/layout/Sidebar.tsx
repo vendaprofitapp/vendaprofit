@@ -86,7 +86,6 @@ const navGroups: NavGroup[] = [
       { icon: Gift, label: "Consórcios", path: "/reports/consortium" },
       { icon: ShoppingBag, label: "Bazar VIP", path: "/reports/bazar" },
       { icon: MapPin, label: "Pontos Parceiros", path: "/reports/partner-points" },
-      { icon: Users, label: "Sociedade", path: "/reports/sociedade" },
       { icon: Users, label: "Parcerias", path: "/reports/parcerias" },
       { icon: Instagram, label: "Instagram / Redes", path: "/reports/instagram" },
       { icon: Package, label: "B2B", path: "/reports/b2b" },
