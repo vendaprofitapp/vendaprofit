@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.always-profit-webhook]
 verify_jwt = false
+
+[functions.recalculate-partnership-splits]
+verify_jwt = false
