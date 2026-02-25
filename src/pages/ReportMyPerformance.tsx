@@ -33,7 +33,7 @@ interface SaleItem {
 interface Sale {
   id: string;
   total: number;
-  subtotal: number;
+  subtotal: number | null;
   discount_amount: number | null;
   shipping_cost: number | null;
   shipping_payer: string | null;
@@ -267,10 +267,10 @@ export default function ReportMyPerformance() {
     let totalDiscounts = 0;
 
     for (const sale of sales) {
-      // Revenue (already post-discount)
-      totalRevenue += sale.total;
+      // Revenue: use subtotal (pre-discount) so discount appears as explicit deduction
+      totalRevenue += sale.subtotal ?? sale.total;
 
-      // Discounts (for visibility)
+      // Discounts (explicit deduction)
       totalDiscounts += sale.discount_amount ?? 0;
 
       // CMV
@@ -290,7 +290,7 @@ export default function ReportMyPerformance() {
       }
     }
 
-    const netProfit = totalRevenue - totalCMV - totalFees - totalShipping;
+    const netProfit = totalRevenue - totalCMV - totalDiscounts - totalFees - totalShipping;
     const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin };
@@ -315,7 +315,7 @@ export default function ReportMyPerformance() {
         const saleDate = safeParseDate(sale.created_at);
         if (!saleDate || saleDate < dayStart || saleDate > dayEnd) continue;
 
-        revenue += sale.total;
+        revenue += sale.subtotal ?? sale.total;
 
         for (const item of sale.sale_items) {
           const cost = item.product_id ? (costMap.get(item.product_id) ?? 0) : 0;
@@ -330,7 +330,13 @@ export default function ReportMyPerformance() {
         }
       }
 
-      const profit = revenue - cmv - fees - shipping;
+        const discounts = sales
+          .filter(s => {
+            const sd = safeParseDate(s.created_at);
+            return sd && sd >= dayStart && sd <= dayEnd;
+          })
+          .reduce((acc, s) => acc + (s.discount_amount ?? 0), 0);
+        const profit = revenue - cmv - fees - shipping - discounts;
 
       return {
         name: days.length > 31
