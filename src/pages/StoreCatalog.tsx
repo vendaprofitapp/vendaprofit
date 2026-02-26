@@ -947,26 +947,28 @@ export default function StoreCatalog() {
       }
 
       // Get HUB products (products shared with this store owner as a seller)
-      const hubProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
+      // These are fetched separately and merged into partnerProducts
       if (hubSharedProductIds.length > 0) {
         const BATCH = 100;
         for (let i = 0; i < hubSharedProductIds.length; i += BATCH) {
-          const { data: batchProducts } = await supabase
+          const { data: batchProducts, error: hubErr } = await supabase
             .from("products")
             .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
             .in("id", hubSharedProductIds.slice(i, i + BATCH))
             .eq("is_active", true);
-          if (batchProducts) {
+          if (!hubErr && batchProducts) {
             batchProducts.forEach(p => {
+              // Avoid duplicates with own products; include even if stock_quantity is 0
+              // (variants may carry stock individually)
               if (!ownProductIds.has(p.id)) {
-                hubProducts.push({ ...p, isPartner: true });
+                partnerProducts.push({ ...p, isPartner: true });
               }
             });
           }
         }
       }
 
-      const allProducts = [...ownProducts, ...partnerProducts, ...hubProducts];
+      const allProducts = [...ownProducts, ...partnerProducts];
       if (allProducts.length === 0) return [];
 
       // Fetch variants for all products (including marketing fields and video)
@@ -974,14 +976,27 @@ export default function StoreCatalog() {
       const b2bProductIds = new Set(allProducts.filter(p => (p as any).isB2B).map(p => p.id));
       const nonB2bProductIds = productIds.filter(id => !b2bProductIds.has(id));
       
-      // Fetch variants: stock > 0 for regular products, ALL variants for B2B products
+      // Separate own product IDs from partner/HUB product IDs for variant fetching
+      const ownNonB2bIds = nonB2bProductIds.filter(id => ownProductIds.has(id));
+      const partnerNonB2bIds = nonB2bProductIds.filter(id => !ownProductIds.has(id));
+
+      // Fetch variants: stock > 0 for own products, ALL variants for partner/HUB (stock may live in variants)
       const variantQueries: PromiseLike<{ data: any[] | null }>[] = [];
-      if (nonB2bProductIds.length > 0) {
+      if (ownNonB2bIds.length > 0) {
         variantQueries.push(
           supabase
             .from("product_variants")
             .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
-            .in("product_id", nonB2bProductIds)
+            .in("product_id", ownNonB2bIds)
+            .gt("stock_quantity", 0)
+        );
+      }
+      if (partnerNonB2bIds.length > 0) {
+        variantQueries.push(
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
+            .in("product_id", partnerNonB2bIds)
             .gt("stock_quantity", 0)
         );
       }
@@ -1180,7 +1195,7 @@ export default function StoreCatalog() {
         }
       }
 
-      // Process partner products - add sizes that don't exist in own stock
+      // Process partner products (includes HUB products merged above)
       for (const product of partnerProducts) {
         const productColorLabel = (product as any).color_label || product.color;
         const productModel = (product as any).model || null;
@@ -1192,12 +1207,11 @@ export default function StoreCatalog() {
           marketing_prices: ((v as any).marketing_prices as MarketingPrices) || null,
           marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
         }));
-        
+
+        const cardKey = makeCardKey(product.name, productColorLabel);
+        const existing = cardDataMap.get(cardKey);
+
         if (productVariants.length > 0) {
-          const cardKey = makeCardKey(product.name, productColorLabel);
-          
-          const existing = cardDataMap.get(cardKey);
-          
           if (existing) {
             // Card exists (from own products) - add partner sizes that don't exist
             const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
@@ -1215,7 +1229,7 @@ export default function StoreCatalog() {
               }
             });
           } else {
-            // No existing card - create new one with partner product
+            // No existing card - create new one with partner/HUB product
             const productImage = product.image_url;
             const productImage2 = (product as any).image_url_2 || null;
             const productImage3 = (product as any).image_url_3 || null;
@@ -1238,6 +1252,8 @@ export default function StoreCatalog() {
               name: product.name,
               description: product.description,
               price: product.price,
+              // HUB products may have categories from the original owner — keep them as-is
+              // They will appear in "Todos" even if their category is not in the seller's store
               category: product.category,
               category_2: (product as any).category_2,
               category_3: (product as any).category_3,
@@ -1252,6 +1268,43 @@ export default function StoreCatalog() {
               image_url_2: productImage2,
               image_url_3: productImage3,
               video_url: variantVideoUrl,
+              owner_id: product.owner_id,
+              sizes: sizeInfos,
+              isB2B: false,
+            });
+          }
+        } else if (!existing) {
+          // Product without variants (e.g. HUB product with stock_quantity at root level)
+          // Only create a card if total stock > 0 at root level
+          if (product.stock_quantity > 0) {
+            const sizeInfos: SizeInfo[] = product.size ? [{
+              size: product.size,
+              isPartner: true,
+              marketingStatus: null,
+              marketingPrices: null,
+              marketingDeliveryDays: null,
+              stock: product.stock_quantity,
+            }] : [];
+
+            cardDataMap.set(cardKey, {
+              productId: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              category: product.category,
+              category_2: (product as any).category_2,
+              category_3: (product as any).category_3,
+              main_category: (product as any).main_category || null,
+              subcategory: (product as any).subcategory || null,
+              is_new_release: !!(product as any).is_new_release,
+              color: productColorLabel,
+              model: productModel,
+              color_label: productColorLabel,
+              custom_detail: productCustomDetail,
+              image_url: product.image_url,
+              image_url_2: (product as any).image_url_2 || null,
+              image_url_3: (product as any).image_url_3 || null,
+              video_url: product.video_url,
               owner_id: product.owner_id,
               sizes: sizeInfos,
               isB2B: false,
