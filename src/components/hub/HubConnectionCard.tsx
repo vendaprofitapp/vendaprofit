@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Package, TrendingUp, Pause, Play, ChevronRight, CheckCircle } from "lucide-react";
+import { Copy, Package, TrendingUp, Pause, Play, ChevronRight, CheckCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface HubConnection {
@@ -25,6 +25,7 @@ interface Props {
   onViewReport: (id: string) => void;
   onToggleStatus: (id: string, current: string) => void;
   onAcceptInvite?: (connection: HubConnection) => void;
+  onDeleteInvite?: (id: string) => void;
 }
 
 const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -33,7 +34,7 @@ const statusLabel: Record<string, { label: string; variant: "default" | "seconda
   suspended: { label: "Suspenso", variant: "destructive" },
 };
 
-export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus, onAcceptInvite }: Props) {
+export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus, onAcceptInvite, onDeleteInvite }: Props) {
   const status = statusLabel[connection.status] ?? statusLabel.pending;
 
   const copyCode = () => {
@@ -60,7 +61,7 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
 
             {connection.status === "pending" && isOwner && (
               <div className="flex items-center gap-2 bg-muted/50 rounded px-2 py-1.5">
-                <code className="text-xs font-mono text-muted-foreground">{connection.invite_code}</code>
+                <code className="text-xs font-mono text-muted-foreground flex-1">{connection.invite_code}</code>
                 <Button size="icon" variant="ghost" className="h-5 w-5" onClick={copyCode}>
                   <Copy className="h-3 w-3" />
                 </Button>
@@ -91,6 +92,20 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
               </div>
             )}
           </div>
+
+          {connection.status === "pending" && isOwner && onDeleteInvite && (
+            <div className="shrink-0 self-start">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-destructive hover:text-destructive"
+                onClick={() => onDeleteInvite(connection.id)}
+                title="Excluir convite"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {connection.status === "active" && (
             <div className="flex flex-col gap-1.5 shrink-0">

@@ -41,6 +41,14 @@ export default function HubVendas() {
     setShowAccept(true);
   };
 
+  const deleteInvite = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este convite?")) return;
+    const { error } = await supabase.from("hub_connections").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Convite excluído.");
+    loadConnections();
+  };
+
   useEffect(() => {
     if (user) loadConnections();
   }, [user]);
@@ -155,6 +163,7 @@ export default function HubVendas() {
                   onManageProducts={setManageProductsId}
                   onViewReport={setSettlementId}
                   onToggleStatus={toggleStatus}
+                  onDeleteInvite={deleteInvite}
                 />
               ))}
             </div>
