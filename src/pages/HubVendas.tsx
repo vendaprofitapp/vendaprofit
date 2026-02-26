@@ -44,7 +44,7 @@ export default function HubVendas() {
     const { data, error } = await supabase
       .from("hub_connections")
       .select("*")
-      .or(`owner_id.eq.${user!.id},seller_id.eq.${user!.id}`)
+      .or(`owner_id.eq.${user!.id},seller_id.eq.${user!.id},invited_email.eq.${user!.email}`)
       .order("created_at", { ascending: false });
 
     if (error) { toast.error("Erro ao carregar conexões"); setLoading(false); return; }
@@ -96,7 +96,7 @@ export default function HubVendas() {
   };
 
   const myAsOwner = connections.filter((c) => c.owner_id === user?.id);
-  const myAsSeller = connections.filter((c) => c.seller_id === user?.id);
+  const myAsSeller = connections.filter((c) => c.seller_id === user?.id || (c.status === "pending" && c.invited_email === user?.email));
 
   return (
     <MainLayout>
