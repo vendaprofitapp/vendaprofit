@@ -31,6 +31,7 @@ interface Split {
     payment_method: string | null;
     total: number;
     subtotal: number;
+    created_at?: string | null;
     sale_items?: { cost_price: number | null; quantity: number }[];
   };
 }
@@ -165,7 +166,7 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
         .maybeSingle(),
       supabase
         .from("hub_sale_splits")
-        .select("*, sales(customer_name, payment_method, total, subtotal)")
+        .select("*, sales(customer_name, payment_method, total, subtotal, created_at)")
         .eq("connection_id", connectionId!)
         .order("created_at", { ascending: false }),
     ]);

@@ -46,6 +46,11 @@ interface SaleWithItems {
   }[];
 }
 
+interface HubSplit {
+  sale_id: string;
+  commission_amount: number;
+}
+
 export default function SaleSourceReport({ title, subtitle, saleSource, icon }: SaleSourceReportProps) {
   const { user } = useAuth();
   const [dateFrom, setDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
@@ -199,7 +204,6 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     queryKey: ["report-splits", saleIds],
     queryFn: async () => {
       if (saleIds.length === 0) return [];
-      // Fetch in chunks
       const results: any[] = [];
       for (let i = 0; i < saleIds.length; i += 500) {
         const chunk = saleIds.slice(i, i + 500);
@@ -214,6 +218,35 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
     },
     enabled: saleIds.length > 0,
   });
+
+  // Fetch HUB sale splits to show hub commission per sale
+  const { data: hubSplitsData = [] } = useQuery({
+    queryKey: ["report-hub-splits", saleIds],
+    queryFn: async () => {
+      if (saleIds.length === 0) return [];
+      const results: HubSplit[] = [];
+      for (let i = 0; i < saleIds.length; i += 500) {
+        const chunk = saleIds.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("hub_sale_splits")
+          .select("sale_id, commission_amount")
+          .in("sale_id", chunk);
+        if (error) throw error;
+        if (data) results.push(...(data as HubSplit[]));
+      }
+      return results;
+    },
+    enabled: saleIds.length > 0,
+  });
+
+  // Hub commission totals by sale
+  const hubCommissionBySale = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of hubSplitsData) {
+      map.set(s.sale_id, (map.get(s.sale_id) || 0) + s.commission_amount);
+    }
+    return map;
+  }, [hubSplitsData]);
 
   // Splits by sale
   const splitsBySale = useMemo(() => {
@@ -289,7 +322,13 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           partnerCommission = 0;
         }
 
-        const netProfit = grossProfit - feeAmount - partnerCommission - itemSellerShipping;
+        // HUB commission: use hub_sale_splits.commission_amount proportionally
+        const totalHubCommission = hubCommissionBySale.get(sale.id) || 0;
+        const hubCommission = totalHubCommission > 0 ? totalHubCommission * proportion : 0;
+        // If this sale has hub splits, override partnerCommission with hubCommission
+        const effectiveCommission = totalHubCommission > 0 ? hubCommission : partnerCommission;
+
+        const netProfit = grossProfit - feeAmount - effectiveCommission - itemSellerShipping;
 
         return {
           saleId: sale.id,
@@ -304,7 +343,8 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
           afterDiscount,
           grossProfit,
           feeAmount,
-          partnerCommission,
+          partnerCommission: effectiveCommission,
+          hubCommission,
           shippingCost: itemShipping,
           shippingPayer,
           sellerShipping: itemSellerShipping,
@@ -313,7 +353,7 @@ export default function SaleSourceReport({ title, subtitle, saleSource, icon }: 
         };
       });
     });
-  }, [filtered, costMap, feeMap, splitsBySale]);
+  }, [filtered, costMap, feeMap, splitsBySale, hubCommissionBySale]);
 
   // Summary
   const summary = useMemo(() => {

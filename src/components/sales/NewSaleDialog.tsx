@@ -1796,7 +1796,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : inlineConsignmentId ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : hubOrderData ? "hub" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : inlineConsignmentId ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : hubOrderData ? (manualSaleSource || "manual") : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
