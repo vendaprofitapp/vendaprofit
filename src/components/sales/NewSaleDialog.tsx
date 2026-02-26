@@ -1822,31 +1822,43 @@ export default function NewSaleDialog({
 
       setSaleIdForShipping(rpcResult.sale_id);
 
-      // Insert hub_sale_splits for HUB products
-      const hubCartItems = cart.filter(item => !!(item.product as any).isHub);
-      if (hubCartItems.length > 0 && rpcResult.sale_id) {
-        const hubSplitsToInsert = hubCartItems.map(item => {
-          const hubProduct = item.product as any;
-          const grossProfit = item.product.price * item.quantity - (item.product.cost_price ?? 0) * item.quantity;
-          const feeAmt = (feePercent / 100) * item.product.price * item.quantity;
-          const netAfterFee = grossProfit - feeAmt;
-          const commissionAmount = netAfterFee * (hubProduct.hubCommissionPct / 100);
-          const sellerAmount = netAfterFee - commissionAmount;
-          return {
-            sale_id: rpcResult.sale_id,
-            connection_id: hubProduct.hubConnectionId,
-            owner_id: hubProduct.hubOwnerId,
-            seller_id: user!.id,
-            commission_pct: hubProduct.hubCommissionPct,
-            gross_profit: grossProfit,
-            fee_amount: feeAmt,
-            shipping_amount: 0,
-            commission_amount: commissionAmount,
-            owner_amount: (item.product.cost_price ?? 0) * item.quantity + commissionAmount,
-            seller_amount: sellerAmount,
-          };
-        });
-        await supabase.from("hub_sale_splits").insert(hubSplitsToInsert);
+      // Insert hub_sale_splits for manual HUB products (not from hubOrderData flow)
+      // hubOrderData flow handles its own splits in onSuccess
+      if (!hubOrderData) {
+        const hubCartItems = cart.filter(item => !!(item.product as any).isHub);
+        if (hubCartItems.length > 0 && rpcResult.sale_id) {
+          // Calculate proportional discount per item
+          const cartSubtotal = cart.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
+          const discountRatio = cartSubtotal > 0 ? discountAmount / cartSubtotal : 0;
+          const sellerShipping = shippingData.method !== "presencial" && shippingData.payer === "seller" ? shippingData.cost : 0;
+          const hubSplitsToInsert = hubCartItems.map(item => {
+            const hubProduct = item.product as any;
+            const itemRevenue = item.product.price * item.quantity;
+            const itemDiscount = itemRevenue * discountRatio;
+            const effectiveRevenue = itemRevenue - itemDiscount;
+            const costTotal = (item.product.cost_price ?? 0) * item.quantity;
+            const grossProfit = effectiveRevenue - costTotal;
+            // Commission is % of gross profit (Cenário B)
+            const commissionAmount = Math.max(grossProfit, 0) * (hubProduct.hubCommissionPct / 100);
+            const feeAmt = effectiveRevenue * (feePercent / 100);
+            const shippingShare = hubCartItems.length > 1 ? sellerShipping / hubCartItems.length : sellerShipping;
+            const sellerAmount = grossProfit - commissionAmount - feeAmt - shippingShare;
+            return {
+              sale_id: rpcResult.sale_id,
+              connection_id: hubProduct.hubConnectionId,
+              owner_id: hubProduct.hubOwnerId,
+              seller_id: user!.id,
+              commission_pct: hubProduct.hubCommissionPct,
+              gross_profit: grossProfit,
+              fee_amount: feeAmt,
+              shipping_amount: shippingShare,
+              commission_amount: commissionAmount,
+              owner_amount: costTotal + commissionAmount,
+              seller_amount: sellerAmount,
+            };
+          });
+          await supabase.from("hub_sale_splits").insert(hubSplitsToInsert);
+        }
       }
 
       return rpcResult;
@@ -1954,7 +1966,7 @@ export default function NewSaleDialog({
       // Mark bazar items as sold for MANUAL bazar sales
       // Mark HUB pending order as completed and create hub_sale_splits
       if (hubOrderData?.pendingOrderId && result?.sale_id) {
-        const feePercent = selectedPaymentMethodId
+        const hubFeePercent = selectedPaymentMethodId
           ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0)
           : 0;
         const sellerShipping = shippingData.method !== "presencial" && shippingData.payer === "seller" ? shippingData.cost : 0;
@@ -1963,10 +1975,19 @@ export default function NewSaleDialog({
           i.status === "approved" && i.hub_owner_id !== user.id && i.hub_connection_id
         );
         if (hubItems.length > 0) {
+          // Calculate proportional discount per item based on actual cart totals
+          const hubCartSubtotal = hubItems.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+          const hubDiscountRatio = hubCartSubtotal > 0 ? discountAmount / hubCartSubtotal : 0;
+
           const hubSplits = hubItems.map(item => {
-            const grossProfit = item.unit_price * item.quantity - item.cost_price * item.quantity;
-            const commissionAmount = grossProfit * (item.hub_commission_pct / 100);
-            const feeAmount = (item.unit_price * item.quantity) * (feePercent / 100);
+            const itemRevenue = item.unit_price * item.quantity;
+            const itemDiscount = itemRevenue * hubDiscountRatio;
+            const effectiveRevenue = itemRevenue - itemDiscount;
+            const costTotal = item.cost_price * item.quantity;
+            const grossProfit = effectiveRevenue - costTotal;
+            // Cenário B: comissão do dono é % sobre o Lucro Bruto
+            const commissionAmount = Math.max(grossProfit, 0) * (item.hub_commission_pct / 100);
+            const feeAmount = effectiveRevenue * (hubFeePercent / 100);
             const shippingShare = hubItems.length > 1 ? sellerShipping / hubItems.length : sellerShipping;
             const sellerAmount = grossProfit - commissionAmount - feeAmount - shippingShare;
             return {
@@ -1979,7 +2000,7 @@ export default function NewSaleDialog({
               fee_amount: feeAmount,
               shipping_amount: shippingShare,
               commission_amount: commissionAmount,
-              owner_amount: item.cost_price * item.quantity + commissionAmount,
+              owner_amount: costTotal + commissionAmount,
               seller_amount: sellerAmount,
             };
           });
