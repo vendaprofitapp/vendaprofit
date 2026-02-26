@@ -656,9 +656,7 @@ export default function NewSaleDialog({
         .from("hub_shared_products")
         .select(`connection_id, product:products!inner(id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm)`)
         .in("connection_id", connectionIds)
-        .eq("is_active", true)
-        .eq("products.is_active", true)
-        .gt("products.stock_quantity", 0);
+        .eq("is_active", true);
       if (error) throw error;
 
       const uniqueById = new Map<string, any>();
