@@ -1265,7 +1265,7 @@ export default function NewSaleDialog({
     setCustomerName(hubOrderData.customerName || "");
     setCustomerPhone(hubOrderData.customerPhone || "");
     setNotes(`Pedido HUB #${hubOrderData.pendingOrderId.slice(0, 8)}`);
-    setManualSaleSource("manual");
+    setManualSaleSource("hub");
     setHubOrderProcessed(true);
   }, [open, hubOrderData, hubOrderProcessed, user]);
 
