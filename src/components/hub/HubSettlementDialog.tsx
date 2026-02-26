@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Share2, TrendingUp, Banknote, Store } from "lucide-react";
+import { Share2, TrendingUp, Banknote, Store, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -26,7 +26,13 @@ interface Split {
   owner_amount: number;
   seller_amount: number;
   created_at: string;
-  sales?: { customer_name: string; payment_method: string; total: number };
+  sales?: {
+    customer_name: string | null;
+    payment_method: string | null;
+    total: number;
+    subtotal: number;
+    sale_items?: { cost_price: number | null; quantity: number }[];
+  };
 }
 
 interface Connection {
@@ -34,11 +40,106 @@ interface Connection {
   owner_id: string;
   seller_id: string | null;
   invited_email: string;
-  profiles?: { full_name: string } | null;
+  owner_profile?: { full_name: string } | null;
+  seller_profile?: { full_name: string } | null;
 }
 
 const fmtBRL = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function SaleDetailRow({ split, isOwner, ownerName, sellerName }: {
+  split: Split;
+  isOwner: boolean;
+  ownerName: string;
+  sellerName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const saleTotal = split.sales?.total ?? 0;
+  // Cost is total - gross_profit (gross_profit = total - cost in hub logic)
+  const costPrice = saleTotal - split.gross_profit;
+  const grossProfit = split.gross_profit;
+  const commission = split.commission_amount;
+  const sellerGross = split.seller_amount + split.fee_amount + split.shipping_amount;
+  const feesAndShipping = split.fee_amount + split.shipping_amount;
+  const sellerNet = split.seller_amount;
+
+  return (
+    <div className="border rounded-lg text-sm overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between p-3 hover:bg-muted/40 transition-colors text-left"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex-1 min-w-0">
+          <p className="font-medium truncate">
+            {split.sales?.customer_name || "—"}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <Badge variant="secondary" className="text-xs py-0">
+              {split.sales?.payment_method || "—"}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {new Date(split.created_at).toLocaleDateString("pt-BR")}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <div className="text-right text-xs">
+            <p className="font-medium">{fmtBRL(saleTotal)}</p>
+            <p className="text-muted-foreground">
+              {isOwner ? `Dono: ${fmtBRL(split.owner_amount)}` : `Seu líquido: ${fmtBRL(sellerNet)}`}
+            </p>
+          </div>
+          {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 space-y-1.5 border-t bg-muted/20">
+          <div className="pt-2 space-y-1.5 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Preço de Venda</span>
+              <span className="font-medium">{fmtBRL(saleTotal)}</span>
+            </div>
+            <div className="flex justify-between text-destructive/80">
+              <span>(-) Preço de Custo</span>
+              <span>-{fmtBRL(costPrice)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between font-semibold">
+              <span>Lucro Bruto Total</span>
+              <span>{fmtBRL(grossProfit)}</span>
+            </div>
+            <div className="flex justify-between text-destructive/80">
+              <span>(-) Comissão {ownerName} ({split.commission_pct}%)</span>
+              <span>-{fmtBRL(commission)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between font-semibold">
+              <span>Lucro Bruto {sellerName}</span>
+              <span>{fmtBRL(sellerGross)}</span>
+            </div>
+            {feesAndShipping > 0 && (
+              <div className="flex justify-between text-destructive/80">
+                <span>(-) Taxas + Frete (vendedora)</span>
+                <span>-{fmtBRL(feesAndShipping)}</span>
+              </div>
+            )}
+            <Separator />
+            <div className="flex justify-between font-bold text-primary">
+              <span>Lucro Líquido {sellerName}</span>
+              <span>{fmtBRL(sellerNet)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Total {ownerName} (Dono)</span>
+              <span>{fmtBRL(split.owner_amount)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
   const { user } = useAuth();
@@ -57,17 +158,31 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
     const [connRes, splitsRes] = await Promise.all([
       supabase
         .from("hub_connections")
-        .select("commission_pct, owner_id, seller_id, invited_email, profiles:seller_id(full_name)")
+        .select("commission_pct, owner_id, seller_id, invited_email")
         .eq("id", connectionId!)
         .maybeSingle(),
       supabase
         .from("hub_sale_splits")
-        .select("*, sales(customer_name, payment_method, total)")
+        .select("*, sales(customer_name, payment_method, total, subtotal)")
         .eq("connection_id", connectionId!)
         .order("created_at", { ascending: false }),
     ]);
 
-    if (connRes.data) setConnection(connRes.data as any);
+    if (connRes.data) {
+      const conn = connRes.data as any;
+      // Fetch profiles for owner and seller
+      const ids = [conn.owner_id, conn.seller_id].filter(Boolean);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", ids);
+      const pm = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+      setConnection({
+        ...conn,
+        owner_profile: pm.get(conn.owner_id) ?? null,
+        seller_profile: conn.seller_id ? (pm.get(conn.seller_id) ?? null) : null,
+      });
+    }
     setSplits((splitsRes.data ?? []) as any);
     setLoading(false);
   };
@@ -95,9 +210,11 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
 
   const myTotal = isOwner ? totals.ownerTotal : totals.sellerTotal;
   const partnerTotal = isOwner ? totals.sellerTotal : totals.ownerTotal;
-  const partnerName = isOwner
-    ? (connection?.profiles?.full_name || connection?.invited_email || "Vendedor")
-    : "Dono do Estoque";
+
+  const ownerName = connection?.owner_profile?.full_name || "Dono";
+  const sellerName = connection?.seller_profile?.full_name || connection?.invited_email || "Vendedora";
+
+  const partnerDisplayName = isOwner ? sellerName : ownerName;
 
   const sendWhatsApp = () => {
     toast.info("Copie o extrato do relatório para enviar.");
@@ -107,7 +224,7 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Acerto HUB — {partnerName}</DialogTitle>
+          <DialogTitle>Acerto HUB — {partnerDisplayName}</DialogTitle>
         </DialogHeader>
 
         <div className="flex gap-2">
@@ -152,10 +269,10 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
                 </Card>
               </div>
 
-              {/* Breakdown */}
+              {/* Period breakdown */}
               <Card>
                 <CardContent className="p-4 space-y-3">
-                  <p className="text-sm font-semibold">Composição do período</p>
+                  <p className="text-sm font-semibold">Resumo do período</p>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Lucro bruto total</span>
@@ -164,55 +281,41 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
                     <div className="flex justify-between text-destructive/80">
                       <div className="flex items-center gap-1">
                         <Store className="h-3.5 w-3.5" />
-                        <span>Comissão dono ({connection?.commission_pct ?? 0}%)</span>
+                        <span>Comissão {ownerName} ({connection?.commission_pct ?? 0}%)</span>
                       </div>
                       <span>-{fmtBRL(totals.commission)}</span>
                     </div>
                     <div className="flex justify-between text-destructive/80">
-                      <span>Taxas + Frete (absorvidos pelo vendedor)</span>
+                      <span>Taxas + Frete (vendedora)</span>
                       <span>-{fmtBRL(totals.fees)}</span>
                     </div>
                     <Separator />
                     <div className="flex justify-between font-bold text-primary">
-                      <span>Meu total ({isOwner ? "Dono" : "Vendedor"})</span>
+                      <span>Líquido {isOwner ? ownerName : sellerName} ({isOwner ? "Dono" : "Vendedora"})</span>
                       <span>{fmtBRL(myTotal)}</span>
                     </div>
                     <div className="flex justify-between text-muted-foreground text-xs">
-                      <span>{partnerName}</span>
+                      <span>{partnerDisplayName}</span>
                       <span>{fmtBRL(partnerTotal)}</span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Sales list */}
+              {/* Per-sale breakdown */}
               {filtered.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Vendas do período
+                    Vendas do período (clique para detalhes)
                   </p>
                   {filtered.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 p-3 border rounded-lg text-sm">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {(s.sales as any)?.customer_name || "—"}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant="secondary" className="text-xs py-0">
-                            {(s.sales as any)?.payment_method || "—"}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(s.created_at).toLocaleDateString("pt-BR")}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right text-xs space-y-0.5 shrink-0">
-                        <p className="font-medium">{fmtBRL(s.gross_profit)} lucro bruto</p>
-                        <p className="text-muted-foreground">
-                          {isOwner ? `Dono: ${fmtBRL(s.owner_amount)}` : `Seu saldo: ${fmtBRL(s.seller_amount)}`}
-                        </p>
-                      </div>
-                    </div>
+                    <SaleDetailRow
+                      key={s.id}
+                      split={s}
+                      isOwner={isOwner}
+                      ownerName={ownerName}
+                      sellerName={sellerName}
+                    />
                   ))}
                 </div>
               )}

@@ -11,11 +11,11 @@ import { HubProductsDialog } from "@/components/hub/HubProductsDialog";
 import { HubSellerProductsDialog } from "@/components/hub/HubSellerProductsDialog";
 import { HubSettlementDialog } from "@/components/hub/HubSettlementDialog";
 import { HubPendingOrdersList } from "@/components/hub/HubPendingOrdersList";
-import { Plus, Link2, Bug, ShoppingBag, Bell } from "lucide-react";
+import { Plus, Link2, ShoppingBag, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 
-interface HubConnection {
+export interface HubConnection {
   id: string;
   owner_id: string;
   seller_id: string | null;
@@ -24,7 +24,8 @@ interface HubConnection {
   status: string;
   invite_code: string;
   created_at: string;
-  profiles?: { full_name: string; email: string } | null;
+  owner_profile?: { full_name: string; email: string } | null;
+  seller_profile?: { full_name: string; email: string } | null;
   _sharedCount?: number;
   _splitTotal?: number;
 }
@@ -40,17 +41,6 @@ export default function HubVendas() {
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [sellerViewProductsId, setSellerViewProductsId] = useState<string | null>(null);
 
-  const runDebug = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { toast.error("Não autenticado"); return; }
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hub-debug`, {
-      headers: { Authorization: `Bearer ${session.access_token}` }
-    });
-    const json = await res.json();
-    console.log("HUB DEBUG:", json);
-    toast.info(json.verdict || json.result || json.step || JSON.stringify(json).slice(0, 100));
-  };
-
   const handleAcceptInvite = (conn: HubConnection) => {
     setAcceptCode(conn.invite_code);
     setShowAccept(true);
@@ -64,25 +54,58 @@ export default function HubVendas() {
     loadConnections();
   };
 
+  const archiveConnection = async (id: string) => {
+    if (!confirm("Encerrar parceria? O histórico será preservado e vocês poderão criar um novo HUB no futuro.")) return;
+    const { error } = await supabase
+      .from("hub_connections")
+      .update({ status: "archived" })
+      .eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Parceria encerrada. Histórico preservado.");
+    loadConnections();
+  };
+
   useEffect(() => {
     if (user) loadConnections();
   }, [user]);
 
   const loadConnections = async () => {
     setLoading(true);
+
+    // Fetch connections
     const { data, error } = await supabase
       .from("hub_connections")
       .select("*")
       .or(`owner_id.eq.${user!.id},seller_id.eq.${user!.id},invited_email.eq.${user!.email}`)
+      .neq("status", "archived")
       .order("created_at", { ascending: false });
 
     if (error) { toast.error("Erro ao carregar conexões"); setLoading(false); return; }
 
-    // Load extra stats for active connections
-    const active = (data ?? []).filter((c) => c.status === "active");
+    const rows = data ?? [];
+
+    // Collect all user IDs to fetch profiles
+    const userIds = [...new Set([
+      ...rows.map(c => c.owner_id),
+      ...rows.filter(c => c.seller_id).map(c => c.seller_id as string),
+    ])];
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", userIds);
+
+    const profileMap = new Map((profiles ?? []).map(p => [p.id, p]));
+
     const enriched = await Promise.all(
-      (data ?? []).map(async (conn) => {
-        if (conn.status !== "active") return { ...conn };
+      rows.map(async (conn) => {
+        const base: HubConnection = {
+          ...conn,
+          owner_profile: profileMap.get(conn.owner_id) ?? null,
+          seller_profile: conn.seller_id ? (profileMap.get(conn.seller_id) ?? null) : null,
+        };
+
+        if (conn.status !== "active") return base;
 
         const [sharedRes, splitsRes] = await Promise.all([
           supabase
@@ -101,11 +124,10 @@ export default function HubVendas() {
         );
 
         return {
-          ...conn,
-          profiles: undefined,
+          ...base,
           _sharedCount: sharedRes.count ?? 0,
           _splitTotal: splitTotal,
-        } as HubConnection;
+        };
       })
     );
 
@@ -127,7 +149,6 @@ export default function HubVendas() {
   const myAsOwner = connections.filter((c) => c.owner_id === user?.id);
   const myAsSeller = connections.filter((c) => c.seller_id === user?.id || (c.status === "pending" && c.invited_email === user?.email));
 
-  // Pending orders count for badge
   const { data: pendingOrdersCount = 0 } = useQuery({
     queryKey: ["hub-pending-orders-count", user?.id],
     queryFn: async () => {
@@ -207,6 +228,7 @@ export default function HubVendas() {
                   onViewReport={setSettlementId}
                   onToggleStatus={toggleStatus}
                   onDeleteInvite={deleteInvite}
+                  onArchive={archiveConnection}
                 />
               ))}
             </div>
@@ -242,7 +264,6 @@ export default function HubVendas() {
           )}
         </TabsContent>
 
-        {/* Seller: view their pending hub orders + logistics + finalize */}
         <TabsContent value="pedidos" className="mt-4">
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">
@@ -252,7 +273,6 @@ export default function HubVendas() {
           <HubPendingOrdersList asSeller={true} />
         </TabsContent>
 
-        {/* Owner: approve/reject incoming requests */}
         <TabsContent value="solicitacoes" className="mt-4">
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">
