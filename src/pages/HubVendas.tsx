@@ -8,6 +8,7 @@ import { HubConnectionCard } from "@/components/hub/HubConnectionCard";
 import { HubInviteDialog } from "@/components/hub/HubInviteDialog";
 import { HubAcceptDialog } from "@/components/hub/HubAcceptDialog";
 import { HubProductsDialog } from "@/components/hub/HubProductsDialog";
+import { HubSellerProductsDialog } from "@/components/hub/HubSellerProductsDialog";
 import { HubSettlementDialog } from "@/components/hub/HubSettlementDialog";
 import { Plus, Link2, Bug } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ export default function HubVendas() {
   const [acceptCode, setAcceptCode] = useState("");
   const [manageProductsId, setManageProductsId] = useState<string | null>(null);
   const [settlementId, setSettlementId] = useState<string | null>(null);
+  const [sellerViewProductsId, setSellerViewProductsId] = useState<string | null>(null);
 
   const runDebug = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -203,7 +205,7 @@ export default function HubVendas() {
                   key={conn.id}
                   connection={conn}
                   isOwner={false}
-                  onManageProducts={() => {}}
+                  onManageProducts={setSellerViewProductsId}
                   onViewReport={setSettlementId}
                   onToggleStatus={() => {}}
                   onAcceptInvite={handleAcceptInvite}
@@ -234,6 +236,11 @@ export default function HubVendas() {
         open={!!settlementId}
         connectionId={settlementId}
         onClose={() => setSettlementId(null)}
+      />
+      <HubSellerProductsDialog
+        open={!!sellerViewProductsId}
+        connectionId={sellerViewProductsId}
+        onClose={() => setSellerViewProductsId(null)}
       />
     </MainLayout>
   );
