@@ -5,7 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, Clock, User, Upload, CheckCircle2 } from "lucide-react";
+import { Package, Clock, User, Upload, CheckCircle2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { HubOrderApprovalDialog } from "./HubOrderApprovalDialog";
 import { HubOrderLogisticsDialog } from "./HubOrderLogisticsDialog";
 import { HubFinalizeOrderDialog } from "./HubFinalizeOrderDialog";
@@ -78,6 +79,7 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
   const [approvalItem, setApprovalItem] = useState<{ order: HubPendingOrder; item: HubPendingOrderItem } | null>(null);
   const [logisticsOrder, setLogisticsOrder] = useState<HubPendingOrder | null>(null);
   const [finalizeOrder, setFinalizeOrder] = useState<HubPendingOrder | null>(null);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
 
   const queryKey = asSeller ? ["hub-seller-pending-orders", user?.id] : ["hub-owner-requests", user?.id];
 
@@ -102,6 +104,53 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey });
 
+  const handleRemoveItem = async (order: HubPendingOrder, itemId: string) => {
+    setRemovingItemId(itemId);
+    try {
+      // Mark item as removed
+      const { error } = await supabase
+        .from("hub_pending_order_items")
+        .update({ status: "removed" })
+        .eq("id", itemId);
+      if (error) throw error;
+
+      // Recalculate order total and check if any active items remain
+      const remainingItems = (order.items ?? []).filter(
+        i => i.id !== itemId && i.status !== "removed"
+      );
+      const newTotal = remainingItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+
+      if (remainingItems.length === 0) {
+        // No items left — cancel the order
+        await supabase
+          .from("hub_pending_orders")
+          .update({ status: "cancelled" })
+          .eq("id", order.id);
+        toast.success("Todos os itens removidos. Pedido cancelado.");
+      } else {
+        // Recalculate status: check if any HUB items still pending
+        const hubPending = remainingItems.filter(i => i.hub_owner_id !== order.seller_id && i.status === "pending");
+        const hubApproved = remainingItems.filter(i => i.hub_owner_id !== order.seller_id && i.status === "approved");
+        const allDecided = hubPending.length === 0;
+
+        let newStatus = order.status;
+        if (allDecided && hubApproved.length > 0) newStatus = "awaiting_logistics";
+        else if (allDecided && hubApproved.length === 0) newStatus = "awaiting_logistics"; // only own items remain
+
+        await supabase
+          .from("hub_pending_orders")
+          .update({ total: newTotal, subtotal: newTotal, status: newStatus })
+          .eq("id", order.id);
+        toast.success("Item removido. Total recalculado.");
+      }
+      refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao remover item");
+    } finally {
+      setRemovingItemId(null);
+    }
+  };
+
   if (isLoading) return <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>;
 
   if (orders.length === 0) {
@@ -125,7 +174,9 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
         const rejectedItems = activeItems.filter(i => i.status === "rejected");
         const hasRejected = rejectedItems.length > 0;
         const hasLogistics = !!order.shipping_label_url || !!order.collection_instructions;
-        const canFinalize = asSeller && hasLogistics && approvedItems.length > 0;
+        // Can finalize: logistics set + at least one approved item + no pending hub items
+        const hubPendingItems = pendingItems.filter(i => i.hub_owner_id !== order.seller_id);
+        const canFinalize = asSeller && hasLogistics && approvedItems.length > 0 && hubPendingItems.length === 0;
 
         return (
           <Card key={order.id} className="border border-border hover:shadow-md transition-shadow">
@@ -183,8 +234,8 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${iCfg.colorClass}`}>
                           {iCfg.label}
                         </span>
-                        {/* Owner: respond to pending items */}
-                        {!asSeller && item.status === "pending" && (
+                        {/* Owner: respond to pending HUB items (not own items) */}
+                        {!asSeller && item.status === "pending" && item.hub_owner_id === order.owner_id && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -192,6 +243,19 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
                             onClick={() => setApprovalItem({ order, item })}
                           >
                             Responder
+                          </Button>
+                        )}
+                        {/* Seller: remove rejected items */}
+                        {asSeller && item.status === "rejected" && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs gap-1"
+                            disabled={removingItemId === item.id}
+                            onClick={() => handleRemoveItem(order, item.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            {removingItemId === item.id ? "..." : "Remover"}
                           </Button>
                         )}
                       </div>

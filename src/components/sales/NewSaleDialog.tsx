@@ -2749,33 +2749,37 @@ export default function NewSaleDialog({
                 />
               )}
 
-              {/* HUB intercept: if cart has HUB items, offer to create a pending order */}
-              {cart.some(i => !!(i.product as any).isHub) && (
+              {/* HUB intercept: if cart has HUB items, the entire order goes to HUB approval flow */}
+              {cart.some(i => !!(i.product as any).isHub) ? (
                 <div className="space-y-2">
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
-                    <p className="font-semibold">⏳ Carrinho contém produtos HUB</p>
-                    <p>Produtos de outro dono precisam de aprovação antes de serem vendidos.</p>
+                    <p className="font-semibold">⏳ Carrinho contém produto(s) HUB</p>
+                    <p>
+                      {cart.filter(i => !(i.product as any).isHub).length > 0
+                        ? "Há itens próprios e de HUB no carrinho. Toda a venda ficará pendente até o dono do HUB aprovar. Seus itens são aprovados automaticamente."
+                        : "Produtos de outro dono precisam de aprovação antes de serem vendidos."}
+                    </p>
                   </div>
                   <Button
                     className="w-full gap-2"
-                    variant="outline"
                     size="lg"
                     onClick={() => setShowHubOrderDialog(true)}
                   >
                     <ShoppingBag className="h-4 w-4" />
-                    Criar Pedido HUB (Aguardar Aprovação)
+                    Enviar para Aprovação HUB
                   </Button>
                 </div>
+              ) : (
+                <Button className="w-full" size="lg"
+                  disabled={
+                    cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
+                    createSaleMutation.isPending ||
+                    (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !manualSaleSource)
+                  }
+                  onClick={() => createSaleMutation.mutate()}>
+                  {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData ? "Selecione a Origem" : "Finalizar Venda"}
+                </Button>
               )}
-              <Button className="w-full" size="lg"
-                disabled={
-                  cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
-                  createSaleMutation.isPending ||
-                  (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !manualSaleSource)
-                }
-                onClick={() => createSaleMutation.mutate()}>
-                {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData ? "Selecione a Origem" : "Finalizar Venda"}
-              </Button>
             </div>
           </div>
         </DialogContent>
@@ -2920,7 +2924,7 @@ export default function NewSaleDialog({
             clearCart();
             onOpenChange(false);
           }}
-          prefilledItems={cart
+          hubItems={cart
             .filter(i => !!(i.product as any).isHub)
             .map(i => {
               const p = i.product as any;
@@ -2935,10 +2939,29 @@ export default function NewSaleDialog({
                 hub_connection_id: p.hubConnectionId,
                 hub_commission_pct: p.hubCommissionPct ?? 0,
                 hub_owner_id: p.hubOwnerId,
+                isOwnItem: false,
               };
             })}
+          ownItems={cart
+            .filter(i => !(i.product as any).isHub)
+            .map(i => ({
+              product_id: i.product.id,
+              variant_id: i.variant?.id ?? null,
+              product_name: i.product.name,
+              variant_size: i.variant?.size ?? null,
+              quantity: i.quantity,
+              unit_price: i.product.price,
+              cost_price: i.product.cost_price ?? 0,
+              hub_connection_id: null,
+              hub_commission_pct: 0,
+              hub_owner_id: user!.id,
+              isOwnItem: true,
+            }))}
           prefilledCustomerName={customerName}
           prefilledCustomerPhone={customerPhone}
+          prefilledPaymentMethod={selectedPaymentMethodId
+            ? customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.name ?? "Dinheiro"
+            : "Dinheiro"}
         />
       )}
     </>
