@@ -9,7 +9,7 @@ import { HubInviteDialog } from "@/components/hub/HubInviteDialog";
 import { HubAcceptDialog } from "@/components/hub/HubAcceptDialog";
 import { HubProductsDialog } from "@/components/hub/HubProductsDialog";
 import { HubSettlementDialog } from "@/components/hub/HubSettlementDialog";
-import { Plus, Link2 } from "lucide-react";
+import { Plus, Link2, Bug } from "lucide-react";
 import { toast } from "sonner";
 
 interface HubConnection {
@@ -35,6 +35,17 @@ export default function HubVendas() {
   const [acceptCode, setAcceptCode] = useState("");
   const [manageProductsId, setManageProductsId] = useState<string | null>(null);
   const [settlementId, setSettlementId] = useState<string | null>(null);
+
+  const runDebug = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { toast.error("Não autenticado"); return; }
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hub-debug`, {
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    });
+    const json = await res.json();
+    console.log("HUB DEBUG:", json);
+    toast.info(json.verdict || json.result || json.step || JSON.stringify(json).slice(0, 100));
+  };
 
   const handleAcceptInvite = (conn: HubConnection) => {
     setAcceptCode(conn.invite_code);
@@ -120,6 +131,9 @@ export default function HubVendas() {
           <p className="text-muted-foreground">Gerencie suas conexões de venda compartilhada</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={runDebug} className="gap-1 text-xs text-muted-foreground">
+            <Bug className="h-3 w-3" /> Debug
+          </Button>
           <Button variant="outline" onClick={() => setShowAccept(true)} className="gap-2">
             <Link2 className="h-4 w-4" />
             Entrar em HUB
