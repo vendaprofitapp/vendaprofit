@@ -652,31 +652,47 @@ export default function NewSaleDialog({
     queryFn: async () => {
       if (hubConnectionsAsSeller.length === 0) return [];
       const connectionIds = hubConnectionsAsSeller.map(c => c.id);
-      const { data, error } = await supabase
+
+      // Step 1: get product_ids from hub_shared_products
+      const { data: sharedRows, error: sharedError } = await supabase
         .from("hub_shared_products")
-        .select(`connection_id, product:products!inner(id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm)`)
+        .select("connection_id, product_id")
         .in("connection_id", connectionIds)
         .eq("is_active", true);
-      if (error) throw error;
+      if (sharedError) throw sharedError;
+      if (!sharedRows || sharedRows.length === 0) return [];
 
-      const uniqueById = new Map<string, any>();
-      for (const row of data || []) {
-        const product = (row as any).product;
-        if (!product?.id || uniqueById.has(product.id)) continue;
-        const conn = hubConnectionsAsSeller.find(c => c.id === row.connection_id);
-        const owner = profiles.find(p => p.id === product.owner_id);
-        uniqueById.set(product.id, {
+      // Step 2: fetch the actual products directly (RLS now allows this)
+      const productIds = [...new Set(sharedRows.map(r => r.product_id))];
+      const { data: products, error: productsError } = await supabase
+        .from("products")
+        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm")
+        .in("id", productIds)
+        .eq("is_active", true)
+        .gt("stock_quantity", 0);
+      if (productsError) throw productsError;
+
+      const connectionByProduct = new Map<string, string>();
+      for (const row of sharedRows) {
+        if (!connectionByProduct.has(row.product_id)) {
+          connectionByProduct.set(row.product_id, row.connection_id);
+        }
+      }
+
+      return (products || []).map(product => {
+        const connId = connectionByProduct.get(product.id) ?? "";
+        const conn = hubConnectionsAsSeller.find(c => c.id === connId);
+        return {
           ...product,
           isHub: true,
-          hubConnectionId: row.connection_id,
+          hubConnectionId: connId,
           hubCommissionPct: conn?.commission_pct ?? 0,
           hubOwnerId: product.owner_id,
-          ownerName: owner?.full_name || "Dono HUB",
-        });
-      }
-      return Array.from(uniqueById.values());
+          ownerName: "Dono HUB",
+        };
+      });
     },
-    enabled: !!user && open && hubConnectionsAsSeller.length > 0 && profiles.length > 0,
+    enabled: !!user && open && hubConnectionsAsSeller.length > 0,
   });
 
   // ─── Quote products for shipping ──────────────────────────
