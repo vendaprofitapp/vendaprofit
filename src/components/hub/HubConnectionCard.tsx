@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Package, TrendingUp, Pause, Play, ChevronRight } from "lucide-react";
+import { Copy, Package, TrendingUp, Pause, Play, ChevronRight, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface HubConnection {
@@ -24,6 +24,7 @@ interface Props {
   onManageProducts: (id: string) => void;
   onViewReport: (id: string) => void;
   onToggleStatus: (id: string, current: string) => void;
+  onAcceptInvite?: (connection: HubConnection) => void;
 }
 
 const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -32,7 +33,7 @@ const statusLabel: Record<string, { label: string; variant: "default" | "seconda
   suspended: { label: "Suspenso", variant: "destructive" },
 };
 
-export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus }: Props) {
+export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus, onAcceptInvite }: Props) {
   const status = statusLabel[connection.status] ?? statusLabel.pending;
 
   const copyCode = () => {
@@ -64,6 +65,17 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
                   <Copy className="h-3 w-3" />
                 </Button>
               </div>
+            )}
+
+            {connection.status === "pending" && !isOwner && onAcceptInvite && (
+              <Button
+                size="sm"
+                className="mt-2 gap-1.5"
+                onClick={() => onAcceptInvite(connection)}
+              >
+                <CheckCircle className="h-4 w-4" />
+                Aceitar Convite
+              </Button>
             )}
 
             {connection.status === "active" && (

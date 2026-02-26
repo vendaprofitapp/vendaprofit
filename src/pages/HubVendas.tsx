@@ -32,8 +32,14 @@ export default function HubVendas() {
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [showAccept, setShowAccept] = useState(false);
+  const [acceptCode, setAcceptCode] = useState("");
   const [manageProductsId, setManageProductsId] = useState<string | null>(null);
   const [settlementId, setSettlementId] = useState<string | null>(null);
+
+  const handleAcceptInvite = (conn: HubConnection) => {
+    setAcceptCode(conn.invite_code);
+    setShowAccept(true);
+  };
 
   useEffect(() => {
     if (user) loadConnections();
@@ -177,6 +183,7 @@ export default function HubVendas() {
                   onManageProducts={() => {}}
                   onViewReport={setSettlementId}
                   onToggleStatus={() => {}}
+                  onAcceptInvite={handleAcceptInvite}
                 />
               ))}
             </div>
@@ -191,8 +198,9 @@ export default function HubVendas() {
       />
       <HubAcceptDialog
         open={showAccept}
-        onClose={() => setShowAccept(false)}
+        onClose={() => { setShowAccept(false); setAcceptCode(""); }}
         onAccepted={loadConnections}
+        initialCode={acceptCode}
       />
       <HubProductsDialog
         open={!!manageProductsId}

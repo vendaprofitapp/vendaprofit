@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +10,15 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onAccepted: () => void;
+  initialCode?: string;
 }
 
-export function HubAcceptDialog({ open, onClose, onAccepted }: Props) {
-  const [code, setCode] = useState("");
+export function HubAcceptDialog({ open, onClose, onAccepted, initialCode }: Props) {
+  const [code, setCode] = useState(initialCode || "");
+
+  useEffect(() => {
+    if (open) setCode(initialCode || "");
+  }, [open, initialCode]);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
