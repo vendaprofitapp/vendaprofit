@@ -3149,6 +3149,9 @@ export type Database = {
       saved_cart_items: {
         Row: {
           cart_id: string
+          hub_commission_pct: number | null
+          hub_connection_id: string | null
+          hub_owner_id: string | null
           id: string
           product_id: string | null
           product_name: string
@@ -3160,6 +3163,9 @@ export type Database = {
         }
         Insert: {
           cart_id: string
+          hub_commission_pct?: number | null
+          hub_connection_id?: string | null
+          hub_owner_id?: string | null
           id?: string
           product_id?: string | null
           product_name: string
@@ -3171,6 +3177,9 @@ export type Database = {
         }
         Update: {
           cart_id?: string
+          hub_commission_pct?: number | null
+          hub_connection_id?: string | null
+          hub_owner_id?: string | null
           id?: string
           product_id?: string | null
           product_name?: string
@@ -3186,6 +3195,13 @@ export type Database = {
             columns: ["cart_id"]
             isOneToOne: false
             referencedRelation: "saved_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_cart_items_hub_connection_id_fkey"
+            columns: ["hub_connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
             referencedColumns: ["id"]
           },
         ]
