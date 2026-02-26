@@ -1265,7 +1265,8 @@ export default function NewSaleDialog({
     setCustomerName(hubOrderData.customerName || "");
     setCustomerPhone(hubOrderData.customerPhone || "");
     setNotes(`Pedido HUB #${hubOrderData.pendingOrderId.slice(0, 8)}`);
-    setManualSaleSource("hub");
+    // Don't force sale_source to "hub" — let user choose the actual origin channel
+    // HUB identification is done via hub_sale_splits table, not sale_source
     setHubOrderProcessed(true);
   }, [open, hubOrderData, hubOrderProcessed, user]);
 
@@ -2418,7 +2419,7 @@ export default function NewSaleDialog({
             {/* Right: Sale Details */}
             <div className="space-y-4">
               {/* Sale Origin Selector - BEFORE customer, only for manual sales */}
-              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData && (
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
                 <div className="space-y-2">
                   <Label>Origem da Venda <span className="text-destructive">*</span></Label>
                   <Select value={manualSaleSource} onValueChange={handleSaleSourceChange}>
@@ -2909,10 +2910,10 @@ export default function NewSaleDialog({
                   disabled={
                     cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
                     createSaleMutation.isPending ||
-                    (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData && !manualSaleSource)
+                    (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !manualSaleSource)
                   }
                   onClick={() => createSaleMutation.mutate()}>
-                  {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData ? "Selecione a Origem" : "Finalizar Venda"}
+                  {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData ? "Selecione a Origem" : "Finalizar Venda"}
                 </Button>
               )}
             </div>
