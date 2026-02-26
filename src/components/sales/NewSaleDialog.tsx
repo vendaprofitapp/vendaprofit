@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
-import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin, DollarSign } from "lucide-react";
+import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin, DollarSign, Link2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { Button } from "@/components/ui/button";
@@ -2182,78 +2182,11 @@ export default function NewSaleDialog({
                       )}
                       {combinedProductsList.hubProducts.length > 0 && (
                         <>
-                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
-                            <Link2 className="h-3 w-3" />HUB de Vendas
-                          </div>
-                          {combinedProductsList.hubProducts.map((product) => (
-                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => addToCart(product, false)}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
-                              </div>
-                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-                    <div className="p-3">
-                      <p className="text-sm text-muted-foreground">Nenhum produto encontrado</p>
-                      <Button variant="link" className="p-0 h-auto text-sm text-primary hover:text-primary/80" type="button" onClick={(e) => { e.preventDefault(); handleProductSearch(productSearch, { forcePartner: true }); }}>
-                        Buscar nos estoques de grupos
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      {combinedProductsList.ownProducts.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 bg-secondary/30 text-xs font-medium text-muted-foreground">Seu Estoque</div>
-                          {combinedProductsList.ownProducts.map((product) => {
-                            const noCost = product.cost_price == null || product.cost_price <= 0;
-                            return (
-                            <button type="button" key={product.id} className="w-full p-3 text-left hover:bg-secondary/50 flex justify-between items-center border-b last:border-b-0" onClick={() => handleProductClick(product)}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Estoque: {product.stock_quantity}
-                                  {noCost && <span className="text-destructive ml-1">• Sem custo</span>}
-                                  {!noCost && " • Toque para selecionar"}
-                                </p>
-                              </div>
-                              <p className="font-semibold">R$ {product.price.toFixed(2).replace(".", ",")}</p>
-                            </button>
-                            );
-                          })}
-                        </>
-                      )}
-                      {combinedProductsList.partnerProducts.length > 0 && (
-                        <>
                           <div className="px-3 py-1.5 bg-primary/10 text-xs font-medium text-primary flex items-center gap-1">
-                            <Users className="h-3 w-3" />Estoque de Parceiras
-                          </div>
-                          {combinedProductsList.partnerProducts.map((product) => (
-                            <button type="button" key={`partner-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => { handleRequestReserve({ ...product, ownerName: product.ownerName, ownerEmail: "" }); }}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">Parceira: {product.ownerName} | Estoque: {product.stock_quantity}</p>
-                              </div>
-                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                      {combinedProductsList.hubProducts.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
                             <Link2 className="h-3 w-3" />HUB de Vendas
                           </div>
                           {combinedProductsList.hubProducts.map((product) => (
-                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
+                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
                               onClick={() => addToCart(product, false)}>
                               <div>
                                 <p className="font-medium">{product.name}</p>
@@ -2264,49 +2197,6 @@ export default function NewSaleDialog({
                           ))}
                         </>
                       )}
-                            <button type="button" key={`partner-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => { handleRequestReserve({ ...product, ownerName: product.ownerName, ownerEmail: "" }); }}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">Parceira: {product.ownerName} | Estoque: {product.stock_quantity}</p>
-                              </div>
-                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                      {combinedProductsList.hubProducts.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
-                            <Link2 className="h-3 w-3" />HUB de Vendas
-                          </div>
-                          {combinedProductsList.hubProducts.map((product) => (
-                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => addToCart(product, false)}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
-                              </div>
-                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                                <p className="text-xs text-primary">{product.ownerName} • {product.stock_quantity} un • Requer reserva</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold">R$ {product.price.toFixed(2).replace(".", ",")}</p>
-                                <Clock className="h-4 w-4 text-primary" />
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                      <div className="p-2 border-t">
-                        <Button variant="link" className="p-0 h-auto text-xs text-muted-foreground hover:text-primary" type="button" onClick={(e) => { e.preventDefault(); handleProductSearch(productSearch, { forcePartner: true }); }}>
-                          Buscar também em outros grupos
-                        </Button>
-                      </div>
                     </>
                   )}
                 </div>
