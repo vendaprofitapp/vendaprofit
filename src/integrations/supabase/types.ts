@@ -1508,6 +1508,130 @@ export type Database = {
         }
         Relationships: []
       }
+      hub_connections: {
+        Row: {
+          commission_pct: number
+          created_at: string
+          id: string
+          invite_code: string
+          invited_email: string
+          owner_id: string
+          seller_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          invite_code?: string
+          invited_email: string
+          owner_id: string
+          seller_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          invite_code?: string
+          invited_email?: string
+          owner_id?: string
+          seller_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hub_sale_splits: {
+        Row: {
+          commission_amount: number
+          commission_pct: number
+          connection_id: string
+          created_at: string
+          fee_amount: number
+          gross_profit: number
+          id: string
+          owner_amount: number
+          owner_id: string
+          sale_id: string
+          seller_amount: number
+          seller_id: string
+          shipping_amount: number
+        }
+        Insert: {
+          commission_amount?: number
+          commission_pct?: number
+          connection_id: string
+          created_at?: string
+          fee_amount?: number
+          gross_profit?: number
+          id?: string
+          owner_amount?: number
+          owner_id: string
+          sale_id: string
+          seller_amount?: number
+          seller_id: string
+          shipping_amount?: number
+        }
+        Update: {
+          commission_amount?: number
+          commission_pct?: number
+          connection_id?: string
+          created_at?: string
+          fee_amount?: number
+          gross_profit?: number
+          id?: string
+          owner_amount?: number
+          owner_id?: string
+          sale_id?: string
+          seller_amount?: number
+          seller_id?: string
+          shipping_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_sale_splits_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_shared_products: {
+        Row: {
+          connection_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          product_id: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          product_id: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_shared_products_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       landing_page_faqs: {
         Row: {
           answer: string
