@@ -177,6 +177,30 @@ interface BazarItemData {
   sellerPhone: string | null;
 }
 
+export interface HubOrderItem {
+  id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  product_name: string;
+  variant_size: string | null;
+  quantity: number;
+  unit_price: number;
+  cost_price: number;
+  hub_connection_id: string | null;
+  hub_commission_pct: number;
+  hub_owner_id: string;
+  status: string;
+}
+
+export interface HubOrderData {
+  pendingOrderId: string;
+  ownerUserId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  paymentMethod: string | null;
+  items: HubOrderItem[];
+}
+
 interface NewSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -203,6 +227,8 @@ interface NewSaleDialogProps {
   onConsortiumSaleProcessed?: () => void;
   bazarItemData?: BazarItemData | null;
   onBazarItemProcessed?: () => void;
+  hubOrderData?: HubOrderData | null;
+  onHubOrderProcessed?: () => void;
 }
 
 export default function NewSaleDialog({
@@ -224,6 +250,8 @@ export default function NewSaleDialog({
   onConsortiumSaleProcessed,
   bazarItemData,
   onBazarItemProcessed,
+  hubOrderData,
+  onHubOrderProcessed,
 }: NewSaleDialogProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -276,7 +304,7 @@ export default function NewSaleDialog({
   // Auto-detect active event session from localStorage
   useEffect(() => {
     if (!open) return;
-    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData || bazarItemData) return;
+    if (consignmentData || fromDraftId || partnerPointOrderData || catalogOrderData || consortiumSaleData || bazarItemData || hubOrderData) return;
     const activeEvent = localStorage.getItem("vp_active_event_name") || localStorage.getItem("vp_last_event_name");
     if (activeEvent && (!manualSaleSource || manualSaleSource === "manual")) {
       setManualSaleSource("event");
@@ -1210,6 +1238,36 @@ export default function NewSaleDialog({
 
   // ─── Load catalog order data into cart ─────────────────────
   const [catalogOrderProcessed, setCatalogOrderProcessed] = useState(false);
+  const [hubOrderProcessed, setHubOrderProcessed] = useState(false);
+
+  // ─── Load HUB order data into cart ────────────────────────
+  useEffect(() => {
+    if (!open || !hubOrderData || hubOrderProcessed || !user) return;
+    sessionStorage.removeItem("newSaleFormData");
+
+    const approvedItems = hubOrderData.items.filter(i => i.status === "approved");
+    const cartItems: CartItem[] = approvedItems.map(item => {
+      const product: Product = {
+        id: item.product_id || crypto.randomUUID(),
+        name: item.product_name + (item.variant_size ? ` (${item.variant_size})` : ""),
+        price: item.unit_price,
+        cost_price: item.cost_price,
+        stock_quantity: item.quantity,
+        owner_id: item.hub_owner_id,
+        group_id: null,
+        category: "",
+        color: null,
+        size: item.variant_size || null,
+      };
+      return { product, quantity: item.quantity, isPartnerStock: false };
+    });
+    setCart(cartItems);
+    setCustomerName(hubOrderData.customerName || "");
+    setCustomerPhone(hubOrderData.customerPhone || "");
+    setNotes(`Pedido HUB #${hubOrderData.pendingOrderId.slice(0, 8)}`);
+    setManualSaleSource("manual");
+    setHubOrderProcessed(true);
+  }, [open, hubOrderData, hubOrderProcessed, user]);
 
   useEffect(() => {
     if (!open || !catalogOrderData || catalogOrderProcessed || !user) return;
@@ -1738,7 +1796,7 @@ export default function NewSaleDialog({
           discount_amount: discountAmount, total,
           notes: saleNotes || null,
           status: isDeferred ? "pending" : "completed",
-          sale_source: consignmentData ? "consignment" : inlineConsignmentId ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : manualSaleSource,
+          sale_source: consignmentData ? "consignment" : inlineConsignmentId ? "consignment" : fromDraftId ? (eventName ? "event" : "manual") : partnerPointOrderData ? "partner_point" : catalogOrderData ? "catalog" : consortiumSaleData ? "consortium" : bazarItemData ? "bazar" : hubOrderData ? "hub" : manualSaleSource,
           event_name: eventName || (manualSaleSource === "event" ? manualEventName : null) || null,
           shipping_method: shippingData.method || null,
           shipping_company: shippingData.company || null,
@@ -1894,6 +1952,62 @@ export default function NewSaleDialog({
       }
 
       // Mark bazar items as sold for MANUAL bazar sales
+      // Mark HUB pending order as completed and create hub_sale_splits
+      if (hubOrderData?.pendingOrderId && result?.sale_id) {
+        const feePercent = selectedPaymentMethodId
+          ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0)
+          : 0;
+        const sellerShipping = shippingData.method !== "presencial" && shippingData.payer === "seller" ? shippingData.cost : 0;
+
+        const hubItems = hubOrderData.items.filter(i =>
+          i.status === "approved" && i.hub_owner_id !== user.id && i.hub_connection_id
+        );
+        if (hubItems.length > 0) {
+          const hubSplits = hubItems.map(item => {
+            const grossProfit = item.unit_price * item.quantity - item.cost_price * item.quantity;
+            const commissionAmount = grossProfit * (item.hub_commission_pct / 100);
+            const feeAmount = (item.unit_price * item.quantity) * (feePercent / 100);
+            const shippingShare = hubItems.length > 1 ? sellerShipping / hubItems.length : sellerShipping;
+            const sellerAmount = grossProfit - commissionAmount - feeAmount - shippingShare;
+            return {
+              sale_id: result.sale_id,
+              connection_id: item.hub_connection_id!,
+              owner_id: item.hub_owner_id,
+              seller_id: user.id,
+              commission_pct: item.hub_commission_pct,
+              gross_profit: grossProfit,
+              fee_amount: feeAmount,
+              shipping_amount: shippingShare,
+              commission_amount: commissionAmount,
+              owner_amount: item.cost_price * item.quantity + commissionAmount,
+              seller_amount: sellerAmount,
+            };
+          });
+          await supabase.from("hub_sale_splits").insert(hubSplits);
+
+          await supabase.from("hub_order_notifications").insert({
+            recipient_id: hubItems[0].hub_owner_id,
+            order_id: hubOrderData.pendingOrderId,
+            type: "order_finalized",
+            message: `🎉 Venda finalizada! O pedido de ${hubOrderData.customerName || "cliente"} foi concluído.`,
+          });
+        }
+
+        await supabase
+          .from("hub_pending_orders")
+          .update({
+            status: "completed",
+            sale_id: result.sale_id,
+            finalized_at: new Date().toISOString(),
+          })
+          .eq("id", hubOrderData.pendingOrderId);
+
+        queryClient.invalidateQueries({ queryKey: ["hub-seller-pending-orders"] });
+        queryClient.invalidateQueries({ queryKey: ["hub-pending-orders-count"] });
+        queryClient.invalidateQueries({ queryKey: ["hub-sale-splits"] });
+        onHubOrderProcessed?.();
+      }
+
       if (!bazarItemData && manualSaleSource === "bazar" && cart.length > 0) {
         const manualBazarItemIds = cart
           .map(item => (item.product as any)?._bazarMeta?.bazarItemId)
@@ -2283,7 +2397,7 @@ export default function NewSaleDialog({
             {/* Right: Sale Details */}
             <div className="space-y-4">
               {/* Sale Origin Selector - BEFORE customer, only for manual sales */}
-              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && (
+              {!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData && (
                 <div className="space-y-2">
                   <Label>Origem da Venda <span className="text-destructive">*</span></Label>
                   <Select value={manualSaleSource} onValueChange={handleSaleSourceChange}>
@@ -2774,10 +2888,10 @@ export default function NewSaleDialog({
                   disabled={
                     cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
                     createSaleMutation.isPending ||
-                    (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !manualSaleSource)
+                    (!consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData && !manualSaleSource)
                   }
                   onClick={() => createSaleMutation.mutate()}>
-                  {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData ? "Selecione a Origem" : "Finalizar Venda"}
+                  {createSaleMutation.isPending ? "Registrando..." : !manualSaleSource && !consignmentData && !fromDraftId && !partnerPointOrderData && !catalogOrderData && !consortiumSaleData && !bazarItemData && !hubOrderData ? "Selecione a Origem" : "Finalizar Venda"}
                 </Button>
               )}
             </div>

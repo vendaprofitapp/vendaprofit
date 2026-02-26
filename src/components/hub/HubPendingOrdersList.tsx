@@ -5,13 +5,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, Clock, User, Upload, CheckCircle2, Trash2 } from "lucide-react";
+import { Package, Clock, User, Upload, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { HubOrderApprovalDialog } from "./HubOrderApprovalDialog";
 import { HubOrderLogisticsDialog } from "./HubOrderLogisticsDialog";
-import { HubFinalizeOrderDialog } from "./HubFinalizeOrderDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import NewSaleDialog, { HubOrderData } from "@/components/sales/NewSaleDialog";
 
 export interface HubPendingOrder {
   id: string;
@@ -78,7 +78,7 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
   const queryClient = useQueryClient();
   const [approvalItem, setApprovalItem] = useState<{ order: HubPendingOrder; item: HubPendingOrderItem } | null>(null);
   const [logisticsOrder, setLogisticsOrder] = useState<HubPendingOrder | null>(null);
-  const [finalizeOrder, setFinalizeOrder] = useState<HubPendingOrder | null>(null);
+  const [hubSaleOrder, setHubSaleOrder] = useState<HubOrderData | null>(null);
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
 
   const queryKey = asSeller ? ["hub-seller-pending-orders", user?.id] : ["hub-owner-requests", user?.id];
@@ -315,14 +315,21 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
                     </div>
                   )}
 
-                  {/* Finalize button */}
+                  {/* Convert to sale button */}
                   {canFinalize && (
                     <Button
                       className="w-full gap-2"
-                      onClick={() => setFinalizeOrder(order)}
+                      onClick={() => setHubSaleOrder({
+                        pendingOrderId: order.id,
+                        ownerUserId: order.owner_id,
+                        customerName: order.customer_name,
+                        customerPhone: order.customer_phone,
+                        paymentMethod: order.payment_method,
+                        items: (order.items ?? []).filter(i => i.status === "approved"),
+                      })}
                     >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Finalizar Venda
+                      <ShoppingCart className="h-4 w-4" />
+                      Converter em Venda
                     </Button>
                   )}
                 </div>
@@ -373,12 +380,12 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
         />
       )}
 
-      {finalizeOrder && (
-        <HubFinalizeOrderDialog
-          open={!!finalizeOrder}
-          order={finalizeOrder}
-          onClose={() => setFinalizeOrder(null)}
-          onFinalized={() => { refresh(); setFinalizeOrder(null); }}
+      {hubSaleOrder && (
+        <NewSaleDialog
+          open={!!hubSaleOrder}
+          onOpenChange={(open) => { if (!open) setHubSaleOrder(null); }}
+          hubOrderData={hubSaleOrder}
+          onHubOrderProcessed={() => { refresh(); setHubSaleOrder(null); }}
         />
       )}
     </div>
