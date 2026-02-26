@@ -44,6 +44,7 @@ const navGroups: NavGroup[] = [
       { icon: Gift, label: "Consórcios", path: "/consortiums" },
       { icon: ShoppingBag, label: "Bazar VIP", path: "/admin/bazar" },
       { icon: MapPin, label: "Pontos Parceiros", path: "/partner-points" },
+      { icon: Layers, label: "HUB de Vendas", path: "/hub-vendas" },
       { icon: Users, label: "Sociedade", path: "/partnerships/sociedade" },
       { icon: Briefcase, label: "Parceria", path: "/partnerships/parceria" },
     ],
