@@ -1510,6 +1510,7 @@ export type Database = {
       }
       hub_connections: {
         Row: {
+          auto_share_all: boolean
           commission_pct: number
           created_at: string
           id: string
@@ -1521,6 +1522,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_share_all?: boolean
           commission_pct?: number
           created_at?: string
           id?: string
@@ -1532,6 +1534,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_share_all?: boolean
           commission_pct?: number
           created_at?: string
           id?: string

@@ -1,0 +1,1 @@
+ALTER TABLE public.hub_connections ADD COLUMN IF NOT EXISTS auto_share_all boolean NOT NULL DEFAULT false;
