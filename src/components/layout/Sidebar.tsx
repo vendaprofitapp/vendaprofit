@@ -80,6 +80,7 @@ const navGroups: NavGroup[] = [
     items: [
       { icon: TrendingUp, label: "Minha Performance", path: "/reports/performance" },
       { icon: PieChart, label: "Sociedades", path: "/reports/sociedades" },
+      { icon: Layers, label: "Acertos HUB", path: "/reports/hub-acertos" },
       { icon: ShoppingCart, label: "Venda Direta", path: "/reports/manual" },
       { icon: Store, label: "Minha Loja", path: "/reports/catalog" },
       { icon: Zap, label: "Eventos", path: "/reports/events" },
