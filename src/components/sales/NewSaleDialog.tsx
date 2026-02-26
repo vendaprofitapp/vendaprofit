@@ -632,6 +632,55 @@ export default function NewSaleDialog({
 
   const hasActivePartnership = userGroups.length > 0;
 
+  // ─── HUB connections where this user is a seller ─────────
+  const { data: hubConnectionsAsSeller = [] } = useQuery({
+    queryKey: ["hub-connections-as-seller", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("hub_connections")
+        .select("id, owner_id, commission_pct")
+        .eq("seller_id", user?.id)
+        .eq("status", "active");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && open,
+  });
+
+  const { data: hubProductsForSale = [] } = useQuery({
+    queryKey: ["hub-products-for-sale", hubConnectionsAsSeller.map(c => c.id).join(",")],
+    queryFn: async () => {
+      if (hubConnectionsAsSeller.length === 0) return [];
+      const connectionIds = hubConnectionsAsSeller.map(c => c.id);
+      const { data, error } = await supabase
+        .from("hub_shared_products")
+        .select(`connection_id, product:products!inner(id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm)`)
+        .in("connection_id", connectionIds)
+        .eq("is_active", true)
+        .eq("products.is_active", true)
+        .gt("products.stock_quantity", 0);
+      if (error) throw error;
+
+      const uniqueById = new Map<string, any>();
+      for (const row of data || []) {
+        const product = (row as any).product;
+        if (!product?.id || uniqueById.has(product.id)) continue;
+        const conn = hubConnectionsAsSeller.find(c => c.id === row.connection_id);
+        const owner = profiles.find(p => p.id === product.owner_id);
+        uniqueById.set(product.id, {
+          ...product,
+          isHub: true,
+          hubConnectionId: row.connection_id,
+          hubCommissionPct: conn?.commission_pct ?? 0,
+          hubOwnerId: product.owner_id,
+          ownerName: owner?.full_name || "Dono HUB",
+        });
+      }
+      return Array.from(uniqueById.values());
+    },
+    enabled: !!user && open && hubConnectionsAsSeller.length > 0 && profiles.length > 0,
+  });
+
   // ─── Quote products for shipping ──────────────────────────
   const quoteProducts: ShippingQuoteProduct[] = useMemo(() => {
     return cart
@@ -676,11 +725,19 @@ export default function NewSaleDialog({
     return partnerProductsForList.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
   }, [partnerProductsForList, debouncedSearch, manualSaleSource]);
 
+  const filteredHubProducts = useMemo(() => {
+    if (manualSaleSource === "bazar") return [];
+    if (!debouncedSearch || debouncedSearch.length < 2) return [];
+    const search = debouncedSearch.toLowerCase();
+    return hubProductsForSale.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
+  }, [hubProductsForSale, debouncedSearch, manualSaleSource]);
+
   const combinedProductsList = useMemo(() => {
     const ownIds = new Set(filteredOwnProducts.map(p => p.id));
     const uniquePartnerProducts = filteredPartnerProducts.filter(pp => !ownIds.has(pp.id));
-    return { ownProducts: filteredOwnProducts, partnerProducts: uniquePartnerProducts };
-  }, [filteredOwnProducts, filteredPartnerProducts]);
+    const uniqueHubProducts = filteredHubProducts.filter(hp => !ownIds.has(hp.id) && !uniquePartnerProducts.some(pp => pp.id === hp.id));
+    return { ownProducts: filteredOwnProducts, partnerProducts: uniquePartnerProducts, hubProducts: uniqueHubProducts };
+  }, [filteredOwnProducts, filteredPartnerProducts, filteredHubProducts]);
 
   // ─── Add bazar item to cart ─────────────────────────────────
   const addBazarItemToCart = useCallback((bazarItem: typeof bazarItemsForSale[0]) => {
@@ -1566,10 +1623,11 @@ export default function NewSaleDialog({
         }
       }
 
-      // Build a set of known product IDs from ownProducts + partnerProducts
+      // Build a set of known product IDs from ownProducts + partnerProducts + hubProducts
       const knownProductIds = new Set([
         ...ownProducts.map(p => p.id),
         ...partnerProductsForList.map(p => p.id),
+        ...hubProductsForSale.map(p => p.id),
       ]);
 
       const itemsPayload = cart.map((item) => {
@@ -1675,6 +1733,34 @@ export default function NewSaleDialog({
       if (!rpcResult?.success) throw new Error(rpcResult?.error || "Erro ao registrar venda");
 
       setSaleIdForShipping(rpcResult.sale_id);
+
+      // Insert hub_sale_splits for HUB products
+      const hubCartItems = cart.filter(item => !!(item.product as any).isHub);
+      if (hubCartItems.length > 0 && rpcResult.sale_id) {
+        const hubSplitsToInsert = hubCartItems.map(item => {
+          const hubProduct = item.product as any;
+          const grossProfit = item.product.price * item.quantity - (item.product.cost_price ?? 0) * item.quantity;
+          const feeAmt = (feePercent / 100) * item.product.price * item.quantity;
+          const netAfterFee = grossProfit - feeAmt;
+          const commissionAmount = netAfterFee * (hubProduct.hubCommissionPct / 100);
+          const sellerAmount = netAfterFee - commissionAmount;
+          return {
+            sale_id: rpcResult.sale_id,
+            connection_id: hubProduct.hubConnectionId,
+            owner_id: hubProduct.hubOwnerId,
+            seller_id: user!.id,
+            commission_pct: hubProduct.hubCommissionPct,
+            gross_profit: grossProfit,
+            fee_amount: feeAmt,
+            shipping_amount: 0,
+            commission_amount: commissionAmount,
+            owner_amount: (item.product.cost_price ?? 0) * item.quantity + commissionAmount,
+            seller_amount: sellerAmount,
+          };
+        });
+        await supabase.from("hub_sale_splits").insert(hubSplitsToInsert);
+      }
+
       return rpcResult;
     },
     onSuccess: async (result: any) => {
@@ -1857,6 +1943,8 @@ export default function NewSaleDialog({
       queryClient.invalidateQueries({ queryKey: ["financial-splits-all"] });
       queryClient.invalidateQueries({ queryKey: ["my-products-financial"] });
       queryClient.invalidateQueries({ queryKey: ["product-partnerships-financial"] });
+
+      queryClient.invalidateQueries({ queryKey: ["hub-sale-splits"] });
 
       toast({ title: "Venda registrada com sucesso!" });
       resetForm();
@@ -2052,7 +2140,67 @@ export default function NewSaleDialog({
               {/* Normal products search results (hidden in bazar mode) */}
               {manualSaleSource !== "bazar" && debouncedSearch && debouncedSearch.length >= 2 && (
                 <div className="border rounded-lg max-h-64 overflow-y-auto">
-                  {combinedProductsList.ownProducts.length === 0 && combinedProductsList.partnerProducts.length === 0 ? (
+                  {combinedProductsList.ownProducts.length === 0 && combinedProductsList.partnerProducts.length === 0 && combinedProductsList.hubProducts.length === 0 ? (
+                    <div className="p-3">
+                      <p className="text-sm text-muted-foreground">Nenhum produto encontrado</p>
+                    </div>
+                  ) : (
+                    <>
+                      {combinedProductsList.ownProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-secondary/30 text-xs font-medium text-muted-foreground">Seu Estoque</div>
+                          {combinedProductsList.ownProducts.map((product) => {
+                            const noCost = product.cost_price == null || product.cost_price <= 0;
+                            return (
+                              <button type="button" key={product.id} className="w-full p-3 text-left hover:bg-accent flex justify-between items-center border-b last:border-b-0" onClick={() => handleProductClick(product)}>
+                                <div>
+                                  <p className="font-medium">{product.name}{noCost && <span className="ml-2 text-xs text-destructive">(sem custo)</span>}</p>
+                                  <p className="text-xs text-muted-foreground">Estoque: {product.stock_quantity}</p>
+                                </div>
+                                <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                      {combinedProductsList.partnerProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-primary/10 text-xs font-medium text-primary flex items-center gap-1">
+                            <Users className="h-3 w-3" />Estoque de Parceiras
+                          </div>
+                          {combinedProductsList.partnerProducts.map((product) => (
+                            <button type="button" key={`partner-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => { handleRequestReserve({ ...product, ownerName: product.ownerName, ownerEmail: "" }); }}>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">Parceira: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {combinedProductsList.hubProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
+                            <Link2 className="h-3 w-3" />HUB de Vendas
+                          </div>
+                          {combinedProductsList.hubProducts.map((product) => (
+                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => addToCart(product, false)}>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
                     <div className="p-3">
                       <p className="text-sm text-muted-foreground">Nenhum produto encontrado</p>
                       <Button variant="link" className="p-0 h-auto text-sm text-primary hover:text-primary/80" type="button" onClick={(e) => { e.preventDefault(); handleProductSearch(productSearch, { forcePartner: true }); }}>
@@ -2092,6 +2240,58 @@ export default function NewSaleDialog({
                               onClick={() => { handleRequestReserve({ ...product, ownerName: product.ownerName, ownerEmail: "" }); }}>
                               <div>
                                 <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">Parceira: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {combinedProductsList.hubProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
+                            <Link2 className="h-3 w-3" />HUB de Vendas
+                          </div>
+                          {combinedProductsList.hubProducts.map((product) => (
+                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => addToCart(product, false)}>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                            <button type="button" key={`partner-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => { handleRequestReserve({ ...product, ownerName: product.ownerName, ownerEmail: "" }); }}>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">Parceira: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {combinedProductsList.hubProducts.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 bg-orange-500/10 text-xs font-medium text-orange-600 flex items-center gap-1">
+                            <Link2 className="h-3 w-3" />HUB de Vendas
+                          </div>
+                          {combinedProductsList.hubProducts.map((product) => (
+                            <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-orange-500/5 flex justify-between items-center border-b last:border-b-0"
+                              onClick={() => addToCart(product, false)}>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
+                              </div>
+                              <span className="text-sm font-medium">R$ {product.price.toFixed(2).replace(".", ",")}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
                                 <p className="text-xs text-primary">{product.ownerName} • {product.stock_quantity} un • Requer reserva</p>
                               </div>
                               <div className="flex items-center gap-2">
