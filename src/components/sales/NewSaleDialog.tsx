@@ -750,9 +750,12 @@ export default function NewSaleDialog({
 
   const filteredHubProducts = useMemo(() => {
     if (manualSaleSource === "bazar") return [];
-    if (!debouncedSearch || debouncedSearch.length < 2) return [];
+    if (!debouncedSearch || debouncedSearch.length < 2) {
+      // Show all HUB products when no search (especially important for sellers with no own stock)
+      return hubProductsForSale.slice(0, 50);
+    }
     const search = debouncedSearch.toLowerCase();
-    return hubProductsForSale.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
+    return hubProductsForSale.filter(p => p.name.toLowerCase().includes(search)).slice(0, 50);
   }, [hubProductsForSale, debouncedSearch, manualSaleSource]);
 
   const combinedProductsList = useMemo(() => {
