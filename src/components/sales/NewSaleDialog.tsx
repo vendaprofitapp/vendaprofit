@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
-import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin, DollarSign, Link2 } from "lucide-react";
+import { Plus, Search, Minus, Users, Clock, X, Download, Instagram, MapPin, DollarSign, Link2, ShoppingBag } from "lucide-react";
+import { HubCreateOrderDialog } from "@/components/hub/HubCreateOrderDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { calculateSaleSplits } from "@/utils/profitEngine";
 import { Button } from "@/components/ui/button";
@@ -299,6 +300,9 @@ export default function NewSaleDialog({
   const [reserveVariants, setReserveVariants] = useState<ProductVariant[]>([]);
   const [selectedReserveVariant, setSelectedReserveVariant] = useState<ProductVariant | null>(null);
   const [loadingReserveVariants, setLoadingReserveVariants] = useState(false);
+
+  // HUB order dialog state
+  const [showHubOrderDialog, setShowHubOrderDialog] = useState(false);
 
   // Auto partner lookup
   const [autoPartnerLastQuery, setAutoPartnerLastQuery] = useState("");
@@ -2745,6 +2749,24 @@ export default function NewSaleDialog({
                 />
               )}
 
+              {/* HUB intercept: if cart has HUB items, offer to create a pending order */}
+              {cart.some(i => !!(i.product as any).isHub) && (
+                <div className="space-y-2">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                    <p className="font-semibold">⏳ Carrinho contém produtos HUB</p>
+                    <p>Produtos de outro dono precisam de aprovação antes de serem vendidos.</p>
+                  </div>
+                  <Button
+                    className="w-full gap-2"
+                    variant="outline"
+                    size="lg"
+                    onClick={() => setShowHubOrderDialog(true)}
+                  >
+                    <ShoppingBag className="h-4 w-4" />
+                    Criar Pedido HUB (Aguardar Aprovação)
+                  </Button>
+                </div>
+              )}
               <Button className="w-full" size="lg"
                 disabled={
                   cart.filter(i => !i.isPartnerStock || i.fromApprovedRequest).length === 0 ||
@@ -2887,6 +2909,38 @@ export default function NewSaleDialog({
         userId={user?.id || ''}
         onProductSelected={handleVoiceProductSelected}
       />
+
+      {/* HUB Create Order Dialog */}
+      {showHubOrderDialog && (
+        <HubCreateOrderDialog
+          open={showHubOrderDialog}
+          onClose={() => setShowHubOrderDialog(false)}
+          onCreated={() => {
+            setShowHubOrderDialog(false);
+            clearCart();
+            onOpenChange(false);
+          }}
+          prefilledItems={cart
+            .filter(i => !!(i.product as any).isHub)
+            .map(i => {
+              const p = i.product as any;
+              return {
+                product_id: p.id,
+                variant_id: i.variant?.id ?? null,
+                product_name: p.name,
+                variant_size: i.variant?.size ?? null,
+                quantity: i.quantity,
+                unit_price: p.price,
+                cost_price: p.cost_price ?? 0,
+                hub_connection_id: p.hubConnectionId,
+                hub_commission_pct: p.hubCommissionPct ?? 0,
+                hub_owner_id: p.hubOwnerId,
+              };
+            })}
+          prefilledCustomerName={customerName}
+          prefilledCustomerPhone={customerPhone}
+        />
+      )}
     </>
   );
 }
