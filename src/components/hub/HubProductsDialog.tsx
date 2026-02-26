@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -16,7 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useFixedCategories } from "@/components/products/FixedCategorySelector";
 import { toast } from "sonner";
-import { Search, Filter, CheckSquare, Layers, Flame, Clock, Rocket, Lock } from "lucide-react";
+import { Search, Filter, CheckSquare, Layers, Flame, Clock, Rocket, Lock, X } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -85,7 +87,7 @@ export function HubProductsDialog({ open, connectionId, onClose }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [filters, setFilters] = useState<FiltersState>(defaultFilters);
-  const [showFilters, setShowFilters] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoShareAll, setAutoShareAll] = useState(false);
 
@@ -258,7 +260,7 @@ export function HubProductsDialog({ open, connectionId, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] flex flex-col gap-0 p-0">
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-4 pb-3">
           <DialogTitle>Produtos no HUB</DialogTitle>
         </DialogHeader>
 
@@ -275,7 +277,7 @@ export function HubProductsDialog({ open, connectionId, onClose }: Props) {
           </div>
         )}
 
-        {/* Search + filter toggle */}
+        {/* Search bar + Popover filter button */}
         <div className="flex gap-2 px-4 pb-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -285,179 +287,192 @@ export function HubProductsDialog({ open, connectionId, onClose }: Props) {
               value={filters.search}
               onChange={(e) => updateFilter("search", e.target.value)}
             />
-          </div>
-          <Button
-            variant={hasActiveFilters ? "default" : "outline"}
-            size="icon"
-            onClick={() => setShowFilters(v => !v)}
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Collapsible filters */}
-        {showFilters && (
-          <div className="mx-4 mb-2 border rounded-md p-3 grid grid-cols-2 gap-3 text-sm bg-muted/30 max-h-64 overflow-y-auto">
-            {/* Lançamentos */}
-            <div className="space-y-1">
-              <Label className="text-xs">Lançamentos</Label>
-              <Select value={filters.isNewRelease} onValueChange={v => updateFilter("isNewRelease", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="yes">🚀 Apenas Lançamentos</SelectItem>
-                  <SelectItem value="no">Sem Lançamentos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Categoria Principal */}
-            <div className="space-y-1">
-              <Label className="text-xs">Categoria</Label>
-              <Select value={filters.mainCategory} onValueChange={v => setFilters(prev => ({ ...prev, mainCategory: v, subcategory: "all" }))}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {mainCategories.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Subcategoria */}
-            {availableSubcategories.length > 0 && (
-              <div className="space-y-1">
-                <Label className="text-xs">Subcategoria</Label>
-                <Select value={filters.subcategory} onValueChange={v => updateFilter("subcategory", v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {availableSubcategories.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            {filters.search && (
+              <button
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                onClick={() => updateFilter("search", "")}
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
+          </div>
 
-            {/* Status de Estoque */}
-            <div className="space-y-1">
-              <Label className="text-xs">Estoque</Label>
-              <Select value={filters.status} onValueChange={v => updateFilter("status", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="available">Disponível</SelectItem>
-                  <SelectItem value="low">Baixo estoque</SelectItem>
-                  <SelectItem value="out">Esgotado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Marketing */}
-            <div className="space-y-1">
-              <Label className="text-xs">Marketing</Label>
-              <Select value={filters.marketingStatus} onValueChange={v => updateFilter("marketingStatus", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="opportunity"><span className="flex items-center gap-1"><Flame className="h-3 w-3 text-orange-500" />Oportunidade</span></SelectItem>
-                  <SelectItem value="presale"><span className="flex items-center gap-1"><Clock className="h-3 w-3 text-purple-500" />Pré-venda</span></SelectItem>
-                  <SelectItem value="launch"><span className="flex items-center gap-1"><Rocket className="h-3 w-3 text-green-500" />Lançamento</span></SelectItem>
-                  <SelectItem value="secret"><span className="flex items-center gap-1"><Lock className="h-3 w-3 text-rose-500" />Área Secreta</span></SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Fornecedor */}
-            <div className="space-y-1">
-              <Label className="text-xs">Fornecedor</Label>
-              <Select value={filters.supplier} onValueChange={v => updateFilter("supplier", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Cor */}
-            <div className="space-y-1">
-              <Label className="text-xs">Cor</Label>
-              <Select value={filters.color} onValueChange={v => updateFilter("color", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {availableColors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Tamanho */}
-            <div className="space-y-1">
-              <Label className="text-xs">Tamanho</Label>
-              <Select value={filters.size} onValueChange={v => updateFilter("size", v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {availableSizes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Faixa de Preço */}
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Faixa de Preço (R$)</Label>
-              <div className="flex gap-2">
-                <Input type="number" placeholder="Mín" className="h-8 text-xs" value={filters.minPrice} onChange={e => updateFilter("minPrice", e.target.value)} />
-                <Input type="number" placeholder="Máx" className="h-8 text-xs" value={filters.maxPrice} onChange={e => updateFilter("maxPrice", e.target.value)} />
+          <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <PopoverTrigger asChild>
+              <Button variant={hasActiveFilters ? "default" : "outline"} size="icon" className="relative shrink-0">
+                <Filter className="h-4 w-4" />
+                {hasActiveFilters && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center">
+                    {Object.entries(filters).filter(([k, v]) => k !== "search" && v !== "all" && v !== "").length}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="end">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <span className="font-medium text-sm">Filtros</span>
+                {hasActiveFilters && (
+                  <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={clearFilters}>
+                    Limpar todos
+                  </button>
+                )}
               </div>
-            </div>
+              <div className="overflow-y-auto max-h-[60vh] p-4 space-y-4">
 
-            {/* Faixa de Custo */}
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Faixa de Custo (R$)</Label>
-              <div className="flex gap-2">
-                <Input type="number" placeholder="Mín" className="h-8 text-xs" value={filters.minCost} onChange={e => updateFilter("minCost", e.target.value)} />
-                <Input type="number" placeholder="Máx" className="h-8 text-xs" value={filters.maxCost} onChange={e => updateFilter("maxCost", e.target.value)} />
+                {/* Lançamentos */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Lançamentos</Label>
+                  <Select value={filters.isNewRelease} onValueChange={v => updateFilter("isNewRelease", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">🚀 Apenas Lançamentos</SelectItem>
+                      <SelectItem value="no">Sem Lançamentos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Categoria Principal */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Categoria Principal</Label>
+                  <Select value={filters.mainCategory} onValueChange={v => setFilters(prev => ({ ...prev, mainCategory: v, subcategory: "all" }))}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {mainCategories.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Subcategoria */}
+                {availableSubcategories.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Subcategoria</Label>
+                    <Select value={filters.subcategory} onValueChange={v => updateFilter("subcategory", v)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent portal={false}>
+                        <SelectItem value="all">Todas</SelectItem>
+                        {availableSubcategories.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Status de Estoque */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Status de Estoque</Label>
+                  <Select value={filters.status} onValueChange={v => updateFilter("status", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="available">Disponível</SelectItem>
+                      <SelectItem value="low">Baixo estoque</SelectItem>
+                      <SelectItem value="out">Esgotado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Marketing */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Status de Marketing</Label>
+                  <Select value={filters.marketingStatus} onValueChange={v => updateFilter("marketingStatus", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="opportunity"><span className="flex items-center gap-2"><Flame className="h-3.5 w-3.5 text-orange-500" />Oportunidade</span></SelectItem>
+                      <SelectItem value="presale"><span className="flex items-center gap-2"><Clock className="h-3.5 w-3.5 text-purple-500" />Pré-venda</span></SelectItem>
+                      <SelectItem value="launch"><span className="flex items-center gap-2"><Rocket className="h-3.5 w-3.5 text-green-500" />Lançamento</span></SelectItem>
+                      <SelectItem value="secret"><span className="flex items-center gap-2"><Lock className="h-3.5 w-3.5 text-rose-500" />Área Secreta</span></SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                {/* Fornecedor */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Fornecedor</Label>
+                  <Select value={filters.supplier} onValueChange={v => updateFilter("supplier", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Cor */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cor</Label>
+                  <Select value={filters.color} onValueChange={v => updateFilter("color", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {availableColors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Tamanho */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Tamanho</Label>
+                  <Select value={filters.size} onValueChange={v => updateFilter("size", v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent portal={false}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {availableSizes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                {/* Faixa de Preço */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Faixa de Preço (R$)</Label>
+                  <div className="flex gap-2">
+                    <Input type="number" placeholder="Mín" className="h-9" value={filters.minPrice} onChange={e => updateFilter("minPrice", e.target.value)} />
+                    <Input type="number" placeholder="Máx" className="h-9" value={filters.maxPrice} onChange={e => updateFilter("maxPrice", e.target.value)} />
+                  </div>
+                </div>
+
+                {/* Faixa de Custo */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Faixa de Custo (R$)</Label>
+                  <div className="flex gap-2">
+                    <Input type="number" placeholder="Mín" className="h-9" value={filters.minCost} onChange={e => updateFilter("minCost", e.target.value)} />
+                    <Input type="number" placeholder="Máx" className="h-9" value={filters.maxCost} onChange={e => updateFilter("maxCost", e.target.value)} />
+                  </div>
+                </div>
+
+                {/* Faixa de Estoque */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Faixa de Estoque</Label>
+                  <div className="flex gap-2">
+                    <Input type="number" placeholder="Mín" className="h-9" value={filters.minStock} onChange={e => updateFilter("minStock", e.target.value)} />
+                    <Input type="number" placeholder="Máx" className="h-9" value={filters.maxStock} onChange={e => updateFilter("maxStock", e.target.value)} />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Faixa de Estoque */}
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Faixa de Estoque</Label>
-              <div className="flex gap-2">
-                <Input type="number" placeholder="Mín" className="h-8 text-xs" value={filters.minStock} onChange={e => updateFilter("minStock", e.target.value)} />
-                <Input type="number" placeholder="Máx" className="h-8 text-xs" value={filters.maxStock} onChange={e => updateFilter("maxStock", e.target.value)} />
-              </div>
-            </div>
-
-            {hasActiveFilters && (
-              <div className="col-span-2">
-                <Button variant="ghost" size="sm" className="h-7 text-xs w-full" onClick={clearFilters}>
-                  Limpar filtros
+              <div className="border-t px-4 py-3">
+                <Button className="w-full" size="sm" onClick={() => setFiltersOpen(false)}>
+                  Ver resultados ({filtered.length})
                 </Button>
               </div>
-            )}
-          </div>
-        )}
+            </PopoverContent>
+          </Popover>
+        </div>
 
         {/* Bulk action buttons */}
         <div className="flex gap-2 px-4 pb-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs h-8 gap-1.5"
-            onClick={selectAllCurrent}
-            disabled={loading}
-          >
+          <Button variant="outline" size="sm" className="flex-1 text-xs h-8 gap-1.5" onClick={selectAllCurrent} disabled={loading}>
             <CheckSquare className="h-3.5 w-3.5" />
             Selecionar todos atuais
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs h-8 gap-1.5"
-            onClick={selectAllCurrentAndFuture}
-            disabled={loading || autoShareAll}
-          >
+          <Button variant="outline" size="sm" className="flex-1 text-xs h-8 gap-1.5" onClick={selectAllCurrentAndFuture} disabled={loading || autoShareAll}>
             <Layers className="h-3.5 w-3.5" />
             Atuais + futuros
           </Button>
@@ -469,7 +484,9 @@ export function HubProductsDialog({ open, connectionId, onClose }: Props) {
             {filtered.length} produto(s) · {filtered.filter(p => p.isShared).length} no HUB
           </span>
           {hasActiveFilters && (
-            <Badge variant="secondary" className="text-xs">Filtros ativos</Badge>
+            <Badge variant="secondary" className="text-xs cursor-pointer" onClick={clearFilters}>
+              Limpar filtros <X className="h-3 w-3 ml-1" />
+            </Badge>
           )}
         </div>
 
