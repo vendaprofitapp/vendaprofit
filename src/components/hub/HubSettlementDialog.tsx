@@ -56,12 +56,14 @@ function SaleDetailRow({ split, isOwner, ownerName, sellerName }: {
   const [expanded, setExpanded] = useState(false);
 
   const saleTotal = split.sales?.total ?? 0;
-  // Cost is total - gross_profit (gross_profit = total - cost in hub logic)
-  const costPrice = saleTotal - split.gross_profit;
+  // gross_profit = effectiveRevenue - cost. cost = owner_amount - commission_amount
   const grossProfit = split.gross_profit;
   const commission = split.commission_amount;
-  const sellerGross = split.seller_amount + split.fee_amount + split.shipping_amount;
+  // costPrice = owner_amount - commission_amount (owner gets cost + commission)
+  const costPrice = split.owner_amount - split.commission_amount;
   const feesAndShipping = split.fee_amount + split.shipping_amount;
+  // sellerGross = grossProfit - commission (before fees/shipping)
+  const sellerGross = grossProfit - commission;
   const sellerNet = split.seller_amount;
 
   return (
@@ -98,11 +100,11 @@ function SaleDetailRow({ split, isOwner, ownerName, sellerName }: {
         <div className="px-3 pb-3 space-y-1.5 border-t bg-muted/20">
           <div className="pt-2 space-y-1.5 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Preço de Venda</span>
-              <span className="font-medium">{fmtBRL(saleTotal)}</span>
+              <span className="text-muted-foreground">Receita Efetiva (c/ desconto)</span>
+              <span className="font-medium">{fmtBRL(grossProfit + costPrice)}</span>
             </div>
             <div className="flex justify-between text-destructive/80">
-              <span>(-) Preço de Custo</span>
+              <span>(-) Custo do Produto</span>
               <span>-{fmtBRL(costPrice)}</span>
             </div>
             <Separator />
@@ -116,7 +118,7 @@ function SaleDetailRow({ split, isOwner, ownerName, sellerName }: {
             </div>
             <Separator />
             <div className="flex justify-between font-semibold">
-              <span>Lucro Bruto {sellerName}</span>
+              <span>Lucro Bruto {sellerName} (após comissão)</span>
               <span>{fmtBRL(sellerGross)}</span>
             </div>
             {feesAndShipping > 0 && (

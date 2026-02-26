@@ -1,4 +1,4 @@
-import { DollarSign, Package, ShoppingCart, TrendingUp } from "lucide-react";
+import { DollarSign, Package, ShoppingCart, TrendingUp, Store } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { RecentSales } from "@/components/dashboard/RecentSales";
@@ -94,6 +94,18 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
+  const { data: hubCommissions = [] } = useQuery({
+    queryKey: ['dashboard-hub-commissions', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('hub_sale_splits')
+        .select('commission_amount, owner_amount, seller_amount, created_at')
+        .eq('seller_id', user?.id);
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
   const metrics = useMemo(() => {
     const today = startOfDay(new Date());
     const yesterday = startOfDay(subDays(new Date(), 1));
@@ -141,6 +153,15 @@ export default function Dashboard() {
       ? ((avgTicket - lastWeekAvg) / lastWeekAvg * 100).toFixed(0) 
       : 0;
 
+    // HUB commissions (last 30 days)
+    const thirtyDaysAgo = subDays(new Date(), 30);
+    const recentHubCommissions = hubCommissions.filter(
+      h => new Date(h.created_at) >= thirtyDaysAgo
+    );
+    const hubCommissionsTotal = recentHubCommissions.reduce(
+      (sum, h) => sum + Number(h.commission_amount), 0
+    );
+
     return {
       todayTotal,
       todayVsYesterday: Number(todayVsYesterday),
@@ -150,8 +171,9 @@ export default function Dashboard() {
       lowStock,
       avgTicket,
       ticketChange: Number(ticketChange),
+      hubCommissionsTotal,
     };
-  }, [sales, products]);
+  }, [sales, products, hubCommissions]);
 
   return (
     <MainLayout>
@@ -211,6 +233,20 @@ export default function Dashboard() {
           iconColor="bg-primary/10 text-primary"
         />
       </div>
+
+      {/* HUB Commissions Alert */}
+      {metrics.hubCommissionsTotal > 0 && (
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+          <Store className="h-5 w-5 text-warning shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">Comissões a Pagar (HUB) — últimos 30 dias</p>
+            <p className="text-xs text-muted-foreground">Valor retido para parceiros donos de peças vendidas pelo HUB</p>
+          </div>
+          <p className="text-lg font-bold text-warning shrink-0">
+            {metrics.hubCommissionsTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </p>
+        </div>
+      )}
 
       {/* Charts & Lists Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
