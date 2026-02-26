@@ -1,22 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Package, TrendingUp, Pause, Play, ChevronRight, CheckCircle, Trash2 } from "lucide-react";
+import { Copy, Package, TrendingUp, Pause, Play, ChevronRight, CheckCircle, Trash2, Archive } from "lucide-react";
 import { toast } from "sonner";
-
-interface HubConnection {
-  id: string;
-  owner_id: string;
-  seller_id: string | null;
-  invited_email: string;
-  commission_pct: number;
-  status: string;
-  invite_code: string;
-  created_at: string;
-  profiles?: { full_name: string; email: string } | null;
-  _sharedCount?: number;
-  _splitTotal?: number;
-}
+import type { HubConnection } from "@/pages/HubVendas";
 
 interface Props {
   connection: HubConnection;
@@ -26,6 +13,7 @@ interface Props {
   onToggleStatus: (id: string, current: string) => void;
   onAcceptInvite?: (connection: HubConnection) => void;
   onDeleteInvite?: (id: string) => void;
+  onArchive?: (id: string) => void;
 }
 
 const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -34,7 +22,7 @@ const statusLabel: Record<string, { label: string; variant: "default" | "seconda
   suspended: { label: "Suspenso", variant: "destructive" },
 };
 
-export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus, onAcceptInvite, onDeleteInvite }: Props) {
+export function HubConnectionCard({ connection, isOwner, onManageProducts, onViewReport, onToggleStatus, onAcceptInvite, onDeleteInvite, onArchive }: Props) {
   const status = statusLabel[connection.status] ?? statusLabel.pending;
 
   const copyCode = () => {
@@ -42,9 +30,13 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
     toast.success("Código copiado!");
   };
 
+  // Resolve display names from enriched profiles
+  const ownerName = connection.owner_profile?.full_name || "Dono";
+  const sellerName = connection.seller_profile?.full_name || connection.invited_email;
+
   const partnerName = isOwner
-    ? (connection.profiles?.full_name || connection.invited_email)
-    : "Dono do Estoque";
+    ? `Vendedora: ${sellerName}`
+    : `Dono: ${ownerName}`;
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -56,7 +48,9 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
               <Badge variant={status.variant} className="text-xs shrink-0">{status.label}</Badge>
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              {isOwner ? `Comissão: ${connection.commission_pct}% do lucro bruto` : `Você recebe o lucro após comissão do dono`}
+              {isOwner
+                ? `Você recebe: Custo + ${connection.commission_pct}% do lucro bruto`
+                : `Comissão do dono: ${connection.commission_pct}% do lucro bruto`}
             </p>
 
             {connection.status === "pending" && isOwner && (
@@ -118,16 +112,30 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
                 Acerto
               </Button>
               {isOwner && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-xs h-7"
-                  onClick={() => onToggleStatus(connection.id, connection.status)}
-                >
-                  {connection.status === "active"
-                    ? <><Pause className="h-3 w-3 mr-1" /> Suspender</>
-                    : <><Play className="h-3 w-3 mr-1" /> Reativar</>}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs h-7"
+                    onClick={() => onToggleStatus(connection.id, connection.status)}
+                  >
+                    {connection.status === "active"
+                      ? <><Pause className="h-3 w-3 mr-1" /> Suspender</>
+                      : <><Play className="h-3 w-3 mr-1" /> Reativar</>}
+                  </Button>
+                  {onArchive && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs h-7 text-destructive hover:text-destructive"
+                      onClick={() => onArchive(connection.id)}
+                      title="Encerrar parceria (preserva histórico)"
+                    >
+                      <Archive className="h-3 w-3 mr-1" />
+                      Encerrar
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           )}
