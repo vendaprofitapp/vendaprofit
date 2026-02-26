@@ -10,8 +10,10 @@ import { HubAcceptDialog } from "@/components/hub/HubAcceptDialog";
 import { HubProductsDialog } from "@/components/hub/HubProductsDialog";
 import { HubSellerProductsDialog } from "@/components/hub/HubSellerProductsDialog";
 import { HubSettlementDialog } from "@/components/hub/HubSettlementDialog";
-import { Plus, Link2, Bug } from "lucide-react";
+import { HubPendingOrdersList } from "@/components/hub/HubPendingOrdersList";
+import { Plus, Link2, Bug, ShoppingBag, Bell } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 interface HubConnection {
   id: string;
@@ -125,6 +127,21 @@ export default function HubVendas() {
   const myAsOwner = connections.filter((c) => c.owner_id === user?.id);
   const myAsSeller = connections.filter((c) => c.seller_id === user?.id || (c.status === "pending" && c.invited_email === user?.email));
 
+  // Pending orders count for badge
+  const { data: pendingOrdersCount = 0 } = useQuery({
+    queryKey: ["hub-pending-orders-count", user?.id],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("hub_pending_orders")
+        .select("id", { count: "exact", head: true })
+        .or(`seller_id.eq.${user!.id},owner_id.eq.${user!.id}`)
+        .neq("status", "completed")
+        .neq("status", "cancelled");
+      return count ?? 0;
+    },
+    enabled: !!user,
+  });
+
   return (
     <MainLayout>
       <div className="flex items-center justify-between mb-6">
@@ -133,9 +150,6 @@ export default function HubVendas() {
           <p className="text-muted-foreground">Gerencie suas conexões de venda compartilhada</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={runDebug} className="gap-1 text-xs text-muted-foreground">
-            <Bug className="h-3 w-3" /> Debug
-          </Button>
           <Button variant="outline" onClick={() => setShowAccept(true)} className="gap-2">
             <Link2 className="h-4 w-4" />
             Entrar em HUB
@@ -148,12 +162,25 @@ export default function HubVendas() {
       </div>
 
       <Tabs defaultValue="owner">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="owner">
             Meu Estoque ({myAsOwner.length})
           </TabsTrigger>
           <TabsTrigger value="seller">
             Vendo para Outros ({myAsSeller.length})
+          </TabsTrigger>
+          <TabsTrigger value="pedidos" className="relative">
+            <ShoppingBag className="h-3.5 w-3.5 mr-1" />
+            Pedidos HUB
+            {pendingOrdersCount > 0 && (
+              <span className="ml-1.5 bg-destructive text-destructive-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold">
+                {pendingOrdersCount > 9 ? "9+" : pendingOrdersCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="solicitacoes" className="relative">
+            <Bell className="h-3.5 w-3.5 mr-1" />
+            Solicitações (Dono)
           </TabsTrigger>
         </TabsList>
 
@@ -213,6 +240,26 @@ export default function HubVendas() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* Seller: view their pending hub orders + logistics + finalize */}
+        <TabsContent value="pedidos" className="mt-4">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">
+              Pedidos de produtos HUB que você criou e aguardam aprovação, logística e finalização.
+            </p>
+          </div>
+          <HubPendingOrdersList asSeller={true} />
+        </TabsContent>
+
+        {/* Owner: approve/reject incoming requests */}
+        <TabsContent value="solicitacoes" className="mt-4">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">
+              Solicitações de vendedores que querem usar seus produtos. Aprove, defina a data de despacho ou rejeite.
+            </p>
+          </div>
+          <HubPendingOrdersList asSeller={false} />
         </TabsContent>
       </Tabs>
 

@@ -1547,6 +1547,190 @@ export type Database = {
         }
         Relationships: []
       }
+      hub_order_notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          order_id: string | null
+          read: boolean
+          recipient_id: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          order_id?: string | null
+          read?: boolean
+          recipient_id: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          order_id?: string | null
+          read?: boolean
+          recipient_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_order_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "hub_pending_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_pending_order_items: {
+        Row: {
+          cost_price: number
+          created_at: string
+          estimated_dispatch_date: string | null
+          hub_commission_pct: number
+          hub_connection_id: string | null
+          hub_owner_id: string
+          id: string
+          order_id: string
+          owner_responded_at: string | null
+          product_id: string | null
+          product_name: string
+          quantity: number
+          rejection_reason: string | null
+          status: string
+          unit_price: number
+          variant_id: string | null
+          variant_size: string | null
+        }
+        Insert: {
+          cost_price?: number
+          created_at?: string
+          estimated_dispatch_date?: string | null
+          hub_commission_pct?: number
+          hub_connection_id?: string | null
+          hub_owner_id: string
+          id?: string
+          order_id: string
+          owner_responded_at?: string | null
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          rejection_reason?: string | null
+          status?: string
+          unit_price?: number
+          variant_id?: string | null
+          variant_size?: string | null
+        }
+        Update: {
+          cost_price?: number
+          created_at?: string
+          estimated_dispatch_date?: string | null
+          hub_commission_pct?: number
+          hub_connection_id?: string | null
+          hub_owner_id?: string
+          id?: string
+          order_id?: string
+          owner_responded_at?: string | null
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          rejection_reason?: string | null
+          status?: string
+          unit_price?: number
+          variant_id?: string | null
+          variant_size?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_pending_order_items_hub_connection_id_fkey"
+            columns: ["hub_connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_pending_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "hub_pending_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_pending_orders: {
+        Row: {
+          collection_instructions: string | null
+          connection_id: string
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          finalized_at: string | null
+          id: string
+          logistics_set_at: string | null
+          notes: string | null
+          owner_id: string
+          payment_method: string | null
+          sale_id: string | null
+          seller_id: string
+          shipping_label_url: string | null
+          status: string
+          subtotal: number
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          collection_instructions?: string | null
+          connection_id: string
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          finalized_at?: string | null
+          id?: string
+          logistics_set_at?: string | null
+          notes?: string | null
+          owner_id: string
+          payment_method?: string | null
+          sale_id?: string | null
+          seller_id: string
+          shipping_label_url?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          collection_instructions?: string | null
+          connection_id?: string
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          finalized_at?: string | null
+          id?: string
+          logistics_set_at?: string | null
+          notes?: string | null
+          owner_id?: string
+          payment_method?: string | null
+          sale_id?: string | null
+          seller_id?: string
+          shipping_label_url?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_pending_orders_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hub_sale_splits: {
         Row: {
           commission_amount: number
