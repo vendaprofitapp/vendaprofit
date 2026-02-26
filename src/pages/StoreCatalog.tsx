@@ -836,34 +836,49 @@ export default function StoreCatalog() {
     return Array.from(combined);
   }, [partnerships, directPartnershipGroupIds]);
 
-  // Fetch HUB connections where the store owner is the owner (has active sellers)
-  const { data: hubSharedProductIds = [] } = useQuery({
-    queryKey: ["hub-shared-product-ids-public", store?.owner_id],
+  // Fetch HUB connections where the store owner is the seller
+  // Returns a map: productId → { hub_connection_id, hub_owner_id, hub_commission_pct }
+  const { data: hubProductMetaMap = new Map<string, { hub_connection_id: string; hub_owner_id: string; hub_commission_pct: number }>() } = useQuery({
+    queryKey: ["hub-shared-product-meta-public", store?.owner_id],
     queryFn: async () => {
-      // Public query: find connections where store owner is the SELLER
-      // Uses the public RLS policy that allows anonymous access
       const { data: connections, error } = await supabase
         .from("hub_connections")
-        .select("id")
+        .select("id, owner_id, commission_pct")
         .eq("seller_id", store!.owner_id)
         .eq("status", "active");
-      if (error || !connections || connections.length === 0) return [];
+      if (error || !connections || connections.length === 0) return new Map();
 
       const connectionIds = connections.map(c => c.id);
+      const connectionInfoMap = new Map(connections.map(c => [c.id, { owner_id: c.owner_id, commission_pct: c.commission_pct }]));
+
       const BATCH = 100;
-      const allIds: string[] = [];
+      const resultMap = new Map<string, { hub_connection_id: string; hub_owner_id: string; hub_commission_pct: number }>();
       for (let i = 0; i < connectionIds.length; i += BATCH) {
         const { data: sharedRows } = await supabase
           .from("hub_shared_products")
-          .select("product_id")
+          .select("product_id, connection_id")
           .in("connection_id", connectionIds.slice(i, i + BATCH))
           .eq("is_active", true);
-        if (sharedRows) allIds.push(...sharedRows.map(r => r.product_id));
+        if (sharedRows) {
+          sharedRows.forEach(r => {
+            const info = connectionInfoMap.get(r.connection_id);
+            if (info) {
+              resultMap.set(r.product_id, {
+                hub_connection_id: r.connection_id,
+                hub_owner_id: info.owner_id,
+                hub_commission_pct: info.commission_pct,
+              });
+            }
+          });
+        }
       }
-      return [...new Set(allIds)];
+      return resultMap;
     },
     enabled: !!store?.owner_id,
   });
+
+  // Derive flat array of HUB product IDs for existing query dependency
+  const hubSharedProductIds = Array.from(hubProductMetaMap.keys());
 
   // Fetch products with their variants (now includes video_url)
   const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
@@ -1748,16 +1763,22 @@ export default function StoreCatalog() {
         .single();
 
       if (savedCart) {
-        const cartItems = cart.map(item => ({
-          cart_id: savedCart.id,
-          product_id: item.displayItem.productId,
-          product_name: item.displayItem.name,
-          variant_color: item.displayItem.color || null,
-          selected_size: item.selectedSize,
-          quantity: item.quantity,
-          unit_price: item.effectivePrice,
-          source: getItemSource(item),
-        }));
+        const cartItems = cart.map(item => {
+          const hubMeta = hubProductMetaMap.get(item.displayItem.productId);
+          return {
+            cart_id: savedCart.id,
+            product_id: item.displayItem.productId,
+            product_name: item.displayItem.name,
+            variant_color: item.displayItem.color || null,
+            selected_size: item.selectedSize,
+            quantity: item.quantity,
+            unit_price: item.effectivePrice,
+            source: getItemSource(item),
+            hub_connection_id: hubMeta?.hub_connection_id || null,
+            hub_owner_id: hubMeta?.hub_owner_id || null,
+            hub_commission_pct: hubMeta?.hub_commission_pct || 0,
+          };
+        });
         await supabase.from("saved_cart_items").insert(cartItems as any);
       }
 
