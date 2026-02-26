@@ -653,24 +653,33 @@ export default function NewSaleDialog({
       if (hubConnectionsAsSeller.length === 0) return [];
       const connectionIds = hubConnectionsAsSeller.map(c => c.id);
 
-      // Step 1: get product_ids from hub_shared_products
+      // Step 1: get product_ids from hub_shared_products (limit 2000 to cover large catalogs)
       const { data: sharedRows, error: sharedError } = await supabase
         .from("hub_shared_products")
         .select("connection_id, product_id")
         .in("connection_id", connectionIds)
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .limit(2000);
       if (sharedError) throw sharedError;
       if (!sharedRows || sharedRows.length === 0) return [];
 
       // Step 2: fetch the actual products directly (RLS now allows this)
+      // Fetch in batches of 100 to avoid URL length limits with .in()
       const productIds = [...new Set(sharedRows.map(r => r.product_id))];
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm")
-        .in("id", productIds)
-        .eq("is_active", true)
-        .gt("stock_quantity", 0);
-      if (productsError) throw productsError;
+      const BATCH_SIZE = 100;
+      const allProducts: any[] = [];
+      for (let i = 0; i < productIds.length; i += BATCH_SIZE) {
+        const batch = productIds.slice(i, i + BATCH_SIZE);
+        const { data: batchProducts, error: batchError } = await supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, weight_grams, width_cm, height_cm, length_cm")
+          .in("id", batch)
+          .eq("is_active", true)
+          .gt("stock_quantity", 0);
+        if (batchError) throw batchError;
+        allProducts.push(...(batchProducts || []));
+      }
+      const products = allProducts;
 
       const connectionByProduct = new Map<string, string>();
       for (const row of sharedRows) {
