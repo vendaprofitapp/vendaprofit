@@ -109,12 +109,10 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
 
           {connection.status === "active" && (
             <div className="flex flex-col gap-1.5 shrink-0">
-              {isOwner && (
-                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onManageProducts(connection.id)}>
-                  <Package className="h-3 w-3 mr-1" />
-                  Produtos
-                </Button>
-              )}
+              <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onManageProducts(connection.id)}>
+                <Package className="h-3 w-3 mr-1" />
+                Produtos
+              </Button>
               <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onViewReport(connection.id)}>
                 <ChevronRight className="h-3 w-3 mr-1" />
                 Acerto
