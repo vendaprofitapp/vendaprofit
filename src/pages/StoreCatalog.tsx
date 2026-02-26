@@ -836,9 +836,41 @@ export default function StoreCatalog() {
     return Array.from(combined);
   }, [partnerships, directPartnershipGroupIds]);
 
+  // Fetch HUB connections where the store owner is the owner (has active sellers)
+  const { data: hubSharedProductIds = [] } = useQuery({
+    queryKey: ["hub-shared-product-ids", store?.owner_id],
+    queryFn: async () => {
+      // Get active HUB connections where store owner is the OWNER (sharing their products with sellers)
+      // The catalog shows the owner's products to everyone — we don't need to do anything here
+      // What we need: connections where store owner is the SELLER (owner is someone else)
+      // Actually: we show the store owner's products, so HUB products = products that the store owner has shared
+      // The catalog is the OWNER's store — we want to show products the owner has shared access to via HUB
+      // i.e., connections where store owner = seller_id → show owner's products from those connections
+      // BUT the question is: should the catalog show products from OTHER owners that THIS owner is selling?
+      // Answer: YES — the seller's catalog shows products shared WITH them by other owners
+      const { data: connections, error } = await supabase
+        .from("hub_connections")
+        .select("id, owner_id")
+        .eq("seller_id", store!.owner_id)
+        .eq("status", "active");
+      if (error || !connections || connections.length === 0) return [];
+
+      // Get all shared product IDs from these connections
+      const connectionIds = connections.map(c => c.id);
+      const { data: sharedRows, error: sharedError } = await supabase
+        .from("hub_shared_products")
+        .select("product_id, connection_id")
+        .in("connection_id", connectionIds)
+        .eq("is_active", true);
+      if (sharedError || !sharedRows) return [];
+      return [...new Set(sharedRows.map(r => r.product_id))];
+    },
+    enabled: !!store?.owner_id,
+  });
+
   // Fetch products with their variants (now includes video_url)
   const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
-    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, allPartnershipGroupIds],
+    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, allPartnershipGroupIds, hubSharedProductIds],
     queryFn: async () => {
       const ownProductIds = new Set<string>();
       const ownProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
@@ -917,7 +949,28 @@ export default function StoreCatalog() {
         }
       }
 
-      const allProducts = [...ownProducts, ...partnerProducts];
+      // Get HUB products (products shared with this store owner as a seller)
+      const hubProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
+      if (hubSharedProductIds.length > 0) {
+        const BATCH = 100;
+        for (let i = 0; i < hubSharedProductIds.length; i += BATCH) {
+          const { data: batchProducts } = await supabase
+            .from("products")
+            .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
+            .in("id", hubSharedProductIds.slice(i, i + BATCH))
+            .eq("is_active", true)
+            .gt("stock_quantity", 0);
+          if (batchProducts) {
+            batchProducts.forEach(p => {
+              if (!ownProductIds.has(p.id)) {
+                hubProducts.push({ ...p, isPartner: true });
+              }
+            });
+          }
+        }
+      }
+
+      const allProducts = [...ownProducts, ...partnerProducts, ...hubProducts];
       if (allProducts.length === 0) return [];
 
       // Fetch variants for all products (including marketing fields and video)
