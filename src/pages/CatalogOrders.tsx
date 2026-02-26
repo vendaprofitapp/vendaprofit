@@ -18,11 +18,12 @@ import {
 import {
   ShoppingCart, Phone, ChevronDown, ChevronUp, Package,
   AlertTriangle, MessageCircle, CheckCircle2, RefreshCw,
-  DollarSign, Pencil, XCircle, MapPin,
+  DollarSign, Pencil, XCircle, MapPin, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EditCatalogOrderDialog } from "@/components/catalog/EditCatalogOrderDialog";
 import { PartnerOrdersSection } from "@/components/catalog/PartnerOrdersSection";
+import { HubCreateOrderDialog, HubOrderItem } from "@/components/hub/HubCreateOrderDialog";
 
 type PeriodFilter = "today" | "7days" | "30days";
 
@@ -143,28 +144,82 @@ export default function CatalogOrders() {
   });
 
   const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+  const [hubOrderDialog, setHubOrderDialog] = useState<{
+    open: boolean;
+    hubItems: HubOrderItem[];
+    ownItems: HubOrderItem[];
+    customerName: string;
+    customerPhone: string;
+    catalogOrderId: string;
+  } | null>(null);
 
   const handleConvertToSale = async (order: any) => {
     if (!user) return;
     setConvertingOrderId(order.id);
 
     try {
-      // Fetch approved bazar items for this owner to detect matches by product_id
+      const orderItems: any[] = order.saved_cart_items || [];
+
+      // Check if any item has hub_connection_id (HUB product)
+      const hasHubItems = orderItems.some((i: any) => i.hub_connection_id);
+
+      if (hasHubItems) {
+        // Split into own items and hub items
+        const hubItems: HubOrderItem[] = orderItems
+          .filter((i: any) => i.hub_connection_id)
+          .map((i: any) => ({
+            product_id: i.product_id,
+            variant_id: i.variant_id || null,
+            product_name: i.product_name,
+            variant_size: i.selected_size || null,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            cost_price: 0,
+            hub_connection_id: i.hub_connection_id,
+            hub_commission_pct: i.hub_commission_pct || 0,
+            hub_owner_id: i.hub_owner_id,
+            isOwnItem: false,
+          }));
+
+        const ownItems: HubOrderItem[] = orderItems
+          .filter((i: any) => !i.hub_connection_id)
+          .map((i: any) => ({
+            product_id: i.product_id,
+            variant_id: i.variant_id || null,
+            product_name: i.product_name,
+            variant_size: i.selected_size || null,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            cost_price: 0,
+            hub_connection_id: null,
+            hub_commission_pct: 0,
+            hub_owner_id: user.id,
+            isOwnItem: true,
+          }));
+
+        setHubOrderDialog({
+          open: true,
+          hubItems,
+          ownItems,
+          customerName: order.customer_name || "",
+          customerPhone: order.customer_phone || "",
+          catalogOrderId: order.id,
+        });
+        return;
+      }
+
+      // No HUB items — standard PDV flow
       const { data: bazarItems } = await supabase
         .from("bazar_items")
         .select("id, title, seller_price, store_commission, final_price, seller_name, seller_phone, owner_id")
         .eq("owner_id", user.id)
         .eq("status", "approved");
 
-      // Build map by title (lowercase) for matching
       const bazarMap = new Map<string, any>();
       for (const bi of bazarItems || []) {
         bazarMap.set(bi.title.trim().toLowerCase(), bi);
       }
 
-      const orderItems = order.saved_cart_items || [];
-
-      // Enrich items with bazar metadata when detected
       const items = orderItems.map((item: any) => {
         const matchKey = (item.product_name || "").trim().toLowerCase();
         const bazarItem = bazarMap.get(matchKey);
@@ -176,7 +231,6 @@ export default function CatalogOrders() {
           variant_color: item.variant_color,
           selected_size: item.selected_size,
           source: item.source,
-          // Bazar metadata (null if not a bazar item)
           ...(bazarItem ? {
             isBazarItem: true,
             bazarItemId: bazarItem.id,
@@ -191,7 +245,6 @@ export default function CatalogOrders() {
 
       const orderTotal = orderItems.reduce((sum: number, i: any) => sum + (i.unit_price * i.quantity), 0);
 
-      // Clear persisted sale form and navigate ALL items to PDV
       const keysToClean = [
         "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
         "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
@@ -389,19 +442,26 @@ export default function CatalogOrders() {
                         </div>
                         {order.status === "waiting" && (
                           <div className="flex flex-wrap gap-2 pt-3 border-t mt-3">
-                            <Button
-                              size="sm"
-                              className="gap-1.5"
-                              disabled={convertingOrderId === order.id}
-                              onClick={(e) => { e.stopPropagation(); handleConvertToSale(order); }}
-                            >
-                              {convertingOrderId === order.id ? (
-                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <DollarSign className="h-3.5 w-3.5" />
-                              )}
-                              {convertingOrderId === order.id ? "Processando..." : "Converter em Venda"}
-                            </Button>
+                            {(() => {
+                              const hasHub = (order.saved_cart_items || []).some((i: any) => i.hub_connection_id);
+                              return (
+                                <Button
+                                  size="sm"
+                                  className={`gap-1.5 ${hasHub ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}`}
+                                  disabled={convertingOrderId === order.id}
+                                  onClick={(e) => { e.stopPropagation(); handleConvertToSale(order); }}
+                                >
+                                  {convertingOrderId === order.id ? (
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                  ) : hasHub ? (
+                                    <Users className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <DollarSign className="h-3.5 w-3.5" />
+                                  )}
+                                  {convertingOrderId === order.id ? "Processando..." : hasHub ? "Enviar para Aprovação HUB" : "Converter em Venda"}
+                                </Button>
+                              );
+                            })()}
                             <Button
                               size="sm"
                               variant="outline"
@@ -563,6 +623,26 @@ export default function CatalogOrders() {
           refetchOrders();
         }}
       />
+
+      {hubOrderDialog && (
+        <HubCreateOrderDialog
+          open={hubOrderDialog.open}
+          onClose={() => setHubOrderDialog(null)}
+          onCreated={async () => {
+            // Mark catalog order as converted
+            await supabase
+              .from("saved_carts")
+              .update({ status: "converted" })
+              .eq("id", hubOrderDialog.catalogOrderId);
+            queryClient.invalidateQueries({ queryKey: ["catalog-orders"] });
+            toast.success("Pedido HUB criado! Aguardando aprovação do dono.");
+          }}
+          hubItems={hubOrderDialog.hubItems}
+          ownItems={hubOrderDialog.ownItems}
+          prefilledCustomerName={hubOrderDialog.customerName}
+          prefilledCustomerPhone={hubOrderDialog.customerPhone}
+        />
+      )}
     </MainLayout>
   );
 }
