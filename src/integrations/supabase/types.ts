@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_parceria_camila_isabelle: {
+        Row: {
+          backed_up_at: string | null
+          backup_data: Json | null
+          backup_table: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          backup_data?: Json | null
+          backup_table?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          backup_data?: Json | null
+          backup_table?: string | null
+        }
+        Relationships: []
+      }
       ad_campaigns: {
         Row: {
           campaign_name: string | null

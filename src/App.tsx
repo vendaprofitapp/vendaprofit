@@ -15,9 +15,6 @@ import Reports from "./pages/Reports";
 import PartnerReports from "./pages/PartnerReports";
 import PartnerPointReports from "./pages/PartnerPointReports";
 import Financial from "./pages/Financial";
-import Partnerships from "./pages/Partnerships";
-import PartnershipsSociedade from "./pages/PartnershipsSociedade";
-import PartnershipsParceria from "./pages/PartnershipsParceria";
 import Settings from "./pages/Settings";
 import StockControl from "./pages/StockControl";
 import StockRequests from "./pages/StockRequests";
@@ -63,12 +60,9 @@ import ReportBazar from "./pages/ReportBazar";
 import ReportConsignment from "./pages/ReportConsignment";
 import ReportEvent from "./pages/ReportEvent";
 import ReportConsortium from "./pages/ReportConsortium";
-import ReportSociedade from "./pages/ReportSociedade";
-import ReportParcerias from "./pages/ReportParcerias";
 import ReportInstagram from "./pages/ReportInstagram";
 import ReportDeferredSales from "./pages/ReportDeferredSales";
 import ReportMyPerformance from "./pages/ReportMyPerformance";
-import SocietyReport from "./pages/SocietyReport";
 import ReportHubAcertos from "./pages/ReportHubAcertos";
 import HubVendas from "./pages/HubVendas";
 
@@ -155,9 +149,6 @@ const AppRoutes = () => (
     <Route path="/partner-reports" element={<ProtectedRoute><PartnerReports /></ProtectedRoute>} />
     <Route path="/reports/partner-points" element={<ProtectedRoute><PartnerPointReports /></ProtectedRoute>} />
     <Route path="/financial" element={<ProtectedRoute><Financial /></ProtectedRoute>} />
-    <Route path="/partnerships" element={<ProtectedRoute><Partnerships /></ProtectedRoute>} />
-    <Route path="/partnerships/sociedade" element={<ProtectedRoute><PartnershipsSociedade /></ProtectedRoute>} />
-    <Route path="/partnerships/parceria" element={<ProtectedRoute><PartnershipsParceria /></ProtectedRoute>} />
     <Route path="/stock-requests" element={<ProtectedRoute><StockRequests /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
@@ -189,12 +180,9 @@ const AppRoutes = () => (
     <Route path="/reports/consignment" element={<ProtectedRoute><ReportConsignment /></ProtectedRoute>} />
     <Route path="/reports/events" element={<ProtectedRoute><ReportEvent /></ProtectedRoute>} />
     <Route path="/reports/consortium" element={<ProtectedRoute><ReportConsortium /></ProtectedRoute>} />
-    <Route path="/reports/sociedade" element={<ProtectedRoute><ReportSociedade /></ProtectedRoute>} />
-    <Route path="/reports/parcerias" element={<ProtectedRoute><ReportParcerias /></ProtectedRoute>} />
     <Route path="/reports/instagram" element={<ProtectedRoute><ReportInstagram /></ProtectedRoute>} />
     <Route path="/reports/deferred" element={<ProtectedRoute><ReportDeferredSales /></ProtectedRoute>} />
      <Route path="/reports/performance" element={<ProtectedRoute><ReportMyPerformance /></ProtectedRoute>} />
-     <Route path="/reports/sociedades" element={<ProtectedRoute><SocietyReport /></ProtectedRoute>} />
      <Route path="/reports/hub-acertos" element={<ProtectedRoute><ReportHubAcertos /></ProtectedRoute>} />
     <Route path="/hub-vendas" element={<ProtectedRoute><HubVendas /></ProtectedRoute>} />
     <Route path="/reports/catalog" element={<ProtectedRoute><ReportCatalog /></ProtectedRoute>} />
