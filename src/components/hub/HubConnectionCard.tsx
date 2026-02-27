@@ -107,10 +107,6 @@ export function HubConnectionCard({ connection, isOwner, onManageProducts, onVie
                 <Package className="h-3 w-3 mr-1" />
                 Produtos
               </Button>
-              <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onViewReport(connection.id)}>
-                <ChevronRight className="h-3 w-3 mr-1" />
-                Acerto
-              </Button>
               {isOwner && (
                 <>
                   <Button
