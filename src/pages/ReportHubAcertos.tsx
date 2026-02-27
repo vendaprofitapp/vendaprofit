@@ -77,11 +77,11 @@ export default function ReportHubAcertos() {
           commission_pct, gross_profit, commission_amount, fee_amount,
           shipping_amount, owner_amount, seller_amount, created_at,
           product_id, product_name,
-          sales!inner(created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name),
+          sales(created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name),
           products(name, cost_price)
         `)
-        .gte("sales.created_at", `${dateFrom}T00:00:00`)
-        .lte("sales.created_at", `${dateTo}T23:59:59`)
+        .gte("created_at", `${dateFrom}T00:00:00`)
+        .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
