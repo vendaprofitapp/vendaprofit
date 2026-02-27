@@ -161,25 +161,26 @@ export default function CatalogOrders() {
       // Re-fetch items fresh from DB to guarantee HUB columns are loaded
       const { data: freshItems, error: itemsErr } = await supabase
         .from("saved_cart_items")
-        .select("id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source, hub_connection_id, hub_owner_id, hub_commission_pct, products(cost_price)")
+        .select("id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source, hub_connection_id, hub_owner_id, hub_commission_pct")
         .eq("cart_id", order.id);
 
       if (itemsErr) throw itemsErr;
 
       const orderItems: any[] = freshItems || [];
 
-      // PASSO 5: Debug log
-      console.log("[HUB DEBUG] Itens do pedido:", orderItems.map(i => ({
-        name: i.product_name,
-        hub_connection_id: i.hub_connection_id,
-        hub_owner_id: i.hub_owner_id,
-        hub_commission_pct: i.hub_commission_pct,
-      })));
-
       // Check if any item has hub_connection_id (HUB product)
       const hasHubItems = orderItems.some((i: any) => i.hub_connection_id != null && i.hub_connection_id !== "");
 
       if (hasHubItems) {
+        // Fetch cost_price from products table separately (no FK on saved_cart_items)
+        const productIds = orderItems.map((i: any) => i.product_id).filter(Boolean);
+        const { data: productCosts } = await supabase
+          .from("products")
+          .select("id, cost_price")
+          .in("id", productIds);
+        const costMap: Record<string, number> = {};
+        (productCosts || []).forEach((p: any) => { costMap[p.id] = p.cost_price ?? 0; });
+
         // Split into own items and hub items
         const hubItems: HubOrderItem[] = orderItems
           .filter((i: any) => i.hub_connection_id)
@@ -190,7 +191,7 @@ export default function CatalogOrders() {
             variant_size: i.selected_size || null,
             quantity: i.quantity,
             unit_price: i.unit_price,
-            cost_price: (i.products as any)?.cost_price ?? 0,
+            cost_price: costMap[i.product_id] ?? 0,
             hub_connection_id: i.hub_connection_id,
             hub_commission_pct: i.hub_commission_pct || 0,
             hub_owner_id: i.hub_owner_id,
@@ -206,7 +207,7 @@ export default function CatalogOrders() {
             variant_size: i.selected_size || null,
             quantity: i.quantity,
             unit_price: i.unit_price,
-            cost_price: (i.products as any)?.cost_price ?? 0,
+            cost_price: costMap[i.product_id] ?? 0,
             hub_connection_id: null,
             hub_commission_pct: 0,
             hub_owner_id: user.id,
