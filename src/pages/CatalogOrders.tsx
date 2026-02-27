@@ -161,7 +161,7 @@ export default function CatalogOrders() {
       // Re-fetch items fresh from DB to guarantee HUB columns are loaded
       const { data: freshItems, error: itemsErr } = await supabase
         .from("saved_cart_items")
-        .select("id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source, hub_connection_id, hub_owner_id, hub_commission_pct")
+        .select("id, product_id, product_name, variant_color, selected_size, quantity, unit_price, source, hub_connection_id, hub_owner_id, hub_commission_pct, products(cost_price)")
         .eq("cart_id", order.id);
 
       if (itemsErr) throw itemsErr;
@@ -190,7 +190,7 @@ export default function CatalogOrders() {
             variant_size: i.selected_size || null,
             quantity: i.quantity,
             unit_price: i.unit_price,
-            cost_price: 0,
+            cost_price: (i.products as any)?.cost_price ?? 0,
             hub_connection_id: i.hub_connection_id,
             hub_commission_pct: i.hub_commission_pct || 0,
             hub_owner_id: i.hub_owner_id,
@@ -206,7 +206,7 @@ export default function CatalogOrders() {
             variant_size: i.selected_size || null,
             quantity: i.quantity,
             unit_price: i.unit_price,
-            cost_price: 0,
+            cost_price: (i.products as any)?.cost_price ?? 0,
             hub_connection_id: null,
             hub_commission_pct: 0,
             hub_owner_id: user.id,
