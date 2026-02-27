@@ -4,10 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Share2, TrendingUp, Banknote, Store, ChevronDown, ChevronUp } from "lucide-react";
+import { Share2, TrendingUp, Banknote, Store, ChevronDown, ChevronUp, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import type { DateRange } from "react-day-picker";
 
 interface Props {
   open: boolean;
@@ -144,11 +150,22 @@ function SaleDetailRow({ split, isOwner, ownerName, sellerName }: {
   );
 }
 
+type PeriodType = "week" | "month" | "custom";
+
+function getDefaultRange(period: PeriodType): { from: Date; to: Date } {
+  const now = new Date();
+  if (period === "week") return { from: startOfWeek(now, { locale: ptBR }), to: endOfWeek(now, { locale: ptBR }) };
+  if (period === "month") return { from: startOfMonth(now), to: endOfMonth(now) };
+  return { from: startOfMonth(now), to: endOfMonth(now) };
+}
+
 export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
   const { user } = useAuth();
   const [splits, setSplits] = useState<Split[]>([]);
   const [connection, setConnection] = useState<Connection | null>(null);
-  const [period, setPeriod] = useState<"7" | "30" | "all">("30");
+  const [period, setPeriod] = useState<PeriodType>("month");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -192,11 +209,13 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
 
   const isOwner = user?.id === connection?.owner_id;
 
-  const now = Date.now();
+  const activeRange = period === "custom" && customRange?.from
+    ? { from: customRange.from, to: customRange.to ?? customRange.from }
+    : getDefaultRange(period);
+
   const filtered = splits.filter((s) => {
-    if (period === "all") return true;
-    const days = period === "30" ? 30 : 7;
-    return now - new Date(s.created_at).getTime() <= days * 86_400_000;
+    const d = new Date(s.created_at);
+    return d >= activeRange.from && d <= new Date(activeRange.to.getTime() + 86_400_000 - 1);
   });
 
   const totals = filtered.reduce(
@@ -230,17 +249,40 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
           <DialogTitle>Acerto HUB — {partnerDisplayName}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex gap-2">
-          {(["7", "30", "all"] as const).map((p) => (
+        <div className="flex flex-wrap gap-2 items-center">
+          {(["week", "month", "custom"] as const).map((p) => (
             <Button
               key={p}
               size="sm"
               variant={period === p ? "default" : "outline"}
-              onClick={() => setPeriod(p)}
+              onClick={() => { setPeriod(p); if (p !== "custom") setCalendarOpen(false); }}
             >
-              {p === "7" ? "7 dias" : p === "30" ? "30 dias" : "Todos"}
+              {p === "week" ? "Essa semana" : p === "month" ? "Esse mês" : "Personalizado"}
             </Button>
           ))}
+          {period === "custom" && (
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {customRange?.from
+                    ? customRange.to
+                      ? `${format(customRange.from, "dd/MM/yy")} – ${format(customRange.to, "dd/MM/yy")}`
+                      : format(customRange.from, "dd/MM/yy")
+                    : "Selecionar período"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={customRange}
+                  onSelect={(range) => { setCustomRange(range); if (range?.from && range?.to) setCalendarOpen(false); }}
+                  locale={ptBR}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
