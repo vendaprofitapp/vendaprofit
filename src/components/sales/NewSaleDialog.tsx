@@ -1856,6 +1856,8 @@ export default function NewSaleDialog({
               commission_amount: commissionAmount,
               owner_amount: costTotal + commissionAmount,
               seller_amount: sellerAmount,
+              product_id: (item.product as any).id || null,
+              product_name: item.product.name || null,
             };
           });
           await supabase.from("hub_sale_splits").insert(hubSplitsToInsert);
@@ -2003,6 +2005,8 @@ export default function NewSaleDialog({
               commission_amount: commissionAmount,
               owner_amount: costTotal + commissionAmount,
               seller_amount: sellerAmount,
+              product_id: item.product_id || null,
+              product_name: item.product_name || null,
             };
           });
           await supabase.from("hub_sale_splits").insert(hubSplits);

@@ -1742,6 +1742,8 @@ export type Database = {
           id: string
           owner_amount: number
           owner_id: string
+          product_id: string | null
+          product_name: string | null
           sale_id: string
           seller_amount: number
           seller_id: string
@@ -1757,6 +1759,8 @@ export type Database = {
           id?: string
           owner_amount?: number
           owner_id: string
+          product_id?: string | null
+          product_name?: string | null
           sale_id: string
           seller_amount?: number
           seller_id: string
@@ -1772,6 +1776,8 @@ export type Database = {
           id?: string
           owner_amount?: number
           owner_id?: string
+          product_id?: string | null
+          product_name?: string | null
           sale_id?: string
           seller_amount?: number
           seller_id?: string
@@ -1783,6 +1789,13 @@ export type Database = {
             columns: ["connection_id"]
             isOneToOne: false
             referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_sale_splits_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]

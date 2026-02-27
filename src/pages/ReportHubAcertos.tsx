@@ -56,7 +56,6 @@ interface HubSplitRow {
     payment_method: string;
     customer_name: string | null;
   } | null;
-  products: { name: string; cost_price: number | null } | null;
   owner_profile: { full_name: string | null } | null;
   seller_profile: { full_name: string | null } | null;
 }
@@ -77,8 +76,7 @@ export default function ReportHubAcertos() {
           commission_pct, gross_profit, commission_amount, fee_amount,
           shipping_amount, owner_amount, seller_amount, created_at,
           product_id, product_name,
-          sales(created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name),
-          products(name, cost_price)
+          sales(created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name)
         `)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
@@ -151,15 +149,14 @@ export default function ReportHubAcertos() {
     ];
     const rows = splits.map(r => {
       const sale = r.sales;
-      const costPrice = r.gross_profit + (r.products?.cost_price ?? 0);
       return [
         sale ? format(parseISO(sale.created_at), "dd/MM/yyyy") : "—",
         sourceLabel(sale?.sale_source ?? null),
-        r.products?.name || r.product_name || "—",
+        r.product_name || "—",
         r.owner_profile?.full_name || "—",
         r.seller_profile?.full_name || "—",
         sale?.total ?? 0,
-        r.products?.cost_price ?? 0,
+        0,
         r.gross_profit,
         r.commission_pct,
         r.commission_amount,
@@ -292,7 +289,7 @@ export default function ReportHubAcertos() {
                       const sale = r.sales;
                       const isIAmOwner = r.owner_id === user?.id;
                       const saleDate = sale ? format(parseISO(sale.created_at), "dd/MM/yy") : "—";
-                      const costPrice = r.products?.cost_price ?? 0;
+                      const costPrice = 0;
                       const salePrice = sale?.total ?? 0;
                       const operationalCosts = r.fee_amount + r.shipping_amount;
 
@@ -305,7 +302,7 @@ export default function ReportHubAcertos() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm max-w-[160px] truncate">
-                            {r.products?.name || r.product_name || "—"}
+                            {r.product_name || "—"}
                           </TableCell>
                           <TableCell>
                             <span className={`text-sm ${isIAmOwner ? "font-semibold text-primary" : "text-muted-foreground"}`}>
