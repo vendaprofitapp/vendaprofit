@@ -110,6 +110,8 @@ export function HubFinalizeOrderDialog({ open, order, onClose, onFinalized }: Pr
             commission_amount: commissionAmount,
             owner_amount: item.cost_price * item.quantity + commissionAmount,
             seller_amount: sellerAmount,
+            product_id: item.product_id || null,
+            product_name: item.product_name || null,
           };
         });
         await supabase.from("hub_sale_splits").insert(hubSplits);
