@@ -31,139 +31,106 @@ function sourceLabel(s: string | null) {
   return SOURCE_LABELS[s ?? ""] || s || "—";
 }
 
-interface HubSplitRow {
-  id: string;
-  sale_id: string;
-  connection_id: string;
-  owner_id: string;
-  seller_id: string;
-  commission_pct: number;
-  gross_profit: number;
-  commission_amount: number;
-  fee_amount: number;
-  shipping_amount: number;
-  owner_amount: number;
-  seller_amount: number;
-  created_at: string;
-  product_id: string | null;
-  product_name: string | null;
-  sales: {
-    created_at: string;
-    sale_source: string | null;
-    total: number;
-    subtotal: number;
-    shipping_cost: number | null;
-    payment_method: string;
-    customer_name: string | null;
-  } | null;
-  owner_profile: { full_name: string | null } | null;
-  seller_profile: { full_name: string | null } | null;
-}
-
 export default function ReportHubAcertos() {
   const { user } = useAuth();
   const [dateFrom, setDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(() => format(endOfMonth(new Date()), "yyyy-MM-dd"));
 
-  const { data: rawSplits = [], isLoading } = useQuery({
-    queryKey: ["report-hub-acertos", user?.id, dateFrom, dateTo],
+  const { data: splits = [], isLoading, error: queryError } = useQuery({
+    queryKey: ["report-hub-acertos-v2", user?.id, dateFrom, dateTo],
     queryFn: async () => {
-      // Query hub_sale_splits where user is owner OR seller, joined with sales, products, profiles
-      const { data, error } = await supabase
+      if (!user?.id) return [];
+
+      // STEP 1: Fetch splits directly with simple OR filter — no complex joins
+      const { data: rawSplits, error: splitsError } = await supabase
         .from("hub_sale_splits")
-        .select(`
-          id, sale_id, connection_id, owner_id, seller_id,
-          commission_pct, gross_profit, commission_amount, fee_amount,
-          shipping_amount, owner_amount, seller_amount, created_at,
-          product_id, product_name,
-          sales(created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name)
-        `)
+        .select("*")
+        .or(`owner_id.eq.${user.id},seller_id.eq.${user.id}`)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      if (!data) return [];
+      console.log("Dados puros dos splits:", rawSplits, splitsError);
 
-      // Fetch profiles for all owner/seller ids
-      const userIds = [...new Set(data.flatMap((r: any) => [r.owner_id, r.seller_id].filter(Boolean)))];
+      if (splitsError) throw splitsError;
+      if (!rawSplits || rawSplits.length === 0) return [];
+
+      // STEP 2: Fetch related sales separately
+      const saleIds = [...new Set(rawSplits.map((r: any) => r.sale_id).filter(Boolean))];
+      let salesMap = new Map<string, any>();
+      if (saleIds.length > 0) {
+        const { data: salesData, error: salesError } = await supabase
+          .from("sales")
+          .select("id, created_at, sale_source, total, subtotal, shipping_cost, payment_method, customer_name")
+          .in("id", saleIds);
+        console.log("Sales data:", salesData, salesError);
+        (salesData ?? []).forEach((s: any) => salesMap.set(s.id, s));
+      }
+
+      // STEP 3: Fetch profiles separately
+      const userIds = [...new Set(rawSplits.flatMap((r: any) => [r.owner_id, r.seller_id].filter(Boolean)))];
       let profileMap = new Map<string, string>();
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
+        console.log("Profiles data:", profiles, profilesError);
         (profiles ?? []).forEach((p: any) => profileMap.set(p.id, p.full_name || "—"));
       }
 
-      return (data as any[]).map(r => ({
+      // STEP 4: Combine
+      return rawSplits.map((r: any) => ({
         ...r,
-        owner_profile: { full_name: profileMap.get(r.owner_id) ?? "—" },
-        seller_profile: { full_name: profileMap.get(r.seller_id) ?? "—" },
-      })) as HubSplitRow[];
+        sale: salesMap.get(r.sale_id) ?? null,
+        owner_name: profileMap.get(r.owner_id) ?? "—",
+        seller_name: profileMap.get(r.seller_id) ?? "—",
+      }));
     },
     enabled: !!user,
   });
 
-  // Filter to only show splits where current user is owner or seller
-  const splits = useMemo(
-    () => rawSplits.filter(r => r.owner_id === user?.id || r.seller_id === user?.id),
-    [rawSplits, user?.id]
-  );
-
   const summary = useMemo(() => {
-    let totalGross = 0, totalCommission = 0, totalFees = 0, totalOwner = 0, totalSeller = 0;
-    splits.forEach(r => {
-      totalGross += r.gross_profit;
-      totalCommission += r.commission_amount;
-      totalFees += r.fee_amount + r.shipping_amount;
-      totalOwner += r.owner_amount;
-      totalSeller += r.seller_amount;
+    let totalGross = 0, totalCommission = 0, totalOwner = 0, totalSeller = 0;
+    splits.forEach((r: any) => {
+      totalGross += r.gross_profit ?? 0;
+      totalCommission += r.commission_amount ?? 0;
+      totalOwner += r.owner_amount ?? 0;
+      totalSeller += r.seller_amount ?? 0;
     });
-    const isOwner = splits.length > 0 && splits[0].owner_id === user?.id;
-    return { totalGross, totalCommission, totalFees, totalOwner, totalSeller, count: splits.length };
-  }, [splits, user?.id]);
+    return { totalGross, totalCommission, totalOwner, totalSeller, count: splits.length };
+  }, [splits]);
 
-  // Total a pagar a parceiros (what logged user owes or is owed)
   const toPayPartners = useMemo(() => {
-    return splits.reduce((acc, r) => {
-      if (r.seller_id === user?.id) return acc; // seller: nothing to pay out
-      return acc + r.seller_amount; // owner: owes seller_amount to seller
+    return splits.reduce((acc: number, r: any) => {
+      if (r.seller_id === user?.id) return acc;
+      return acc + (r.seller_amount ?? 0);
     }, 0);
   }, [splits, user?.id]);
 
   const myHubProfit = useMemo(() => {
-    return splits.reduce((acc, r) => {
-      if (r.seller_id === user?.id) return acc + r.seller_amount;
-      return acc + r.owner_amount;
+    return splits.reduce((acc: number, r: any) => {
+      if (r.seller_id === user?.id) return acc + (r.seller_amount ?? 0);
+      return acc + (r.owner_amount ?? 0);
     }, 0);
   }, [splits, user?.id]);
 
   function handleExport() {
     if (splits.length === 0) { toast.error("Nenhum dado para exportar"); return; }
-    const headers = [
-      "Data", "Origem", "Produto", "Dono", "Vendedora",
-      "Preço de Venda", "Custo", "Lucro Bruto",
-      "Comissão Dono (%)", "Comissão Dono (R$)",
-      "Taxas + Frete", "Lucro Líq. Vendedora"
-    ];
-    const rows = splits.map(r => {
-      const sale = r.sales;
-      return [
-        sale ? format(parseISO(sale.created_at), "dd/MM/yyyy") : "—",
-        sourceLabel(sale?.sale_source ?? null),
-        r.product_name || "—",
-        r.owner_profile?.full_name || "—",
-        r.seller_profile?.full_name || "—",
-        sale?.total ?? 0,
-        0,
-        r.gross_profit,
-        r.commission_pct,
-        r.commission_amount,
-        r.fee_amount + r.shipping_amount,
-        r.seller_amount,
-      ];
-    });
+    const headers = ["Data", "Origem", "Produto", "Dono", "Vendedora", "Venda", "Lucro Bruto", "Comissão Dono (%)", "Comissão Dono (R$)", "Custos Op.", "Líq. Vendedora"];
+    const rows = splits.map((r: any) => [
+      r.sale ? format(parseISO(r.sale.created_at), "dd/MM/yyyy") : "—",
+      sourceLabel(r.sale?.sale_source ?? null),
+      r.product_name || "—",
+      r.owner_name,
+      r.seller_name,
+      r.sale?.total ?? 0,
+      r.gross_profit ?? 0,
+      r.commission_pct ?? 0,
+      r.commission_amount ?? 0,
+      (r.fee_amount ?? 0) + (r.shipping_amount ?? 0),
+      r.seller_amount ?? 0,
+    ]);
     downloadXlsx([headers, ...rows], "Acertos HUB", `acertos-hub-${dateFrom}-a-${dateTo}.xlsx`);
     toast.success("Exportado!");
   }
@@ -193,25 +160,24 @@ export default function ReportHubAcertos() {
             <div className="grid grid-cols-2 gap-3 max-w-sm">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">De</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={e => setDateFrom(e.target.value)}
-                  className="w-full mt-1 px-2 py-1.5 border rounded text-sm bg-background"
-                />
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                  className="w-full mt-1 px-2 py-1.5 border rounded text-sm bg-background" />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Até</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={e => setDateTo(e.target.value)}
-                  className="w-full mt-1 px-2 py-1.5 border rounded text-sm bg-background"
-                />
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                  className="w-full mt-1 px-2 py-1.5 border rounded text-sm bg-background" />
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Error display */}
+        {queryError && (
+          <div className="rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive text-sm font-mono">
+            <strong>Erro na consulta:</strong> {(queryError as any)?.message || JSON.stringify(queryError)}
+          </div>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -265,6 +231,8 @@ export default function ReportHubAcertos() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="py-12 text-center text-muted-foreground text-sm">Carregando...</div>
+            ) : queryError ? (
+              <div className="py-12 text-center text-destructive text-sm">Erro ao carregar dados. Veja acima.</div>
             ) : splits.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground text-sm">Nenhuma venda HUB no período.</div>
             ) : (
@@ -277,7 +245,6 @@ export default function ReportHubAcertos() {
                       <TableHead>Dono</TableHead>
                       <TableHead>Vendedora</TableHead>
                       <TableHead className="text-right">Venda</TableHead>
-                      <TableHead className="text-right">Custo</TableHead>
                       <TableHead className="text-right">Lucro Bruto</TableHead>
                       <TableHead className="text-right">Comissão Dono</TableHead>
                       <TableHead className="text-right">Custos Op.</TableHead>
@@ -285,46 +252,37 @@ export default function ReportHubAcertos() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {splits.map(r => {
-                      const sale = r.sales;
+                    {splits.map((r: any) => {
                       const isIAmOwner = r.owner_id === user?.id;
-                      const saleDate = sale ? format(parseISO(sale.created_at), "dd/MM/yy") : "—";
-                      const costPrice = 0;
-                      const salePrice = sale?.total ?? 0;
-                      const operationalCosts = r.fee_amount + r.shipping_amount;
-
+                      const saleDate = r.sale ? format(parseISO(r.sale.created_at), "dd/MM/yy") : "—";
+                      const operationalCosts = (r.fee_amount ?? 0) + (r.shipping_amount ?? 0);
                       return (
                         <TableRow key={r.id} className={isIAmOwner ? "bg-primary/5" : ""}>
                           <TableCell>
                             <div className="font-medium text-sm">{saleDate}</div>
                             <Badge variant="secondary" className="text-xs mt-0.5">
-                              {sourceLabel(sale?.sale_source ?? null)}
+                              {sourceLabel(r.sale?.sale_source ?? null)}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm max-w-[160px] truncate">
-                            {r.product_name || "—"}
-                          </TableCell>
+                          <TableCell className="text-sm max-w-[160px] truncate">{r.product_name || "—"}</TableCell>
                           <TableCell>
                             <span className={`text-sm ${isIAmOwner ? "font-semibold text-primary" : "text-muted-foreground"}`}>
-                              {r.owner_profile?.full_name || "—"}
+                              {r.owner_name}
                             </span>
                           </TableCell>
                           <TableCell>
                             <span className={`text-sm ${!isIAmOwner ? "font-semibold text-primary" : "text-muted-foreground"}`}>
-                              {r.seller_profile?.full_name || "—"}
+                              {r.seller_name}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right text-sm font-medium">{fmt(salePrice)}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{fmt(costPrice)}</TableCell>
-                          <TableCell className="text-right text-sm font-semibold">{fmt(r.gross_profit)}</TableCell>
+                          <TableCell className="text-right text-sm font-medium">{fmt(r.sale?.total ?? 0)}</TableCell>
+                          <TableCell className="text-right text-sm font-semibold">{fmt(r.gross_profit ?? 0)}</TableCell>
                           <TableCell className="text-right text-sm text-destructive">
-                            {fmt(r.commission_amount)}
-                            <span className="text-xs text-muted-foreground ml-1">({r.commission_pct}%)</span>
+                            {fmt(r.commission_amount ?? 0)}
+                            <span className="text-xs text-muted-foreground ml-1">({r.commission_pct ?? 0}%)</span>
                           </TableCell>
                           <TableCell className="text-right text-sm text-muted-foreground">{fmt(operationalCosts)}</TableCell>
-                          <TableCell className="text-right text-sm font-bold text-primary">
-                            {fmt(r.seller_amount)}
-                          </TableCell>
+                          <TableCell className="text-right text-sm font-bold text-primary">{fmt(r.seller_amount ?? 0)}</TableCell>
                         </TableRow>
                       );
                     })}
