@@ -211,11 +211,18 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
 
   const activeRange = period === "custom" && customRange?.from
     ? { from: customRange.from, to: customRange.to ?? customRange.from }
+    : period === "custom"
+    ? { from: new Date(2000, 0, 1), to: new Date(2099, 11, 31) } // show all while no range selected
     : getDefaultRange(period);
 
+  const endOfDay = new Date(activeRange.to);
+  endOfDay.setHours(23, 59, 59, 999);
+
   const filtered = splits.filter((s) => {
-    const d = new Date(s.created_at);
-    return d >= activeRange.from && d <= new Date(activeRange.to.getTime() + 86_400_000 - 1);
+    // Use sale date if available, otherwise fall back to split created_at
+    const rawDate = (s.sales as any)?.created_at || s.created_at;
+    const d = new Date(rawDate);
+    return d >= activeRange.from && d <= endOfDay;
   });
 
   const totals = filtered.reduce(
