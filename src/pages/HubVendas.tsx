@@ -185,23 +185,23 @@ export default function HubVendas() {
       <Tabs defaultValue="owner">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="owner">
-            Meu Estoque ({myAsOwner.length})
+            HUB's Cedendo Meu Estoque ({myAsOwner.length})
+          </TabsTrigger>
+          <TabsTrigger value="solicitacoes" className="relative">
+            <Bell className="h-3.5 w-3.5 mr-1" />
+            Solicitações Meu Estoque
           </TabsTrigger>
           <TabsTrigger value="seller">
-            Vendo para Outros ({myAsSeller.length})
+            HUB's Vendendo Outro Estoque ({myAsSeller.length})
           </TabsTrigger>
           <TabsTrigger value="pedidos" className="relative">
             <ShoppingBag className="h-3.5 w-3.5 mr-1" />
-            Pedidos HUB
+            Solicitações Outro Estoque
             {pendingOrdersCount > 0 && (
               <span className="ml-1.5 bg-destructive text-destructive-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold">
                 {pendingOrdersCount > 9 ? "9+" : pendingOrdersCount}
               </span>
             )}
-          </TabsTrigger>
-          <TabsTrigger value="solicitacoes" className="relative">
-            <Bell className="h-3.5 w-3.5 mr-1" />
-            Solicitações (Dono)
           </TabsTrigger>
         </TabsList>
 
