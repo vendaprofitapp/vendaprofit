@@ -219,9 +219,7 @@ export function HubSettlementDialog({ open, connectionId, onClose }: Props) {
   endOfDay.setHours(23, 59, 59, 999);
 
   const filtered = splits.filter((s) => {
-    // Use sale date if available, otherwise fall back to split created_at
-    const rawDate = (s.sales as any)?.created_at || s.created_at;
-    const d = new Date(rawDate);
+    const d = new Date(s.created_at);
     return d >= activeRange.from && d <= endOfDay;
   });
 
