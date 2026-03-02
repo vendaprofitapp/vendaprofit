@@ -792,50 +792,6 @@ export default function StoreCatalog() {
     enabled: !!store?.owner_id,
   });
 
-  // Fetch store partnerships (groups linked to store)
-  const { data: partnerships } = useQuery({
-    queryKey: ["store-partnerships", store?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("store_partnerships")
-        .select("group_id")
-        .eq("store_id", store!.id);
-      
-      if (error) throw error;
-      return data.map(p => p.group_id);
-    },
-    enabled: !!store?.id,
-  });
-
-  // Fetch 1-1 direct partnership groups for the store owner
-  const { data: directPartnershipGroupIds = [] } = useQuery({
-    queryKey: ["store-direct-partnerships", store?.owner_id],
-    queryFn: async () => {
-      // Get groups where the store owner is a member and the group is_direct = true
-      const { data: memberGroups, error } = await supabase
-        .from("group_members")
-        .select("group_id, groups!inner(id, is_direct)")
-        .eq("user_id", store!.owner_id);
-      
-      if (error) throw error;
-      
-      const directGroupIds = memberGroups
-        ?.filter((gm: any) => gm.groups?.is_direct === true)
-        .map((gm: any) => gm.group_id) || [];
-      
-      return directGroupIds;
-    },
-    enabled: !!store?.owner_id,
-  });
-
-  // Combine all partnership group IDs
-  const allPartnershipGroupIds = useMemo(() => {
-    const combined = new Set<string>();
-    partnerships?.forEach(id => combined.add(id));
-    directPartnershipGroupIds?.forEach(id => combined.add(id));
-    return Array.from(combined);
-  }, [partnerships, directPartnershipGroupIds]);
-
   // Fetch HUB connections where the store owner is the seller
   // Returns a map: productId → { hub_connection_id, hub_owner_id, hub_commission_pct }
   const { data: hubProductMetaMap = new Map<string, { hub_connection_id: string; hub_owner_id: string; hub_commission_pct: number }>() } = useQuery({
@@ -882,13 +838,15 @@ export default function StoreCatalog() {
 
   // Fetch products with their variants (now includes video_url)
   const { data: catalogItems = [], isLoading: productsLoading } = useQuery({
-    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, allPartnershipGroupIds, hubSharedProductIds],
+    queryKey: ["catalog-products-variants", store?.id, store?.owner_id, store?.show_own_products, hubSharedProductIds],
     queryFn: async () => {
+      // Priority: 1) Próprios, 2) HUB, 3) B2B clones
       const ownProductIds = new Set<string>();
       const ownProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
-      const partnerProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
+      const hubProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
+      const b2bProducts: (Product & { isPartner: boolean; isB2B?: boolean })[] = [];
 
-      // Get own products if enabled
+      // 1) Get own products (stock > 0)
       if (store?.show_own_products) {
         const { data: products, error } = await supabase
           .from("products")
@@ -903,9 +861,31 @@ export default function StoreCatalog() {
             ownProducts.push({ ...p, isPartner: false });
           });
         }
+      }
 
-        // Fetch B2B clone products (products with b2b_source_product_id)
-        // These are shown when the original local product has zero stock
+      // 2) Get HUB products (products shared with this store owner as a seller)
+      //    Included even with stock_quantity=0 at root (variants carry the stock)
+      if (hubSharedProductIds.length > 0) {
+        const BATCH = 100;
+        for (let i = 0; i < hubSharedProductIds.length; i += BATCH) {
+          const { data: batchProducts, error: hubErr } = await supabase
+            .from("products")
+            .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
+            .in("id", hubSharedProductIds.slice(i, i + BATCH))
+            .eq("is_active", true);
+          if (!hubErr && batchProducts) {
+            batchProducts.forEach(p => {
+              if (!ownProductIds.has(p.id)) {
+                hubProducts.push({ ...p, isPartner: true });
+              }
+            });
+          }
+        }
+      }
+
+      // 3) Get B2B clone products — only shown when original local product has zero stock
+      //    AND HUB doesn't already cover it
+      if (store?.show_own_products) {
         const { data: b2bClones, error: b2bError } = await supabase
           .from("products")
           .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release, b2b_product_url, supplier_id, b2b_source_product_id")
@@ -914,7 +894,6 @@ export default function StoreCatalog() {
           .not("b2b_source_product_id", "is", null);
 
         if (!b2bError && b2bClones) {
-          // Fetch visibility flags for source products
           const sourceIds = b2bClones.map(p => (p as any).b2b_source_product_id).filter(Boolean);
           const hiddenSourceIds = new Set<string>();
           if (sourceIds.length > 0) {
@@ -926,74 +905,31 @@ export default function StoreCatalog() {
             (sourceProducts || []).forEach(sp => hiddenSourceIds.add(sp.id));
           }
 
-          // Only show B2B clone if the original product has zero stock AND is visible in store
+          const hubProductIds = new Set(hubProducts.map(p => p.id));
           b2bClones.forEach(p => {
             const sourceId = (p as any).b2b_source_product_id;
             const originalInStock = ownProductIds.has(sourceId);
-            if (!originalInStock && !ownProductIds.has(p.id) && !hiddenSourceIds.has(sourceId)) {
-              ownProductIds.add(p.id);
-              ownProducts.push({ ...p, isPartner: false, isB2B: true });
+            // Skip if own product already in stock, already listed, hidden, or covered by HUB
+            if (!originalInStock && !ownProductIds.has(p.id) && !hubProductIds.has(p.id) && !hiddenSourceIds.has(sourceId)) {
+              b2bProducts.push({ ...p, isPartner: false, isB2B: true });
             }
           });
         }
       }
 
-      // Get partnership products from all groups (including 1-1 direct partnerships)
-      if (allPartnershipGroupIds && allPartnershipGroupIds.length > 0) {
-        const { data: partnershipProducts, error } = await supabase
-          .from("product_partnerships")
-          .select(`
-            product_id,
-            products!inner (
-              id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, is_active, model, color_label, custom_detail, is_new_release
-            )
-          `)
-          .in("group_id", allPartnershipGroupIds);
-        
-        if (!error && partnershipProducts) {
-          partnershipProducts.forEach((pp: any) => {
-            const p = pp.products;
-            // Partner products: not owned by the store owner
-            if (p && p.is_active && p.stock_quantity > 0 && !ownProductIds.has(p.id) && p.owner_id !== store?.owner_id) {
-              partnerProducts.push({ ...p, isPartner: true });
-            }
-          });
-        }
-      }
-
-      // Get HUB products (products shared with this store owner as a seller)
-      // These are fetched separately and merged into partnerProducts
-      if (hubSharedProductIds.length > 0) {
-        const BATCH = 100;
-        for (let i = 0; i < hubSharedProductIds.length; i += BATCH) {
-          const { data: batchProducts, error: hubErr } = await supabase
-            .from("products")
-            .select("id, name, description, price, category, category_2, category_3, main_category, subcategory, size, color, image_url, image_url_2, image_url_3, video_url, stock_quantity, owner_id, model, color_label, custom_detail, is_new_release")
-            .in("id", hubSharedProductIds.slice(i, i + BATCH))
-            .eq("is_active", true);
-          if (!hubErr && batchProducts) {
-            batchProducts.forEach(p => {
-              // Avoid duplicates with own products; include even if stock_quantity is 0
-              // (variants may carry stock individually)
-              if (!ownProductIds.has(p.id)) {
-                partnerProducts.push({ ...p, isPartner: true });
-              }
-            });
-          }
-        }
-      }
-
-      const allProducts = [...ownProducts, ...partnerProducts];
+      const allProducts = [...ownProducts, ...hubProducts, ...b2bProducts];
       if (allProducts.length === 0) return [];
 
-      // Fetch variants for all products (including marketing fields and video)
+      // Fetch variants for all products
       const productIds = allProducts.map(p => p.id);
-      const b2bProductIds = new Set(allProducts.filter(p => (p as any).isB2B).map(p => p.id));
-      const nonB2bProductIds = productIds.filter(id => !b2bProductIds.has(id));
+      const b2bProductIds = new Set(b2bProducts.map(p => p.id));
       
-      // Separate own product IDs from partner/HUB product IDs for variant fetching
-      const ownNonB2bIds = nonB2bProductIds.filter(id => ownProductIds.has(id));
-      const partnerNonB2bIds = nonB2bProductIds.filter(id => !ownProductIds.has(id));
+      // Separate IDs for variant fetching strategy:
+      // - own: stock > 0 filter (already filtered at product level)
+      // - HUB: all variants with stock > 0 (variants carry the stock)
+      // - B2B: all variants regardless of stock (sob encomenda)
+      const ownNonB2bIds = ownProducts.map(p => p.id);
+      const hubIds = hubProducts.map(p => p.id);
 
       // Fetch variants: stock > 0 for own products, ALL variants for partner/HUB (stock may live in variants)
       const variantQueries: PromiseLike<{ data: any[] | null }>[] = [];
@@ -1006,12 +942,12 @@ export default function StoreCatalog() {
             .gt("stock_quantity", 0)
         );
       }
-      if (partnerNonB2bIds.length > 0) {
+      if (hubIds.length > 0) {
         variantQueries.push(
           supabase
             .from("product_variants")
             .select("id, product_id, size, stock_quantity, image_url, image_url_2, image_url_3, video_url, marketing_status, marketing_prices, marketing_delivery_days")
-            .in("product_id", partnerNonB2bIds)
+            .in("product_id", hubIds)
             .gt("stock_quantity", 0)
         );
       }
@@ -1210,12 +1146,13 @@ export default function StoreCatalog() {
         }
       }
 
-      // Process partner products (includes HUB products merged above)
-      for (const product of partnerProducts) {
+      // ── 2) Process HUB products ───────────────────────────────
+      // Merge into existing own-product cards (add missing sizes) or create new cards
+      for (const product of hubProducts) {
         const productColorLabel = (product as any).color_label || product.color;
         const productModel = (product as any).model || null;
         const productCustomDetail = (product as any).custom_detail || null;
-        
+
         const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
           ...v,
           marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
@@ -1228,9 +1165,8 @@ export default function StoreCatalog() {
 
         if (productVariants.length > 0) {
           if (existing) {
-            // Card exists (from own products) - add partner sizes that don't exist
+            // Card exists (own product) — merge HUB sizes not yet present, with variantId
             const existingSizeSet = new Set(existing.sizes.map(s => s.size.toLowerCase().trim()));
-            
             productVariants.forEach(v => {
               if (!existingSizeSet.has(v.size.toLowerCase().trim())) {
                 existing.sizes.push({
@@ -1240,17 +1176,14 @@ export default function StoreCatalog() {
                   marketingPrices: v.marketing_prices,
                   marketingDeliveryDays: v.marketing_delivery_days,
                   stock: v.stock_quantity,
+                  variantId: v.id,
                 });
               }
             });
           } else {
-            // No existing card - create new one with partner/HUB product
-            const productImage = product.image_url;
-            const productImage2 = (product as any).image_url_2 || null;
-            const productImage3 = (product as any).image_url_3 || null;
+            // No own product card — create one from HUB product
             const variantWithVideo = productVariants.find(v => v.video_url);
             const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
-            
             const sizeInfos: SizeInfo[] = productVariants
               .filter(v => v.size)
               .map(v => ({
@@ -1260,47 +1193,8 @@ export default function StoreCatalog() {
                 marketingPrices: v.marketing_prices,
                 marketingDeliveryDays: v.marketing_delivery_days,
                 stock: v.stock_quantity,
+                variantId: v.id,
               }));
-            
-            cardDataMap.set(cardKey, {
-              productId: product.id,
-              name: product.name,
-              description: product.description,
-              price: product.price,
-              // HUB products may have categories from the original owner — keep them as-is
-              // They will appear in "Todos" even if their category is not in the seller's store
-              category: product.category,
-              category_2: (product as any).category_2,
-              category_3: (product as any).category_3,
-              main_category: (product as any).main_category || null,
-              subcategory: (product as any).subcategory || null,
-              is_new_release: !!(product as any).is_new_release,
-              color: productColorLabel,
-              model: productModel,
-              color_label: productColorLabel,
-              custom_detail: productCustomDetail,
-              image_url: productImage,
-              image_url_2: productImage2,
-              image_url_3: productImage3,
-              video_url: variantVideoUrl,
-              owner_id: product.owner_id,
-              sizes: sizeInfos,
-              isB2B: false,
-            });
-          }
-        } else if (!existing) {
-          // Product without variants (e.g. HUB product with stock_quantity at root level)
-          // Only create a card if total stock > 0 at root level
-          if (product.stock_quantity > 0) {
-            const sizeInfos: SizeInfo[] = product.size ? [{
-              size: product.size,
-              isPartner: true,
-              marketingStatus: null,
-              marketingPrices: null,
-              marketingDeliveryDays: null,
-              stock: product.stock_quantity,
-            }] : [];
-
             cardDataMap.set(cardKey, {
               productId: product.id,
               name: product.name,
@@ -1319,12 +1213,135 @@ export default function StoreCatalog() {
               image_url: product.image_url,
               image_url_2: (product as any).image_url_2 || null,
               image_url_3: (product as any).image_url_3 || null,
-              video_url: product.video_url,
+              video_url: variantVideoUrl,
               owner_id: product.owner_id,
               sizes: sizeInfos,
               isB2B: false,
             });
           }
+        } else if (!existing && product.stock_quantity > 0) {
+          // HUB product without variants
+          const sizeInfos: SizeInfo[] = product.size ? [{
+            size: product.size,
+            isPartner: true,
+            marketingStatus: null,
+            marketingPrices: null,
+            marketingDeliveryDays: null,
+            stock: product.stock_quantity,
+          }] : [];
+          cardDataMap.set(cardKey, {
+            productId: product.id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            category_2: (product as any).category_2,
+            category_3: (product as any).category_3,
+            main_category: (product as any).main_category || null,
+            subcategory: (product as any).subcategory || null,
+            is_new_release: !!(product as any).is_new_release,
+            color: productColorLabel,
+            model: productModel,
+            color_label: productColorLabel,
+            custom_detail: productCustomDetail,
+            image_url: product.image_url,
+            image_url_2: (product as any).image_url_2 || null,
+            image_url_3: (product as any).image_url_3 || null,
+            video_url: product.video_url,
+            owner_id: product.owner_id,
+            sizes: sizeInfos,
+            isB2B: false,
+          });
+        }
+      }
+
+      // ── 3) Process B2B clone products ─────────────────────────
+      // Only create new cards (B2B never merges into existing own/HUB cards)
+      for (const product of b2bProducts) {
+        const productColorLabel = (product as any).color_label || product.color;
+        const productModel = (product as any).model || null;
+        const productCustomDetail = (product as any).custom_detail || null;
+
+        const productVariants: ProductVariant[] = (variants?.filter(v => v.product_id === product.id) || []).map(v => ({
+          ...v,
+          marketing_status: (v.marketing_status as MarketingStatusValue[] | null) || null,
+          marketing_prices: ((v as any).marketing_prices as MarketingPrices) || null,
+          marketing_delivery_days: v.marketing_delivery_days ? Number(v.marketing_delivery_days) : null
+        }));
+
+        const cardKey = makeCardKey(product.name, productColorLabel);
+        if (cardDataMap.has(cardKey)) continue; // already covered by own or HUB
+
+        if (productVariants.length > 0) {
+          const variantWithVideo = productVariants.find(v => v.video_url);
+          const variantVideoUrl = variantWithVideo?.video_url || product.video_url;
+          const sizeInfos: SizeInfo[] = productVariants
+            .filter(v => v.size)
+            .map(v => ({
+              size: v.size,
+              isPartner: false,
+              marketingStatus: v.marketing_status,
+              marketingPrices: v.marketing_prices,
+              marketingDeliveryDays: v.marketing_delivery_days,
+              stock: v.stock_quantity,
+              variantId: v.id,
+            }));
+          cardDataMap.set(cardKey, {
+            productId: product.id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            category_2: (product as any).category_2,
+            category_3: (product as any).category_3,
+            main_category: (product as any).main_category || null,
+            subcategory: (product as any).subcategory || null,
+            is_new_release: !!(product as any).is_new_release,
+            color: productColorLabel,
+            model: productModel,
+            color_label: productColorLabel,
+            custom_detail: productCustomDetail,
+            image_url: product.image_url,
+            image_url_2: (product as any).image_url_2 || null,
+            image_url_3: (product as any).image_url_3 || null,
+            video_url: variantVideoUrl,
+            owner_id: product.owner_id,
+            sizes: sizeInfos,
+            isB2B: true,
+          });
+        } else if (product.stock_quantity >= 0) {
+          // B2B without variants — virtual stock (sob encomenda)
+          const sizeInfos: SizeInfo[] = product.size ? [{
+            size: product.size,
+            isPartner: false,
+            marketingStatus: null,
+            marketingPrices: null,
+            marketingDeliveryDays: null,
+            stock: product.stock_quantity,
+          }] : [];
+          cardDataMap.set(cardKey, {
+            productId: product.id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            category_2: (product as any).category_2,
+            category_3: (product as any).category_3,
+            main_category: (product as any).main_category || null,
+            subcategory: (product as any).subcategory || null,
+            is_new_release: !!(product as any).is_new_release,
+            color: productColorLabel,
+            model: productModel,
+            color_label: productColorLabel,
+            custom_detail: productCustomDetail,
+            image_url: product.image_url,
+            image_url_2: (product as any).image_url_2 || null,
+            image_url_3: (product as any).image_url_3 || null,
+            video_url: product.video_url,
+            owner_id: product.owner_id,
+            sizes: sizeInfos,
+            isB2B: true,
+          });
         }
       }
 
