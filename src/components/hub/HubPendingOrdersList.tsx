@@ -205,9 +205,9 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
                 </div>
               </div>
 
-              {/* Items */}
+              {/* Items — when seller, show only HUB items (not own stock) */}
               <div className="space-y-2">
-                {activeItems.map(item => {
+                {(asSeller ? activeItems.filter(i => i.hub_owner_id !== order.seller_id) : activeItems).map(item => {
                   const iCfg = itemStatusConfig[item.status] ?? itemStatusConfig.pending;
                   return (
                     <div
