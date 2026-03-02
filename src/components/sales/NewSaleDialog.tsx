@@ -2357,7 +2357,7 @@ export default function NewSaleDialog({
                           </div>
                           {combinedProductsList.hubProducts.map((product) => (
                             <button type="button" key={`hub-${product.id}`} className="w-full p-3 text-left hover:bg-primary/5 flex justify-between items-center border-b last:border-b-0"
-                              onClick={() => addToCart(product, false)}>
+                              onClick={() => { setSelectedProductForVariant(product); setSelectedProductPartnerInfo(null); setShowVariantDialog(true); setProductSearch(""); }}>
                               <div>
                                 <p className="font-medium">{product.name}</p>
                                 <p className="text-xs text-muted-foreground">HUB: {product.ownerName} | Estoque: {product.stock_quantity}</p>
