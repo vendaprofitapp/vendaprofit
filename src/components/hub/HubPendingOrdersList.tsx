@@ -176,7 +176,9 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
         const hasLogistics = !!order.shipping_label_url || !!order.collection_instructions;
         // Can finalize: logistics set + at least one approved item + no pending hub items
         const hubPendingItems = pendingItems.filter(i => i.hub_owner_id !== order.seller_id);
-        const canFinalize = asSeller && hasLogistics && approvedItems.length > 0 && hubPendingItems.length === 0;
+        const allItemsDecided = hubPendingItems.length === 0;
+        const canShowLogistics = asSeller && allItemsDecided && approvedItems.length > 0;
+        const canFinalize = canShowLogistics && hasLogistics;
 
         return (
           <Card key={order.id} className="border border-border hover:shadow-md transition-shadow">
@@ -267,20 +269,27 @@ export function HubPendingOrdersList({ asSeller = true }: Props) {
               {/* Seller actions */}
               {asSeller && (
                 <div className="space-y-2">
-                  {/* Rejected items notice */}
-                  {hasRejected && (
-                    <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2">
-                      <p className="text-xs text-destructive font-medium">
-                        ⚠️ {rejectedItems.length} item(s) rejeitado(s) pelo dono do produto.
-                        {approvedItems.length > 0
-                          ? " Você pode prosseguir apenas com os itens aprovados."
-                          : " Todos os itens foram rejeitados."}
+                  {/* Blocked: still waiting for owner responses */}
+                  {pendingItems.filter(i => i.hub_owner_id !== order.seller_id).length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs text-amber-800 font-medium">
+                        ⏳ Aguardando resposta do dono em {pendingItems.filter(i => i.hub_owner_id !== order.seller_id).length} item(s).
+                        Você poderá definir a logística e finalizar a venda somente após todos os itens serem respondidos (aprovados ou rejeitados).
                       </p>
                     </div>
                   )}
 
-                  {/* Logistics (when all decisions are made) */}
-                  {(order.status === "awaiting_logistics" || order.status === "logistics_ready") && approvedItems.length > 0 && (
+                  {/* Rejected items notice */}
+                  {hasRejected && (
+                    <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2">
+                      <p className="text-xs text-destructive font-medium">
+                        ⚠️ {rejectedItems.length} item(s) rejeitado(s) pelo dono. Remova-os para liberar o próximo passo.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Logistics (only when all decisions are made) */}
+                  {canShowLogistics && (
                     <div>
                       {hasLogistics ? (
                         <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-1">
