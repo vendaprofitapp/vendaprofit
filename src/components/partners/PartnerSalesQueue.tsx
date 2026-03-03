@@ -149,9 +149,11 @@ export function PartnerSalesQueue({ sales, onUpdated, paymentReceiver, partnerPo
                           state: {
                             fromPartnerPointOrder: true,
                             partnerPointSaleId: sale.id,
+                            partnerPointId: partnerPointId,
                             customer_name: sale.customer_name,
                             customer_phone: sale.customer_phone,
                             payment_method: sale.payment_method,
+                            custom_payment_method_id: (sale as any).custom_payment_method_id,
                             items: Array.isArray(sale.items) ? sale.items : [],
                             total: sale.total_gross,
                             partner_name: partnerName ?? "",
