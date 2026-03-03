@@ -27,6 +27,7 @@ interface Props {
   paymentReceiver?: string | null;
   partnerPointId?: string;
   partnerName?: string;
+  rackCommissionPct?: number;
 }
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -41,7 +42,7 @@ const PASS_COLOR_EMOJI: Record<string, string> = {
   gray: "⚫",
 };
 
-export function PartnerSalesQueue({ sales, onUpdated, paymentReceiver, partnerPointId, partnerName }: Props) {
+export function PartnerSalesQueue({ sales, onUpdated, paymentReceiver, partnerPointId, partnerName, rackCommissionPct }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -154,7 +155,7 @@ export function PartnerSalesQueue({ sales, onUpdated, paymentReceiver, partnerPo
                             items: Array.isArray(sale.items) ? sale.items : [],
                             total: sale.total_gross,
                             partner_name: partnerName ?? "",
-                            rack_commission_pct: 0,
+                            rack_commission_pct: rackCommissionPct ?? 0,
                           },
                         });
                       }}

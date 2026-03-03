@@ -387,6 +387,7 @@ export default function PartnerPointDetail() {
                   paymentReceiver={partner.payment_receiver as string | undefined}
                   partnerPointId={partner.id}
                   partnerName={partner.name}
+                  rackCommissionPct={partner.rack_commission_pct}
                 />
               </div>
             )}
