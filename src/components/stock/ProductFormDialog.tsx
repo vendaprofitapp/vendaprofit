@@ -23,7 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { usePlan } from "@/hooks/usePlan";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ProductInfoSection } from "@/components/stock/ProductInfoSection";
 import { ProductMediaSection } from "@/components/stock/ProductMediaSection";
@@ -102,6 +102,7 @@ export function ProductFormDialog({
   onSuccess,
   initialProductName = "",
 }: ProductFormDialogProps) {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const { isTrial, productLimit } = usePlan();
@@ -167,7 +168,7 @@ export function ProductFormDialog({
     }
   }, [user, open]);
 
-  // --- React Query: variants with 5min staleTime ---
+  // --- React Query: variants — staleTime=0 para sempre buscar dados frescos ao abrir o form ---
   const { data: fetchedVariants } = useQuery({
     queryKey: ["product-variants-form", editingProduct?.id],
     queryFn: async () => {
@@ -188,7 +189,8 @@ export function ProductFormDialog({
       }));
     },
     enabled: !!editingProduct && open,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   // Sync fetched variants into state
@@ -553,6 +555,10 @@ export function ProductFormDialog({
       }
 
       toast.success(editingProduct ? "Produto atualizado!" : "Produto cadastrado!");
+      // Invalida o cache das variantes para garantir dados frescos na próxima edição
+      if (editingProduct) {
+        queryClient.invalidateQueries({ queryKey: ["product-variants-form", editingProduct.id] });
+      }
       onSuccess();
       onOpenChange(false);
       resetForm();
