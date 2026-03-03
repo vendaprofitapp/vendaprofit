@@ -47,7 +47,7 @@ const PASS_CONFIG: Record<string, { colorClass: string; label: string }> = {
   pix:            { colorClass: "bg-green-600",  label: "🟢 Passe Verde — PIX" },
   card:           { colorClass: "bg-yellow-500", label: "🟡 Passe Amarelo — Cartão" },
   try_home:       { colorClass: "bg-blue-600",   label: "🔵 Passe Azul — Provar em Casa 24h" },
-  pay_at_partner: { colorClass: "bg-gray-700",   label: "⚫ Passe — Pagar no Local" },
+  pay_at_partner: { colorClass: "bg-purple-700",  label: "🟣 Passe — Pagar no Local" },
 };
 
 export function PartnerCheckoutPasses({
@@ -136,7 +136,7 @@ export function PartnerCheckoutPasses({
     let passKey = "pay_at_partner";
     const method = allowedMethods.find(m => m.id === paymentMethodKey);
     if (paymentReceiver === "partner") {
-      passColor = "gray";
+      passColor = "purple";
       passKey = "pay_at_partner";
     } else if (method) {
       if (method.is_deferred) { passColor = "blue"; passKey = "try_home"; }
