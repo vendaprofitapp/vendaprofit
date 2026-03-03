@@ -130,6 +130,7 @@ interface CatalogOrderData {
 
 interface PartnerPointOrderData {
   partnerPointSaleId: string;
+  partnerPointId: string;
   customerName: string;
   customerPhone: string;
   paymentMethod: string;
@@ -1935,6 +1936,35 @@ export default function NewSaleDialog({
           } as any)
           .eq("id", partnerPointOrderData.partnerPointSaleId);
         queryClient.invalidateQueries({ queryKey: ["partner-point-orders"] });
+
+        // Also insert a mirrored record for the seller's own partner_point_sales report
+        if (result?.sale_id && partnerPointOrderData.partnerPointId) {
+          const ppFeePercent = selectedPaymentMethodId
+            ? (customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.fee_percent || 0)
+            : 0;
+          const ppPaymentMethodName = customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.name
+            || partnerPointOrderData.paymentMethod
+            || "Dinheiro";
+          const itemsForPP = cart.map(item => ({
+            product_id: item.product.id,
+            product_name: item.product.name,
+            quantity: item.quantity,
+            unit_price: item.product.price,
+          }));
+          await supabase.from("partner_point_sales").insert({
+            partner_point_id: partnerPointOrderData.partnerPointId,
+            owner_id: user.id,
+            customer_name: customerName || partnerPointOrderData.customerName || "Cliente",
+            customer_phone: customerPhone || partnerPointOrderData.customerPhone || "",
+            items: itemsForPP as any,
+            total_gross: total,
+            payment_method: ppPaymentMethodName,
+            payment_fee_applied: ppFeePercent,
+            pass_status: "completed",
+            converted_sale_id: result.sale_id,
+          });
+          queryClient.invalidateQueries({ queryKey: ["partner-point-sales"] });
+        }
       }
       // Mark consortium cart as converted and update participant balance
       if (consortiumSaleData?.cartId) {

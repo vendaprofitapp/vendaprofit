@@ -247,6 +247,7 @@ export default function Sales() {
 
       setPartnerPointOrderData({
         partnerPointSaleId: state.partnerPointSaleId,
+        partnerPointId: state.partnerPointId,
         customerName: state.customer_name,
         customerPhone: state.customer_phone,
         paymentMethod: state.payment_method,
