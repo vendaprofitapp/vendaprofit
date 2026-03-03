@@ -1458,11 +1458,18 @@ export default function StoreCatalog() {
     const hasLaunches = enrichedCatalogItems.some(item =>
       item.totalStock > 0 && (item.is_new_release || Object.values(item.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
     );
-    return systemMainCategories.filter(cat => {
+    const filtered = systemMainCategories.filter(cat => {
       if (cat.name.toLowerCase() === "lançamentos") return hasLaunches;
+      if (cat.name === "Bazar VIP") return false; // handled separately below
       return usedMainCats.has(cat.name.toLowerCase());
     });
-  }, [enrichedCatalogItems, systemMainCategories]);
+    // Inject "Bazar VIP" category if there are approved items — visible to everyone
+    if (bazarItemsCount > 0) {
+      const bazarCat = systemMainCategories.find(c => c.name === "Bazar VIP");
+      if (bazarCat) filtered.push(bazarCat);
+    }
+    return filtered;
+  }, [enrichedCatalogItems, systemMainCategories, bazarItemsCount]);
 
   // Filter subcategories to only those with in-stock products
   const visibleSubcategories = useMemo(() => {
