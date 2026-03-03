@@ -3136,7 +3136,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
     const size = selectedSize || "Único";
     // Resolve the effective price: check marketing price for the selected size/status
     const activeStatus = item.marketingStatus?.[0] as string | undefined;
-    const sizePrices = size !== "Único" ? item.sizeMarketingPrices?.[size] : item.marketingPrices;
+    const sizePrices = size !== "Único" ? (item.sizeMarketingPrices?.[size] ?? item.marketingPrices) : item.marketingPrices;
     const marketingPrice = activeStatus && sizePrices ? sizePrices[activeStatus] : null;
     const resolvedPrice = (marketingPrice && marketingPrice > 0) ? marketingPrice : item.price;
     
@@ -3338,7 +3338,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
           {(() => {
             // Resolve per-status price: use the active marketing filter status to pick the right price
             const activeStatus = item.marketingStatus?.[0] as string | undefined;
-            const sizePrices = selectedSize ? item.sizeMarketingPrices?.[selectedSize] : item.marketingPrices;
+            const sizePrices = selectedSize ? (item.sizeMarketingPrices?.[selectedSize] ?? item.marketingPrices) : item.marketingPrices;
             const displayMarketingPrice = activeStatus && sizePrices ? sizePrices[activeStatus] : null;
             const hasSpecialPrice = displayMarketingPrice && displayMarketingPrice !== item.price;
             const displayPrice = hasSpecialPrice ? displayMarketingPrice : item.price;
