@@ -2588,8 +2588,8 @@ export default function NewSaleDialog({
                 </div>
               )}
 
-              {/* Customer Selection */}
-              <div>
+              {/* Customer Selection - hidden when consortium is selected */}
+              {manualSaleSource !== "consortium" && <><div>
                 <Label>Selecionar Cliente Cadastrado</Label>
                 <Select value={selectedCustomerId || "manual"} onValueChange={(v) => handleCustomerSelect(v === "manual" ? "" : v)}>
                   <SelectTrigger><SelectValue placeholder="Selecione ou digite manualmente" /></SelectTrigger>
@@ -2617,7 +2617,7 @@ export default function NewSaleDialog({
                     <Input placeholder="@usuario" value={customerInstagram} onChange={(e) => setCustomerInstagram(e.target.value)} />
                   </div>
                 </div>
-              </div>
+              </div></>}
 
               {/* Payment Method */}
               <div>
