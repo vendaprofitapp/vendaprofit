@@ -272,15 +272,15 @@ export const ProductInfoSection = React.memo(function ProductInfoSection({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <div className="space-y-1">
             <Label className="text-xs">Peso (g)</Label>
-            <Input type="number" inputMode="numeric" value={form.weight_grams} onChange={(e) => onFormChange({ weight_grams: e.target.value })} placeholder="300" />
+            <Input type="number" inputMode="numeric" value={form.weight_grams} onChange={(e) => onFormChange({ weight_grams: e.target.value })} placeholder="100" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Largura (cm)</Label>
-            <Input type="number" inputMode="numeric" value={form.width_cm} onChange={(e) => onFormChange({ width_cm: e.target.value })} placeholder="15" />
+            <Input type="number" inputMode="numeric" value={form.width_cm} onChange={(e) => onFormChange({ width_cm: e.target.value })} placeholder="5" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Altura (cm)</Label>
-            <Input type="number" inputMode="numeric" value={form.height_cm} onChange={(e) => onFormChange({ height_cm: e.target.value })} placeholder="10" />
+            <Input type="number" inputMode="numeric" value={form.height_cm} onChange={(e) => onFormChange({ height_cm: e.target.value })} placeholder="5" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Comprimento (cm)</Label>

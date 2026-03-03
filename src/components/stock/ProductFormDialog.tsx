@@ -131,9 +131,9 @@ export function ProductFormDialog({
     model: "",
     color_label: "",
     custom_detail: "",
-    weight_grams: "",
-    width_cm: "",
-    height_cm: "",
+    weight_grams: "100",
+    width_cm: "5",
+    height_cm: "5",
     length_cm: "",
   };
 
@@ -245,9 +245,9 @@ export function ProductFormDialog({
         model: duplicatingProduct.model || "",
         color_label: duplicatingProduct.color_label || "",
         custom_detail: duplicatingProduct.custom_detail || "",
-        weight_grams: "",
-        width_cm: "",
-        height_cm: "",
+        weight_grams: "100",
+        width_cm: "5",
+        height_cm: "5",
         length_cm: "",
       });
       setProductVariants(createDefaultVariants());
