@@ -2821,6 +2821,21 @@ export default function StoreCatalog() {
                   setBazarBuyerVerified(true);
                   setShowBazarBuyerDialog(false);
                   toast.success("Acesso liberado! Bem-vindo(a) ao Bazar VIP 🎉");
+                  // Pre-fill cart fields with verified buyer's phone
+                  setInlineLeadWhatsapp(bazarBuyerPhone);
+                  // Try to fetch customer name to also pre-fill name
+                  if (store?.owner_id) {
+                    const cleanPhone = bazarBuyerPhone.replace(/\D/g, "");
+                    supabase
+                      .from("customers")
+                      .select("name")
+                      .eq("owner_id", store.owner_id)
+                      .ilike("phone", `%${cleanPhone.slice(-9)}%`)
+                      .maybeSingle()
+                      .then(({ data: cust }) => {
+                        if (cust?.name) setInlineLeadName(cust.name);
+                      });
+                  }
                   // If there's a pending item, add it to cart
                   if (bazarPendingItem) {
                     const item = bazarPendingItem.item;
