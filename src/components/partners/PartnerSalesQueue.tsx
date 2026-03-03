@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, RotateCcw, ShoppingBag } from "lucide-react";
+import { CheckCircle2, Clock, RotateCcw, ShoppingBag, MessageCircle, ShoppingCart } from "lucide-react";
 
 interface Sale {
   id: string;
@@ -23,6 +24,9 @@ interface Sale {
 interface Props {
   sales: Sale[];
   onUpdated: () => void;
+  paymentReceiver?: string | null;
+  partnerPointId?: string;
+  partnerName?: string;
 }
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -37,10 +41,12 @@ const PASS_COLOR_EMOJI: Record<string, string> = {
   gray: "⚫",
 };
 
-export function PartnerSalesQueue({ sales, onUpdated }: Props) {
+export function PartnerSalesQueue({ sales, onUpdated, paymentReceiver, partnerPointId, partnerName }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const pending = sales.filter(s => s.pass_status === "pending");
+  const isSellerPayment = paymentReceiver === "seller";
 
   const validate = async (sale: Sale, newStatus: "validated" | "completed" | "returned") => {
     setLoading(sale.id);
@@ -121,43 +127,99 @@ export function PartnerSalesQueue({ sales, onUpdated }: Props) {
                 </ul>
               )}
 
-              {/* Actions based on pass_color */}
+              {/* Actions based on payment_receiver and pass_color */}
               <div className="flex gap-2 flex-wrap pt-1 border-t">
-                {sale.pass_color === "green" && (
-                  <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isLoading ? "Salvando..." : "Confirmar Recebimento"}
-                  </Button>
-                )}
-                {sale.pass_color === "yellow" && (
-                  <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "validated")}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isLoading ? "Salvando..." : "Validar Pagamento"}
-                  </Button>
-                )}
-                {sale.pass_color === "blue" && (
+                {isSellerPayment ? (
+                  /* Vendedora: cliente paga direto → Converter em Venda + WhatsApp */
                   <>
-                    <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
-                      <CheckCircle2 className="h-4 w-4" />
-                      {isLoading ? "Salvando..." : "Confirmar Compra"}
+                    <Button
+                      size="sm"
+                      className="gap-1.5 flex-1"
+                      disabled={isLoading}
+                      onClick={() => {
+                        const keysToClean = [
+                          "sales_cart", "sales_customerName", "sales_customerPhone", "sales_instagram",
+                          "sales_paymentMethodId", "sales_discountType", "sales_discountValue",
+                          "sales_notes", "sales_dueDate", "sales_installments", "sales_installmentDetails",
+                          "sales_shippingData",
+                        ];
+                        keysToClean.forEach(k => sessionStorage.removeItem(k));
+                        navigate("/sales", {
+                          state: {
+                            fromPartnerPointOrder: true,
+                            partnerPointSaleId: sale.id,
+                            customer_name: sale.customer_name,
+                            customer_phone: sale.customer_phone,
+                            payment_method: sale.payment_method,
+                            items: Array.isArray(sale.items) ? sale.items : [],
+                            total: sale.total_gross,
+                            partner_name: partnerName ?? "",
+                            rack_commission_pct: 0,
+                          },
+                        });
+                      }}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      Converter em Venda
                     </Button>
-                    <Button size="sm" variant="outline" className="gap-1.5" disabled={isLoading} onClick={() => validate(sale, "returned")}>
-                      <RotateCcw className="h-4 w-4" />
-                      Devolvido
-                    </Button>
+                    {sale.customer_phone && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 px-3"
+                        disabled={isLoading}
+                        asChild
+                      >
+                        <a
+                          href={`https://wa.me/55${sale.customer_phone.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
                   </>
-                )}
-                {sale.pass_color === "purple" && (
-                  <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
-                    <ShoppingBag className="h-4 w-4" />
-                    {isLoading ? "Salvando..." : "Confirmar Encomenda"}
-                  </Button>
-                )}
-                {sale.pass_color === "gray" && (
-                  <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isLoading ? "Salvando..." : "Confirmar Pagamento Local"}
-                  </Button>
+                ) : (
+                  /* Ponto Parceiro: parceiro recebe e repassa → lógica original */
+                  <>
+                    {sale.pass_color === "green" && (
+                      <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isLoading ? "Salvando..." : "Confirmar Recebimento"}
+                      </Button>
+                    )}
+                    {sale.pass_color === "yellow" && (
+                      <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "validated")}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isLoading ? "Salvando..." : "Confirmar Recebimento no Ponto Parceiro"}
+                      </Button>
+                    )}
+                    {sale.pass_color === "blue" && (
+                      <>
+                        <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
+                          <CheckCircle2 className="h-4 w-4" />
+                          {isLoading ? "Salvando..." : "Confirmar Compra"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" disabled={isLoading} onClick={() => validate(sale, "returned")}>
+                          <RotateCcw className="h-4 w-4" />
+                          Devolvido
+                        </Button>
+                      </>
+                    )}
+                    {sale.pass_color === "purple" && (
+                      <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
+                        <ShoppingBag className="h-4 w-4" />
+                        {isLoading ? "Salvando..." : "Confirmar Encomenda"}
+                      </Button>
+                    )}
+                    {sale.pass_color === "gray" && (
+                      <Button size="sm" className="gap-1.5 flex-1" disabled={isLoading} onClick={() => validate(sale, "completed")}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isLoading ? "Salvando..." : "Confirmar Pagamento Local"}
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>
