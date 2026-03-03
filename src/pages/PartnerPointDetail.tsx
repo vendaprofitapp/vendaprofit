@@ -42,6 +42,7 @@ interface PartnerPoint {
   notes: string | null;
   contract_token: string | null;
   contract_accepted_at: string | null;
+  payment_receiver: string | null;
 }
 
 interface AllocatedItem {
@@ -380,7 +381,13 @@ export default function PartnerPointDetail() {
                   <Bell className="h-4 w-4 text-destructive" />
                   <p className="text-sm font-semibold text-destructive">Fila de Validação</p>
                 </div>
-                <PartnerSalesQueue sales={sales} onUpdated={fetchData} />
+                <PartnerSalesQueue
+                  sales={sales}
+                  onUpdated={fetchData}
+                  paymentReceiver={partner.payment_receiver as string | undefined}
+                  partnerPointId={partner.id}
+                  partnerName={partner.name}
+                />
               </div>
             )}
 
