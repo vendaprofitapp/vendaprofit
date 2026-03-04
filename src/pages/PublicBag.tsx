@@ -255,6 +255,25 @@ export default function PublicBag() {
 
     setIsFinalizing(true);
     try {
+      // Persist swap requests to database before finalizing
+      const swapItemsToSave = items.filter(item => localItems[item.id] === "swap_requested");
+      for (const item of swapItemsToSave) {
+        const swapRequest = swapRequests[item.id];
+        if (swapRequest) {
+          await supabase
+            .from("consignment_items")
+            .update({
+              status: "returned",
+              swap_requested_size: swapRequest.newSize,
+              swap_requested_product_name: swapRequest.newProductName,
+              swap_requested_product_id: swapRequest.newProductId || null,
+              swap_requested_variant_id: swapRequest.newVariantId || null,
+              swap_requested_price: swapRequest.newPrice,
+            })
+            .eq("id", item.id);
+        }
+      }
+
       const { error } = await supabase
         .from("consignments")
         .update({ status: "finalized_by_client" })

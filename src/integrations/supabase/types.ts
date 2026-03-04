@@ -441,6 +441,11 @@ export type Database = {
           original_price: number
           product_id: string
           status: string
+          swap_requested_price: number | null
+          swap_requested_product_id: string | null
+          swap_requested_product_name: string | null
+          swap_requested_size: string | null
+          swap_requested_variant_id: string | null
           updated_at: string
           variant_id: string | null
         }
@@ -451,6 +456,11 @@ export type Database = {
           original_price: number
           product_id: string
           status?: string
+          swap_requested_price?: number | null
+          swap_requested_product_id?: string | null
+          swap_requested_product_name?: string | null
+          swap_requested_size?: string | null
+          swap_requested_variant_id?: string | null
           updated_at?: string
           variant_id?: string | null
         }
@@ -461,6 +471,11 @@ export type Database = {
           original_price?: number
           product_id?: string
           status?: string
+          swap_requested_price?: number | null
+          swap_requested_product_id?: string | null
+          swap_requested_product_name?: string | null
+          swap_requested_size?: string | null
+          swap_requested_variant_id?: string | null
           updated_at?: string
           variant_id?: string | null
         }

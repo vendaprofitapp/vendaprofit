@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useConsignment } from "@/hooks/useConsignment";
 import { 
   Package, MessageCircle, Copy, Check, CheckCircle, XCircle, 
-  Clock, Send, Heart, RotateCcw, Trash2
+  Clock, Send, Heart, RotateCcw, Trash2, Repeat, AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,6 +33,9 @@ interface ConsignmentItem {
   id: string;
   status: string;
   original_price: number;
+  swap_requested_size?: string | null;
+  swap_requested_product_name?: string | null;
+  swap_requested_price?: number | null;
   products: {
     id: string;
     name: string;
@@ -82,7 +85,10 @@ export function ConsignmentDetailsDialog({
             status,
             original_price,
             variant_id,
-    products (id, name, image_url, size, color_label),
+            swap_requested_size,
+            swap_requested_product_name,
+            swap_requested_price,
+            products (id, name, image_url, size, color_label),
             product_variants (size)
           )
         `)
@@ -217,18 +223,41 @@ export function ConsignmentDetailsDialog({
           <Separator className="mb-4" />
 
           {/* Items list */}
+          {/* Swap requests alert banner */}
+          {items.some(i => i.status === "returned" && i.swap_requested_size) && (
+            <div className="mb-3 p-3 rounded-lg border border-amber-300 bg-amber-50 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Troca de tamanho solicitada!</p>
+                {items.filter(i => i.status === "returned" && i.swap_requested_size).map(i => (
+                  <p key={i.id} className="text-xs text-amber-700 mt-0.5">
+                    <span className="font-medium">{i.products?.name}</span>
+                    {" → "} Cliente pediu Tam <span className="font-bold">{i.swap_requested_size}</span>
+                    {i.swap_requested_product_name && i.swap_requested_product_name !== i.products?.name && (
+                      <span> ({i.swap_requested_product_name})</span>
+                    )}
+                    {i.swap_requested_price && (
+                      <span className="ml-1">· {formatPrice(i.swap_requested_price)}</span>
+                    )}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ScrollArea className="flex-1">
             <div className="space-y-2">
               {items.map(item => {
                 const status = itemStatusConfig[item.status] || itemStatusConfig.pending;
                 const StatusIcon = status.icon;
                 const size = item.product_variants?.size || item.products?.size;
-            const color = item.products?.color_label;
+                const color = item.products?.color_label;
+                const hasSwapRequest = item.status === "returned" && item.swap_requested_size;
 
                 return (
                   <div 
                     key={item.id} 
-                    className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg"
+                    className={`flex items-center gap-3 p-3 rounded-lg ${hasSwapRequest ? "bg-amber-50 border border-amber-200" : "bg-muted/50"}`}
                   >
                     <div className="w-14 h-14 bg-muted rounded overflow-hidden flex-shrink-0">
                       {item.products?.image_url ? (
@@ -246,18 +275,29 @@ export function ConsignmentDetailsDialog({
                     
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{item.products?.name}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {size && <Badge variant="outline" className="text-xs">{size}</Badge>}
                         {color && <Badge variant="outline" className="text-xs">{color}</Badge>}
                         <span className="text-sm font-medium">
                           {formatPrice(item.original_price)}
                         </span>
                       </div>
+                      {hasSwapRequest && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Repeat className="h-3 w-3 text-amber-600" />
+                          <span className="text-xs text-amber-700 font-medium">
+                            Pediu Tam {item.swap_requested_size}
+                            {item.swap_requested_product_name && item.swap_requested_product_name !== item.products?.name
+                              ? ` · ${item.swap_requested_product_name}`
+                              : ""}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
-                    <Badge className={`${status.color} text-white gap-1`}>
-                      <StatusIcon className="h-3 w-3" />
-                      {status.label}
+                    <Badge className={`${hasSwapRequest ? "bg-amber-500" : status.color} text-white gap-1`}>
+                      {hasSwapRequest ? <Repeat className="h-3 w-3" /> : <StatusIcon className="h-3 w-3" />}
+                      {hasSwapRequest ? "Troca" : status.label}
                     </Badge>
 
                     {consignment.status === "draft" && (
