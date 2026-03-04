@@ -11,7 +11,8 @@ import { HubProductsDialog } from "@/components/hub/HubProductsDialog";
 import { HubSellerProductsDialog } from "@/components/hub/HubSellerProductsDialog";
 import { HubSettlementDialog } from "@/components/hub/HubSettlementDialog";
 import { HubPendingOrdersList } from "@/components/hub/HubPendingOrdersList";
-import { Plus, Link2, ShoppingBag, Bell } from "lucide-react";
+import { HubSettlementTab } from "@/components/hub/HubSettlementTab";
+import { Plus, Link2, ShoppingBag, Bell, HandshakeIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 
@@ -148,6 +149,25 @@ export default function HubVendas() {
 
   const myAsOwner = connections.filter((c) => c.owner_id === user?.id);
   const myAsSeller = connections.filter((c) => c.seller_id === user?.id || (c.status === "pending" && c.invited_email === user?.email));
+  const activeConnections = connections.filter((c) => c.status === "active");
+
+  // Count pending settlement proposals awaiting my confirmation
+  const { data: pendingSettlementsCount = 0 } = useQuery({
+    queryKey: ["hub-pending-settlements-count", user?.id],
+    queryFn: async () => {
+      if (!activeConnections.length) return 0;
+      const connectionIds = activeConnections.map(c => c.id);
+      const { data } = await supabase
+        .from("hub_settlements")
+        .select("id, proposed_by, connection_id")
+        .in("connection_id", connectionIds)
+        .eq("status", "pending_confirmation");
+      // Only count ones where the OTHER party proposed (i.e. I need to confirm)
+      return (data ?? []).filter(s => s.proposed_by !== user?.id).length;
+    },
+    enabled: !!user && activeConnections.length > 0,
+    refetchInterval: 30_000,
+  });
 
   const { data: pendingOrdersCount = 0 } = useQuery({
     queryKey: ["hub-pending-orders-count", user?.id],
@@ -200,6 +220,15 @@ export default function HubVendas() {
             {pendingOrdersCount > 0 && (
               <span className="ml-1.5 bg-destructive text-destructive-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold">
                 {pendingOrdersCount > 9 ? "9+" : pendingOrdersCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="acerto" className="relative">
+            <HandshakeIcon className="h-3.5 w-3.5 mr-1" />
+            Acerto HUB
+            {pendingSettlementsCount > 0 && (
+              <span className="ml-1.5 bg-primary text-primary-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold">
+                {pendingSettlementsCount > 9 ? "9+" : pendingSettlementsCount}
               </span>
             )}
           </TabsTrigger>
@@ -280,6 +309,40 @@ export default function HubVendas() {
             </p>
           </div>
           <HubPendingOrdersList asSeller={false} />
+        </TabsContent>
+
+        <TabsContent value="acerto" className="mt-4">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">
+              Registre e confirme acertos financeiros com seus parceiros HUB. O painel zera para ambos após confirmação mútua.
+            </p>
+          </div>
+          {activeConnections.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed rounded-xl">
+              <p className="text-sm text-muted-foreground">Nenhuma conexão HUB ativa para acertar.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {activeConnections.map(conn => {
+                const isOwnerConn = conn.owner_id === user?.id;
+                const partnerName = isOwnerConn
+                  ? conn.seller_profile?.full_name ?? conn.invited_email
+                  : conn.owner_profile?.full_name ?? "Dono";
+                return (
+                  <div key={conn.id} className="border rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <HandshakeIcon className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-semibold">{partnerName}</p>
+                      <span className="text-xs text-muted-foreground">
+                        — {isOwnerConn ? "Você é Dono" : "Você é Vendedora"}
+                      </span>
+                    </div>
+                    <HubSettlementTab connection={conn as any} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

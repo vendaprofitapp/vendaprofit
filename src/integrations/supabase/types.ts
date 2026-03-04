@@ -1833,6 +1833,68 @@ export type Database = {
           },
         ]
       }
+      hub_settlements: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_by: string | null
+          connection_id: string
+          created_at: string
+          dispute_reason: string | null
+          id: string
+          notes: string | null
+          owner_amount: number
+          period_end: string | null
+          period_start: string | null
+          proposed_at: string
+          proposed_by: string
+          seller_amount: number
+          splits_count: number
+          status: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          connection_id: string
+          created_at?: string
+          dispute_reason?: string | null
+          id?: string
+          notes?: string | null
+          owner_amount?: number
+          period_end?: string | null
+          period_start?: string | null
+          proposed_at?: string
+          proposed_by: string
+          seller_amount?: number
+          splits_count?: number
+          status?: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          connection_id?: string
+          created_at?: string
+          dispute_reason?: string | null
+          id?: string
+          notes?: string | null
+          owner_amount?: number
+          period_end?: string | null
+          period_start?: string | null
+          proposed_at?: string
+          proposed_by?: string
+          seller_amount?: number
+          splits_count?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_settlements_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "hub_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hub_shared_products: {
         Row: {
           connection_id: string
