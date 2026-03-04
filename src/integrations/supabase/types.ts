@@ -2454,6 +2454,53 @@ export type Database = {
           },
         ]
       }
+      partner_point_settlements: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          notes: string | null
+          owner_id: string
+          partner_point_id: string
+          period_end: string | null
+          period_start: string | null
+          sales_count: number
+          settled_at: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id: string
+          partner_point_id: string
+          period_end?: string | null
+          period_start?: string | null
+          sales_count?: number
+          settled_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id?: string
+          partner_point_id?: string
+          period_end?: string | null
+          period_start?: string | null
+          sales_count?: number
+          settled_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_point_settlements_partner_point_id_fkey"
+            columns: ["partner_point_id"]
+            isOneToOne: false
+            referencedRelation: "partner_points"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_points: {
         Row: {
           access_token: string
