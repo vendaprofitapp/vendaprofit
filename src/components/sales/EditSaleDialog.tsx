@@ -10,16 +10,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -589,19 +579,19 @@ export function EditSaleDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent className="max-w-lg">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+      {/* Delete Confirmation - inline Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
               Excluir Venda
-            </AlertDialogTitle>
-            <AlertDialogDescription>
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
               Esta ação irá devolver os produtos ao estoque e atualizar os relatórios financeiros.
               Escolha o que deseja excluir:
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+            </p>
+          </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="flex gap-2">
@@ -624,8 +614,16 @@ export function EditSaleDialog({
                 
                 <div className="border rounded-lg max-h-48 overflow-y-auto">
                   {saleItems.map((item) => (
-                    <div key={item.id} className="p-3 flex items-center gap-3 border-b last:border-b-0 hover:bg-muted/50 cursor-pointer" onClick={() => toggleItemSelection(item.id)}>
-                      <Checkbox checked={selectedItemsToDelete.includes(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} />
+                    <div
+                      key={item.id}
+                      className="p-3 flex items-center gap-3 border-b last:border-b-0 hover:bg-muted/50 cursor-pointer"
+                      onClick={() => toggleItemSelection(item.id)}
+                    >
+                      <Checkbox
+                        checked={selectedItemsToDelete.includes(item.id)}
+                        onCheckedChange={() => toggleItemSelection(item.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
                       <div className="flex-1">
                         <p className="font-medium text-sm">{item.product_name}</p>
                         <p className="text-xs text-muted-foreground">{item.quantity}x R$ {Number(item.unit_price).toFixed(2).replace(".", ",")}</p>
@@ -652,21 +650,21 @@ export function EditSaleDialog({
             </div>
           </div>
 
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
-            </AlertDialogCancel>
-            <AlertDialogAction
+            </Button>
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting || (deleteMode === "partial" && selectedItemsToDelete.length === 0)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
