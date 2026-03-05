@@ -1,13 +1,32 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Cake, Calendar, AlertTriangle, Users, MessageCircle, ArrowRight, CreditCard, Clock, CheckCircle, ShoppingCart, Zap, ShoppingBag, Package, MapPin } from "lucide-react";
+import {
+  Cake,
+  Calendar,
+  AlertTriangle,
+  Users,
+  MessageCircle,
+  ArrowRight,
+  CreditCard,
+  Clock,
+  CheckCircle,
+  ShoppingCart,
+  Zap,
+  ShoppingBag,
+  Package,
+  MapPin,
+  X,
+  Check,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { useNotificationDismissals } from "@/hooks/useNotificationDismissals";
+import { toast } from "sonner";
 
 interface Customer {
   id: string;
@@ -53,8 +72,26 @@ interface PaymentReminder {
 export function SystemAlerts() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const today = format(new Date(), "yyyy-MM-dd");
   const todayMonthDay = format(new Date(), "MM-dd");
+  const { isDismissed, dismiss24h, dismiss7d, dismissPermanent } = useNotificationDismissals();
+
+  // ── Mutation: mark payment_reminder as paid ──────────────────────────────
+  const markPaymentPaid = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("payment_reminders")
+        .update({ is_paid: true, paid_at: new Date().toISOString() } as any)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deferred-due-today"] });
+      queryClient.invalidateQueries({ queryKey: ["deferred-overdue"] });
+      toast.success("Pagamento registrado como recebido!");
+    },
+  });
 
   // Aniversariantes de hoje
   const { data: birthdayCustomers = [] } = useQuery({
@@ -65,11 +102,9 @@ export function SystemAlerts() {
         .select("id, name, phone, birth_date")
         .not("birth_date", "is", null);
       if (error) throw error;
-      
-      // Filtrar por mês e dia
-      return (data as Customer[]).filter(c => {
+      return (data as Customer[]).filter((c) => {
         if (!c.birth_date) return false;
-        const birthMonthDay = c.birth_date.substring(5); // "MM-DD"
+        const birthMonthDay = c.birth_date.substring(5);
         return birthMonthDay === todayMonthDay;
       });
     },
@@ -131,7 +166,7 @@ export function SystemAlerts() {
         .eq("is_deferred", true)
         .eq("is_active", true);
       if (error) throw error;
-      return data.map(pm => pm.name);
+      return data.map((pm) => pm.name);
     },
     enabled: !!user?.id,
   });
@@ -141,7 +176,6 @@ export function SystemAlerts() {
     queryKey: ["deferred-due-today", user?.id, today, deferredPaymentMethods],
     queryFn: async () => {
       if (deferredPaymentMethods.length === 0) return [];
-      
       const { data, error } = await supabase
         .from("payment_reminders")
         .select("id, amount, due_date, customer_name, customer_phone, payment_method_name")
@@ -160,7 +194,6 @@ export function SystemAlerts() {
     queryKey: ["deferred-overdue", user?.id, today, deferredPaymentMethods],
     queryFn: async () => {
       if (deferredPaymentMethods.length === 0) return [];
-      
       const { data, error } = await supabase
         .from("payment_reminders")
         .select("id, amount, due_date, customer_name, customer_phone, payment_method_name")
@@ -180,18 +213,10 @@ export function SystemAlerts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_requests")
-        .select(`
-          id,
-          quantity,
-          status,
-          product_name,
-          requester_id
-        `)
+        .select(`id, quantity, status, product_name, requester_id`)
         .eq("owner_id", user?.id)
         .eq("status", "pending");
       if (error) throw error;
-      
-      // Buscar nomes dos solicitantes
       const requestsWithNames = await Promise.all(
         (data || []).map(async (req) => {
           const { data: profile } = await supabase
@@ -199,36 +224,24 @@ export function SystemAlerts() {
             .select("full_name")
             .eq("id", req.requester_id)
             .single();
-          return {
-            ...req,
-            requester_profile: profile
-          };
+          return { ...req, requester_profile: profile };
         })
       );
-      
       return requestsWithNames as StockRequest[];
     },
     enabled: !!user?.id,
   });
 
-  // Minhas solicitações enviadas pendentes (aguardando resposta)
+  // Minhas solicitações enviadas pendentes
   const { data: mySentPendingRequests = [] } = useQuery({
     queryKey: ["my-sent-pending-requests", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_requests")
-        .select(`
-          id,
-          quantity,
-          status,
-          product_name,
-          owner_id
-        `)
+        .select(`id, quantity, status, product_name, owner_id`)
         .eq("requester_id", user?.id)
         .eq("status", "pending");
       if (error) throw error;
-      
-      // Buscar nomes dos donos
       const requestsWithNames = await Promise.all(
         (data || []).map(async (req) => {
           const { data: profile } = await supabase
@@ -236,36 +249,24 @@ export function SystemAlerts() {
             .select("full_name")
             .eq("id", req.owner_id)
             .single();
-          return {
-            ...req,
-            owner_profile: profile
-          };
+          return { ...req, owner_profile: profile };
         })
       );
-      
       return requestsWithNames as StockRequest[];
     },
     enabled: !!user?.id,
   });
 
-  // Minhas solicitações aprovadas (prontas para vender)
-  const { data: myApprovedRequests = [] } = useQuery({
+  // Minhas solicitações aprovadas — filtrar as já vistas
+  const { data: myApprovedRequestsRaw = [] } = useQuery({
     queryKey: ["my-approved-requests", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_requests")
-        .select(`
-          id,
-          quantity,
-          status,
-          product_name,
-          owner_id
-        `)
+        .select(`id, quantity, status, product_name, owner_id`)
         .eq("requester_id", user?.id)
         .eq("status", "approved");
       if (error) throw error;
-      
-      // Buscar nomes dos donos
       const requestsWithNames = await Promise.all(
         (data || []).map(async (req) => {
           const { data: profile } = await supabase
@@ -273,24 +274,24 @@ export function SystemAlerts() {
             .select("full_name")
             .eq("id", req.owner_id)
             .single();
-          return {
-            ...req,
-            owner_profile: profile
-          };
+          return { ...req, owner_profile: profile };
         })
       );
-      
       return requestsWithNames as StockRequest[];
     },
     enabled: !!user?.id,
   });
+
+  const myApprovedRequests = myApprovedRequestsRaw.filter(
+    (r) => !isDismissed(`stock_approved_${r.id}`)
+  );
 
   const openWhatsApp = (phone: string, message: string) => {
     const cleanPhone = phone.replace(/\D/g, "");
     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  // Bolsa Consignada — clientes finalizaram escolhas
+  // Bolsa Consignada
   const { data: consignmentsReady = [] } = useQuery({
     queryKey: ["alerts-consignments-ready", user?.id],
     queryFn: async () => {
@@ -305,7 +306,7 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
-  // Pedidos do Catálogo — pedidos recebidos aguardando (últimos 7 dias)
+  // Pedidos do Catálogo
   const { data: catalogOrders = [] } = useQuery({
     queryKey: ["alerts-catalog-orders", user?.id],
     queryFn: async () => {
@@ -371,40 +372,85 @@ export function SystemAlerts() {
     enabled: !!user?.id,
   });
 
-  const hasAlerts = birthdayCustomers.length > 0 || dueTodayPayments.length > 0 || overduePayments.length > 0 || pendingRequests.length > 0 || deferredDueToday.length > 0 || deferredOverdue.length > 0 || mySentPendingRequests.length > 0 || myApprovedRequests.length > 0 || consignmentsReady.length > 0 || bazarPendingItems.length > 0 || bazarSoldItems.length > 0 || partnerMovements.length > 0 || catalogOrders.length > 0;
+  // Filter birthdays by dismissed
+  const visibleBirthdays = birthdayCustomers.filter(
+    (c) => !isDismissed(`birthday_${c.id}_${today}`)
+  );
+
+  const showBazarSold = bazarSoldItems.length > 0 && !isDismissed("bazar-sold");
+  const showPartnerMovements = partnerMovements.length > 0 && !isDismissed("partner");
+
+  const hasAlerts =
+    visibleBirthdays.length > 0 ||
+    dueTodayPayments.length > 0 ||
+    overduePayments.length > 0 ||
+    pendingRequests.length > 0 ||
+    deferredDueToday.length > 0 ||
+    deferredOverdue.length > 0 ||
+    mySentPendingRequests.length > 0 ||
+    myApprovedRequests.length > 0 ||
+    consignmentsReady.length > 0 ||
+    bazarPendingItems.length > 0 ||
+    showBazarSold ||
+    showPartnerMovements ||
+    catalogOrders.length > 0;
 
   if (!hasAlerts) return null;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
       {/* Aniversariantes */}
-      {birthdayCustomers.length > 0 && (
+      {visibleBirthdays.length > 0 && (
         <Card className="border-pink-500/30 bg-pink-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-pink-500">
               <Cake className="h-4 w-4" />
               Aniversariantes Hoje
-              <Badge variant="secondary" className="ml-auto">{birthdayCustomers.length}</Badge>
+              <Badge variant="secondary" className="ml-auto">{visibleBirthdays.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {birthdayCustomers.slice(0, 3).map((customer) => (
-              <div key={customer.id} className="flex items-center justify-between text-sm">
-                <span className="truncate">{customer.name}</span>
-                {customer.phone && (
+            {visibleBirthdays.slice(0, 3).map((customer) => (
+              <div key={customer.id} className="flex items-center justify-between text-sm gap-1">
+                <span className="truncate flex-1">{customer.name}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {customer.phone && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-green-500"
+                      onClick={() =>
+                        openWhatsApp(
+                          customer.phone!,
+                          `Olá ${customer.name}! 🎂 Feliz aniversário! Desejamos muitas felicidades!`
+                        )
+                      }
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-green-500"
-                    onClick={() => openWhatsApp(customer.phone!, `Olá ${customer.name}! 🎂 Feliz aniversário! Desejamos muitas felicidades!`)}
+                    className="h-7 w-7 text-pink-400"
+                    title="Marcar como parabenizado"
+                    onClick={() => {
+                      dismissPermanent(`birthday_${customer.id}_${today}`);
+                      toast.success("Marcado como parabenizado!");
+                    }}
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <Check className="h-4 w-4" />
                   </Button>
-                )}
+                </div>
               </div>
             ))}
-            {birthdayCustomers.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-pink-500" onClick={() => navigate("/customers")}>
+            {visibleBirthdays.length > 3 && (
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-pink-500"
+                onClick={() => navigate("/customers")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -412,7 +458,7 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Vencimentos Hoje */}
+      {/* Vencimentos Hoje — Consórcio */}
       {dueTodayPayments.length > 0 && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <CardHeader className="pb-2">
@@ -427,14 +473,21 @@ export function SystemAlerts() {
               <div key={payment.id} className="flex items-center justify-between text-sm">
                 <div className="truncate">
                   <span>{payment.participant?.customer_name}</span>
-                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                  <span className="text-muted-foreground ml-1">
+                    (R$ {Number(payment.amount).toFixed(2)})
+                  </span>
                 </div>
                 {payment.participant?.customer_phone && (
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-green-500"
-                    onClick={() => openWhatsApp(payment.participant!.customer_phone!, `Olá ${payment.participant!.customer_name}! Lembramos que a parcela ${payment.installment_number} do consórcio vence hoje. Valor: R$ ${Number(payment.amount).toFixed(2)}`)}
+                    className="h-7 w-7 text-green-500 shrink-0"
+                    onClick={() =>
+                      openWhatsApp(
+                        payment.participant!.customer_phone!,
+                        `Olá ${payment.participant!.customer_name}! Lembramos que a parcela ${payment.installment_number} do consórcio vence hoje. Valor: R$ ${Number(payment.amount).toFixed(2)}`
+                      )
+                    }
                   >
                     <MessageCircle className="h-4 w-4" />
                   </Button>
@@ -442,7 +495,12 @@ export function SystemAlerts() {
               </div>
             ))}
             {dueTodayPayments.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-yellow-500" onClick={() => navigate("/consortiums")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-yellow-500"
+                onClick={() => navigate("/consortiums")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -450,7 +508,7 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Pagamentos em Atraso */}
+      {/* Pagamentos Consórcio em Atraso */}
       {overduePayments.length > 0 && (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardHeader className="pb-2">
@@ -465,14 +523,21 @@ export function SystemAlerts() {
               <div key={payment.id} className="flex items-center justify-between text-sm">
                 <div className="truncate">
                   <span>{payment.participant?.customer_name}</span>
-                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                  <span className="text-muted-foreground ml-1">
+                    (R$ {Number(payment.amount).toFixed(2)})
+                  </span>
                 </div>
                 {payment.participant?.customer_phone && (
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-green-500"
-                    onClick={() => openWhatsApp(payment.participant!.customer_phone!, `Olá ${payment.participant!.customer_name}! Identificamos que a parcela ${payment.installment_number} do consórcio está em atraso. Valor: R$ ${Number(payment.amount).toFixed(2)}. Por favor, entre em contato para regularização.`)}
+                    className="h-7 w-7 text-green-500 shrink-0"
+                    onClick={() =>
+                      openWhatsApp(
+                        payment.participant!.customer_phone!,
+                        `Olá ${payment.participant!.customer_name}! Identificamos que a parcela ${payment.installment_number} do consórcio está em atraso. Valor: R$ ${Number(payment.amount).toFixed(2)}. Por favor, entre em contato para regularização.`
+                      )
+                    }
                   >
                     <MessageCircle className="h-4 w-4" />
                   </Button>
@@ -480,7 +545,12 @@ export function SystemAlerts() {
               </div>
             ))}
             {overduePayments.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-destructive" onClick={() => navigate("/consortiums")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-destructive"
+                onClick={() => navigate("/consortiums")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -488,37 +558,61 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Vendas a Prazo - Vencendo Hoje */}
+      {/* Vendas a Prazo — Vencendo Hoje */}
       {deferredDueToday.length > 0 && (
         <Card className="border-orange-500/30 bg-orange-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-500">
               <CreditCard className="h-4 w-4" />
-              Vendas a Prazo - Hoje
+              Vendas a Prazo — Hoje
               <Badge variant="secondary" className="ml-auto">{deferredDueToday.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {deferredDueToday.slice(0, 3).map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between text-sm">
-                <div className="truncate">
+              <div key={payment.id} className="flex items-center justify-between text-sm gap-1">
+                <div className="truncate flex-1">
                   <span>{payment.customer_name || "Cliente"}</span>
-                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                  <span className="text-muted-foreground ml-1">
+                    (R$ {Number(payment.amount).toFixed(2)})
+                  </span>
                 </div>
-                {payment.customer_phone && (
+                <div className="flex items-center gap-1 shrink-0">
+                  {payment.customer_phone && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-green-500"
+                      onClick={() =>
+                        openWhatsApp(
+                          payment.customer_phone!,
+                          `Olá ${payment.customer_name || ""}! Lembramos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} vence hoje.`
+                        )
+                      }
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-green-500"
-                    onClick={() => openWhatsApp(payment.customer_phone!, `Olá ${payment.customer_name || ""}! Lembramos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} vence hoje.`)}
+                    className="h-7 w-7 text-orange-400"
+                    title="Marcar como recebido"
+                    disabled={markPaymentPaid.isPending}
+                    onClick={() => markPaymentPaid.mutate(payment.id)}
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <Check className="h-4 w-4" />
                   </Button>
-                )}
+                </div>
               </div>
             ))}
             {deferredDueToday.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-orange-500" onClick={() => navigate("/dashboard")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-orange-500"
+                onClick={() => navigate("/reports/deferred")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -526,7 +620,7 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Vendas a Prazo - Em Atraso */}
+      {/* Vendas a Prazo — Em Atraso */}
       {deferredOverdue.length > 0 && (
         <Card className="border-red-600/30 bg-red-600/5">
           <CardHeader className="pb-2">
@@ -538,25 +632,49 @@ export function SystemAlerts() {
           </CardHeader>
           <CardContent className="space-y-2">
             {deferredOverdue.slice(0, 3).map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between text-sm">
-                <div className="truncate">
+              <div key={payment.id} className="flex items-center justify-between text-sm gap-1">
+                <div className="truncate flex-1">
                   <span>{payment.customer_name || "Cliente"}</span>
-                  <span className="text-muted-foreground ml-1">(R$ {Number(payment.amount).toFixed(2)})</span>
+                  <span className="text-muted-foreground ml-1">
+                    (R$ {Number(payment.amount).toFixed(2)})
+                  </span>
                 </div>
-                {payment.customer_phone && (
+                <div className="flex items-center gap-1 shrink-0">
+                  {payment.customer_phone && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-green-500"
+                      onClick={() =>
+                        openWhatsApp(
+                          payment.customer_phone!,
+                          `Olá ${payment.customer_name || ""}! Identificamos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} está em atraso. Por favor, entre em contato para regularização.`
+                        )
+                      }
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-green-500"
-                    onClick={() => openWhatsApp(payment.customer_phone!, `Olá ${payment.customer_name || ""}! Identificamos que seu pagamento no valor de R$ ${Number(payment.amount).toFixed(2)} está em atraso. Por favor, entre em contato para regularização.`)}
+                    className="h-7 w-7 text-red-400"
+                    title="Marcar como recebido"
+                    disabled={markPaymentPaid.isPending}
+                    onClick={() => markPaymentPaid.mutate(payment.id)}
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <Check className="h-4 w-4" />
                   </Button>
-                )}
+                </div>
               </div>
             ))}
             {deferredOverdue.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-red-600" onClick={() => navigate("/dashboard")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-red-600"
+                onClick={() => navigate("/reports/deferred")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -578,15 +696,27 @@ export function SystemAlerts() {
             {pendingRequests.slice(0, 3).map((request) => (
               <div key={request.id} className="text-sm truncate">
                 <span className="font-medium">{request.requester_profile?.full_name}</span>
-                <span className="text-muted-foreground"> - {request.quantity}x {request.product_name || "Produto"}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  — {request.quantity}x {request.product_name || "Produto"}
+                </span>
               </div>
             ))}
             {pendingRequests.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-primary" onClick={() => navigate("/stock-requests")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-primary"
+                onClick={() => navigate("/stock-requests")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
-            <Button size="sm" className="w-full mt-2" onClick={() => navigate("/stock-requests")}>
+            <Button
+              size="sm"
+              className="w-full mt-2"
+              onClick={() => navigate("/stock-requests")}
+            >
               Gerenciar Solicitações
             </Button>
           </CardContent>
@@ -606,12 +736,19 @@ export function SystemAlerts() {
           <CardContent className="space-y-2">
             {mySentPendingRequests.slice(0, 3).map((request) => (
               <div key={request.id} className="text-sm truncate">
-                <span className="text-muted-foreground">{request.quantity}x {request.product_name || "Produto"}</span>
-                <span className="font-medium"> - {request.owner_profile?.full_name}</span>
+                <span className="text-muted-foreground">
+                  {request.quantity}x {request.product_name || "Produto"}
+                </span>
+                <span className="font-medium"> — {request.owner_profile?.full_name}</span>
               </div>
             ))}
             {mySentPendingRequests.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-amber-500" onClick={() => navigate("/stock-requests")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-amber-500"
+                onClick={() => navigate("/stock-requests")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
@@ -626,22 +763,52 @@ export function SystemAlerts() {
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-500">
               <CheckCircle className="h-4 w-4" />
               Prontas para Vender
-              <Badge variant="secondary" className="ml-auto bg-green-500/20 text-green-500">{myApprovedRequests.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-green-500/20 text-green-500"
+              >
+                {myApprovedRequests.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {myApprovedRequests.slice(0, 3).map((request) => (
-              <div key={request.id} className="text-sm truncate">
-                <span className="text-muted-foreground">{request.quantity}x {request.product_name || "Produto"}</span>
-                <span className="font-medium"> - {request.owner_profile?.full_name}</span>
+              <div key={request.id} className="flex items-center justify-between text-sm">
+                <div className="truncate flex-1">
+                  <span className="text-muted-foreground">
+                    {request.quantity}x {request.product_name || "Produto"}
+                  </span>
+                  <span className="font-medium"> — {request.owner_profile?.full_name}</span>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-green-400 shrink-0"
+                  title="Marcar como ciente"
+                  onClick={() => {
+                    dismissPermanent(`stock_approved_${request.id}`);
+                    toast.success("Marcado como ciente!");
+                  }}
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
               </div>
             ))}
             {myApprovedRequests.length > 3 && (
-              <Button variant="link" size="sm" className="p-0 h-auto text-green-500" onClick={() => navigate("/stock-requests")}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-green-500"
+                onClick={() => navigate("/stock-requests")}
+              >
                 Ver todos <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
             )}
-            <Button size="sm" className="w-full mt-2 bg-green-500 hover:bg-green-600" onClick={() => navigate("/stock-requests")}>
+            <Button
+              size="sm"
+              className="w-full mt-2 bg-green-500 hover:bg-green-600"
+              onClick={() => navigate("/stock-requests")}
+            >
               <ShoppingCart className="h-4 w-4 mr-2" />
               Vender Agora
             </Button>
@@ -649,21 +816,32 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Bolsa Consignada — Clientes finalizaram escolhas */}
+      {/* Bolsa Consignada */}
       {consignmentsReady.length > 0 && (
         <Card className="border-purple-500/30 bg-purple-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-purple-500">
               <ShoppingBag className="h-4 w-4" />
               Bolsa Consignada
-              <Badge variant="secondary" className="ml-auto bg-purple-500/20 text-purple-500">{consignmentsReady.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-purple-500/20 text-purple-500"
+              >
+                {consignmentsReady.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {consignmentsReady.length} cliente{consignmentsReady.length > 1 ? "s" : ""} finalizou as escolhas e aguarda conciliação
+              {consignmentsReady.length} cliente
+              {consignmentsReady.length > 1 ? "s" : ""} finalizou as escolhas e aguarda
+              conciliação
             </p>
-            <Button size="sm" className="w-full mt-1 bg-purple-500 hover:bg-purple-600 text-white" onClick={() => navigate("/consignments")}>
+            <Button
+              size="sm"
+              className="w-full mt-1 bg-purple-500 hover:bg-purple-600 text-white"
+              onClick={() => navigate("/consignments")}
+            >
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Bolsas
             </Button>
@@ -671,21 +849,31 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Pedidos do Catálogo — Pedidos recebidos */}
+      {/* Pedidos do Catálogo */}
       {catalogOrders.length > 0 && (
         <Card className="border-emerald-500/30 bg-emerald-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-emerald-600">
               <ShoppingCart className="h-4 w-4" />
               Pedidos da Loja
-              <Badge variant="secondary" className="ml-auto bg-emerald-500/20 text-emerald-600">{catalogOrders.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-emerald-500/20 text-emerald-600"
+              >
+                {catalogOrders.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {catalogOrders.length} pedido{catalogOrders.length > 1 ? "s" : ""} aguardando atendimento
+              {catalogOrders.length} pedido{catalogOrders.length > 1 ? "s" : ""} aguardando
+              atendimento
             </p>
-            <Button size="sm" className="w-full mt-1 bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => navigate("/catalog-orders")}>
+            <Button
+              size="sm"
+              className="w-full mt-1 bg-emerald-500 hover:bg-emerald-600 text-white"
+              onClick={() => navigate("/catalog-orders")}
+            >
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Pedidos
             </Button>
@@ -700,14 +888,25 @@ export function SystemAlerts() {
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-indigo-500">
               <Package className="h-4 w-4" />
               Bazar VIP — Curadoria
-              <Badge variant="secondary" className="ml-auto bg-indigo-500/20 text-indigo-500">{bazarPendingItems.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-indigo-500/20 text-indigo-500"
+              >
+                {bazarPendingItems.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {bazarPendingItems.slice(0, 2).map((item) => (
-              <div key={item.id} className="text-xs text-muted-foreground truncate">• {item.title}</div>
+              <div key={item.id} className="text-xs text-muted-foreground truncate">
+                • {item.title}
+              </div>
             ))}
-            <Button size="sm" className="w-full mt-1 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={() => navigate("/admin/bazar")}>
+            <Button
+              size="sm"
+              className="w-full mt-1 bg-indigo-500 hover:bg-indigo-600 text-white"
+              onClick={() => navigate("/admin/bazar")}
+            >
               <ArrowRight className="h-4 w-4 mr-2" />
               Gerenciar
             </Button>
@@ -715,21 +914,41 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Bazar VIP — Vendas recentes */}
-      {bazarSoldItems.length > 0 && (
+      {/* Bazar VIP — Vendas recentes (dispensável) */}
+      {showBazarSold && (
         <Card className="border-green-500/30 bg-green-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-600">
               <CheckCircle className="h-4 w-4" />
               Bazar VIP — Vendas
-              <Badge variant="secondary" className="ml-auto bg-green-500/20 text-green-600">{bazarSoldItems.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-green-500/20 text-green-600"
+              >
+                {bazarSoldItems.length}
+              </Badge>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground -mr-1"
+                title="Dispensar"
+                onClick={() => dismiss7d("bazar-sold")}
+              >
+                <X className="h-3 w-3" />
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {bazarSoldItems.length} venda{bazarSoldItems.length > 1 ? "s" : ""} realizadas nos últimos 7 dias
+              {bazarSoldItems.length} venda{bazarSoldItems.length > 1 ? "s" : ""} realizadas nos
+              últimos 7 dias
             </p>
-            <Button size="sm" variant="outline" className="w-full mt-1 border-green-500/30 text-green-600" onClick={() => navigate("/admin/bazar")}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full mt-1 border-green-500/30 text-green-600"
+              onClick={() => navigate("/admin/bazar")}
+            >
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Bazar
             </Button>
@@ -737,21 +956,40 @@ export function SystemAlerts() {
         </Card>
       )}
 
-      {/* Pontos Parceiros — Movimentações recentes */}
-      {partnerMovements.length > 0 && (
+      {/* Pontos Parceiros — Movimentações recentes (dispensável) */}
+      {showPartnerMovements && (
         <Card className="border-blue-500/30 bg-blue-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-500">
               <MapPin className="h-4 w-4" />
               Pontos Parceiros
-              <Badge variant="secondary" className="ml-auto bg-blue-500/20 text-blue-500">{partnerMovements.length}</Badge>
+              <Badge
+                variant="secondary"
+                className="ml-auto bg-blue-500/20 text-blue-500"
+              >
+                {partnerMovements.length}
+              </Badge>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground -mr-1"
+                title="Dispensar"
+                onClick={() => dismiss24h("partner")}
+              >
+                <X className="h-3 w-3" />
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {partnerMovements.length} movimentação{partnerMovements.length > 1 ? "ões" : ""} nas últimas 24h
+              {partnerMovements.length} movimentação
+              {partnerMovements.length > 1 ? "ões" : ""} nas últimas 24h
             </p>
-            <Button size="sm" className="w-full mt-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate("/partner-points")}>
+            <Button
+              size="sm"
+              className="w-full mt-1 bg-blue-500 hover:bg-blue-600 text-white"
+              onClick={() => navigate("/partner-points")}
+            >
               <ArrowRight className="h-4 w-4 mr-2" />
               Ver Pontos
             </Button>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { subDays } from "date-fns";
+import { useNotificationDismissals } from "@/hooks/useNotificationDismissals";
 
 export interface NotificationSection {
   key: string;
@@ -21,6 +22,7 @@ export interface NotificationsData {
 
 export function useNotifications(): NotificationsData {
   const { user } = useAuth();
+  const { isDismissed } = useNotificationDismissals();
 
   const sevenDaysAgo = subDays(new Date(), 7).toISOString();
   const oneDayAgo = subDays(new Date(), 1).toISOString();
@@ -150,7 +152,6 @@ export function useNotifications(): NotificationsData {
         .eq("status", "abandoned")
         .gte("created_at", sevenDaysAgo);
       if (error) throw error;
-      // Deduplicate by lead_id to count unique carts
       const uniqueLeads = new Set((data || []).map((d: { lead_id: string }) => d.lead_id));
       return Array.from(uniqueLeads);
     },
@@ -175,12 +176,21 @@ export function useNotifications(): NotificationsData {
     refetchInterval: 60000,
   });
 
-  const isLoading = loadingEvent || loadingConsignment || loadingBazarPending || loadingBazarSold || loadingPartner || loadingPartnerSales || loadingLeads || loadingCarts || loadingOrders;
+  const isLoading =
+    loadingEvent ||
+    loadingConsignment ||
+    loadingBazarPending ||
+    loadingBazarSold ||
+    loadingPartner ||
+    loadingPartnerSales ||
+    loadingLeads ||
+    loadingCarts ||
+    loadingOrders;
 
-  const sections: NotificationSection[] = [];
+  const rawSections: NotificationSection[] = [];
 
   if (catalogOrders.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "catalog-orders",
       label: "Pedidos da Loja",
       count: catalogOrders.length,
@@ -192,7 +202,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (eventDrafts.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "event",
       label: "Modo Evento",
       count: eventDrafts.length,
@@ -204,7 +214,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (consignmentsReady.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "consignment",
       label: "Bolsa Consignada",
       count: consignmentsReady.length,
@@ -216,7 +226,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (bazarPending.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "bazar-pending",
       label: "Bazar VIP — Curadoria",
       count: bazarPending.length,
@@ -228,7 +238,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (bazarSold.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "bazar-sold",
       label: "Bazar VIP — Vendas",
       count: bazarSold.length,
@@ -240,7 +250,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (partnerPendingSales.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "partner-sales",
       label: "Vendas em Parceiros",
       count: partnerPendingSales.length,
@@ -252,7 +262,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (partnerMovements.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "partner",
       label: "Pontos Parceiros",
       count: partnerMovements.length,
@@ -264,7 +274,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (newLeads.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "new-leads",
       label: "Novos Leads",
       count: newLeads.length,
@@ -276,7 +286,7 @@ export function useNotifications(): NotificationsData {
   }
 
   if (abandonedCarts.length > 0) {
-    sections.push({
+    rawSections.push({
       key: "abandoned-carts",
       label: "Carrinhos Abandonados",
       count: abandonedCarts.length,
@@ -286,6 +296,12 @@ export function useNotifications(): NotificationsData {
       description: `${abandonedCarts.length} carrinho${abandonedCarts.length > 1 ? "s" : ""} abandonado${abandonedCarts.length > 1 ? "s" : ""} nos últimos 7 dias`,
     });
   }
+
+  // Filter out dismissed time-based sections
+  const DISMISSIBLE_KEYS = new Set(["bazar-sold", "partner", "new-leads", "abandoned-carts"]);
+  const sections = rawSections.filter(
+    (s) => !DISMISSIBLE_KEYS.has(s.key) || !isDismissed(s.key)
+  );
 
   const totalCount = sections.reduce((sum, s) => sum + s.count, 0);
 
