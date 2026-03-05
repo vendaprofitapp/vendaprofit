@@ -219,7 +219,7 @@ export default function LandingPageAdmin() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Botão Principal (CTA)</Label>
+                    <Label>Botão Principal (CTA) — Texto</Label>
                     <Input 
                       defaultValue={settings?.hero_cta_primary_text}
                       onChange={(e) => handleSettingsChange("hero_cta_primary_text", e.target.value)}
@@ -227,11 +227,27 @@ export default function LandingPageAdmin() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Botão Secundário</Label>
+                    <Label>Botão Principal — Link</Label>
+                    <Input 
+                      defaultValue={settings?.hero_cta_primary_link}
+                      onChange={(e) => handleSettingsChange("hero_cta_primary_link", e.target.value)}
+                      placeholder="/auth ou https://..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Botão Secundário — Texto</Label>
                     <Input 
                       defaultValue={settings?.hero_cta_secondary_text}
                       onChange={(e) => handleSettingsChange("hero_cta_secondary_text", e.target.value)}
                       placeholder="Ver Demonstração"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Botão Secundário — Link</Label>
+                    <Input 
+                      defaultValue={settings?.hero_cta_secondary_link}
+                      onChange={(e) => handleSettingsChange("hero_cta_secondary_link", e.target.value)}
+                      placeholder="#video ou https://..."
                     />
                   </div>
                 </div>
@@ -757,12 +773,22 @@ export default function LandingPageAdmin() {
                     onChange={(e) => handleSettingsChange("cta_subtitle", e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Texto do Botão</Label>
-                  <Input 
-                    defaultValue={settings?.cta_button_text}
-                    onChange={(e) => handleSettingsChange("cta_button_text", e.target.value)}
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Texto do Botão CTA</Label>
+                    <Input 
+                      defaultValue={settings?.cta_button_text}
+                      onChange={(e) => handleSettingsChange("cta_button_text", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Link do Botão CTA</Label>
+                    <Input 
+                      defaultValue={settings?.cta_button_link}
+                      onChange={(e) => handleSettingsChange("cta_button_link", e.target.value)}
+                      placeholder="/auth ou https://..."
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Features do CTA (separadas por vírgula)</Label>
@@ -775,6 +801,30 @@ export default function LandingPageAdmin() {
                     placeholder="14 dias grátis, Sem cartão de crédito, Suporte incluso"
                   />
                 </div>
+
+                {/* Header Links */}
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-3">Links do Header (topo da página)</h4>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Link do botão "Entrar"</Label>
+                      <Input 
+                        defaultValue={settings?.header_login_link}
+                        onChange={(e) => handleSettingsChange("header_login_link", e.target.value)}
+                        placeholder="/auth"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Link do botão "Começar Grátis"</Label>
+                      <Input 
+                        defaultValue={settings?.header_cta_link}
+                        onChange={(e) => handleSettingsChange("header_cta_link", e.target.value)}
+                        placeholder="/auth"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Copyright do Rodapé</Label>
                   <Input 

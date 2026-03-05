@@ -38,6 +38,11 @@ export interface LandingPageSettings {
   logo_url: string | null;
   bio_video_preview: string | null;
   bio_video_full: string | null;
+  header_login_link: string;
+  header_cta_link: string;
+  hero_cta_primary_link: string;
+  hero_cta_secondary_link: string;
+  cta_button_link: string;
 }
 
 export interface LandingPageFeature {
@@ -125,6 +130,11 @@ const defaultSettings: Omit<LandingPageSettings, "id" | "owner_id"> = {
   logo_url: null,
   bio_video_preview: null,
   bio_video_full: null,
+  header_login_link: "/auth",
+  header_cta_link: "/auth",
+  hero_cta_primary_link: "/auth",
+  hero_cta_secondary_link: "#video",
+  cta_button_link: "/auth",
 };
 
 const defaultFeatures: Omit<LandingPageFeature, "id" | "owner_id">[] = [

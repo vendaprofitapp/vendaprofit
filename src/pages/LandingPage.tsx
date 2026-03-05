@@ -77,10 +77,10 @@ const LandingPage = () => {
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/auth">
+            <Link to={settings?.header_login_link || "/auth"}>
               <Button variant="ghost">Entrar</Button>
             </Link>
-            <Link to="/auth">
+            <Link to={settings?.header_cta_link || "/auth"}>
               <Button className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70">
                 Começar Grátis
               </Button>
@@ -114,15 +114,17 @@ const LandingPage = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in">
-              <Link to="/auth">
+              <Link to={settings?.hero_cta_primary_link || "/auth"}>
                 <Button size="lg" className="text-lg px-8 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
                   {settings?.hero_cta_primary_text}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="text-lg px-8">
-                {settings?.hero_cta_secondary_text}
-              </Button>
+              <Link to={settings?.hero_cta_secondary_link || "#video"}>
+                <Button size="lg" variant="outline" className="text-lg px-8">
+                  {settings?.hero_cta_secondary_text}
+                </Button>
+              </Link>
             </div>
             
             <p className="text-sm text-muted-foreground mt-4">
@@ -399,7 +401,7 @@ const LandingPage = () => {
             <p className="text-xl mb-8 opacity-90">
               {settings?.cta_subtitle}
             </p>
-            <Link to="/auth">
+            <Link to={settings?.cta_button_link || "/auth"}>
               <Button
                 size="lg"
                 className="text-lg px-10 bg-background text-primary hover:bg-background/90 shadow-xl"

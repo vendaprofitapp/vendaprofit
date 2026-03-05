@@ -2064,6 +2064,7 @@ export type Database = {
           bio_video_full: string | null
           bio_video_preview: string | null
           created_at: string
+          cta_button_link: string
           cta_button_text: string | null
           cta_features: Json | null
           cta_subtitle: string | null
@@ -2074,8 +2075,12 @@ export type Database = {
           features_title: string | null
           features_title_highlight: string | null
           footer_copyright: string | null
+          header_cta_link: string
+          header_login_link: string
           hero_badge_text: string | null
+          hero_cta_primary_link: string
           hero_cta_primary_text: string | null
+          hero_cta_secondary_link: string
           hero_cta_secondary_text: string | null
           hero_footer_text: string | null
           hero_subtitle: string | null
@@ -2103,6 +2108,7 @@ export type Database = {
           bio_video_full?: string | null
           bio_video_preview?: string | null
           created_at?: string
+          cta_button_link?: string
           cta_button_text?: string | null
           cta_features?: Json | null
           cta_subtitle?: string | null
@@ -2113,8 +2119,12 @@ export type Database = {
           features_title?: string | null
           features_title_highlight?: string | null
           footer_copyright?: string | null
+          header_cta_link?: string
+          header_login_link?: string
           hero_badge_text?: string | null
+          hero_cta_primary_link?: string
           hero_cta_primary_text?: string | null
+          hero_cta_secondary_link?: string
           hero_cta_secondary_text?: string | null
           hero_footer_text?: string | null
           hero_subtitle?: string | null
@@ -2142,6 +2152,7 @@ export type Database = {
           bio_video_full?: string | null
           bio_video_preview?: string | null
           created_at?: string
+          cta_button_link?: string
           cta_button_text?: string | null
           cta_features?: Json | null
           cta_subtitle?: string | null
@@ -2152,8 +2163,12 @@ export type Database = {
           features_title?: string | null
           features_title_highlight?: string | null
           footer_copyright?: string | null
+          header_cta_link?: string
+          header_login_link?: string
           hero_badge_text?: string | null
+          hero_cta_primary_link?: string
           hero_cta_primary_text?: string | null
+          hero_cta_secondary_link?: string
           hero_cta_secondary_text?: string | null
           hero_footer_text?: string | null
           hero_subtitle?: string | null
