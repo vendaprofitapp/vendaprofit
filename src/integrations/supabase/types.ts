@@ -3868,6 +3868,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_notification_dismissals: {
+        Row: {
+          alert_key: string
+          dismissed_at: string
+          dismissed_until: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          alert_key: string
+          dismissed_at?: string
+          dismissed_until?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          alert_key?: string
+          dismissed_at?: string
+          dismissed_until?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
