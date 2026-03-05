@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { subDays } from "date-fns";
-import { useNotificationDismissals } from "@/hooks/useNotificationDismissals";
 
 export interface NotificationSection {
   key: string;
@@ -22,7 +21,28 @@ export interface NotificationsData {
 
 export function useNotifications(): NotificationsData {
   const { user } = useAuth();
-  const { isDismissed } = useNotificationDismissals();
+
+  // Read-only dismissals (no useMutation to avoid hooks chain issues)
+  const { data: dismissalsRaw = [] } = useQuery({
+    queryKey: ["notification-dismissals", user?.id],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("user_notification_dismissals")
+        .select("alert_key, dismissed_until")
+        .eq("user_id", user!.id);
+      if (error) throw error;
+      return (data ?? []) as { alert_key: string; dismissed_until: string | null }[];
+    },
+    enabled: !!user?.id,
+    refetchInterval: 30000,
+  });
+
+  const isDismissed = (alertKey: string): boolean => {
+    const d = dismissalsRaw.find((d) => d.alert_key === alertKey);
+    if (!d) return false;
+    if (!d.dismissed_until) return true;
+    return new Date(d.dismissed_until) > new Date();
+  };
 
   const sevenDaysAgo = subDays(new Date(), 7).toISOString();
   const oneDayAgo = subDays(new Date(), 1).toISOString();
