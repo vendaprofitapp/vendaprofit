@@ -10,13 +10,14 @@ import {
 import { ptBR } from "date-fns/locale";
 import {
   TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck, DollarSign,
-  Calendar, ChevronDown
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
 import { cn } from "@/lib/utils";
