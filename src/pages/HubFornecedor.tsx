@@ -327,6 +327,14 @@ function HubRulesDialog({
               ))}
             </RadioGroup>
           </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Preço Mínimo de Venda (R$)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+              <Input type="number" min="0" step="0.01" placeholder="0,00" className="pl-9"
+                value={form.hub_minimum_sale_price} onChange={(e) => setForm((f) => ({ ...f, hub_minimum_sale_price: e.target.value }))} />
+            </div>
+          </div>
           {form.hub_pricing_mode === "fixed" && (
             <div className="space-y-1.5">
               <Label htmlFor="hub_fixed_cost" className="text-sm">Custo para o Vendedor (R$)</Label>
@@ -338,22 +346,12 @@ function HubRulesDialog({
             </div>
           )}
           {form.hub_pricing_mode === "commission" && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-sm">Preço Mínimo de Venda (R$) *</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
-                  <Input type="number" min="0" step="0.01" placeholder="0,00" className="pl-9"
-                    value={form.hub_minimum_sale_price} onChange={(e) => setForm((f) => ({ ...f, hub_minimum_sale_price: e.target.value }))} />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm">Tua % de Comissão *</Label>
-                <div className="relative">
-                  <Input type="number" min="0" max="100" step="0.1" placeholder="Ex: 30" className="pr-9"
-                    value={form.hub_commission_rate} onChange={(e) => setForm((f) => ({ ...f, hub_commission_rate: e.target.value }))} />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
-                </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Tua % de Comissão *</Label>
+              <div className="relative">
+                <Input type="number" min="0" max="100" step="0.1" placeholder="Ex: 30" className="pr-9"
+                  value={form.hub_commission_rate} onChange={(e) => setForm((f) => ({ ...f, hub_commission_rate: e.target.value }))} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
             </div>
           )}
