@@ -603,12 +603,10 @@ function SupplierCard({
                 <p className="font-bold text-sm truncate">{displayName}</p>
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
               </div>
-              {location && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <MapPin className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{location}</span>
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{location ?? "Endereço não informado"}</span>
+              </p>
               {supplier.hub_description && (
                 <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
                   {supplier.hub_description}
