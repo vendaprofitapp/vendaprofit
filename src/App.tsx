@@ -64,7 +64,8 @@ import ReportInstagram from "./pages/ReportInstagram";
 import ReportDeferredSales from "./pages/ReportDeferredSales";
 import ReportMyPerformance from "./pages/ReportMyPerformance";
 import ReportHubAcertos from "./pages/ReportHubAcertos";
-import HubVendas from "./pages/HubVendas";
+import HubFornecedor from "./pages/HubFornecedor";
+import HubVendedor from "./pages/HubVendedor";
 
 import CatalogOrders from "./pages/CatalogOrders";
 
