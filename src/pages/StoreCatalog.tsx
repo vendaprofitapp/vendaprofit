@@ -3072,7 +3072,7 @@ function BoutiqueProductCard({ item, primaryColor, cardBackgroundColor, onAddToC
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const viewTrackedRef = useRef(false);
 
