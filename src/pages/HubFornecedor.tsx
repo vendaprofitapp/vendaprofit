@@ -716,6 +716,60 @@ export default function HubFornecedor() {
   // Bulk state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkToggling, setBulkToggling] = useState(false);
+
+  const bulkToggleActive = async (activate: boolean) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkToggling(true);
+    try {
+      // Upsert hub_shared_products entries for selected product ids
+      const upserts = ids.map((pid) => ({
+        product_id: pid,
+        connection_id: hubEntries.find((e) => e.product_id === pid)?.id
+          ? hubEntries.find((e) => e.product_id === pid)!.id
+          : undefined,
+        is_active: activate,
+      }));
+
+      // Update only existing hub entries
+      const existingIds = ids.filter((pid) => hubByProductId[pid]);
+      if (existingIds.length > 0) {
+        const { error } = await supabase
+          .from("hub_shared_products")
+          .update({ is_active: activate })
+          .in("product_id", existingIds);
+        if (error) throw error;
+      }
+
+      // For products without hub entry, insert new ones (need a connection)
+      const newIds = ids.filter((pid) => !hubByProductId[pid]);
+      if (newIds.length > 0 && hubConnections.length > 0) {
+        const connId = hubConnections[0].id;
+        const inserts = newIds.map((pid) => ({
+          product_id: pid,
+          connection_id: connId,
+          is_active: activate,
+          hub_configured: false,
+          hub_approval_type: "automatic",
+          hub_pricing_mode: "fixed",
+          hub_fixed_cost: 0,
+          hub_minimum_sale_price: 0,
+          hub_commission_rate: 0,
+        }));
+        const { error } = await supabase.from("hub_shared_products").insert(inserts);
+        if (error) throw error;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["hub-fornecedor-entries"] });
+      toast.success(`${ids.length} produto${ids.length !== 1 ? "s" : ""} ${activate ? "ativado" : "inativado"}${ids.length !== 1 ? "s" : ""} no HUB`);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast.error("Erro ao atualizar produtos: " + err.message);
+    } finally {
+      setBulkToggling(false);
+    }
+  };
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>("all");
