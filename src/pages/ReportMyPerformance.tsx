@@ -413,7 +413,7 @@ export default function ReportMyPerformance() {
     });
   }, [sales, dateRange, costMap, feesMap]);
 
-  const isLoading = salesLoading || costsLoading;
+  const isLoading = salesLoading || costsLoading || hubLoading;
   const totalSales = sales.length;
 
   return (
