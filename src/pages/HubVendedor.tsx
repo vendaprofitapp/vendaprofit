@@ -34,6 +34,7 @@ interface SupplierProfile {
   store_name: string | null;
   logo_url: string | null;
   pix_key: string | null;
+  hub_description: string | null;
   connection_id: string;
   commission_pct: number;
 }
