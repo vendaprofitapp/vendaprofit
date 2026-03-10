@@ -34,6 +34,7 @@ interface SupplierProfile {
   store_name: string | null;
   logo_url: string | null;
   pix_key: string | null;
+  hub_description: string | null;
   connection_id: string;
   commission_pct: number;
 }
@@ -518,7 +519,7 @@ function SupplierSheet({
                 <Store className="h-6 w-6 text-primary" />
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <SheetTitle className="text-base font-bold leading-tight">{displayName}</SheetTitle>
               {location && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -526,13 +527,18 @@ function SupplierSheet({
                 </p>
               )}
             </div>
-            <div className="ml-auto flex-shrink-0 text-right">
+            <div className="flex-shrink-0 text-right">
               <p className="text-xs text-muted-foreground">Margem média</p>
               <p className={cn("text-base font-bold", avgMargin >= 30 ? "text-green-600" : "text-amber-600")}>
                 {avgMargin}%
               </p>
             </div>
           </div>
+          {supplier?.hub_description && (
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed border-t border-border pt-2">
+              {supplier.hub_description}
+            </p>
+          )}
         </SheetHeader>
         <div className="flex divide-x divide-border border-b border-border flex-shrink-0">
           {[
@@ -603,6 +609,11 @@ function SupplierCard({
                   <span className="truncate">{location}</span>
                 </p>
               )}
+              {supplier.hub_description && (
+                <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                  {supplier.hub_description}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <Badge variant="outline" className="text-[10px] py-0 gap-1">
                   <Package className="h-2.5 w-2.5" />
@@ -656,27 +667,39 @@ export default function HubVendedor() {
     queryKey: ["hub-vendedor-suppliers", ownerIds],
     enabled: ownerIds.length > 0,
     queryFn: async () => {
-      const [profilesRes, storesRes] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, address_city, address_state").in("id", ownerIds),
+      const [profilesRes, storesRes, sharedRes] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, address_city, address_state, hub_description").in("id", ownerIds),
         supabase.from("store_settings").select("owner_id, store_name, logo_url, pix_key").in("owner_id", ownerIds),
+        // Fetch active+configured hub products to know which suppliers have stock
+        supabase.from("hub_shared_products")
+          .select("connection_id, product_id")
+          .in("connection_id", connections.map((c) => c.id))
+          .eq("is_active", true)
+          .eq("hub_configured", true),
       ]);
       const profiles = profilesRes.data ?? [];
       const storeMap = Object.fromEntries((storesRes.data ?? []).map((s) => [s.owner_id, s]));
-      return connections.map((conn) => {
-        const prof = profiles.find((p) => p.id === conn.owner_id);
-        const store = storeMap[conn.owner_id];
-        return {
-          id: conn.owner_id,
-          full_name: prof?.full_name ?? null,
-          address_city: prof?.address_city ?? null,
-          address_state: prof?.address_state ?? null,
-          store_name: store?.store_name ?? null,
-          logo_url: store?.logo_url ?? null,
-          pix_key: store?.pix_key ?? null,
-          connection_id: conn.id,
-          commission_pct: conn.commission_pct,
-        } as SupplierProfile;
-      });
+      // Build a set of connection_ids that have at least one active product
+      const activeConnectionIds = new Set((sharedRes.data ?? []).map((s) => s.connection_id));
+
+      return connections
+        .filter((conn) => activeConnectionIds.has(conn.id)) // RULE: only suppliers with ≥1 active HUB product
+        .map((conn) => {
+          const prof = profiles.find((p) => p.id === conn.owner_id);
+          const store = storeMap[conn.owner_id];
+          return {
+            id: conn.owner_id,
+            full_name: prof?.full_name ?? null,
+            address_city: prof?.address_city ?? null,
+            address_state: prof?.address_state ?? null,
+            hub_description: (prof as any)?.hub_description ?? null,
+            store_name: store?.store_name ?? null,
+            logo_url: store?.logo_url ?? null,
+            pix_key: store?.pix_key ?? null,
+            connection_id: conn.id,
+            commission_pct: conn.commission_pct,
+          } as SupplierProfile;
+        });
     },
   });
 
