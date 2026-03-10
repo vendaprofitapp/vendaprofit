@@ -723,16 +723,7 @@ export default function HubFornecedor() {
     if (ids.length === 0) return;
     setBulkToggling(true);
     try {
-      // Upsert hub_shared_products entries for selected product ids
-      const upserts = ids.map((pid) => ({
-        product_id: pid,
-        connection_id: hubEntries.find((e) => e.product_id === pid)?.id
-          ? hubEntries.find((e) => e.product_id === pid)!.id
-          : undefined,
-        is_active: activate,
-      }));
-
-      // Update only existing hub entries
+      // Only update products that already have a hub_shared_products entry
       const existingIds = ids.filter((pid) => hubByProductId[pid]);
       if (existingIds.length > 0) {
         const { error } = await supabase
@@ -742,17 +733,17 @@ export default function HubFornecedor() {
         if (error) throw error;
       }
 
-      // For products without hub entry, insert new ones (need a connection)
+      // For products without a hub entry, we need to create one first via getOrCreateSelfConnection
       const newIds = ids.filter((pid) => !hubByProductId[pid]);
-      if (newIds.length > 0 && hubConnections.length > 0) {
-        const connId = hubConnections[0].id;
+      if (newIds.length > 0) {
+        const connId = await getOrCreateSelfConnection(user!.id);
         const inserts = newIds.map((pid) => ({
           product_id: pid,
           connection_id: connId,
           is_active: activate,
           hub_configured: false,
-          hub_approval_type: "automatic",
-          hub_pricing_mode: "fixed",
+          hub_approval_type: "automatic" as const,
+          hub_pricing_mode: "fixed" as const,
           hub_fixed_cost: 0,
           hub_minimum_sale_price: 0,
           hub_commission_rate: 0,
@@ -770,6 +761,7 @@ export default function HubFornecedor() {
       setBulkToggling(false);
     }
   };
+
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>("all");
