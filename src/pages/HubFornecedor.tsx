@@ -12,6 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -23,6 +27,7 @@ import { toast } from "sonner";
 import {
   Building2, Package, Inbox, TrendingUp, DollarSign, Percent,
   AlertCircle, CheckCircle2, XCircle, Truck, Clock, Eye,
+  SlidersHorizontal, Settings2, Filter, ChevronDown,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -147,7 +152,7 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
   );
 }
 
-// ─── Hub Rules Dialog ─────────────────────────────────────────────────────────
+// ─── Hub Rules Dialog (single or bulk) ───────────────────────────────────────
 async function getOrCreateSelfConnection(userId: string): Promise<string> {
   const { data: existing } = await supabase
     .from("hub_connections")
@@ -168,16 +173,24 @@ async function getOrCreateSelfConnection(userId: string): Promise<string> {
 
 function HubRulesDialog({
   open, onClose, product, existing, onSaved,
+  // Bulk mode: pass selectedIds + all hubEntries
+  bulkMode, selectedProductIds, allHubEntries,
 }: {
-  open: boolean; onClose: () => void; product: Product | null;
-  existing: HubSharedProduct | null; onSaved: () => void;
+  open: boolean; onClose: () => void;
+  product?: Product | null;
+  existing?: HubSharedProduct | null;
+  onSaved: () => void;
+  bulkMode?: boolean;
+  selectedProductIds?: string[];
+  allHubEntries?: HubSharedProduct[];
+  allProducts?: Product[];
 }) {
   const { user } = useAuth();
   const [form, setForm] = useState<RulesForm>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (existing) {
+    if (!bulkMode && existing) {
       setForm({
         hub_approval_type: existing.hub_approval_type,
         hub_pricing_mode: existing.hub_pricing_mode,
@@ -188,10 +201,10 @@ function HubRulesDialog({
     } else {
       setForm(DEFAULT_FORM);
     }
-  }, [existing, open]);
+  }, [existing, open, bulkMode]);
 
   const handleSave = async () => {
-    if (!product || !user) return;
+    if (!user) return;
     setSaving(true);
     try {
       const payload = {
@@ -203,17 +216,40 @@ function HubRulesDialog({
         hub_configured: true,
         is_active: true,
       };
-      if (existing) {
-        const { error } = await supabase.from("hub_shared_products").update(payload).eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("hub_shared_products").insert({
-          product_id: product.id, ...payload,
-          connection_id: await getOrCreateSelfConnection(user.id),
-        });
-        if (error) throw error;
+
+      if (bulkMode && selectedProductIds && allHubEntries) {
+        // Separate products into already-configured vs new
+        const hubMap = Object.fromEntries(allHubEntries.map((e) => [e.product_id, e]));
+        const toUpdate = selectedProductIds.filter((pid) => hubMap[pid]);
+        const toInsert = selectedProductIds.filter((pid) => !hubMap[pid]);
+
+        const connId = await getOrCreateSelfConnection(user.id);
+
+        await Promise.all([
+          toUpdate.length > 0
+            ? supabase.from("hub_shared_products").update(payload).in("id", toUpdate.map((pid) => hubMap[pid].id))
+            : Promise.resolve(),
+          toInsert.length > 0
+            ? supabase.from("hub_shared_products").insert(
+                toInsert.map((pid) => ({ product_id: pid, ...payload, connection_id: connId }))
+              )
+            : Promise.resolve(),
+        ]);
+        toast.success(`Regras aplicadas em ${selectedProductIds.length} produto(s)!`);
+      } else if (!bulkMode && product) {
+        if (existing) {
+          const { error } = await supabase.from("hub_shared_products").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("hub_shared_products").insert({
+            product_id: product.id, ...payload,
+            connection_id: await getOrCreateSelfConnection(user.id),
+          });
+          if (error) throw error;
+        }
+        toast.success("Regras salvas!");
       }
-      toast.success("Regras salvas!");
+
       onSaved();
       onClose();
     } catch (err: any) {
@@ -223,7 +259,9 @@ function HubRulesDialog({
     }
   };
 
-  if (!product) return null;
+  const title = bulkMode
+    ? `Configurar Regras HUB — ${selectedProductIds?.length ?? 0} produto(s)`
+    : `Configurar Regras HUB — ${product?.name ?? ""}`;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -231,10 +269,17 @@ function HubRulesDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
-            Configurar Regras HUB — {product.name}
+            {title}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-5 py-2">
+          {bulkMode && (
+            <div className="rounded-lg border border-amber-300 bg-amber-500/5 p-3">
+              <p className="text-xs text-amber-700 font-medium">
+                ⚠️ As regras definidas abaixo serão aplicadas a <strong>todos os {selectedProductIds?.length} produtos selecionados</strong>, substituindo as configurações existentes.
+              </p>
+            </div>
+          )}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Tipo de Aprovação</Label>
             <RadioGroup
@@ -314,31 +359,38 @@ function HubRulesDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar Regras"}</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : bulkMode ? `Aplicar em ${selectedProductIds?.length} produto(s)` : "Salvar Regras"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ─── Product Card (Meus Produtos) ─────────────────────────────────────────────
-function ProductCard({
-  product, hubEntry, onConfigure, onToggle,
+// ─── Product Row (Meus Produtos com checkbox) ──────────────────────────────────
+function ProductRow({
+  product, hubEntry, onConfigure, onToggle, selected, onSelect,
 }: {
   product: Product; hubEntry: HubSharedProduct | null;
   onConfigure: () => void; onToggle: (enabled: boolean) => void;
+  selected: boolean; onSelect: (checked: boolean) => void;
 }) {
   const isEnabled = hubEntry?.is_active ?? false;
   const isConfigured = hubEntry?.hub_configured ?? false;
   return (
-    <Card className="overflow-hidden transition-all hover:shadow-md">
-      <div className="flex gap-4 p-4">
-        <div className="h-16 w-16 flex-shrink-0 rounded-lg bg-muted overflow-hidden">
+    <Card className={cn("overflow-hidden transition-all hover:shadow-md", selected && "ring-2 ring-primary/40")}>
+      <div className="flex gap-3 p-3 items-center">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(v) => onSelect(!!v)}
+          className="flex-shrink-0 mt-1"
+          aria-label={`Selecionar ${product.name}`}
+        />
+        <div className="h-14 w-14 flex-shrink-0 rounded-lg bg-muted overflow-hidden">
           {product.image_url ? (
             <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full flex items-center justify-center">
-              <Package className="h-6 w-6 text-muted-foreground/40" />
+              <Package className="h-5 w-5 text-muted-foreground/40" />
             </div>
           )}
         </div>
@@ -357,9 +409,12 @@ function ProductCard({
                       : `${hubEntry?.hub_commission_rate}% comissão`}
                   </Badge>
                 )}
+                {isEnabled && !isConfigured && (
+                  <Badge variant="outline" className="text-xs py-0 text-amber-600 border-amber-300">Sem regras</Badge>
+                )}
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
               <Switch
                 checked={isEnabled}
                 onCheckedChange={(checked) => {
@@ -367,11 +422,11 @@ function ProductCard({
                   else onToggle(checked);
                 }}
               />
-              <span className="text-xs text-muted-foreground">{isEnabled ? "Ativo" : "Inativo"}</span>
+              <span className="text-[10px] text-muted-foreground">{isEnabled ? "Ativo" : "Inativo"}</span>
             </div>
           </div>
           {isEnabled && (
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs mt-2 text-primary hover:text-primary" onClick={onConfigure}>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs mt-1.5 text-primary hover:text-primary" onClick={onConfigure}>
               {isConfigured ? "Editar Regras" : "Configurar Regras"}
             </Button>
           )}
@@ -569,12 +624,7 @@ function SupplierOrderCard({
                   <p className="text-xs text-indigo-700/80">O vendedor enviou a etiqueta. Descarregue, embale e despache o produto.</p>
                 </div>
                 {localOrder.shipping_label_url ? (
-                  <a
-                    href={localOrder.shipping_label_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex w-full"
-                  >
+                  <a href={localOrder.shipping_label_url} target="_blank" rel="noopener noreferrer" className="flex w-full">
                     <Button variant="outline" className="w-full gap-2">
                       <Truck className="h-4 w-4" /> Descarregar Etiqueta PDF
                     </Button>
@@ -658,8 +708,61 @@ function SupplierOrderCard({
 export default function HubFornecedor() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // Single-product dialog
   const [configProduct, setConfigProduct] = useState<Product | null>(null);
   const [configExisting, setConfigExisting] = useState<HubSharedProduct | null>(null);
+
+  // Bulk state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+
+  // Filters
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterHubStatus, setFilterHubStatus] = useState<string>("all");
+
+  // Description / PIX settings
+  const [hubDescription, setHubDescription] = useState("");
+  const [pixKey, setPixKey] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["hub-fornecedor-settings", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const [profileRes, storeRes] = await Promise.all([
+        supabase.from("profiles").select("hub_description").eq("id", user!.id).maybeSingle(),
+        supabase.from("store_settings").select("pix_key").eq("owner_id", user!.id).maybeSingle(),
+      ]);
+      return {
+        hub_description: (profileRes.data as any)?.hub_description ?? "",
+        pix_key: storeRes.data?.pix_key ?? "",
+      };
+    },
+  });
+
+  useEffect(() => {
+    if (settingsData) {
+      setHubDescription(settingsData.hub_description || "");
+      setPixKey(settingsData.pix_key || "");
+    }
+  }, [settingsData]);
+
+  const handleSaveSettings = async () => {
+    if (!user) return;
+    setSavingSettings(true);
+    try {
+      await Promise.all([
+        supabase.from("profiles").update({ hub_description: hubDescription } as any).eq("id", user.id),
+        supabase.from("store_settings").upsert({ owner_id: user.id, pix_key: pixKey }, { onConflict: "owner_id" }),
+      ]);
+      toast.success("Configurações salvas!");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const { data: products = [], isLoading: loadingProducts } = useQuery({
     queryKey: ["hub-fornecedor-products", user?.id],
@@ -744,6 +847,47 @@ export default function HubFornecedor() {
   const reviewPaymentCount = supplierOrders.filter((o) => o.status === "pagamento_em_analise").length;
   const actionNeeded = pendingOrdersCount + reviewPaymentCount;
 
+  // Unique categories for filter
+  const categories = [...new Set(products.map((p) => p.category).filter(Boolean))] as string[];
+
+  // Filtered products
+  const filteredProducts = products.filter((p) => {
+    const hubEntry = hubByProductId[p.id];
+    if (filterCategory !== "all" && p.category !== filterCategory) return false;
+    if (filterHubStatus === "active" && !(hubEntry?.is_active)) return false;
+    if (filterHubStatus === "inactive" && hubEntry?.is_active) return false;
+    return true;
+  });
+
+  const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every((p) => selectedIds.has(p.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filteredProducts.forEach((p) => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filteredProducts.forEach((p) => next.add(p.id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const selectedCount = selectedIds.size;
+
   return (
     <MainLayout>
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -786,16 +930,68 @@ export default function HubFornecedor() {
                 <Badge className="ml-1 h-4 min-w-4 px-1 text-[10px]">{actionNeeded}</Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="configuracoes" className="flex-1 sm:flex-none gap-1.5">
+              <Settings2 className="h-4 w-4" /> Configurações
+            </TabsTrigger>
           </TabsList>
 
-          {/* Products Tab */}
+          {/* ── Products Tab ── */}
           <TabsContent value="produtos" className="mt-4 space-y-3">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-shrink-0">
+                <Filter className="h-3.5 w-3.5" /> Filtros:
+              </div>
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterHubStatus} onValueChange={setFilterHubStatus}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue placeholder="Status HUB" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="active">Ativos no HUB</SelectItem>
+                  <SelectItem value="inactive">Inativos no HUB</SelectItem>
+                </SelectContent>
+              </Select>
+              {(filterCategory !== "all" || filterHubStatus !== "all") && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => { setFilterCategory("all"); setFilterHubStatus("all"); }}>
+                  Limpar
+                </Button>
+              )}
+            </div>
+
+            {/* Bulk select header */}
+            {filteredProducts.length > 0 && (
+              <div className="flex items-center gap-3 px-1">
+                <Checkbox
+                  checked={allFilteredSelected}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Selecionar todos"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {allFilteredSelected ? "Desmarcar todos" : "Selecionar todos"}
+                  {" "}({filteredProducts.length} produto{filteredProducts.length !== 1 ? "s" : ""})
+                </span>
+              </div>
+            )}
+
             {loadingProducts ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-3">
                 {[1,2,3,4].map((i) => (
-                  <Card key={i} className="p-4 animate-pulse">
-                    <div className="flex gap-4">
-                      <div className="h-16 w-16 rounded-lg bg-muted" />
+                  <Card key={i} className="p-3 animate-pulse">
+                    <div className="flex gap-3">
+                      <div className="h-5 w-5 rounded bg-muted" />
+                      <div className="h-14 w-14 rounded-lg bg-muted" />
                       <div className="flex-1 space-y-2">
                         <div className="h-4 w-3/4 rounded bg-muted" />
                         <div className="h-3 w-1/2 rounded bg-muted" />
@@ -804,18 +1000,20 @@ export default function HubFornecedor() {
                   </Card>
                 ))}
               </div>
-            ) : products.length === 0 ? (
+            ) : filteredProducts.length === 0 ? (
               <Card className="py-16 text-center">
                 <Package className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
                 <p className="font-medium text-muted-foreground">Nenhum produto encontrado</p>
               </Card>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {products.map((product) => (
-                  <ProductCard
+              <div className="space-y-2">
+                {filteredProducts.map((product) => (
+                  <ProductRow
                     key={product.id}
                     product={product}
                     hubEntry={hubByProductId[product.id] ?? null}
+                    selected={selectedIds.has(product.id)}
+                    onSelect={(checked) => toggleSelect(product.id, checked)}
                     onConfigure={() => { setConfigProduct(product); setConfigExisting(hubByProductId[product.id] ?? null); }}
                     onToggle={(enabled) => toggleMutation.mutate({ productId: product.id, enabled })}
                   />
@@ -824,7 +1022,7 @@ export default function HubFornecedor() {
             )}
           </TabsContent>
 
-          {/* Orders Tab */}
+          {/* ── Orders Tab ── */}
           <TabsContent value="pedidos" className="mt-4 space-y-3">
             {loadingOrders ? (
               <div className="space-y-3">
@@ -878,15 +1076,101 @@ export default function HubFornecedor() {
               </>
             )}
           </TabsContent>
+
+          {/* ── Configurações Tab ── */}
+          <TabsContent value="configuracoes" className="mt-4">
+            <Card>
+              <CardContent className="p-5 space-y-5">
+                <div>
+                  <h3 className="font-semibold text-sm mb-1">Configurações do HUB Fornecedor</h3>
+                  <p className="text-xs text-muted-foreground">Estas informações são exibidas aos revendedores no catálogo B2B.</p>
+                </div>
+                <Separator />
+                <div className="space-y-1.5">
+                  <Label htmlFor="hub-description" className="text-sm font-medium">
+                    Descrição da Loja <span className="text-muted-foreground font-normal">(Atraia Vendedores)</span>
+                  </Label>
+                  <Textarea
+                    id="hub-description"
+                    placeholder="Ex: Especialista em moda feminina plus size. Despacho em até 48h. Aceitamos trocas em até 30 dias. Mais de 500 revendedores ativos em todo o Brasil..."
+                    value={hubDescription}
+                    onChange={(e) => setHubDescription(e.target.value)}
+                    className="min-h-[110px] resize-none"
+                    maxLength={500}
+                  />
+                  <p className="text-[11px] text-muted-foreground text-right">{hubDescription.length}/500 caracteres</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pix-key" className="text-sm font-medium">
+                    Chave PIX para Recebimentos
+                  </Label>
+                  <Input
+                    id="pix-key"
+                    placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                    value={pixKey}
+                    onChange={(e) => setPixKey(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Esta chave será exibida ao revendedor para efetuar o pagamento dos pedidos.</p>
+                </div>
+                <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full sm:w-auto">
+                  {savingSettings ? "Salvando..." : "Salvar Configurações"}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
 
+      {/* ── Floating Bulk Action Bar ── */}
+      {selectedCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-background shadow-2xl px-4 py-3 min-w-[280px] max-w-[90vw]">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-primary-foreground">{selectedCount}</span>
+              </div>
+              <span className="text-sm font-medium">produto{selectedCount !== 1 ? "s" : ""} selecionado{selectedCount !== 1 ? "s" : ""}</span>
+            </div>
+            <Button
+              size="sm"
+              className="gap-1.5 h-8 text-xs flex-shrink-0"
+              onClick={() => setBulkDialogOpen(true)}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Configurar Regras do HUB
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Single product rules dialog */}
       <HubRulesDialog
         open={!!configProduct}
         onClose={() => { setConfigProduct(null); setConfigExisting(null); }}
         product={configProduct}
         existing={configExisting}
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["hub-fornecedor-entries"] })}
+      />
+
+      {/* Bulk rules dialog */}
+      <HubRulesDialog
+        open={bulkDialogOpen}
+        onClose={() => setBulkDialogOpen(false)}
+        bulkMode
+        selectedProductIds={[...selectedIds]}
+        allHubEntries={hubEntries}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ["hub-fornecedor-entries"] });
+          setSelectedIds(new Set());
+        }}
       />
     </MainLayout>
   );
