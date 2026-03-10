@@ -840,7 +840,7 @@ export default function HubVendedor() {
 
           {/* ── Explorar ── */}
           <TabsContent value="explorar" className="mt-4">
-            {loadingConn || loadingProducts ? (
+            {loadingConn || loadingProfiles || loadingHubProducts ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {[1,2,3,4].map((i) => (
                   <Card key={i} className="animate-pulse">
@@ -863,9 +863,9 @@ export default function HubVendedor() {
                   <div className="rounded-full bg-muted p-4">
                     <Store className="h-8 w-8 text-muted-foreground/40" />
                   </div>
-                  <p className="font-semibold text-muted-foreground">Nenhum fornecedor conectado</p>
+                  <p className="font-semibold text-muted-foreground">Nenhum fornecedor disponível</p>
                   <p className="text-sm text-muted-foreground/70 max-w-xs">
-                    Aguarda um convite de fornecedor ou configura o teu próprio HUB Fornecedor.
+                    Ainda não há fornecedores com produtos ativos no HUB. Configura o teu HUB Fornecedor para aparecer aqui.
                   </p>
                 </div>
               </Card>
