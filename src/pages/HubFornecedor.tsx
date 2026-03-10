@@ -27,9 +27,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
-  VENDA_PROFIT_FEE, StatusBadge, OrderTimeline,
+  StatusBadge, OrderTimeline,
   FileUploadZone, uploadOrderFile,
 } from "@/components/hub/HubOrderShared";
+import { calcHubFee, HUB_DEFAULT_FEE_VALUE } from "@/hooks/useHubFeeCalculator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product {

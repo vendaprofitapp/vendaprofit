@@ -19,10 +19,11 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
-  VENDA_PROFIT_FEE, PLATFORM_PIX_KEY, PLATFORM_PIX_NAME,
+  PLATFORM_PIX_KEY, PLATFORM_PIX_NAME,
   StatusBadge, OrderTimeline, PixCard, FileUploadZone, uploadOrderFile,
   STATUS_CONFIG,
 } from "@/components/hub/HubOrderShared";
+import { calcHubFee } from "@/hooks/useHubFeeCalculator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SupplierProfile {
