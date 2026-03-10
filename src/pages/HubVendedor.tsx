@@ -646,7 +646,9 @@ export default function HubVendedor() {
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierProfile | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // ── MARKETPLACE: fetch ALL active HUB connections (not filtered by seller) ──
+  // ── MARKETPLACE: Open discovery via self-connections (seller_id = null) ──
+  // Each supplier creates a "self-connection" (catalog connection) when they publish
+  // products to the HUB. These have seller_id = null and invited_email = 'hub-catalog@vendaprofit.internal'
   const { data: allActiveConnections = [], isLoading: loadingConn } = useQuery({
     queryKey: ["hub-vendedor-all-connections"],
     enabled: !!user,
@@ -655,100 +657,78 @@ export default function HubVendedor() {
         .from("hub_connections")
         .select("id, owner_id, commission_pct")
         .eq("status", "active")
-        .neq("owner_id", user!.id); // exclude self
+        .is("seller_id", null)       // self-connections = public supplier catalogs
+        .neq("owner_id", user!.id);  // exclude own catalog
       if (error) throw error;
       return data as { id: string; owner_id: string; commission_pct: number }[];
-    },
-  });
-
-  // My existing connections (for order placement – to know which connection_id to use)
-  const { data: myConnections = [] } = useQuery({
-    queryKey: ["hub-vendedor-my-connections", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("hub_connections")
-        .select("id, owner_id, commission_pct")
-        .eq("seller_id", user!.id)
-        .eq("status", "active");
-      return (data ?? []) as { id: string; owner_id: string; commission_pct: number }[];
     },
   });
 
   // Fetch all HUB products that are active+configured across all connections
   const allConnectionIds = allActiveConnections.map((c) => c.id);
 
+  // allActiveConnections already contains only suppliers with active+configured products
+  // (filtered in the first query). Now just enrich with profile/store data.
+  const ownerIds = [...new Set(allActiveConnections.map((c) => c.owner_id))];
+
   const { data: supplierProfiles = [], isLoading: loadingProfiles } = useQuery({
-    queryKey: ["hub-vendedor-suppliers-marketplace", allConnectionIds],
-    enabled: allConnectionIds.length > 0,
+    queryKey: ["hub-vendedor-suppliers-marketplace", ownerIds.join(",")],
+    enabled: ownerIds.length > 0,
     queryFn: async () => {
-      // Get connections with at least 1 active configured product
-      const { data: shared } = await supabase
-        .from("hub_shared_products")
-        .select("connection_id")
-        .in("connection_id", allConnectionIds)
-        .eq("is_active", true)
-        .eq("hub_configured", true);
-
-      const activeConnectionIds = new Set((shared ?? []).map((s) => s.connection_id));
-      const connectionsWithStock = allActiveConnections.filter((c) => activeConnectionIds.has(c.id));
-      if (!connectionsWithStock.length) return [];
-
-      const ownerIds = [...new Set(connectionsWithStock.map((c) => c.owner_id))];
       const [profilesRes, storesRes] = await Promise.all([
         supabase.from("profiles").select("id, full_name, address_city, address_state, hub_description").in("id", ownerIds),
         supabase.from("store_settings").select("owner_id, store_name, logo_url, pix_key").in("owner_id", ownerIds),
       ]);
-
       const profiles = profilesRes.data ?? [];
       const storeMap = Object.fromEntries((storesRes.data ?? []).map((s) => [s.owner_id, s]));
-
-      // Deduplicate by owner (one card per supplier)
-      const seen = new Set<string>();
-      return connectionsWithStock
-        .filter((conn) => { if (seen.has(conn.owner_id)) return false; seen.add(conn.owner_id); return true; })
-        .map((conn) => {
-          const prof = profiles.find((p) => p.id === conn.owner_id);
-          const store = storeMap[conn.owner_id];
-          return {
-            id: conn.owner_id,
-            full_name: prof?.full_name ?? null,
-            address_city: (prof as any)?.address_city ?? null,
-            address_state: (prof as any)?.address_state ?? null,
-            hub_description: (prof as any)?.hub_description ?? null,
-            store_name: store?.store_name ?? null,
-            logo_url: store?.logo_url ?? null,
-            pix_key: store?.pix_key ?? null,
-            connection_id: conn.id,
-            commission_pct: conn.commission_pct,
-          } as SupplierProfile;
-        });
+      return allActiveConnections.map((conn) => {
+        const prof = profiles.find((p) => p.id === conn.owner_id);
+        const store = storeMap[conn.owner_id];
+        return {
+          id: conn.owner_id,
+          full_name: prof?.full_name ?? null,
+          address_city: (prof as any)?.address_city ?? null,
+          address_state: (prof as any)?.address_state ?? null,
+          hub_description: (prof as any)?.hub_description ?? null,
+          store_name: store?.store_name ?? null,
+          logo_url: store?.logo_url ?? null,
+          pix_key: store?.pix_key ?? null,
+          connection_id: conn.id,
+          commission_pct: conn.commission_pct,
+        } as SupplierProfile;
+      });
     },
   });
 
-
-
-
+  // Hub products: fetch by owner_id (not connection_id) so ALL active products
+  // from a supplier are visible regardless of which connection they belong to
   const { data: hubProducts = [], isLoading: loadingHubProducts } = useQuery({
-    queryKey: ["hub-vendedor-products-marketplace", allConnectionIds],
-    enabled: allConnectionIds.length > 0,
+    queryKey: ["hub-vendedor-products-marketplace", ownerIds.join(",")],
+    enabled: ownerIds.length > 0,
     queryFn: async () => {
+      // Get all active+configured hub_shared_products for these owners via their active connections
       const { data: shared, error } = await supabase
         .from("hub_shared_products")
-        .select("id, product_id, connection_id, hub_pricing_mode, hub_fixed_cost, hub_minimum_sale_price, hub_commission_rate, hub_approval_type")
-        .in("connection_id", allConnectionIds)
+        .select("id, product_id, connection_id, hub_pricing_mode, hub_fixed_cost, hub_minimum_sale_price, hub_commission_rate, hub_approval_type, hub_connections!inner(owner_id, status)")
         .eq("is_active", true)
-        .eq("hub_configured", true);
+        .eq("hub_configured", true)
+        .eq("hub_connections.status", "active");
       if (error) throw error;
       if (!shared?.length) return [];
-      const productIds = [...new Set(shared.map((s) => s.product_id))];
+
+      // Filter to only the supplier owners we care about
+      const ownerSet = new Set(ownerIds);
+      const filtered = shared.filter((s) => ownerSet.has((s as any).hub_connections?.owner_id));
+
+      const productIds = [...new Set(filtered.map((s) => s.product_id))];
       const { data: products } = await supabase
         .from("products")
         .select("id, name, price, cost_price, image_url, category, stock_quantity, owner_id")
         .in("id", productIds)
         .eq("is_active", true);
       const productMap = Object.fromEntries((products ?? []).map((p) => [p.id, p]));
-      return shared.map((s) => {
+
+      return filtered.map((s) => {
         const prod = productMap[s.product_id];
         if (!prod) return null;
         return {
