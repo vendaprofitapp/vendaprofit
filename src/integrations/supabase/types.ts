@@ -1706,11 +1706,13 @@ export type Database = {
           notes: string | null
           owner_id: string
           payment_method: string | null
+          platform_receipt_url: string | null
           sale_id: string | null
           seller_id: string
           shipping_label_url: string | null
           status: string
           subtotal: number
+          supplier_receipt_url: string | null
           total: number
           updated_at: string
         }
@@ -1726,11 +1728,13 @@ export type Database = {
           notes?: string | null
           owner_id: string
           payment_method?: string | null
+          platform_receipt_url?: string | null
           sale_id?: string | null
           seller_id: string
           shipping_label_url?: string | null
           status?: string
           subtotal?: number
+          supplier_receipt_url?: string | null
           total?: number
           updated_at?: string
         }
@@ -1746,11 +1750,13 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           payment_method?: string | null
+          platform_receipt_url?: string | null
           sale_id?: string | null
           seller_id?: string
           shipping_label_url?: string | null
           status?: string
           subtotal?: number
+          supplier_receipt_url?: string | null
           total?: number
           updated_at?: string
         }
@@ -3626,6 +3632,7 @@ export type Database = {
           opportunities_button_text: string | null
           owner_id: string
           page_title: string | null
+          pix_key: string | null
           primary_color: string | null
           purchase_incentives_config: Json | null
           secret_area_active: boolean | null
@@ -3673,6 +3680,7 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id: string
           page_title?: string | null
+          pix_key?: string | null
           primary_color?: string | null
           purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
@@ -3720,6 +3728,7 @@ export type Database = {
           opportunities_button_text?: string | null
           owner_id?: string
           page_title?: string | null
+          pix_key?: string | null
           primary_color?: string | null
           purchase_incentives_config?: Json | null
           secret_area_active?: boolean | null
