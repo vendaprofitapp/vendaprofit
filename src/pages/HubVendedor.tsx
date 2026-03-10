@@ -657,27 +657,39 @@ export default function HubVendedor() {
     queryKey: ["hub-vendedor-suppliers", ownerIds],
     enabled: ownerIds.length > 0,
     queryFn: async () => {
-      const [profilesRes, storesRes] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, address_city, address_state").in("id", ownerIds),
+      const [profilesRes, storesRes, sharedRes] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, address_city, address_state, hub_description").in("id", ownerIds),
         supabase.from("store_settings").select("owner_id, store_name, logo_url, pix_key").in("owner_id", ownerIds),
+        // Fetch active+configured hub products to know which suppliers have stock
+        supabase.from("hub_shared_products")
+          .select("connection_id, product_id")
+          .in("connection_id", connections.map((c) => c.id))
+          .eq("is_active", true)
+          .eq("hub_configured", true),
       ]);
       const profiles = profilesRes.data ?? [];
       const storeMap = Object.fromEntries((storesRes.data ?? []).map((s) => [s.owner_id, s]));
-      return connections.map((conn) => {
-        const prof = profiles.find((p) => p.id === conn.owner_id);
-        const store = storeMap[conn.owner_id];
-        return {
-          id: conn.owner_id,
-          full_name: prof?.full_name ?? null,
-          address_city: prof?.address_city ?? null,
-          address_state: prof?.address_state ?? null,
-          store_name: store?.store_name ?? null,
-          logo_url: store?.logo_url ?? null,
-          pix_key: store?.pix_key ?? null,
-          connection_id: conn.id,
-          commission_pct: conn.commission_pct,
-        } as SupplierProfile;
-      });
+      // Build a set of connection_ids that have at least one active product
+      const activeConnectionIds = new Set((sharedRes.data ?? []).map((s) => s.connection_id));
+
+      return connections
+        .filter((conn) => activeConnectionIds.has(conn.id)) // RULE: only suppliers with ≥1 active HUB product
+        .map((conn) => {
+          const prof = profiles.find((p) => p.id === conn.owner_id);
+          const store = storeMap[conn.owner_id];
+          return {
+            id: conn.owner_id,
+            full_name: prof?.full_name ?? null,
+            address_city: prof?.address_city ?? null,
+            address_state: prof?.address_state ?? null,
+            hub_description: (prof as any)?.hub_description ?? null,
+            store_name: store?.store_name ?? null,
+            logo_url: store?.logo_url ?? null,
+            pix_key: store?.pix_key ?? null,
+            connection_id: conn.id,
+            commission_pct: conn.commission_pct,
+          } as SupplierProfile;
+        });
     },
   });
 
