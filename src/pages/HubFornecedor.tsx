@@ -1154,6 +1154,29 @@ export default function HubFornecedor() {
                   <p className="text-[11px] text-muted-foreground text-right">{hubDescription.length}/500 caracteres</p>
                 </div>
                 <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">
+                    Localização <span className="text-muted-foreground font-normal">(exibida aos revendedores)</span>
+                  </Label>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Cidade"
+                        value={addressCity}
+                        onChange={(e) => setAddressCity(e.target.value)}
+                      />
+                    </div>
+                    <div className="w-20">
+                      <Input
+                        placeholder="UF"
+                        value={addressState}
+                        onChange={(e) => setAddressState(e.target.value.toUpperCase().slice(0, 2))}
+                        maxLength={2}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Permite ao revendedor estimar o frete antes de fazer o pedido.</p>
+                </div>
+                <div className="space-y-1.5">
                   <Label htmlFor="pix-key" className="text-sm font-medium">
                     Chave PIX para Recebimentos
                   </Label>
