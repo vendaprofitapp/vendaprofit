@@ -10,13 +10,14 @@ import {
 import { ptBR } from "date-fns/locale";
 import {
   TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck, DollarSign,
-  Calendar, ChevronDown
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
 import { cn } from "@/lib/utils";
@@ -234,6 +235,64 @@ export default function ReportMyPerformance() {
     return m;
   }, [productCosts]);
 
+  // ── 4a. Fetch concluded HUB orders where I am the SUPPLIER (fornecedor) ──
+  const { data: hubSupplierOrders = [], isLoading: hubLoading } = useQuery({
+    queryKey: ["my-performance-hub-supplier", user?.id, dateRange.start, dateRange.end],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("hub_pending_order_items")
+        .select(`
+          quantity, unit_price, cost_price, product_id,
+          hub_pending_orders!inner ( status, finalized_at )
+        `)
+        .eq("hub_owner_id", user!.id)
+        .eq("hub_pending_orders.status", "CONCLUIDO")
+        .gte("hub_pending_orders.finalized_at", dateRange.start.toISOString())
+        .lte("hub_pending_orders.finalized_at", dateRange.end.toISOString());
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!user,
+  });
+
+  // ── 4b. Fetch product costs for HUB supplier items ───────────────────────
+  const hubProductIds = useMemo(() => {
+    return [...new Set(hubSupplierOrders.map((i: any) => i.product_id).filter(Boolean))];
+  }, [hubSupplierOrders]);
+
+  const { data: hubProductCosts = [] } = useQuery({
+    queryKey: ["my-performance-hub-costs", hubProductIds],
+    queryFn: async () => {
+      if (hubProductIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, cost_price")
+        .in("id", hubProductIds);
+      if (error) throw error;
+      return (data ?? []) as ProductCost[];
+    },
+    enabled: hubProductIds.length > 0,
+  });
+
+  const hubCostMap = useMemo(() => {
+    const m = new Map<string, number>();
+    hubProductCosts.forEach((p: any) => m.set(p.id, p.cost_price ?? 0));
+    return m;
+  }, [hubProductCosts]);
+
+  // Aggregate HUB supplier metrics
+  const hubSupplierMetrics = useMemo(() => {
+    let revenue = 0;
+    let cost = 0;
+    for (const item of hubSupplierOrders) {
+      const qty = item.quantity ?? 1;
+      revenue += (item.unit_price ?? 0) * qty;
+      const c = hubCostMap.get(item.product_id) ?? (item.cost_price ?? 0);
+      cost += c * qty;
+    }
+    return { revenue, cost, profit: revenue - cost, count: hubSupplierOrders.length };
+  }, [hubSupplierOrders, hubCostMap]);
+
   // ── 4. Fetch payment method fees ─────────────────────────────────────────
   const { data: customPaymentMethods = [] } = useQuery({
     queryKey: ["my-performance-fees", user?.id],
@@ -258,7 +317,7 @@ export default function ReportMyPerformance() {
     return m;
   }, [customPaymentMethods]);
 
-  // ── 5. Compute metrics ───────────────────────────────────────────────────
+  // ── 5. Compute metrics (includes HUB supplier revenue) ──────────────────
   const metrics = useMemo(() => {
     let totalRevenue = 0;
     let totalCMV = 0;
@@ -290,11 +349,17 @@ export default function ReportMyPerformance() {
       }
     }
 
+    // Add HUB supplier (fornecedor) revenue and cost
+    const hubRevenue = hubSupplierMetrics.revenue;
+    const hubCost = hubSupplierMetrics.cost;
+    totalRevenue += hubRevenue;
+    totalCMV += hubCost;
+
     const netProfit = totalRevenue - totalCMV - totalDiscounts - totalFees - totalShipping;
     const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin };
-  }, [sales, costMap, feesMap]);
+    return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin, hubRevenue, hubCost };
+  }, [sales, costMap, feesMap, hubSupplierMetrics]);
 
   // ── 6. Daily chart data ──────────────────────────────────────────────────
   const chartData = useMemo(() => {
@@ -348,7 +413,7 @@ export default function ReportMyPerformance() {
     });
   }, [sales, dateRange, costMap, feesMap]);
 
-  const isLoading = salesLoading || costsLoading;
+  const isLoading = salesLoading || costsLoading || hubLoading;
   const totalSales = sales.length;
 
   return (
@@ -400,6 +465,9 @@ export default function ReportMyPerformance() {
 
           <span className="ml-auto text-xs text-muted-foreground">
             {totalSales} venda{totalSales !== 1 ? "s" : ""}
+            {hubSupplierMetrics.count > 0 && (
+              <> · <span className="text-primary font-medium">{hubSupplierMetrics.count} item{hubSupplierMetrics.count !== 1 ? "s" : ""} HUB</span></>
+            )}
           </span>
         </div>
 
@@ -560,7 +628,10 @@ export default function ReportMyPerformance() {
             </h3>
             <div className="space-y-2">
               {[
-                { label: "Receita Bruta", value: metrics.totalRevenue, color: "text-card-foreground" },
+                { label: "Receita Bruta (Vendas)", value: metrics.totalRevenue, color: "text-card-foreground" },
+                ...(metrics.hubRevenue > 0 ? [
+                  { label: "  ↳ inclui Receita HUB Fornecedor", value: metrics.hubRevenue, color: "text-primary" },
+                ] : []),
                 { label: "− Custo dos Produtos (CMV)", value: -metrics.totalCMV, color: "text-destructive" },
                 { label: "− Descontos Concedidos", value: -metrics.totalDiscounts, color: "text-destructive" },
                 { label: "− Taxas de Pagamento", value: -metrics.totalFees, color: "text-destructive" },
@@ -583,6 +654,18 @@ export default function ReportMyPerformance() {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+        {/* HUB supplier banner */}
+        {!isLoading && hubSupplierMetrics.count > 0 && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3 text-sm">
+            <Building2 className="h-4 w-4 text-primary flex-shrink-0" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">Receita HUB Fornecedor incluída:</strong>{" "}
+              {hubSupplierMetrics.count} item{hubSupplierMetrics.count !== 1 ? "s" : ""} B2B concluídos →{" "}
+              <span className="text-primary font-semibold">{fmtCurrency(hubSupplierMetrics.revenue)}</span> receita,{" "}
+              <span className="text-success font-semibold">{fmtCurrency(hubSupplierMetrics.profit)}</span> lucro
+            </span>
           </div>
         )}
       </div>
