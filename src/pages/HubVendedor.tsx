@@ -84,17 +84,30 @@ interface OrderItem {
   rejection_reason: string | null;
 }
 
-// ─── Profit calc ──────────────────────────────────────────────────────────────
-function calcProfit(p: HubProduct) {
+// ─── Profit calc (uses cascade fee hook) ─────────────────────────────────────
+function calcProfit(p: HubProduct & { supplierFeeType?: "fixed" | "percentage" | null; supplierFeeValue?: number | null }) {
   if (p.hub_pricing_mode === "fixed") {
-    const cost = p.hub_fixed_cost;
+    const costBase = p.hub_fixed_cost;
     const minSale = p.hub_minimum_sale_price > 0 ? p.hub_minimum_sale_price : p.price;
-    return { cost, minSale, profit: minSale - cost };
+    const { feeAmount, totalCost } = calcHubFee({
+      costPrice: costBase,
+      productFeeType: (p as any).admin_hub_fee_type ?? null,
+      productFeeValue: (p as any).admin_hub_fee_value ?? null,
+      supplierFeeType: p.supplierFeeType ?? null,
+      supplierFeeValue: p.supplierFeeValue ?? null,
+    });
+    return { cost: totalCost, costBase, feeAmount, minSale, profit: minSale - totalCost };
   }
   const commissionValue = (p.hub_minimum_sale_price * p.hub_commission_rate) / 100;
-  const cost = commissionValue + VENDA_PROFIT_FEE;
   const minSale = p.hub_minimum_sale_price;
-  return { cost, minSale, profit: minSale - cost };
+  const { feeAmount, totalCost } = calcHubFee({
+    costPrice: commissionValue,
+    productFeeType: (p as any).admin_hub_fee_type ?? null,
+    productFeeValue: (p as any).admin_hub_fee_value ?? null,
+    supplierFeeType: p.supplierFeeType ?? null,
+    supplierFeeValue: p.supplierFeeValue ?? null,
+  });
+  return { cost: totalCost, costBase: commissionValue, feeAmount, minSale, profit: minSale - totalCost };
 }
 
 // ─── Buyer Order State Card ───────────────────────────────────────────────────
