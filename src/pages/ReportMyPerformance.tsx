@@ -317,7 +317,7 @@ export default function ReportMyPerformance() {
     return m;
   }, [customPaymentMethods]);
 
-  // ── 5. Compute metrics ───────────────────────────────────────────────────
+  // ── 5. Compute metrics (includes HUB supplier revenue) ──────────────────
   const metrics = useMemo(() => {
     let totalRevenue = 0;
     let totalCMV = 0;
@@ -349,11 +349,17 @@ export default function ReportMyPerformance() {
       }
     }
 
+    // Add HUB supplier (fornecedor) revenue and cost
+    const hubRevenue = hubSupplierMetrics.revenue;
+    const hubCost = hubSupplierMetrics.cost;
+    totalRevenue += hubRevenue;
+    totalCMV += hubCost;
+
     const netProfit = totalRevenue - totalCMV - totalDiscounts - totalFees - totalShipping;
     const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin };
-  }, [sales, costMap, feesMap]);
+    return { totalRevenue, totalCMV, totalFees, totalShipping, totalDiscounts, netProfit, margin, hubRevenue, hubCost };
+  }, [sales, costMap, feesMap, hubSupplierMetrics]);
 
   // ── 6. Daily chart data ──────────────────────────────────────────────────
   const chartData = useMemo(() => {
