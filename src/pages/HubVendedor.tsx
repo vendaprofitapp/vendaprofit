@@ -646,52 +646,75 @@ export default function HubVendedor() {
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierProfile | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const { data: connections = [], isLoading: loadingConn } = useQuery({
-    queryKey: ["hub-vendedor-connections", user?.id],
+  // ── MARKETPLACE: fetch ALL active HUB connections (not filtered by seller) ──
+  const { data: allActiveConnections = [], isLoading: loadingConn } = useQuery({
+    queryKey: ["hub-vendedor-all-connections"],
     enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("hub_connections")
         .select("id, owner_id, commission_pct")
-        .eq("seller_id", user!.id)
-        .eq("status", "active");
+        .eq("status", "active")
+        .neq("owner_id", user!.id); // exclude self
       if (error) throw error;
       return data as { id: string; owner_id: string; commission_pct: number }[];
     },
   });
 
-  const ownerIds = connections.map((c) => c.owner_id);
-  const connectionIds = connections.map((c) => c.id);
-
-  const { data: supplierProfiles = [] } = useQuery({
-    queryKey: ["hub-vendedor-suppliers", ownerIds],
-    enabled: ownerIds.length > 0,
+  // My existing connections (for order placement – to know which connection_id to use)
+  const { data: myConnections = [] } = useQuery({
+    queryKey: ["hub-vendedor-my-connections", user?.id],
+    enabled: !!user,
     queryFn: async () => {
-      const [profilesRes, storesRes, sharedRes] = await Promise.all([
+      const { data } = await supabase
+        .from("hub_connections")
+        .select("id, owner_id, commission_pct")
+        .eq("seller_id", user!.id)
+        .eq("status", "active");
+      return (data ?? []) as { id: string; owner_id: string; commission_pct: number }[];
+    },
+  });
+
+  // Fetch all HUB products that are active+configured across all connections
+  const allConnectionIds = allActiveConnections.map((c) => c.id);
+
+  const { data: supplierProfiles = [], isLoading: loadingProfiles } = useQuery({
+    queryKey: ["hub-vendedor-suppliers-marketplace", allConnectionIds],
+    enabled: allConnectionIds.length > 0,
+    queryFn: async () => {
+      // Get connections with at least 1 active configured product
+      const { data: shared } = await supabase
+        .from("hub_shared_products")
+        .select("connection_id")
+        .in("connection_id", allConnectionIds)
+        .eq("is_active", true)
+        .eq("hub_configured", true);
+
+      const activeConnectionIds = new Set((shared ?? []).map((s) => s.connection_id));
+      const connectionsWithStock = allActiveConnections.filter((c) => activeConnectionIds.has(c.id));
+      if (!connectionsWithStock.length) return [];
+
+      const ownerIds = [...new Set(connectionsWithStock.map((c) => c.owner_id))];
+      const [profilesRes, storesRes] = await Promise.all([
         supabase.from("profiles").select("id, full_name, address_city, address_state, hub_description").in("id", ownerIds),
         supabase.from("store_settings").select("owner_id, store_name, logo_url, pix_key").in("owner_id", ownerIds),
-        // Fetch active+configured hub products to know which suppliers have stock
-        supabase.from("hub_shared_products")
-          .select("connection_id, product_id")
-          .in("connection_id", connections.map((c) => c.id))
-          .eq("is_active", true)
-          .eq("hub_configured", true),
       ]);
+
       const profiles = profilesRes.data ?? [];
       const storeMap = Object.fromEntries((storesRes.data ?? []).map((s) => [s.owner_id, s]));
-      // Build a set of connection_ids that have at least one active product
-      const activeConnectionIds = new Set((sharedRes.data ?? []).map((s) => s.connection_id));
 
-      return connections
-        .filter((conn) => activeConnectionIds.has(conn.id)) // RULE: only suppliers with ≥1 active HUB product
+      // Deduplicate by owner (one card per supplier)
+      const seen = new Set<string>();
+      return connectionsWithStock
+        .filter((conn) => { if (seen.has(conn.owner_id)) return false; seen.add(conn.owner_id); return true; })
         .map((conn) => {
           const prof = profiles.find((p) => p.id === conn.owner_id);
           const store = storeMap[conn.owner_id];
           return {
             id: conn.owner_id,
             full_name: prof?.full_name ?? null,
-            address_city: prof?.address_city ?? null,
-            address_state: prof?.address_state ?? null,
+            address_city: (prof as any)?.address_city ?? null,
+            address_state: (prof as any)?.address_state ?? null,
             hub_description: (prof as any)?.hub_description ?? null,
             store_name: store?.store_name ?? null,
             logo_url: store?.logo_url ?? null,
@@ -703,14 +726,17 @@ export default function HubVendedor() {
     },
   });
 
-  const { data: hubProducts = [], isLoading: loadingProducts } = useQuery({
-    queryKey: ["hub-vendedor-products", connectionIds],
-    enabled: connectionIds.length > 0,
+  const connectionIds = allConnectionIds;
+  const loadingProducts = false; // derived below
+
+  const { data: hubProducts = [], isLoading: loadingHubProducts } = useQuery({
+    queryKey: ["hub-vendedor-products-marketplace", allConnectionIds],
+    enabled: allConnectionIds.length > 0,
     queryFn: async () => {
       const { data: shared, error } = await supabase
         .from("hub_shared_products")
         .select("id, product_id, connection_id, hub_pricing_mode, hub_fixed_cost, hub_minimum_sale_price, hub_commission_rate, hub_approval_type")
-        .in("connection_id", connectionIds)
+        .in("connection_id", allConnectionIds)
         .eq("is_active", true)
         .eq("hub_configured", true);
       if (error) throw error;
