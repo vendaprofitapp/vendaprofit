@@ -131,11 +131,18 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
           <span className="font-medium text-destructive">- R$ {hubFee.toFixed(2)}</span>
         </div>
         <Separator />
+        <div className="flex justify-between font-bold text-base">
+          <span>Você vai receber</span>
+          <span className={netReceived > 0 ? "text-green-600" : "text-muted-foreground"}>
+            {hasData ? `R$ ${netReceived.toFixed(2)}` : "—"}
+          </span>
+        </div>
         {hasData && netReceived <= 0 && (
           <p className="text-xs text-destructive flex items-center gap-1">
             <AlertCircle className="h-3 w-3" /> O valor deve cobrir a taxa da plataforma (R$ {hubFee.toFixed(2)}).
           </p>
         )}
+      </div>
     </div>
   );
 }
