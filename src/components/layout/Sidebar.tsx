@@ -45,7 +45,13 @@ const navGroups: NavGroup[] = [
       { icon: Gift, label: "Consórcios", path: "/consortiums" },
       { icon: ShoppingBag, label: "Bazar VIP", path: "/admin/bazar" },
       { icon: MapPin, label: "Pontos Parceiros", path: "/partner-points" },
-      { icon: Layers, label: "HUB de Vendas", path: "/hub-vendas" },
+    ],
+  },
+  {
+    label: "HUB DE VENDAS",
+    items: [
+      { icon: Building2, label: "HUB Fornecedor", path: "/hub-fornecedor" },
+      { icon: ShoppingBasket, label: "HUB Vendedor", path: "/hub-vendedor" },
     ],
   },
   {
