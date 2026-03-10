@@ -1899,6 +1899,12 @@ export type Database = {
         Row: {
           connection_id: string
           created_at: string
+          hub_approval_type: string
+          hub_commission_rate: number | null
+          hub_configured: boolean
+          hub_fixed_cost: number | null
+          hub_minimum_sale_price: number | null
+          hub_pricing_mode: string
           id: string
           is_active: boolean
           product_id: string
@@ -1906,6 +1912,12 @@ export type Database = {
         Insert: {
           connection_id: string
           created_at?: string
+          hub_approval_type?: string
+          hub_commission_rate?: number | null
+          hub_configured?: boolean
+          hub_fixed_cost?: number | null
+          hub_minimum_sale_price?: number | null
+          hub_pricing_mode?: string
           id?: string
           is_active?: boolean
           product_id: string
@@ -1913,6 +1925,12 @@ export type Database = {
         Update: {
           connection_id?: string
           created_at?: string
+          hub_approval_type?: string
+          hub_commission_rate?: number | null
+          hub_configured?: boolean
+          hub_fixed_cost?: number | null
+          hub_minimum_sale_price?: number | null
+          hub_pricing_mode?: string
           id?: string
           is_active?: boolean
           product_id?: string
