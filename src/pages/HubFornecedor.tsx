@@ -723,21 +723,22 @@ export default function HubFornecedor() {
     if (ids.length === 0) return;
     setBulkToggling(true);
     try {
-      // Only update products that already have a hub_shared_products entry
-      const existingIds = ids.filter((pid) => hubByProductId[pid]);
-      if (existingIds.length > 0) {
+      // Products that already have a hub_shared_products entry — update by their unique entry ID
+      const toUpdate = ids.filter((pid) => hubByProductId[pid]);
+      if (toUpdate.length > 0) {
+        const entryIds = toUpdate.map((pid) => hubByProductId[pid].id);
         const { error } = await supabase
           .from("hub_shared_products")
           .update({ is_active: activate })
-          .in("product_id", existingIds);
+          .in("id", entryIds); // ✅ filtra pelo ID único da entrada, não pelo product_id
         if (error) throw error;
       }
 
-      // For products without a hub entry, we need to create one first via getOrCreateSelfConnection
-      const newIds = ids.filter((pid) => !hubByProductId[pid]);
-      if (newIds.length > 0) {
+      // Products without a hub entry — create entries linked to the current user's connection
+      const toInsert = ids.filter((pid) => !hubByProductId[pid]);
+      if (toInsert.length > 0) {
         const connId = await getOrCreateSelfConnection(user!.id);
-        const inserts = newIds.map((pid) => ({
+        const inserts = toInsert.map((pid) => ({
           product_id: pid,
           connection_id: connId,
           is_active: activate,
