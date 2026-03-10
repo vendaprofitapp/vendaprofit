@@ -3153,6 +3153,7 @@ export type Database = {
           email: string
           full_name: string
           gemini_api_key: string | null
+          hub_description: string | null
           hub_fee_type: string | null
           hub_fee_value: number | null
           id: string
@@ -3178,6 +3179,7 @@ export type Database = {
           email: string
           full_name: string
           gemini_api_key?: string | null
+          hub_description?: string | null
           hub_fee_type?: string | null
           hub_fee_value?: number | null
           id: string
@@ -3203,6 +3205,7 @@ export type Database = {
           email?: string
           full_name?: string
           gemini_api_key?: string | null
+          hub_description?: string | null
           hub_fee_type?: string | null
           hub_fee_value?: number | null
           id?: string
