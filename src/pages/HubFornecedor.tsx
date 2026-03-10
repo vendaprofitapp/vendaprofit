@@ -768,9 +768,11 @@ export default function HubFornecedor() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterHubStatus, setFilterHubStatus] = useState<string>("all");
 
-  // Description / PIX settings
+  // Description / PIX / location settings
   const [hubDescription, setHubDescription] = useState("");
   const [pixKey, setPixKey] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressState, setAddressState] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const { data: settingsData } = useQuery({
@@ -778,11 +780,13 @@ export default function HubFornecedor() {
     enabled: !!user,
     queryFn: async () => {
       const [profileRes, storeRes] = await Promise.all([
-        supabase.from("profiles").select("hub_description").eq("id", user!.id).maybeSingle(),
+        supabase.from("profiles").select("hub_description, address_city, address_state").eq("id", user!.id).maybeSingle(),
         supabase.from("store_settings").select("pix_key").eq("owner_id", user!.id).maybeSingle(),
       ]);
       return {
         hub_description: (profileRes.data as any)?.hub_description ?? "",
+        address_city: (profileRes.data as any)?.address_city ?? "",
+        address_state: (profileRes.data as any)?.address_state ?? "",
         pix_key: storeRes.data?.pix_key ?? "",
       };
     },
@@ -792,6 +796,8 @@ export default function HubFornecedor() {
     if (settingsData) {
       setHubDescription(settingsData.hub_description || "");
       setPixKey(settingsData.pix_key || "");
+      setAddressCity(settingsData.address_city || "");
+      setAddressState(settingsData.address_state || "");
     }
   }, [settingsData]);
 
@@ -800,7 +806,7 @@ export default function HubFornecedor() {
     setSavingSettings(true);
     try {
       await Promise.all([
-        supabase.from("profiles").update({ hub_description: hubDescription } as any).eq("id", user.id),
+        supabase.from("profiles").update({ hub_description: hubDescription, address_city: addressCity || null, address_state: addressState || null } as any).eq("id", user.id),
         supabase.from("store_settings").upsert({ owner_id: user.id, pix_key: pixKey } as any, { onConflict: "owner_id" }),
       ]);
       toast.success("Configurações salvas!");
@@ -1146,6 +1152,29 @@ export default function HubFornecedor() {
                     maxLength={500}
                   />
                   <p className="text-[11px] text-muted-foreground text-right">{hubDescription.length}/500 caracteres</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">
+                    Localização <span className="text-muted-foreground font-normal">(exibida aos revendedores)</span>
+                  </Label>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Cidade"
+                        value={addressCity}
+                        onChange={(e) => setAddressCity(e.target.value)}
+                      />
+                    </div>
+                    <div className="w-20">
+                      <Input
+                        placeholder="UF"
+                        value={addressState}
+                        onChange={(e) => setAddressState(e.target.value.toUpperCase().slice(0, 2))}
+                        maxLength={2}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Permite ao revendedor estimar o frete antes de fazer o pedido.</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="pix-key" className="text-sm font-medium">
