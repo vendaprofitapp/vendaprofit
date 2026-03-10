@@ -54,6 +54,12 @@ interface HubProduct {
   hub_approval_type: "manual" | "automatic";
   connection_id: string;
   owner_id: string;
+  // cascade fee overrides (from admin)
+  admin_hub_fee_type?: "fixed" | "percentage" | null;
+  admin_hub_fee_value?: number | null;
+  // supplier-level fee (joined from profiles)
+  supplierFeeType?: "fixed" | "percentage" | null;
+  supplierFeeValue?: number | null;
 }
 
 interface PendingOrder {

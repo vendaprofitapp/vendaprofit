@@ -412,6 +412,10 @@ export default function AdminUsers() {
       </div>
         </TabsContent>
 
+        <TabsContent value="hub-fees">
+          <HubFeesManager />
+        </TabsContent>
+
         <TabsContent value="integrations">
           <div className="space-y-6">
             <BotconversaAdminSection />
