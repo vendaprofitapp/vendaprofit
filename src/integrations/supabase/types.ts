@@ -2993,6 +2993,8 @@ export type Database = {
       }
       products: {
         Row: {
+          admin_hub_fee_type: string | null
+          admin_hub_fee_value: number | null
           b2b_product_url: string | null
           b2b_source_product_id: string | null
           b2b_visible_in_store: boolean
@@ -3032,6 +3034,8 @@ export type Database = {
           width_cm: number | null
         }
         Insert: {
+          admin_hub_fee_type?: string | null
+          admin_hub_fee_value?: number | null
           b2b_product_url?: string | null
           b2b_source_product_id?: string | null
           b2b_visible_in_store?: boolean
@@ -3071,6 +3075,8 @@ export type Database = {
           width_cm?: number | null
         }
         Update: {
+          admin_hub_fee_type?: string | null
+          admin_hub_fee_value?: number | null
           b2b_product_url?: string | null
           b2b_source_product_id?: string | null
           b2b_visible_in_store?: boolean
@@ -3147,6 +3153,8 @@ export type Database = {
           email: string
           full_name: string
           gemini_api_key: string | null
+          hub_fee_type: string | null
+          hub_fee_value: number | null
           id: string
           melhor_envio_token: string | null
           openai_api_key: string | null
@@ -3170,6 +3178,8 @@ export type Database = {
           email: string
           full_name: string
           gemini_api_key?: string | null
+          hub_fee_type?: string | null
+          hub_fee_value?: number | null
           id: string
           melhor_envio_token?: string | null
           openai_api_key?: string | null
@@ -3193,6 +3203,8 @@ export type Database = {
           email?: string
           full_name?: string
           gemini_api_key?: string | null
+          hub_fee_type?: string | null
+          hub_fee_value?: number | null
           id?: string
           melhor_envio_token?: string | null
           openai_api_key?: string | null
