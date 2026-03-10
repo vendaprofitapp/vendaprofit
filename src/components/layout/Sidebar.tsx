@@ -5,6 +5,7 @@ import {
   Lock, Tag, Briefcase, ClipboardList, PanelLeft, BookOpen, Wallet,
   Megaphone, Award, DollarSign, CreditCard, Video, MessageCircle, Zap,
   ExternalLink, BarChart3, MapPin, Layers, Star, Instagram, PieChart,
+  Building2, ShoppingBasket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
