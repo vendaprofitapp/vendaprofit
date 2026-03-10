@@ -297,6 +297,10 @@ export default function AdminUsers() {
             <Users className="h-4 w-4" />
             Usuários
           </TabsTrigger>
+          <TabsTrigger value="hub-fees" className="flex items-center gap-2">
+            <Percent className="h-4 w-4" />
+            Taxas HUB
+          </TabsTrigger>
           <TabsTrigger value="integrations" className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
             Integrações
