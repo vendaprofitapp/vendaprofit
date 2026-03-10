@@ -646,7 +646,9 @@ export default function HubVendedor() {
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierProfile | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // ── MARKETPLACE: fetch ALL active HUB connections (not filtered by seller) ──
+  // ── MARKETPLACE: fetch self-connections from all suppliers (open marketplace) ──
+  // Self-connections are hub_connections where the owner registered their catalog
+  // for the HUB marketplace (seller_id is null = self/public catalog connection)
   const { data: allActiveConnections = [], isLoading: loadingConn } = useQuery({
     queryKey: ["hub-vendedor-all-connections"],
     enabled: !!user,
@@ -655,23 +657,10 @@ export default function HubVendedor() {
         .from("hub_connections")
         .select("id, owner_id, commission_pct")
         .eq("status", "active")
-        .neq("owner_id", user!.id); // exclude self
+        .is("seller_id", null)          // self-connections have no seller_id
+        .neq("owner_id", user!.id);     // exclude own catalog
       if (error) throw error;
       return data as { id: string; owner_id: string; commission_pct: number }[];
-    },
-  });
-
-  // My existing connections (for order placement – to know which connection_id to use)
-  const { data: myConnections = [] } = useQuery({
-    queryKey: ["hub-vendedor-my-connections", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("hub_connections")
-        .select("id, owner_id, commission_pct")
-        .eq("seller_id", user!.id)
-        .eq("status", "active");
-      return (data ?? []) as { id: string; owner_id: string; commission_pct: number }[];
     },
   });
 
