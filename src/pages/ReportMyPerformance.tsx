@@ -235,6 +235,64 @@ export default function ReportMyPerformance() {
     return m;
   }, [productCosts]);
 
+  // ── 4a. Fetch concluded HUB orders where I am the SUPPLIER (fornecedor) ──
+  const { data: hubSupplierOrders = [], isLoading: hubLoading } = useQuery({
+    queryKey: ["my-performance-hub-supplier", user?.id, dateRange.start, dateRange.end],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("hub_pending_order_items")
+        .select(`
+          quantity, unit_price, cost_price, product_id,
+          hub_pending_orders!inner ( status, finalized_at )
+        `)
+        .eq("hub_owner_id", user!.id)
+        .eq("hub_pending_orders.status", "CONCLUIDO")
+        .gte("hub_pending_orders.finalized_at", dateRange.start.toISOString())
+        .lte("hub_pending_orders.finalized_at", dateRange.end.toISOString());
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!user,
+  });
+
+  // ── 4b. Fetch product costs for HUB supplier items ───────────────────────
+  const hubProductIds = useMemo(() => {
+    return [...new Set(hubSupplierOrders.map((i: any) => i.product_id).filter(Boolean))];
+  }, [hubSupplierOrders]);
+
+  const { data: hubProductCosts = [] } = useQuery({
+    queryKey: ["my-performance-hub-costs", hubProductIds],
+    queryFn: async () => {
+      if (hubProductIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, cost_price")
+        .in("id", hubProductIds);
+      if (error) throw error;
+      return (data ?? []) as ProductCost[];
+    },
+    enabled: hubProductIds.length > 0,
+  });
+
+  const hubCostMap = useMemo(() => {
+    const m = new Map<string, number>();
+    hubProductCosts.forEach((p: any) => m.set(p.id, p.cost_price ?? 0));
+    return m;
+  }, [hubProductCosts]);
+
+  // Aggregate HUB supplier metrics
+  const hubSupplierMetrics = useMemo(() => {
+    let revenue = 0;
+    let cost = 0;
+    for (const item of hubSupplierOrders) {
+      const qty = item.quantity ?? 1;
+      revenue += (item.unit_price ?? 0) * qty;
+      const c = hubCostMap.get(item.product_id) ?? (item.cost_price ?? 0);
+      cost += c * qty;
+    }
+    return { revenue, cost, profit: revenue - cost, count: hubSupplierOrders.length };
+  }, [hubSupplierOrders, hubCostMap]);
+
   // ── 4. Fetch payment method fees ─────────────────────────────────────────
   const { data: customPaymentMethods = [] } = useQuery({
     queryKey: ["my-performance-fees", user?.id],
