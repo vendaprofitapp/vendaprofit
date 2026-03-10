@@ -771,7 +771,7 @@ export default function HubFornecedor() {
           </Card>
           <Card className="p-4 col-span-2 sm:col-span-1">
             <p className="text-xs text-muted-foreground">Taxa Plataforma</p>
-            <p className="text-2xl font-bold text-amber-600">R$ {VENDA_PROFIT_FEE.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-amber-600">R$ {HUB_DEFAULT_FEE_VALUE.toFixed(2)}</p>
           </Card>
         </div>
 
