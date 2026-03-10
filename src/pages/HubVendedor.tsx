@@ -531,7 +531,7 @@ function SupplierSheet({
         <div className="flex divide-x divide-border border-b border-border flex-shrink-0">
           {[
             { label: "Produtos", value: products.length },
-            { label: "Taxa plataforma", value: `R$ ${VENDA_PROFIT_FEE.toFixed(2)}` },
+            { label: "Taxa plataforma", value: "Variável (calculada)" },
             { label: "PIX key", value: supplier?.pix_key ? "✓ Configurado" : "Não cadastrado" },
           ].map((s) => (
             <div key={s.label} className="flex-1 py-2.5 px-3 text-center">

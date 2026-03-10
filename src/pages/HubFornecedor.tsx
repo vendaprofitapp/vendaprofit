@@ -106,7 +106,8 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
 
   const isFixed = form.hub_pricing_mode === "fixed";
   const grossCommission = isFixed ? fixedCost : (minSalePrice * commissionRate) / 100;
-  const netReceived = grossCommission - VENDA_PROFIT_FEE;
+  const hubFee = calcHubFee({ costPrice: grossCommission }).feeAmount;
+  const netReceived = grossCommission - hubFee;
   const hasData = isFixed ? fixedCost > 0 : (minSalePrice > 0 && commissionRate > 0);
 
   return (
