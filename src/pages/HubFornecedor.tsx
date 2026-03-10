@@ -1170,29 +1170,51 @@ export default function HubFornecedor() {
       {/* ── Floating Bulk Action Bar ── */}
       {selectedCount > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
-          <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-background shadow-2xl px-4 py-3 min-w-[280px] max-w-[90vw]">
-            <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 rounded-2xl border border-primary/20 bg-background shadow-2xl px-4 py-3 min-w-[320px] max-w-[95vw] flex-wrap">
+            <div className="flex items-center gap-2 flex-1 min-w-[120px]">
               <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-bold text-primary-foreground">{selectedCount}</span>
               </div>
               <span className="text-sm font-medium">produto{selectedCount !== 1 ? "s" : ""} selecionado{selectedCount !== 1 ? "s" : ""}</span>
             </div>
-            <Button
-              size="sm"
-              className="gap-1.5 h-8 text-xs flex-shrink-0"
-              onClick={() => setBulkDialogOpen(true)}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Configurar Regras do HUB
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={() => setSelectedIds(new Set())}
-            >
-              <XCircle className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 text-xs flex-shrink-0 border-green-500/40 text-green-600 hover:bg-green-50 hover:text-green-700"
+                disabled={bulkToggling}
+                onClick={() => bulkToggleActive(true)}
+              >
+                <ToggleRight className="h-3.5 w-3.5" />
+                Ativar todos
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 text-xs flex-shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+                disabled={bulkToggling}
+                onClick={() => bulkToggleActive(false)}
+              >
+                <ToggleLeft className="h-3.5 w-3.5" />
+                Inativar todos
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5 h-8 text-xs flex-shrink-0"
+                onClick={() => setBulkDialogOpen(true)}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Configurar Regras
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
