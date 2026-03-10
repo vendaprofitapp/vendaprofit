@@ -754,7 +754,7 @@ export default function HubFornecedor() {
     try {
       await Promise.all([
         supabase.from("profiles").update({ hub_description: hubDescription } as any).eq("id", user.id),
-        supabase.from("store_settings").upsert({ owner_id: user.id, pix_key: pixKey }, { onConflict: "owner_id" }),
+        supabase.from("store_settings").upsert({ owner_id: user.id, pix_key: pixKey } as any, { onConflict: "owner_id" }),
       ]);
       toast.success("Configurações salvas!");
     } catch (err: any) {
