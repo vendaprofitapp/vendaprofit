@@ -628,7 +628,10 @@ export default function ReportMyPerformance() {
             </h3>
             <div className="space-y-2">
               {[
-                { label: "Receita Bruta", value: metrics.totalRevenue, color: "text-card-foreground" },
+                { label: "Receita Bruta (Vendas)", value: metrics.totalRevenue, color: "text-card-foreground" },
+                ...(metrics.hubRevenue > 0 ? [
+                  { label: "  ↳ inclui Receita HUB Fornecedor", value: metrics.hubRevenue, color: "text-primary" },
+                ] : []),
                 { label: "− Custo dos Produtos (CMV)", value: -metrics.totalCMV, color: "text-destructive" },
                 { label: "− Descontos Concedidos", value: -metrics.totalDiscounts, color: "text-destructive" },
                 { label: "− Taxas de Pagamento", value: -metrics.totalFees, color: "text-destructive" },
@@ -651,6 +654,18 @@ export default function ReportMyPerformance() {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+        {/* HUB supplier banner */}
+        {!isLoading && hubSupplierMetrics.count > 0 && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3 text-sm">
+            <Building2 className="h-4 w-4 text-primary flex-shrink-0" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">Receita HUB Fornecedor incluída:</strong>{" "}
+              {hubSupplierMetrics.count} item{hubSupplierMetrics.count !== 1 ? "s" : ""} B2B concluídos →{" "}
+              <span className="text-primary font-semibold">{fmtCurrency(hubSupplierMetrics.revenue)}</span> receita,{" "}
+              <span className="text-success font-semibold">{fmtCurrency(hubSupplierMetrics.profit)}</span> lucro
+            </span>
           </div>
         )}
       </div>
