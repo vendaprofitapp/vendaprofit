@@ -768,9 +768,11 @@ export default function HubFornecedor() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterHubStatus, setFilterHubStatus] = useState<string>("all");
 
-  // Description / PIX settings
+  // Description / PIX / location settings
   const [hubDescription, setHubDescription] = useState("");
   const [pixKey, setPixKey] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressState, setAddressState] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const { data: settingsData } = useQuery({
@@ -778,11 +780,13 @@ export default function HubFornecedor() {
     enabled: !!user,
     queryFn: async () => {
       const [profileRes, storeRes] = await Promise.all([
-        supabase.from("profiles").select("hub_description").eq("id", user!.id).maybeSingle(),
+        supabase.from("profiles").select("hub_description, address_city, address_state").eq("id", user!.id).maybeSingle(),
         supabase.from("store_settings").select("pix_key").eq("owner_id", user!.id).maybeSingle(),
       ]);
       return {
         hub_description: (profileRes.data as any)?.hub_description ?? "",
+        address_city: (profileRes.data as any)?.address_city ?? "",
+        address_state: (profileRes.data as any)?.address_state ?? "",
         pix_key: storeRes.data?.pix_key ?? "",
       };
     },
@@ -792,6 +796,8 @@ export default function HubFornecedor() {
     if (settingsData) {
       setHubDescription(settingsData.hub_description || "");
       setPixKey(settingsData.pix_key || "");
+      setAddressCity(settingsData.address_city || "");
+      setAddressState(settingsData.address_state || "");
     }
   }, [settingsData]);
 
@@ -800,7 +806,7 @@ export default function HubFornecedor() {
     setSavingSettings(true);
     try {
       await Promise.all([
-        supabase.from("profiles").update({ hub_description: hubDescription } as any).eq("id", user.id),
+        supabase.from("profiles").update({ hub_description: hubDescription, address_city: addressCity || null, address_state: addressState || null } as any).eq("id", user.id),
         supabase.from("store_settings").upsert({ owner_id: user.id, pix_key: pixKey } as any, { onConflict: "owner_id" }),
       ]);
       toast.success("Configurações salvas!");
