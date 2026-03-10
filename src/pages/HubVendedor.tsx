@@ -519,7 +519,7 @@ function SupplierSheet({
                 <Store className="h-6 w-6 text-primary" />
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <SheetTitle className="text-base font-bold leading-tight">{displayName}</SheetTitle>
               {location && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -527,13 +527,18 @@ function SupplierSheet({
                 </p>
               )}
             </div>
-            <div className="ml-auto flex-shrink-0 text-right">
+            <div className="flex-shrink-0 text-right">
               <p className="text-xs text-muted-foreground">Margem média</p>
               <p className={cn("text-base font-bold", avgMargin >= 30 ? "text-green-600" : "text-amber-600")}>
                 {avgMargin}%
               </p>
             </div>
           </div>
+          {supplier?.hub_description && (
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed border-t border-border pt-2">
+              {supplier.hub_description}
+            </p>
+          )}
         </SheetHeader>
         <div className="flex divide-x divide-border border-b border-border flex-shrink-0">
           {[
