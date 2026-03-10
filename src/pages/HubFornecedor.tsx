@@ -127,22 +127,15 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
           <span className="font-medium text-foreground">{hasData ? `R$ ${grossCommission.toFixed(2)}` : "—"}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
-          <span>Taxa Venda PROFIT</span>
-          <span className="font-medium text-destructive">- R$ {VENDA_PROFIT_FEE.toFixed(2)}</span>
+          <span>Taxa Venda PROFIT (calculada)</span>
+          <span className="font-medium text-destructive">- R$ {hubFee.toFixed(2)}</span>
         </div>
         <Separator />
-        <div className="flex justify-between font-bold text-base">
-          <span>Você vai receber</span>
-          <span className={netReceived > 0 ? "text-green-600" : "text-muted-foreground"}>
-            {hasData ? `R$ ${netReceived.toFixed(2)}` : "—"}
-          </span>
-        </div>
-      </div>
-      {hasData && netReceived <= 0 && (
-        <p className="text-xs text-destructive flex items-center gap-1">
-          <AlertCircle className="h-3 w-3" /> O valor deve ser maior que R$ {VENDA_PROFIT_FEE.toFixed(2)}.
-        </p>
-      )}
+        {hasData && netReceived <= 0 && (
+          <p className="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" /> O valor deve cobrir a taxa da plataforma (R$ {hubFee.toFixed(2)}).
+          </p>
+        )}
     </div>
   );
 }
