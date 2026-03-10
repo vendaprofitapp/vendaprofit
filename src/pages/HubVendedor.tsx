@@ -646,21 +646,34 @@ export default function HubVendedor() {
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierProfile | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // ── MARKETPLACE: fetch self-connections from all suppliers (open marketplace) ──
-  // Self-connections are hub_connections where the owner registered their catalog
-  // for the HUB marketplace (seller_id is null = self/public catalog connection)
+  // ── MARKETPLACE: Open discovery — find all suppliers with active HUB products ──
+  // Strategy: query hub_shared_products directly to find all active+configured products,
+  // then join hub_connections to get the owner. This decouples visibility from connection type.
   const { data: allActiveConnections = [], isLoading: loadingConn } = useQuery({
     queryKey: ["hub-vendedor-all-connections"],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("hub_connections")
-        .select("id, owner_id, commission_pct")
-        .eq("status", "active")
-        .is("seller_id", null)          // self-connections have no seller_id
-        .neq("owner_id", user!.id);     // exclude own catalog
+      // Get all hub_connections that have at least one active+configured product
+      // belonging to someone who is NOT the current user
+      const { data: sharedProducts, error } = await supabase
+        .from("hub_shared_products")
+        .select("connection_id, hub_connections!inner(id, owner_id, commission_pct, status)")
+        .eq("is_active", true)
+        .eq("hub_configured", true)
+        .eq("hub_connections.status", "active");
       if (error) throw error;
-      return data as { id: string; owner_id: string; commission_pct: number }[];
+
+      // Deduplicate by owner_id, pick one connection per owner
+      const seenOwners = new Set<string>();
+      const result: { id: string; owner_id: string; commission_pct: number }[] = [];
+      for (const row of sharedProducts ?? []) {
+        const conn = (row as any).hub_connections;
+        if (!conn || conn.owner_id === user!.id) continue;
+        if (seenOwners.has(conn.owner_id)) continue;
+        seenOwners.add(conn.owner_id);
+        result.push({ id: conn.id, owner_id: conn.owner_id, commission_pct: conn.commission_pct });
+      }
+      return result;
     },
   });
 
