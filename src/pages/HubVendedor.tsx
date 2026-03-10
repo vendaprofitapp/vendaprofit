@@ -726,8 +726,8 @@ export default function HubVendedor() {
     },
   });
 
-  const connectionIds = allConnectionIds;
-  const loadingProducts = false; // derived below
+
+
 
   const { data: hubProducts = [], isLoading: loadingHubProducts } = useQuery({
     queryKey: ["hub-vendedor-products-marketplace", allConnectionIds],
