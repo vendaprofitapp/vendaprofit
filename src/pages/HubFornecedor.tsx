@@ -154,11 +154,13 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
 
 // ─── Hub Rules Dialog (single or bulk) ───────────────────────────────────────
 async function getOrCreateSelfConnection(userId: string): Promise<string> {
+  // Self-connection = public supplier catalog, identified by seller_id = null
   const { data: existing } = await supabase
     .from("hub_connections")
     .select("id")
     .eq("owner_id", userId)
     .eq("status", "active")
+    .is("seller_id", null)
     .limit(1)
     .maybeSingle();
   if (existing) return existing.id;
