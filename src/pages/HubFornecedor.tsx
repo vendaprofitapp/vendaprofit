@@ -27,9 +27,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
-  VENDA_PROFIT_FEE, StatusBadge, OrderTimeline,
+  StatusBadge, OrderTimeline,
   FileUploadZone, uploadOrderFile,
 } from "@/components/hub/HubOrderShared";
+import { calcHubFee, HUB_DEFAULT_FEE_VALUE } from "@/hooks/useHubFeeCalculator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product {
@@ -105,7 +106,8 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
 
   const isFixed = form.hub_pricing_mode === "fixed";
   const grossCommission = isFixed ? fixedCost : (minSalePrice * commissionRate) / 100;
-  const netReceived = grossCommission - VENDA_PROFIT_FEE;
+  const hubFee = calcHubFee({ costPrice: grossCommission }).feeAmount;
+  const netReceived = grossCommission - hubFee;
   const hasData = isFixed ? fixedCost > 0 : (minSalePrice > 0 && commissionRate > 0);
 
   return (
@@ -125,8 +127,8 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
           <span className="font-medium text-foreground">{hasData ? `R$ ${grossCommission.toFixed(2)}` : "—"}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
-          <span>Taxa Venda PROFIT</span>
-          <span className="font-medium text-destructive">- R$ {VENDA_PROFIT_FEE.toFixed(2)}</span>
+          <span>Taxa Venda PROFIT (calculada)</span>
+          <span className="font-medium text-destructive">- R$ {hubFee.toFixed(2)}</span>
         </div>
         <Separator />
         <div className="flex justify-between font-bold text-base">
@@ -135,12 +137,12 @@ function FinancialSimulation({ form }: { form: RulesForm }) {
             {hasData ? `R$ ${netReceived.toFixed(2)}` : "—"}
           </span>
         </div>
+        {hasData && netReceived <= 0 && (
+          <p className="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" /> O valor deve cobrir a taxa da plataforma (R$ {hubFee.toFixed(2)}).
+          </p>
+        )}
       </div>
-      {hasData && netReceived <= 0 && (
-        <p className="text-xs text-destructive flex items-center gap-1">
-          <AlertCircle className="h-3 w-3" /> O valor deve ser maior que R$ {VENDA_PROFIT_FEE.toFixed(2)}.
-        </p>
-      )}
     </div>
   );
 }
@@ -769,7 +771,7 @@ export default function HubFornecedor() {
           </Card>
           <Card className="p-4 col-span-2 sm:col-span-1">
             <p className="text-xs text-muted-foreground">Taxa Plataforma</p>
-            <p className="text-2xl font-bold text-amber-600">R$ {VENDA_PROFIT_FEE.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-amber-600">R$ {HUB_DEFAULT_FEE_VALUE.toFixed(2)}</p>
           </Card>
         </div>
 

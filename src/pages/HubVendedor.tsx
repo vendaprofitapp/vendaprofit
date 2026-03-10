@@ -19,10 +19,11 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
-  VENDA_PROFIT_FEE, PLATFORM_PIX_KEY, PLATFORM_PIX_NAME,
+  PLATFORM_PIX_KEY, PLATFORM_PIX_NAME,
   StatusBadge, OrderTimeline, PixCard, FileUploadZone, uploadOrderFile,
   STATUS_CONFIG,
 } from "@/components/hub/HubOrderShared";
+import { calcHubFee } from "@/hooks/useHubFeeCalculator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SupplierProfile {
@@ -53,6 +54,12 @@ interface HubProduct {
   hub_approval_type: "manual" | "automatic";
   connection_id: string;
   owner_id: string;
+  // cascade fee overrides (from admin)
+  admin_hub_fee_type?: "fixed" | "percentage" | null;
+  admin_hub_fee_value?: number | null;
+  // supplier-level fee (joined from profiles)
+  supplierFeeType?: "fixed" | "percentage" | null;
+  supplierFeeValue?: number | null;
 }
 
 interface PendingOrder {
@@ -83,17 +90,30 @@ interface OrderItem {
   rejection_reason: string | null;
 }
 
-// ─── Profit calc ──────────────────────────────────────────────────────────────
-function calcProfit(p: HubProduct) {
+// ─── Profit calc (uses cascade fee hook) ─────────────────────────────────────
+function calcProfit(p: HubProduct & { supplierFeeType?: "fixed" | "percentage" | null; supplierFeeValue?: number | null }) {
   if (p.hub_pricing_mode === "fixed") {
-    const cost = p.hub_fixed_cost;
+    const costBase = p.hub_fixed_cost;
     const minSale = p.hub_minimum_sale_price > 0 ? p.hub_minimum_sale_price : p.price;
-    return { cost, minSale, profit: minSale - cost };
+    const { feeAmount, totalCost } = calcHubFee({
+      costPrice: costBase,
+      productFeeType: (p as any).admin_hub_fee_type ?? null,
+      productFeeValue: (p as any).admin_hub_fee_value ?? null,
+      supplierFeeType: p.supplierFeeType ?? null,
+      supplierFeeValue: p.supplierFeeValue ?? null,
+    });
+    return { cost: totalCost, costBase, feeAmount, minSale, profit: minSale - totalCost };
   }
   const commissionValue = (p.hub_minimum_sale_price * p.hub_commission_rate) / 100;
-  const cost = commissionValue + VENDA_PROFIT_FEE;
   const minSale = p.hub_minimum_sale_price;
-  return { cost, minSale, profit: minSale - cost };
+  const { feeAmount, totalCost } = calcHubFee({
+    costPrice: commissionValue,
+    productFeeType: (p as any).admin_hub_fee_type ?? null,
+    productFeeValue: (p as any).admin_hub_fee_value ?? null,
+    supplierFeeType: p.supplierFeeType ?? null,
+    supplierFeeValue: p.supplierFeeValue ?? null,
+  });
+  return { cost: totalCost, costBase: commissionValue, feeAmount, minSale, profit: minSale - totalCost };
 }
 
 // ─── Buyer Order State Card ───────────────────────────────────────────────────
@@ -178,7 +198,7 @@ function BuyerOrderCard({
 
   // Calculate amounts for PIX display
   const itemsTotal = (order.items ?? []).reduce((s, i) => s + i.unit_price * i.quantity, 0);
-  const platformFee = VENDA_PROFIT_FEE;
+  const platformFee = calcHubFee({ costPrice: Math.max(itemsTotal, 0) }).feeAmount;
   const supplierAmount = Math.max(itemsTotal - platformFee, 0);
 
   return (
@@ -517,7 +537,7 @@ function SupplierSheet({
         <div className="flex divide-x divide-border border-b border-border flex-shrink-0">
           {[
             { label: "Produtos", value: products.length },
-            { label: "Taxa plataforma", value: `R$ ${VENDA_PROFIT_FEE.toFixed(2)}` },
+            { label: "Taxa plataforma", value: "Variável (calculada)" },
             { label: "PIX key", value: supplier?.pix_key ? "✓ Configurado" : "Não cadastrado" },
           ].map((s) => (
             <div key={s.label} className="flex-1 py-2.5 px-3 text-center">

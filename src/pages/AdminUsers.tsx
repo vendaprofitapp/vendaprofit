@@ -23,7 +23,8 @@ import {
   DrawerDescription,
   DrawerFooter,
 } from "@/components/ui/drawer";
-import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle } from "lucide-react";
+import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle, Percent } from "lucide-react";
+import { HubFeesManager } from "@/components/admin/HubFeesManager";
 import { BackupSection } from "@/components/admin/BackupSection";
 import { BotconversaAdminSection } from "@/components/admin/BotconversaAdminSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -296,6 +297,10 @@ export default function AdminUsers() {
             <Users className="h-4 w-4" />
             Usuários
           </TabsTrigger>
+          <TabsTrigger value="hub-fees" className="flex items-center gap-2">
+            <Percent className="h-4 w-4" />
+            Taxas HUB
+          </TabsTrigger>
           <TabsTrigger value="integrations" className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
             Integrações
@@ -405,6 +410,10 @@ export default function AdminUsers() {
       <div className="mt-6">
         <BackupSection />
       </div>
+        </TabsContent>
+
+        <TabsContent value="hub-fees">
+          <HubFeesManager />
         </TabsContent>
 
         <TabsContent value="integrations">
