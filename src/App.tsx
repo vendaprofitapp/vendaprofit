@@ -185,7 +185,8 @@ const AppRoutes = () => (
     <Route path="/reports/deferred" element={<ProtectedRoute><ReportDeferredSales /></ProtectedRoute>} />
      <Route path="/reports/performance" element={<ProtectedRoute><ReportMyPerformance /></ProtectedRoute>} />
      <Route path="/reports/hub-acertos" element={<ProtectedRoute><ReportHubAcertos /></ProtectedRoute>} />
-    <Route path="/hub-vendas" element={<ProtectedRoute><HubVendas /></ProtectedRoute>} />
+    <Route path="/hub-fornecedor" element={<ProtectedRoute><HubFornecedor /></ProtectedRoute>} />
+    <Route path="/hub-vendedor" element={<ProtectedRoute><HubVendedor /></ProtectedRoute>} />
     <Route path="/reports/catalog" element={<ProtectedRoute><ReportCatalog /></ProtectedRoute>} />
     <Route path="/plano-expirado" element={<PlanExpired />} />
     <Route path="/p/:token" element={<PartnerCatalog />} />
