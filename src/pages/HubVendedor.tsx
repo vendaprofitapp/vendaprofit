@@ -604,6 +604,11 @@ function SupplierCard({
                   <span className="truncate">{location}</span>
                 </p>
               )}
+              {supplier.hub_description && (
+                <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                  {supplier.hub_description}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <Badge variant="outline" className="text-[10px] py-0 gap-1">
                   <Package className="h-2.5 w-2.5" />
