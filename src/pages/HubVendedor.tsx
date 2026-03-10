@@ -192,7 +192,7 @@ function BuyerOrderCard({
 
   // Calculate amounts for PIX display
   const itemsTotal = (order.items ?? []).reduce((s, i) => s + i.unit_price * i.quantity, 0);
-  const platformFee = VENDA_PROFIT_FEE;
+  const platformFee = calcHubFee({ costPrice: Math.max(itemsTotal, 0) }).feeAmount;
   const supplierAmount = Math.max(itemsTotal - platformFee, 0);
 
   return (
