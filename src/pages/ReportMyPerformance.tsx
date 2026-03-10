@@ -465,6 +465,9 @@ export default function ReportMyPerformance() {
 
           <span className="ml-auto text-xs text-muted-foreground">
             {totalSales} venda{totalSales !== 1 ? "s" : ""}
+            {hubSupplierMetrics.count > 0 && (
+              <> · <span className="text-primary font-medium">{hubSupplierMetrics.count} item{hubSupplierMetrics.count !== 1 ? "s" : ""} HUB</span></>
+            )}
           </span>
         </div>
 
