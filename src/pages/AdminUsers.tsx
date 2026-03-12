@@ -543,6 +543,67 @@ export default function AdminUsers() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {/* Dialog: Novo Usuário */}
+      <Dialog open={newUserOpen} onOpenChange={setNewUserOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Criar Novo Usuário
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nome completo</Label>
+              <Input
+                placeholder="Nome do usuário"
+                value={newUserForm.full_name}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, full_name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email <span className="text-destructive">*</span></Label>
+              <Input
+                type="email"
+                placeholder="email@exemplo.com"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Senha <span className="text-destructive">*</span></Label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Mínimo 6 caracteres"
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm((f) => ({ ...f, password: e.target.value }))}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewUserOpen(false)} disabled={creatingUser}>
+              Cancelar
+            </Button>
+            <Button onClick={createNewUser} disabled={creatingUser}>
+              {creatingUser ? "Criando..." : "Criar Usuário"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
