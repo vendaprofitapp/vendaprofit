@@ -329,6 +329,13 @@ export default function AdminUsers() {
         </div>
         <Badge variant="outline" className="text-xs">{profiles.length} usuário(s)</Badge>
       </div>
+      {/* New user button */}
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => { setNewUserForm({ full_name: "", email: "", password: "" }); setNewUserOpen(true); }} className="flex items-center gap-2">
+          <UserPlus className="h-4 w-4" />
+          Novo Usuário
+        </Button>
+      </div>
 
       <Tabs defaultValue="users">
         <TabsList className="mb-6">
