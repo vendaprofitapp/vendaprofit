@@ -257,7 +257,6 @@ export default function AdminUsers() {
       product_count_limit: planForm.plan_type === "trial" ? 10 : null,
       onboarding_completed: selectedSub?.onboarding_completed ?? false,
       notes: planForm.notes || null,
-      updated_by_admin: user?.id,
     };
 
     let error: any;
