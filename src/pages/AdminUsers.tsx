@@ -280,6 +280,32 @@ export default function AdminUsers() {
     setSaving(false);
   };
 
+  const createNewUser = async () => {
+    if (!newUserForm.email || !newUserForm.password) {
+      toast.error("Email e senha são obrigatórios");
+      return;
+    }
+    setCreatingUser(true);
+    const { data, error } = await supabase.functions.invoke("admin-create-user", {
+      body: {
+        email: newUserForm.email.trim(),
+        password: newUserForm.password,
+        full_name: newUserForm.full_name.trim() || undefined,
+      },
+    });
+    if (error || !data?.success) {
+      toast.error(data?.error ?? "Erro ao criar usuário");
+    } else {
+      toast.success("Usuário criado com sucesso!");
+      setNewUserOpen(false);
+      setNewUserForm({ full_name: "", email: "", password: "" });
+      // Refresh profiles list
+      const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email, created_at").order("created_at", { ascending: false });
+      setProfiles((profilesData as Profile[]) || []);
+    }
+    setCreatingUser(false);
+  };
+
   if (!isAdmin) {
     return (
       <MainLayout>
