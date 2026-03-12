@@ -259,19 +259,15 @@ export default function AdminUsers() {
       notes: planForm.notes || null,
     };
 
-    let error: any;
-    if (selectedSub) {
-      ({ error } = await supabase.from("user_subscriptions").update(payload).eq("id", selectedSub.id));
-    } else {
-      ({ error } = await supabase.from("user_subscriptions").insert(payload));
-    }
+    const { error } = await supabase
+      .from("user_subscriptions")
+      .upsert(payload, { onConflict: "user_id" });
 
     if (error) {
       toast.error("Erro ao salvar plano");
       console.error(error);
     } else {
       toast.success("Plano atualizado com sucesso!");
-      // Refresh subscriptions
       const { data } = await supabase.from("user_subscriptions").select("*");
       setSubscriptions((data as UserSubscription[]) || []);
       setDrawerOpen(false);
