@@ -23,7 +23,14 @@ import {
   DrawerDescription,
   DrawerFooter,
 } from "@/components/ui/drawer";
-import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle, Percent } from "lucide-react";
+import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle, Percent, UserPlus, Eye, EyeOff } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { HubFeesManager } from "@/components/admin/HubFeesManager";
 import { BackupSection } from "@/components/admin/BackupSection";
 import { BotconversaAdminSection } from "@/components/admin/BotconversaAdminSection";
