@@ -154,6 +154,12 @@ export default function AdminUsers() {
   });
   const [saving, setSaving] = useState(false);
 
+  // New user dialog state
+  const [newUserOpen, setNewUserOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ full_name: "", email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+
   useEffect(() => {
     async function checkAdmin() {
       if (!user) return;
