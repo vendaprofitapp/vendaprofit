@@ -23,7 +23,14 @@ import {
   DrawerDescription,
   DrawerFooter,
 } from "@/components/ui/drawer";
-import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle, Percent } from "lucide-react";
+import { ShieldCheck, Users, Search, Crown, Clock, CheckCircle, XCircle, Settings, MessageCircle, Percent, UserPlus, Eye, EyeOff } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { HubFeesManager } from "@/components/admin/HubFeesManager";
 import { BackupSection } from "@/components/admin/BackupSection";
 import { BotconversaAdminSection } from "@/components/admin/BotconversaAdminSection";
@@ -147,6 +154,12 @@ export default function AdminUsers() {
   });
   const [saving, setSaving] = useState(false);
 
+  // New user dialog state
+  const [newUserOpen, setNewUserOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ full_name: "", email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+
   useEffect(() => {
     async function checkAdmin() {
       if (!user) return;
@@ -267,6 +280,32 @@ export default function AdminUsers() {
     setSaving(false);
   };
 
+  const createNewUser = async () => {
+    if (!newUserForm.email || !newUserForm.password) {
+      toast.error("Email e senha são obrigatórios");
+      return;
+    }
+    setCreatingUser(true);
+    const { data, error } = await supabase.functions.invoke("admin-create-user", {
+      body: {
+        email: newUserForm.email.trim(),
+        password: newUserForm.password,
+        full_name: newUserForm.full_name.trim() || undefined,
+      },
+    });
+    if (error || !data?.success) {
+      toast.error(data?.error ?? "Erro ao criar usuário");
+    } else {
+      toast.success("Usuário criado com sucesso!");
+      setNewUserOpen(false);
+      setNewUserForm({ full_name: "", email: "", password: "" });
+      // Refresh profiles list
+      const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email, created_at").order("created_at", { ascending: false });
+      setProfiles((profilesData as Profile[]) || []);
+    }
+    setCreatingUser(false);
+  };
+
   if (!isAdmin) {
     return (
       <MainLayout>
@@ -289,6 +328,13 @@ export default function AdminUsers() {
           <p className="text-muted-foreground">Gerencie usuários e planos de assinatura</p>
         </div>
         <Badge variant="outline" className="text-xs">{profiles.length} usuário(s)</Badge>
+      </div>
+      {/* New user button */}
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => { setNewUserForm({ full_name: "", email: "", password: "" }); setNewUserOpen(true); }} className="flex items-center gap-2">
+          <UserPlus className="h-4 w-4" />
+          Novo Usuário
+        </Button>
       </div>
 
       <Tabs defaultValue="users">
@@ -497,6 +543,67 @@ export default function AdminUsers() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {/* Dialog: Novo Usuário */}
+      <Dialog open={newUserOpen} onOpenChange={setNewUserOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Criar Novo Usuário
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nome completo</Label>
+              <Input
+                placeholder="Nome do usuário"
+                value={newUserForm.full_name}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, full_name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email <span className="text-destructive">*</span></Label>
+              <Input
+                type="email"
+                placeholder="email@exemplo.com"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Senha <span className="text-destructive">*</span></Label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Mínimo 6 caracteres"
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm((f) => ({ ...f, password: e.target.value }))}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewUserOpen(false)} disabled={creatingUser}>
+              Cancelar
+            </Button>
+            <Button onClick={createNewUser} disabled={creatingUser}>
+              {creatingUser ? "Criando..." : "Criar Usuário"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
