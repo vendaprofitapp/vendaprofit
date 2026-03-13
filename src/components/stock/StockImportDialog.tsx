@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Upload, FileSpreadsheet, Camera, Loader2, Check, X, AlertCircle, Image as ImageIcon, Trash2, Edit, Link, FileText, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -509,6 +510,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const [step, setStep] = useState<"upload" | "review" | "edit">("upload");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [userColors, setUserColors] = useState<Color[]>([]);
+  const [stockMode, setStockMode] = useState<"add" | "replace">("add");
   const { mainCategories: fixedMainCategories } = useFixedCategories();
   const categories = fixedMainCategories.map(c => ({ id: c.id, name: c.name }));
 
@@ -1095,8 +1097,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             });
             
             if (matchingVariant) {
-              // Update existing variant's stock (add to current)
-              const newVariantQty = matchingVariant.stock_quantity + totalQty;
+              // Update existing variant's stock based on mode
+              const newVariantQty = stockMode === "replace"
+                ? totalQty
+                : matchingVariant.stock_quantity + totalQty;
               const { error: variantError } = await supabase
                 .from("product_variants")
                 .update({ stock_quantity: newVariantQty })
@@ -1106,7 +1110,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 console.error(`Erro ao atualizar variante ${size}:`, variantError);
               } else {
                 variantUpdated = true;
-                console.log(`Variante atualizada: ${size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
+                console.log(`Variante atualizada: ${size} de ${matchingVariant.stock_quantity} para ${newVariantQty} (modo: ${stockMode})`);
               }
             } else {
               // Create new variant for this size
@@ -1143,8 +1147,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             updateCount++;
           }
         } else {
-          // No variants - update main product directly (old behavior)
-          const newQuantity = product.existingProduct.stock_quantity + product.quantity;
+          // No variants - update main product directly
+          const newQuantity = stockMode === "replace"
+            ? product.quantity
+            : product.existingProduct.stock_quantity + product.quantity;
           
           const { error } = await supabase
             .from("products")
@@ -1156,7 +1162,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           if (error) {
             console.error(`Erro ao atualizar estoque de "${product.name}":`, error);
           } else {
-            console.log(`Estoque de "${product.name}" atualizado: ${product.existingProduct.stock_quantity} → ${newQuantity}`);
+            console.log(`Estoque de "${product.name}" atualizado: ${product.existingProduct.stock_quantity} → ${newQuantity} (modo: ${stockMode})`);
             updateCount++;
           }
         }
@@ -1374,13 +1380,50 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             
             <SupplierSelect value={supplierId} onChange={setSupplierId} />
 
+            {/* Stock mode selector */}
+            <div className="p-2 sm:p-3 bg-muted/50 border rounded-lg space-y-2">
+              <p className="text-xs font-medium text-foreground">Como atualizar o estoque dos produtos existentes?</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStockMode("add")}
+                  className={`flex-1 flex items-center gap-2 p-2 rounded-md border-2 text-xs transition-all ${
+                    stockMode === "add"
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <span className="text-base">➕</span>
+                  <div className="text-left">
+                    <p className="font-medium">Somar ao estoque atual</p>
+                    <p className={`text-[10px] ${stockMode === "add" ? "text-primary/70" : "text-muted-foreground"}`}>Ex: atual 10 + import 5 = 15</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockMode("replace")}
+                  className={`flex-1 flex items-center gap-2 p-2 rounded-md border-2 text-xs transition-all ${
+                    stockMode === "replace"
+                      ? "border-destructive bg-destructive/10 text-destructive font-medium"
+                      : "border-border bg-background text-muted-foreground hover:border-destructive/40"
+                  }`}
+                >
+                  <span className="text-base">🔄</span>
+                  <div className="text-left">
+                    <p className="font-medium">Substituir estoque atual</p>
+                    <p className={`text-[10px] ${stockMode === "replace" ? "text-destructive/70" : "text-muted-foreground"}`}>Ex: atual 10 → import 5 = 5</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {hasDuplicates && (
-              <div className="p-2 sm:p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="p-2 sm:p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-warning shrink-0 mt-0.5" />
                 <div className="text-xs sm:text-sm">
-                  <p className="font-medium text-amber-600">Duplicados detectados</p>
+                  <p className="font-medium text-warning">Duplicados detectados</p>
                   <p className="text-muted-foreground">
-                    Itens "Existe" terão estoque atualizado.
+                    Itens "Existe" terão estoque {stockMode === "replace" ? "substituído" : "somado"}.
                   </p>
                 </div>
               </div>
