@@ -1294,7 +1294,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className={`${step === "review" ? "sm:max-w-[95vw] sm:w-[95vw] sm:h-[90vh]" : "max-w-4xl"} max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] p-4 sm:p-6`}>
+      <DialogContent className={`${step === "review" ? "sm:max-w-[95vw] sm:w-[95vw] h-[95dvh] flex flex-col" : "max-w-4xl"} max-h-[95dvh] overflow-hidden w-[98vw] p-4 sm:p-6`}>
         <DialogHeader>
           <DialogTitle>Importar Estoque</DialogTitle>
           <DialogDescription>
