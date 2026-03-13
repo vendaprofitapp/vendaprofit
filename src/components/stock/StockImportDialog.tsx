@@ -1295,7 +1295,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={`${step === "review" ? "!fixed !left-[50%] !top-[50%] !translate-x-[-50%] !translate-y-[-50%] !w-[98vw] !max-w-[98vw] sm:!max-w-[95vw] !h-[95dvh] !max-h-[95dvh] !rounded-lg flex flex-col" : "max-w-4xl"} overflow-hidden p-4 sm:p-6`}>
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>Importar Estoque</DialogTitle>
           <DialogDescription>
             Importe produtos via planilha ou foto de nota fiscal
