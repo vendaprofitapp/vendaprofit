@@ -510,6 +510,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
   const [step, setStep] = useState<"upload" | "review" | "edit">("upload");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [userColors, setUserColors] = useState<Color[]>([]);
+  const [stockMode, setStockMode] = useState<"add" | "replace">("add");
   const { mainCategories: fixedMainCategories } = useFixedCategories();
   const categories = fixedMainCategories.map(c => ({ id: c.id, name: c.name }));
 
