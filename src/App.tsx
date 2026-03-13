@@ -74,18 +74,39 @@ import CatalogOrders from "./pages/CatalogOrders";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, offline } = useAuth();
   const { isExpired, loading: planLoading } = usePlan();
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminChecked, setAdminChecked] = useState(false);
 
   useEffect(() => {
     if (!user) { setAdminChecked(true); return; }
+    const timeout = setTimeout(() => setAdminChecked(true), 8000);
     supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }).then(({ data }) => {
+      clearTimeout(timeout);
       setIsAdmin(!!data);
       setAdminChecked(true);
     });
+    return () => clearTimeout(timeout);
   }, [user]);
+
+  if (offline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-xl font-semibold text-foreground">Serviço temporariamente indisponível</h2>
+          <p className="text-muted-foreground">Não foi possível conectar ao servidor. Verifique sua internet e tente novamente em alguns instantes.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || planLoading || !adminChecked) {
     return (
