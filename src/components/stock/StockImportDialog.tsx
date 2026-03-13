@@ -1398,272 +1398,275 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
               </div>
             )}
 
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-3 max-w-full overflow-hidden">
-              {products.map((product, idx) => (
-                <div 
-                  key={idx} 
-                  className={`border rounded-lg p-3 ${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5 border-destructive/30" : "bg-card"}`}
-                >
-                  {/* Header row: checkbox + name + badge + edit */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <button
-                      type="button"
-                      className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center border"
-                      onClick={() => toggleProduct(idx)}
-                    >
-                      {product.selected ? (
-                        <Check className="h-4 w-4 text-primary" />
-                      ) : (
-                        <X className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span className={`font-semibold text-sm block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
-                        {product.name || "(sem nome)"}
-                      </span>
-                      <span className={`text-xs ${!product.main_category ? "text-destructive" : "text-muted-foreground"}`}>
-                        {product.main_category || "(categoria)"}{product.subcategory ? ` › ${product.subcategory}` : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {product.existingProduct ? (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                          Existe
-                        </Badge>
-                      ) : product.hasErrors ? (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
-                          Erro
-                        </Badge>
-                      ) : (
-                        <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-                          Novo
-                        </Badge>
-                      )}
+            {/* Scrollable product list */}
+            <ScrollArea className="flex-1 min-h-0 rounded-lg border">
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3 p-3">
+                {products.map((product, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`border rounded-lg p-3 ${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5 border-destructive/30" : "bg-card"}`}
+                  >
+                    {/* Header row: checkbox + name + badge + edit */}
+                    <div className="flex items-center gap-2 mb-2">
                       <button
                         type="button"
-                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted"
-                        onClick={() => setEditingIndex(idx)}
+                        className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center border"
+                        onClick={() => toggleProduct(idx)}
                       >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Variants info */}
-                  {product.variants.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground mb-2 line-clamp-1">
-                      {product.variants.map(v => `${v.size || '?'}`).join(", ")}
-                    </p>
-                  )}
-
-                  {/* Compact info row */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
-                      <span className="text-[10px] text-muted-foreground">Custo </span>
-                      <span className="font-medium text-xs">R$ {product.cost_price.toFixed(2)}</span>
-                    </div>
-                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
-                      <span className="text-[10px] text-muted-foreground">Qtd </span>
-                      <span className="font-medium text-xs">{product.quantity}</span>
-                    </div>
-                    <div className="bg-muted/50 rounded px-2 py-1 text-center">
-                      <span className="text-[10px] text-muted-foreground">Var </span>
-                      <span className="font-medium text-xs">
-                        {product.variants.length > 0 
-                          ? product.variants.length
-                          : `${product.color || "-"}/${product.size || "-"}`}
-                      </span>
-                    </div>
-
-                    {/* Photo upload button inline */}
-                    {product.imageUrls.length > 0 ? (
-                      <div className="flex items-center gap-1 ml-auto">
-                        {product.imageUrls.slice(0, 2).map((url, imgIdx) => (
-                          <div key={imgIdx} className="relative w-8 h-8">
-                            <img 
-                              src={url} 
-                              alt={`Foto ${imgIdx + 1}`} 
-                              className="w-full h-full object-cover rounded border"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeProductImage(idx, imgIdx)}
-                              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] shadow-md"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                        {product.imageUrls.length > 2 && (
-                          <span className="text-[10px] text-muted-foreground">+{product.imageUrls.length - 2}</span>
+                        {product.selected ? (
+                          <Check className="h-4 w-4 text-primary" />
+                        ) : (
+                          <X className="h-4 w-4 text-muted-foreground" />
                         )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <span className={`font-semibold text-sm block truncate ${!product.name.trim() ? "text-destructive" : ""}`}>
+                          {product.name || "(sem nome)"}
+                        </span>
+                        <span className={`text-xs ${!product.main_category ? "text-destructive" : "text-muted-foreground"}`}>
+                          {product.main_category || "(categoria)"}{product.subcategory ? ` › ${product.subcategory}` : ""}
+                        </span>
                       </div>
-                    ) : product.images.length < 3 ? (
-                      <div className="ml-auto">
-                        <input
-                          ref={(el) => productImageRefs.current[idx] = el}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => handleProductImageUpload(idx, e.target.files)}
-                          className="hidden"
-                        />
+                      <div className="flex items-center gap-1 shrink-0">
+                        {product.existingProduct ? (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                            Existe
+                          </Badge>
+                        ) : product.hasErrors ? (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                            Erro
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
+                            Novo
+                          </Badge>
+                        )}
                         <button
                           type="button"
-                          onClick={() => productImageRefs.current[idx]?.click()}
-                          className="w-8 h-8 border border-dashed border-border rounded flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted"
+                          onClick={() => setEditingIndex(idx)}
                         >
-                          <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Edit className="h-4 w-4" />
                         </button>
                       </div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </div>
 
-            {/* Desktop Table View */}
-            <div className="hidden md:block border rounded-lg overflow-x-auto">
-              <Table>
-                <TableHeader>
-                    <TableRow>
-                     <TableHead className="w-12"></TableHead>
-                     <TableHead className="min-w-[200px]">Produto</TableHead>
-                     <TableHead className="min-w-[120px]">Categoria</TableHead>
-                     <TableHead className="min-w-[120px]">Cor/Tam</TableHead>
-                     <TableHead className="min-w-[100px]">Custo</TableHead>
-                     <TableHead className="min-w-[100px]">Preço</TableHead>
-                     <TableHead className="min-w-[60px]">Qtd</TableHead>
-                     <TableHead className="min-w-[120px]">Fotos</TableHead>
-                     <TableHead className="min-w-[100px]">Status</TableHead>
-                     <TableHead className="w-12"></TableHead>
-                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product, idx) => (
-                    <TableRow 
-                      key={idx} 
-                      className={`${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5" : ""}`}
-                    >
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleProduct(idx)}
-                        >
-                          {product.selected ? (
-                            <Check className="h-4 w-4 text-primary" />
-                          ) : (
-                            <X className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <span className={`font-medium ${!product.name.trim() ? "text-destructive" : ""}`}>
-                            {product.name || "(sem nome)"}
-                          </span>
-                          {product.variants.length > 0 && (
-                            <span className="text-xs text-muted-foreground block mt-1">
-                              {product.variants.map(v => `${v.size || '?'}`).join(", ")}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <span className={!product.main_category ? "text-destructive" : "text-muted-foreground"}>
-                            {product.main_category || "(obrigatório)"}
-                          </span>
-                          {product.subcategory && (
-                            <span className="text-xs text-muted-foreground block">› {product.subcategory}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {product.variants.length > 0 ? (
-                          <span className="text-xs">
-                            {product.variants.length} variantes
-                          </span>
-                        ) : (
-                          <span>{product.color || "-"} / {product.size || "-"}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>R$ {product.cost_price.toFixed(2)}</TableCell>
-                      <TableCell>R$ {product.price.toFixed(2)}</TableCell>
-                      <TableCell>{product.quantity}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          {product.imageUrls.map((url, imgIdx) => (
+                    {/* Variants info */}
+                    {product.variants.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground mb-2 line-clamp-1">
+                        {product.variants.map(v => `${v.size || '?'}`).join(", ")}
+                      </p>
+                    )}
+
+                    {/* Compact info row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                        <span className="text-[10px] text-muted-foreground">Custo </span>
+                        <span className="font-medium text-xs">R$ {product.cost_price.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                        <span className="text-[10px] text-muted-foreground">Qtd </span>
+                        <span className="font-medium text-xs">{product.quantity}</span>
+                      </div>
+                      <div className="bg-muted/50 rounded px-2 py-1 text-center">
+                        <span className="text-[10px] text-muted-foreground">Var </span>
+                        <span className="font-medium text-xs">
+                          {product.variants.length > 0 
+                            ? product.variants.length
+                            : `${product.color || "-"}/${product.size || "-"}`}
+                        </span>
+                      </div>
+
+                      {/* Photo upload button inline */}
+                      {product.imageUrls.length > 0 ? (
+                        <div className="flex items-center gap-1 ml-auto">
+                          {product.imageUrls.slice(0, 2).map((url, imgIdx) => (
                             <div key={imgIdx} className="relative w-8 h-8">
                               <img 
                                 src={url} 
                                 alt={`Foto ${imgIdx + 1}`} 
-                                className="w-full h-full object-cover rounded"
+                                className="w-full h-full object-cover rounded border"
                               />
                               <button
                                 type="button"
                                 onClick={() => removeProductImage(idx, imgIdx)}
-                                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-xs"
+                                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] shadow-md"
                               >
                                 ×
                               </button>
                             </div>
                           ))}
-                          {product.images.length < 3 && (
-                            <>
-                              <input
-                                ref={(el) => productImageRefs.current[idx] = el}
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                onChange={(e) => handleProductImageUpload(idx, e.target.files)}
-                                className="hidden"
-                              />
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => productImageRefs.current[idx]?.click()}
-                              >
-                                <ImageIcon className="h-3.5 w-3.5" />
-                              </Button>
-                            </>
+                          {product.imageUrls.length > 2 && (
+                            <span className="text-[10px] text-muted-foreground">+{product.imageUrls.length - 2}</span>
                           )}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {product.existingProduct ? (
-                          <Badge variant="secondary" className="text-xs">
-                            Já existe (+{product.quantity})
-                          </Badge>
-                        ) : product.hasErrors ? (
-                          <Badge variant="destructive" className="text-xs">
-                            Incompleto
-                          </Badge>
-                        ) : (
-                          <Badge variant="default" className="text-xs">
-                            Novo
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingIndex(idx)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      ) : product.images.length < 3 ? (
+                        <div className="ml-auto">
+                          <input
+                            ref={(el) => productImageRefs.current[idx] = el}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handleProductImageUpload(idx, e.target.files)}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => productImageRefs.current[idx]?.click()}
+                            className="w-8 h-8 border border-dashed border-border rounded flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                          >
+                            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-            <p className="text-sm text-muted-foreground">
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12"></TableHead>
+                      <TableHead className="min-w-[200px]">Produto</TableHead>
+                      <TableHead className="min-w-[120px]">Categoria</TableHead>
+                      <TableHead className="min-w-[120px]">Cor/Tam</TableHead>
+                      <TableHead className="min-w-[100px]">Custo</TableHead>
+                      <TableHead className="min-w-[100px]">Preço</TableHead>
+                      <TableHead className="min-w-[60px]">Qtd</TableHead>
+                      <TableHead className="min-w-[120px]">Fotos</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((product, idx) => (
+                      <TableRow 
+                        key={idx} 
+                        className={`${!product.selected ? "opacity-50" : ""} ${product.hasErrors && product.selected ? "bg-destructive/5" : ""}`}
+                      >
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleProduct(idx)}
+                          >
+                            {product.selected ? (
+                              <Check className="h-4 w-4 text-primary" />
+                            ) : (
+                              <X className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <span className={`font-medium ${!product.name.trim() ? "text-destructive" : ""}`}>
+                              {product.name || "(sem nome)"}
+                            </span>
+                            {product.variants.length > 0 && (
+                              <span className="text-xs text-muted-foreground block mt-1">
+                                {product.variants.map(v => `${v.size || '?'}`).join(", ")}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <span className={!product.main_category ? "text-destructive" : "text-muted-foreground"}>
+                              {product.main_category || "(obrigatório)"}
+                            </span>
+                            {product.subcategory && (
+                              <span className="text-xs text-muted-foreground block">› {product.subcategory}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {product.variants.length > 0 ? (
+                            <span className="text-xs">
+                              {product.variants.length} variantes
+                            </span>
+                          ) : (
+                            <span>{product.color || "-"} / {product.size || "-"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>R$ {product.cost_price.toFixed(2)}</TableCell>
+                        <TableCell>R$ {product.price.toFixed(2)}</TableCell>
+                        <TableCell>{product.quantity}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {product.imageUrls.map((url, imgIdx) => (
+                              <div key={imgIdx} className="relative w-8 h-8">
+                                <img 
+                                  src={url} 
+                                  alt={`Foto ${imgIdx + 1}`} 
+                                  className="w-full h-full object-cover rounded"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeProductImage(idx, imgIdx)}
+                                  className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 flex items-center justify-center text-xs"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            {product.images.length < 3 && (
+                              <>
+                                <input
+                                  ref={(el) => productImageRefs.current[idx] = el}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  onChange={(e) => handleProductImageUpload(idx, e.target.files)}
+                                  className="hidden"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => productImageRefs.current[idx]?.click()}
+                                >
+                                  <ImageIcon className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {product.existingProduct ? (
+                            <Badge variant="secondary" className="text-xs">
+                              Já existe (+{product.quantity})
+                            </Badge>
+                          ) : product.hasErrors ? (
+                            <Badge variant="destructive" className="text-xs">
+                              Incompleto
+                            </Badge>
+                          ) : (
+                            <Badge variant="default" className="text-xs">
+                              Novo
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingIndex(idx)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </ScrollArea>
+
+            <p className="text-sm text-muted-foreground shrink-0">
               {products.filter(p => p.selected).length} de {products.length} produtos selecionados
               {products.filter(p => p.selected && p.existingProduct).length > 0 && (
                 <span className="ml-2">
