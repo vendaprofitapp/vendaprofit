@@ -86,9 +86,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       clearTimeout(timeout);
       setIsAdmin(!!data);
       setAdminChecked(true);
-    }).catch(() => {
-      clearTimeout(timeout);
-      setAdminChecked(true);
     });
     return () => clearTimeout(timeout);
   }, [user]);
