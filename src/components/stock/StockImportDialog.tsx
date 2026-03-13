@@ -1364,7 +1364,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="space-y-4 py-4">
+          <div className="flex flex-col flex-1 min-h-0 space-y-3 py-2 overflow-hidden">
             {supplierName && (
               <div className="p-2 sm:p-3 bg-muted rounded-lg">
                 <span className="text-xs sm:text-sm text-muted-foreground">Fornecedor:</span>
