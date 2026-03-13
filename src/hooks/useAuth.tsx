@@ -18,23 +18,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
+    // Safety timeout: if auth doesn't resolve in 10s, treat as offline/logged out
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      setOffline(true);
+    }, 10000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        clearTimeout(timeout);
         setSession(session);
         setUser(session?.user ?? null);
+        setOffline(false);
         setLoading(false);
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
+      setOffline(false);
       setLoading(false);
+    }).catch(() => {
+      clearTimeout(timeout);
+      setLoading(false);
+      setOffline(true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
