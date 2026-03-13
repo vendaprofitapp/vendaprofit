@@ -1710,7 +1710,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           </div>
         )}
 
-        <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+        <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 shrink-0">
           {step === "review" && !loading && (
             <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setStep("upload")}>
               Voltar
