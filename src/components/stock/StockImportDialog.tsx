@@ -1380,13 +1380,50 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             
             <SupplierSelect value={supplierId} onChange={setSupplierId} />
 
+            {/* Stock mode selector */}
+            <div className="p-2 sm:p-3 bg-muted/50 border rounded-lg space-y-2">
+              <p className="text-xs font-medium text-foreground">Como atualizar o estoque dos produtos existentes?</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStockMode("add")}
+                  className={`flex-1 flex items-center gap-2 p-2 rounded-md border-2 text-xs transition-all ${
+                    stockMode === "add"
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <span className="text-base">➕</span>
+                  <div className="text-left">
+                    <p className="font-medium">Somar ao estoque atual</p>
+                    <p className={`text-[10px] ${stockMode === "add" ? "text-primary/70" : "text-muted-foreground"}`}>Ex: atual 10 + import 5 = 15</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockMode("replace")}
+                  className={`flex-1 flex items-center gap-2 p-2 rounded-md border-2 text-xs transition-all ${
+                    stockMode === "replace"
+                      ? "border-destructive bg-destructive/10 text-destructive font-medium"
+                      : "border-border bg-background text-muted-foreground hover:border-destructive/40"
+                  }`}
+                >
+                  <span className="text-base">🔄</span>
+                  <div className="text-left">
+                    <p className="font-medium">Substituir estoque atual</p>
+                    <p className={`text-[10px] ${stockMode === "replace" ? "text-destructive/70" : "text-muted-foreground"}`}>Ex: atual 10 → import 5 = 5</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {hasDuplicates && (
-              <div className="p-2 sm:p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="p-2 sm:p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-warning shrink-0 mt-0.5" />
                 <div className="text-xs sm:text-sm">
-                  <p className="font-medium text-amber-600">Duplicados detectados</p>
+                  <p className="font-medium text-warning">Duplicados detectados</p>
                   <p className="text-muted-foreground">
-                    Itens "Existe" terão estoque atualizado.
+                    Itens "Existe" terão estoque {stockMode === "replace" ? "substituído" : "somado"}.
                   </p>
                 </div>
               </div>
