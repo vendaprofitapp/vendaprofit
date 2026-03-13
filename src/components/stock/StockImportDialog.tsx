@@ -1097,8 +1097,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             });
             
             if (matchingVariant) {
-              // Update existing variant's stock (add to current)
-              const newVariantQty = matchingVariant.stock_quantity + totalQty;
+              // Update existing variant's stock based on mode
+              const newVariantQty = stockMode === "replace"
+                ? totalQty
+                : matchingVariant.stock_quantity + totalQty;
               const { error: variantError } = await supabase
                 .from("product_variants")
                 .update({ stock_quantity: newVariantQty })
@@ -1108,7 +1110,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
                 console.error(`Erro ao atualizar variante ${size}:`, variantError);
               } else {
                 variantUpdated = true;
-                console.log(`Variante atualizada: ${size} de ${matchingVariant.stock_quantity} para ${newVariantQty}`);
+                console.log(`Variante atualizada: ${size} de ${matchingVariant.stock_quantity} para ${newVariantQty} (modo: ${stockMode})`);
               }
             } else {
               // Create new variant for this size
@@ -1145,8 +1147,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
             updateCount++;
           }
         } else {
-          // No variants - update main product directly (old behavior)
-          const newQuantity = product.existingProduct.stock_quantity + product.quantity;
+          // No variants - update main product directly
+          const newQuantity = stockMode === "replace"
+            ? product.quantity
+            : product.existingProduct.stock_quantity + product.quantity;
           
           const { error } = await supabase
             .from("products")
@@ -1158,7 +1162,7 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
           if (error) {
             console.error(`Erro ao atualizar estoque de "${product.name}":`, error);
           } else {
-            console.log(`Estoque de "${product.name}" atualizado: ${product.existingProduct.stock_quantity} → ${newQuantity}`);
+            console.log(`Estoque de "${product.name}" atualizado: ${product.existingProduct.stock_quantity} → ${newQuantity} (modo: ${stockMode})`);
             updateCount++;
           }
         }
