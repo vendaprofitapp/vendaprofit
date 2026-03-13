@@ -5,6 +5,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function fetchVariantsInBatches(supabase: any, productIds: string[]) {
+  const batchSize = 50;
+  const allVariants: any[] = [];
+  for (let i = 0; i < productIds.length; i += batchSize) {
+    const batch = productIds.slice(i, i + batchSize);
+    const { data, error } = await supabase
+      .from('product_variants')
+      .select('*')
+      .in('product_id', batch);
+    if (error) throw error;
+    if (data) allVariants.push(...data);
+  }
+  return allVariants;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -35,14 +50,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ message: 'No products found', inserted: 0 }), { headers: corsHeaders });
     }
 
-    // 2. Fetch all variants from source
-    const sourceProductIds = products.map(p => p.id);
-    const { data: variants, error: varErr } = await supabase
-      .from('product_variants')
-      .select('*')
-      .in('product_id', sourceProductIds);
-
-    if (varErr) throw varErr;
+    // 2. Fetch all variants in batches of 50
+    const sourceProductIds = products.map((p: any) => p.id);
+    const variants = await fetchVariantsInBatches(supabase, sourceProductIds);
 
     const results: Record<string, { inserted: number; skipped: number; variants_inserted: number }> = {};
 
@@ -55,19 +65,19 @@ Deno.serve(async (req) => {
         .limit(10000);
 
       const existingNames = new Set(
-        (existingProducts || []).map(p => p.name.toLowerCase().trim())
+        (existingProducts || []).map((p: any) => p.name.toLowerCase().trim())
       );
 
       // 4. Filter new products only
       const toInsert = products
-        .filter(p => !existingNames.has(p.name.toLowerCase().trim()))
-        .map(p => {
-          const { id: _oldId, owner_id: _owner, created_at: _ca, updated_at: _ua, stock_quantity: _sq, ...rest } = p;
+        .filter((p: any) => !existingNames.has(p.name.toLowerCase().trim()))
+        .map((p: any) => {
+          const { id: _oldId, owner_id: _owner, created_at: _ca, updated_at: _ua, stock_quantity: _sq, supplier_id: _sid, ...rest } = p;
           return {
             ...rest,
             owner_id: targetUserId,
             stock_quantity: 0,
-            supplier_id: null, // do not link to source user's supplier
+            supplier_id: null,
           };
         });
 
@@ -78,7 +88,7 @@ Deno.serve(async (req) => {
 
       // 5. Insert products in batches of 100
       let inserted = 0;
-      const insertedProductMap: Record<string, string> = {}; // oldId -> newId
+      const insertedProductMap: Record<string, string> = {}; // oldName -> newId
 
       for (let i = 0; i < toInsert.length; i += 100) {
         const batch = toInsert.slice(i, i + 100);
@@ -93,7 +103,7 @@ Deno.serve(async (req) => {
         // Map old product id -> new product id by name
         if (insertedData) {
           for (const newProd of insertedData) {
-            const oldProd = products.find(p =>
+            const oldProd = products.find((p: any) =>
               p.name.toLowerCase().trim() === newProd.name.toLowerCase().trim()
             );
             if (oldProd) {
@@ -103,12 +113,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 6. Insert variants for inserted products
+      // 6. Insert variants for inserted products in batches
       let variantsInserted = 0;
       const variantsToInsert: any[] = [];
 
       for (const [oldProductId, newProductId] of Object.entries(insertedProductMap)) {
-        const productVariants = (variants || []).filter(v => v.product_id === oldProductId);
+        const productVariants = variants.filter((v: any) => v.product_id === oldProductId);
         for (const v of productVariants) {
           const { id: _vid, product_id: _pid, created_at: _vca, updated_at: _vua, ...varRest } = v;
           variantsToInsert.push({
@@ -119,13 +129,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (variantsToInsert.length > 0) {
-        for (let i = 0; i < variantsToInsert.length; i += 200) {
-          const batch = variantsToInsert.slice(i, i + 200);
-          const { error: vErr } = await supabase.from('product_variants').insert(batch);
-          if (vErr) throw vErr;
-          variantsInserted += batch.length;
-        }
+      for (let i = 0; i < variantsToInsert.length; i += 200) {
+        const batch = variantsToInsert.slice(i, i + 200);
+        const { error: vErr } = await supabase.from('product_variants').insert(batch);
+        if (vErr) throw vErr;
+        variantsInserted += batch.length;
       }
 
       results[targetUserId] = {
