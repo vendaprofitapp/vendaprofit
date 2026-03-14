@@ -777,18 +777,22 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         });
       }
 
-      // Filtrar produtos com estoque zerado para acelerar a importação
-      const filteredProducts = parsedProducts.filter(p => (p.quantity || 0) > 0);
-      console.log(`Produtos totais: ${parsedProducts.length}, com estoque: ${filteredProducts.length}, ignorados (zerados): ${parsedProducts.length - filteredProducts.length}`);
+      // Incluir todos os produtos, inclusive com estoque zero
+      // (no modo "Substituir", itens zerados devem zerar o estoque do sistema)
+      const zeroQtyCount = parsedProducts.filter(p => (p.quantity || 0) === 0).length;
+      console.log(`Produtos totais: ${parsedProducts.length}, zerados: ${zeroQtyCount}`);
 
-      if (filteredProducts.length === 0) {
-        toast.error("Nenhum produto com estoque encontrado na planilha");
+      if (parsedProducts.length === 0) {
+        toast.error("Nenhum produto encontrado na planilha");
         setLoading(false);
         return;
       }
 
-      processProducts(filteredProducts);
-      toast.success(`${filteredProducts.length} produtos com estoque encontrados (${parsedProducts.length - filteredProducts.length} zerados ignorados)`);
+      processProducts(parsedProducts);
+      const msg = zeroQtyCount > 0
+        ? `${parsedProducts.length} produtos carregados (${zeroQtyCount} com estoque zero — serão zerados no modo Substituir)`
+        : `${parsedProducts.length} produtos carregados`;
+      toast.success(msg);
     } catch (error) {
       console.error("Error parsing spreadsheet:", error);
       toast.error("Erro ao processar planilha");
