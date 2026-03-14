@@ -1064,6 +1064,12 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
     for (let i = 0; i < selectedProducts.length; i++) {
       const product = selectedProducts[i];
       setImportProgress(i + 1);
+
+      // No modo "somar", pular produtos com quantidade zero (não há nada a somar)
+      if (stockMode === "add" && product.quantity === 0 && product.variants.every(v => v.quantity === 0)) {
+        continue;
+      }
+
       if (product.existingProduct) {
         // Update existing product stock - need to handle variants properly
         const productId = product.existingProduct.id;
