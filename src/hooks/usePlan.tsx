@@ -50,23 +50,53 @@ export function usePlan(): UsePlanResult {
 
   useEffect(() => {
     if (!user) {
+      setPlan(null);
+      setIsAdmin(false);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    Promise.all([
-      supabase
-        .from("user_subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
-    ]).then(([{ data: planData }, { data: adminData }]) => {
-      setPlan(planData as UserSubscription | null);
-      setIsAdmin(!!adminData);
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      if (cancelled) return;
+      cancelled = true;
+      setPlan(null);
+      setIsAdmin(false);
       setLoading(false);
-    });
+    }, 10000);
+
+    const loadPlan = async () => {
+      setLoading(true);
+      try {
+        const [{ data: planData }, { data: adminData }] = await Promise.all([
+          supabase
+            .from("user_subscriptions")
+            .select("*")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+        ]);
+
+        if (cancelled) return;
+        setPlan((planData as UserSubscription | null) ?? null);
+        setIsAdmin(!!adminData);
+      } catch {
+        if (cancelled) return;
+        setPlan(null);
+        setIsAdmin(false);
+      } finally {
+        clearTimeout(timeout);
+        if (cancelled) return;
+        setLoading(false);
+      }
+    };
+
+    loadPlan();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [user, fetchKey]);
 
   const refetch = () => setFetchKey((k) => k + 1);
