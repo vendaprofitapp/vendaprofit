@@ -211,8 +211,8 @@ export default function ReportMyPerformance() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at,
-          sale_items ( product_id, quantity, unit_price, total )
+          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at, customer_name,
+          sale_items ( product_id, product_name, quantity, unit_price, total )
         `)
         .eq("owner_id", user!.id)
         .eq("status", "completed")
