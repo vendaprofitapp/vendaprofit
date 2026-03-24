@@ -24,6 +24,8 @@ export default function ReportDeferredSales() {
   const queryClient = useQueryClient();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [paidFrom, setPaidFrom] = useState("");
+  const [paidTo, setPaidTo] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
   const [editSale, setEditSale] = useState<any>(null);
   const [editSaleItems, setEditSaleItems] = useState<any[]>([]);
@@ -45,7 +47,7 @@ export default function ReportDeferredSales() {
 
   // Fetch payment reminders with sale info
   const { data: reminders = [], isLoading } = useQuery({
-    queryKey: ["deferred-report-reminders", user?.id, dateFrom, dateTo],
+    queryKey: ["deferred-report-reminders", user?.id, dateFrom, dateTo, paidFrom, paidTo],
     queryFn: async () => {
       let query = supabase
         .from("payment_reminders")
@@ -55,6 +57,8 @@ export default function ReportDeferredSales() {
 
       if (dateFrom) query = query.gte("due_date", dateFrom);
       if (dateTo) query = query.lte("due_date", dateTo);
+      if (paidFrom) query = query.gte("paid_at", paidFrom);
+      if (paidTo) query = query.lte("paid_at", paidTo + "T23:59:59");
 
       const { data, error } = await query;
       if (error) throw error;
@@ -320,7 +324,7 @@ export default function ReportDeferredSales() {
 
         {/* Filters */}
         <Card>
-          <CardContent className="pt-4 pb-4">
+          <CardContent className="pt-4 pb-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Vencimento De</label>
@@ -330,18 +334,36 @@ export default function ReportDeferredSales() {
                 <label className="text-xs font-medium text-muted-foreground">Vencimento Até</label>
                 <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
-              <div className="col-span-2 flex items-end gap-2 flex-wrap">
-                {(["all", "pending", "overdue", "paid"] as const).map((s) => (
-                  <Button
-                    key={s}
-                    variant={statusFilter === s ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setStatusFilter(s)}
-                  >
-                    {s === "all" ? "Todos" : s === "pending" ? "Pendentes" : s === "overdue" ? "Vencidos" : "Pagos"}
-                  </Button>
-                ))}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Pago em De</label>
+                <Input type="date" value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)} />
               </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Pago em Até</label>
+                <Input type="date" value={paidTo} onChange={(e) => setPaidTo(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(["all", "pending", "overdue", "paid"] as const).map((s) => (
+                <Button
+                  key={s}
+                  variant={statusFilter === s ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter(s)}
+                >
+                  {s === "all" ? "Todos" : s === "pending" ? "Pendentes" : s === "overdue" ? "Vencidos" : "Pagos"}
+                </Button>
+              ))}
+              {(paidFrom || paidTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => { setPaidFrom(""); setPaidTo(""); }}
+                >
+                  Limpar filtro de pagamento
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
