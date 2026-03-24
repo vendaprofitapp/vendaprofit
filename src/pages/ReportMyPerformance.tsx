@@ -10,7 +10,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import {
   TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck,
-  Building2, ChevronDown, X,
+  Building2, ChevronDown, X, List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,9 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 // ─── Canal de Venda options ───────────────────────────────────────────────────
@@ -43,6 +46,7 @@ const SALE_SOURCE_OPTIONS = [
 
 interface SaleItem {
   product_id: string | null;
+  product_name?: string | null;
   quantity: number;
   unit_price: number;
   total: number;
@@ -57,6 +61,8 @@ interface Sale {
   shipping_payer: string | null;
   payment_method: string;
   created_at: string;
+  customer_name: string | null;
+  sale_source: string | null;
   sale_items: SaleItem[];
 }
 
@@ -206,8 +212,8 @@ export default function ReportMyPerformance() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at,
-          sale_items ( product_id, quantity, unit_price, total )
+          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at, customer_name,
+          sale_items ( product_id, product_name, quantity, unit_price, total )
         `)
         .eq("owner_id", user!.id)
         .eq("status", "completed")
@@ -814,6 +820,101 @@ export default function ReportMyPerformance() {
               <span className="text-primary font-semibold">{fmtCurrency(hubSupplierMetrics.revenue)}</span> receita,{" "}
               <span className="text-success font-semibold">{fmtCurrency(hubSupplierMetrics.profit)}</span> lucro
             </span>
+          </div>
+        )}
+
+        {/* ── Detailed Sales List ────────────────────────────────────────── */}
+        {!isLoading && sales.length > 0 && (
+          <div className="rounded-xl bg-card border border-border shadow-soft overflow-hidden">
+            <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+              <List className="h-4 w-4 text-primary" />
+              <h3 className="text-base font-semibold text-card-foreground">
+                Detalhamento das Vendas
+              </h3>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {sales.length} venda{sales.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[110px]">Data</TableHead>
+                    <TableHead className="min-w-[140px]">Cliente</TableHead>
+                    <TableHead className="min-w-[180px]">Produtos</TableHead>
+                    <TableHead className="min-w-[110px]">Canal</TableHead>
+                    <TableHead className="min-w-[120px]">Forma Pgto</TableHead>
+                    <TableHead className="text-right min-w-[110px]">Receita Bruta</TableHead>
+                    <TableHead className="text-right min-w-[90px]">Desconto</TableHead>
+                    <TableHead className="text-right min-w-[80px]">CMV</TableHead>
+                    <TableHead className="text-right min-w-[80px]">Taxas</TableHead>
+                    <TableHead className="text-right min-w-[80px]">Frete</TableHead>
+                    <TableHead className="text-right min-w-[110px]">Lucro Líq.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sales.map(sale => {
+                    const revenue = sale.subtotal ?? sale.total;
+                    const discount = sale.discount_amount ?? 0;
+                    let cmv = 0;
+                    for (const item of sale.sale_items) {
+                      const cost = item.product_id ? (costMap.get(item.product_id) ?? 0) : 0;
+                      cmv += cost * item.quantity;
+                    }
+                    const method = (sale.payment_method ?? "").toLowerCase();
+                    const fee = sale.total * ((feesMap.get(method) ?? 0) / 100);
+                    const shipping = sale.shipping_payer === "seller" ? (sale.shipping_cost ?? 0) : 0;
+                    const profit = revenue - discount - cmv - fee - shipping;
+                    const srcLabel = SALE_SOURCE_OPTIONS.find(o => o.value === (sale.sale_source ?? "manual"))?.label ?? "Venda Direta";
+                    const saleDate = safeParseDate(sale.created_at);
+
+                    return (
+                      <TableRow key={sale.id}>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {saleDate ? format(saleDate, "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium max-w-[160px] truncate">
+                          {sale.customer_name || <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                          {sale.sale_items.length > 0
+                            ? sale.sale_items.map((item, i) => (
+                                <span key={i} className="block truncate">
+                                  {item.quantity}x {item.product_name || "Produto"}
+                                </span>
+                              ))
+                            : <span>—</span>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs font-normal">{srcLabel}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{sale.payment_method || "—"}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{fmtCurrency(revenue)}</TableCell>
+                        <TableCell className="text-right text-sm text-destructive">
+                          {discount > 0 ? `− ${fmtCurrency(discount)}` : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-destructive">
+                          {cmv > 0 ? `− ${fmtCurrency(cmv)}` : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-destructive">
+                          {fee > 0 ? `− ${fmtCurrency(fee)}` : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-destructive">
+                          {shipping > 0 ? `− ${fmtCurrency(shipping)}` : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "text-right text-sm font-bold",
+                          profit >= 0 ? "text-success" : "text-destructive"
+                        )}>
+                          {fmtCurrency(profit)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </div>
