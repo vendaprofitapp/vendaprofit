@@ -501,6 +501,115 @@ export default function ReportMyPerformance() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Extra Filters Row */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Canal de Venda */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                Canal de Venda
+                {selectedSources.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-xs">{selectedSources.length}</Badge>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel className="text-xs">Filtrar por canal</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {SALE_SOURCE_OPTIONS.map(opt => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={selectedSources.includes(opt.value)}
+                  onCheckedChange={checked => {
+                    setSelectedSources(prev =>
+                      checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value)
+                    );
+                  }}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {selectedSources.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={() => setSelectedSources([])}
+                    className="text-destructive"
+                  >
+                    Limpar filtro
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Forma de Pagamento */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                Forma de Pagamento
+                {selectedPayments.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-xs">{selectedPayments.length}</Badge>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel className="text-xs">Filtrar por pagamento</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {availablePayments.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-1.5">Nenhum dado no período</p>
+              ) : (
+                availablePayments.map(method => (
+                  <DropdownMenuCheckboxItem
+                    key={method}
+                    checked={selectedPayments.includes(method)}
+                    onCheckedChange={checked => {
+                      setSelectedPayments(prev =>
+                        checked ? [...prev, method] : prev.filter(v => v !== method)
+                      );
+                    }}
+                  >
+                    {method}
+                  </DropdownMenuCheckboxItem>
+                ))
+              )}
+              {selectedPayments.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={() => setSelectedPayments([])}
+                    className="text-destructive"
+                  >
+                    Limpar filtro
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Active filter chips */}
+          {selectedSources.map(src => (
+            <Badge key={src} variant="secondary" className="gap-1 pr-1 h-7">
+              {SALE_SOURCE_OPTIONS.find(o => o.value === src)?.label ?? src}
+              <button onClick={() => setSelectedSources(p => p.filter(v => v !== src))} className="ml-0.5 rounded hover:bg-muted p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          {selectedPayments.map(pay => (
+            <Badge key={pay} variant="secondary" className="gap-1 pr-1 h-7">
+              {pay}
+              <button onClick={() => setSelectedPayments(p => p.filter(v => v !== pay))} className="ml-0.5 rounded hover:bg-muted p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
 
           <span className="ml-auto text-xs text-muted-foreground">
             {totalSales} venda{totalSales !== 1 ? "s" : ""}
