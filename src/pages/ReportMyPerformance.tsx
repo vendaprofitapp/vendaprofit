@@ -758,7 +758,7 @@ export default function ReportMyPerformance() {
                   <Area
                     type="monotone"
                     dataKey="Lucro"
-                    stroke="hsl(145, 65%, 42%)"
+                    stroke="hsl(var(--chart-2, 145 65% 42%))"
                     strokeWidth={2}
                     fill="url(#gradLucro)"
                   />
