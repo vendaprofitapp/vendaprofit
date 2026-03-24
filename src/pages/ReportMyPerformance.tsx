@@ -191,6 +191,8 @@ export default function ReportMyPerformance() {
   const [period, setPeriod] = useState("month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
 
   const dateRange = useMemo(
     () => buildDateRange(period, customStart, customEnd),
@@ -198,13 +200,13 @@ export default function ReportMyPerformance() {
   );
 
   // ── 1. Fetch completed sales ─────────────────────────────────────────────
-  const { data: sales = [], isLoading: salesLoading } = useQuery({
+  const { data: salesRaw = [], isLoading: salesLoading } = useQuery({
     queryKey: ["my-performance-sales", user?.id, dateRange.start, dateRange.end],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, created_at,
+          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at,
           sale_items ( product_id, quantity, unit_price, total )
         `)
         .eq("owner_id", user!.id)
@@ -213,10 +215,30 @@ export default function ReportMyPerformance() {
         .lte("created_at", dateRange.end.toISOString())
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as Sale[];
+      return data as (Sale & { sale_source?: string | null })[];
     },
     enabled: !!user,
   });
+
+  // ── Derive available payment methods from fetched sales ──────────────────
+  const availablePayments = useMemo(() => {
+    const methods = new Set(salesRaw.map(s => s.payment_method).filter(Boolean));
+    return Array.from(methods).sort();
+  }, [salesRaw]);
+
+  // ── Apply client-side filters ────────────────────────────────────────────
+  const sales = useMemo(() => {
+    return salesRaw.filter(s => {
+      if (selectedSources.length > 0) {
+        const src = s.sale_source ?? "manual";
+        if (!selectedSources.includes(src)) return false;
+      }
+      if (selectedPayments.length > 0) {
+        if (!selectedPayments.includes(s.payment_method)) return false;
+      }
+      return true;
+    });
+  }, [salesRaw, selectedSources, selectedPayments]);
 
   // ── 2. Collect product IDs from sales ────────────────────────────────────
   const productIds = useMemo(() => {
