@@ -60,6 +60,8 @@ interface Sale {
   shipping_payer: string | null;
   payment_method: string;
   created_at: string;
+  customer_name: string | null;
+  sale_source: string | null;
   sale_items: SaleItem[];
 }
 
