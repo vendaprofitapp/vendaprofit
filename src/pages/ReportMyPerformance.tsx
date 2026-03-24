@@ -5,22 +5,39 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   format, startOfDay, endOfDay, startOfWeek, startOfMonth, startOfYear,
-  subDays, parseISO, isValid, eachDayOfInterval
+  parseISO, isValid, eachDayOfInterval
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck, DollarSign,
-  Building2,
+  TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck,
+  Building2, ChevronDown, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
 import { cn } from "@/lib/utils";
+
+// ─── Canal de Venda options ───────────────────────────────────────────────────
+const SALE_SOURCE_OPTIONS = [
+  { value: "manual", label: "Venda Direta" },
+  { value: "catalog", label: "Minha Loja" },
+  { value: "event", label: "Evento" },
+  { value: "b2b", label: "B2B / Atacado" },
+  { value: "bazar", label: "Bazar VIP" },
+  { value: "consignment", label: "Consignação" },
+  { value: "instagram", label: "Instagram" },
+  { value: "partner_point", label: "Ponto Parceiro" },
+  { value: "consortium", label: "Consórcio" },
+];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -174,6 +191,8 @@ export default function ReportMyPerformance() {
   const [period, setPeriod] = useState("month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
 
   const dateRange = useMemo(
     () => buildDateRange(period, customStart, customEnd),
@@ -181,13 +200,13 @@ export default function ReportMyPerformance() {
   );
 
   // ── 1. Fetch completed sales ─────────────────────────────────────────────
-  const { data: sales = [], isLoading: salesLoading } = useQuery({
+  const { data: salesRaw = [], isLoading: salesLoading } = useQuery({
     queryKey: ["my-performance-sales", user?.id, dateRange.start, dateRange.end],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, created_at,
+          id, total, subtotal, discount_amount, shipping_cost, shipping_payer, payment_method, sale_source, created_at,
           sale_items ( product_id, quantity, unit_price, total )
         `)
         .eq("owner_id", user!.id)
@@ -196,10 +215,30 @@ export default function ReportMyPerformance() {
         .lte("created_at", dateRange.end.toISOString())
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as Sale[];
+      return data as (Sale & { sale_source?: string | null })[];
     },
     enabled: !!user,
   });
+
+  // ── Derive available payment methods from fetched sales ──────────────────
+  const availablePayments = useMemo(() => {
+    const methods = new Set(salesRaw.map(s => s.payment_method).filter(Boolean));
+    return Array.from(methods).sort();
+  }, [salesRaw]);
+
+  // ── Apply client-side filters ────────────────────────────────────────────
+  const sales = useMemo(() => {
+    return salesRaw.filter(s => {
+      if (selectedSources.length > 0) {
+        const src = s.sale_source ?? "manual";
+        if (!selectedSources.includes(src)) return false;
+      }
+      if (selectedPayments.length > 0) {
+        if (!selectedPayments.includes(s.payment_method)) return false;
+      }
+      return true;
+    });
+  }, [salesRaw, selectedSources, selectedPayments]);
 
   // ── 2. Collect product IDs from sales ────────────────────────────────────
   const productIds = useMemo(() => {
@@ -462,6 +501,115 @@ export default function ReportMyPerformance() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Extra Filters Row */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Canal de Venda */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                Canal de Venda
+                {selectedSources.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-xs">{selectedSources.length}</Badge>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel className="text-xs">Filtrar por canal</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {SALE_SOURCE_OPTIONS.map(opt => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={selectedSources.includes(opt.value)}
+                  onCheckedChange={checked => {
+                    setSelectedSources(prev =>
+                      checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value)
+                    );
+                  }}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {selectedSources.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={() => setSelectedSources([])}
+                    className="text-destructive"
+                  >
+                    Limpar filtro
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Forma de Pagamento */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                Forma de Pagamento
+                {selectedPayments.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-xs">{selectedPayments.length}</Badge>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel className="text-xs">Filtrar por pagamento</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {availablePayments.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-1.5">Nenhum dado no período</p>
+              ) : (
+                availablePayments.map(method => (
+                  <DropdownMenuCheckboxItem
+                    key={method}
+                    checked={selectedPayments.includes(method)}
+                    onCheckedChange={checked => {
+                      setSelectedPayments(prev =>
+                        checked ? [...prev, method] : prev.filter(v => v !== method)
+                      );
+                    }}
+                  >
+                    {method}
+                  </DropdownMenuCheckboxItem>
+                ))
+              )}
+              {selectedPayments.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={() => setSelectedPayments([])}
+                    className="text-destructive"
+                  >
+                    Limpar filtro
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Active filter chips */}
+          {selectedSources.map(src => (
+            <Badge key={src} variant="secondary" className="gap-1 pr-1 h-7">
+              {SALE_SOURCE_OPTIONS.find(o => o.value === src)?.label ?? src}
+              <button onClick={() => setSelectedSources(p => p.filter(v => v !== src))} className="ml-0.5 rounded hover:bg-muted p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          {selectedPayments.map(pay => (
+            <Badge key={pay} variant="secondary" className="gap-1 pr-1 h-7">
+              {pay}
+              <button onClick={() => setSelectedPayments(p => p.filter(v => v !== pay))} className="ml-0.5 rounded hover:bg-muted p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
 
           <span className="ml-auto text-xs text-muted-foreground">
             {totalSales} venda{totalSales !== 1 ? "s" : ""}
@@ -525,7 +673,7 @@ export default function ReportMyPerformance() {
               metrics.margin >= 20
                 ? "bg-success/15 text-success"
                 : metrics.margin >= 5
-                  ? "bg-yellow-500/15 text-yellow-600"
+                  ? "bg-warning/15 text-warning"
                   : "bg-destructive/15 text-destructive"
             )}>
               {metrics.margin.toFixed(1)}%
@@ -610,7 +758,7 @@ export default function ReportMyPerformance() {
                   <Area
                     type="monotone"
                     dataKey="Lucro"
-                    stroke="hsl(145, 65%, 42%)"
+                    stroke="hsl(var(--chart-2, 145 65% 42%))"
                     strokeWidth={2}
                     fill="url(#gradLucro)"
                   />
