@@ -47,7 +47,7 @@ export default function ReportDeferredSales() {
 
   // Fetch payment reminders with sale info
   const { data: reminders = [], isLoading } = useQuery({
-    queryKey: ["deferred-report-reminders", user?.id, dateFrom, dateTo],
+    queryKey: ["deferred-report-reminders", user?.id, dateFrom, dateTo, paidFrom, paidTo],
     queryFn: async () => {
       let query = supabase
         .from("payment_reminders")
@@ -57,6 +57,8 @@ export default function ReportDeferredSales() {
 
       if (dateFrom) query = query.gte("due_date", dateFrom);
       if (dateTo) query = query.lte("due_date", dateTo);
+      if (paidFrom) query = query.gte("paid_at", paidFrom);
+      if (paidTo) query = query.lte("paid_at", paidTo + "T23:59:59");
 
       const { data, error } = await query;
       if (error) throw error;
