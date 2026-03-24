@@ -5,22 +5,39 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   format, startOfDay, endOfDay, startOfWeek, startOfMonth, startOfYear,
-  subDays, parseISO, isValid, eachDayOfInterval
+  parseISO, isValid, eachDayOfInterval
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck, DollarSign,
-  Building2,
+  TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck,
+  Building2, ChevronDown, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
 import { cn } from "@/lib/utils";
+
+// ─── Canal de Venda options ───────────────────────────────────────────────────
+const SALE_SOURCE_OPTIONS = [
+  { value: "manual", label: "Venda Direta" },
+  { value: "catalog", label: "Minha Loja" },
+  { value: "event", label: "Evento" },
+  { value: "b2b", label: "B2B / Atacado" },
+  { value: "bazar", label: "Bazar VIP" },
+  { value: "consignment", label: "Consignação" },
+  { value: "instagram", label: "Instagram" },
+  { value: "partner_point", label: "Ponto Parceiro" },
+  { value: "consortium", label: "Consórcio" },
+];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
