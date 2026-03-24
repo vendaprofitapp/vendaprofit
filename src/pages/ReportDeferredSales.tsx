@@ -24,6 +24,8 @@ export default function ReportDeferredSales() {
   const queryClient = useQueryClient();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [paidFrom, setPaidFrom] = useState("");
+  const [paidTo, setPaidTo] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
   const [editSale, setEditSale] = useState<any>(null);
   const [editSaleItems, setEditSaleItems] = useState<any[]>([]);
