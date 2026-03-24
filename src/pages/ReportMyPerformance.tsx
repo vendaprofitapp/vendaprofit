@@ -46,6 +46,7 @@ const SALE_SOURCE_OPTIONS = [
 
 interface SaleItem {
   product_id: string | null;
+  product_name?: string | null;
   quantity: number;
   unit_price: number;
   total: number;
