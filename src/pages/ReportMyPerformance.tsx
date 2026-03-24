@@ -10,7 +10,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import {
   TrendingUp, TrendingDown, ShoppingBag, Package, CreditCard, Truck,
-  Building2, ChevronDown, X,
+  Building2, ChevronDown, X, List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,9 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
 } from "recharts";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 // ─── Canal de Venda options ───────────────────────────────────────────────────
