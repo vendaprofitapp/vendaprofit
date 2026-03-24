@@ -673,7 +673,7 @@ export default function ReportMyPerformance() {
               metrics.margin >= 20
                 ? "bg-success/15 text-success"
                 : metrics.margin >= 5
-                  ? "bg-yellow-500/15 text-yellow-600"
+                  ? "bg-warning/15 text-warning"
                   : "bg-destructive/15 text-destructive"
             )}>
               {metrics.margin.toFixed(1)}%
