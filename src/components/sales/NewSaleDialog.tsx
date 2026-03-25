@@ -1571,7 +1571,14 @@ export default function NewSaleDialog({
       const partnerItems = cart.filter(item => item.isPartnerStock);
 
       const selectedPaymentMethod = customPaymentMethods.find(m => m.id === selectedPaymentMethodId);
-      const paymentMethodName = selectedPaymentMethod?.name || "Dinheiro";
+      const paymentMethodName = (() => {
+        const m1 = selectedPaymentMethod?.name || "Dinheiro";
+        if (useSplitPayment && splitPaymentAmount > 0) {
+          const m2name = customPaymentMethods.find(m => m.id === selectedPaymentMethodId2)?.name || "Dinheiro";
+          return `${m1} + ${m2name}`;
+        }
+        return m1;
+      })();
       const feePercent = selectedPaymentMethod?.fee_percent || 0;
       const isDeferred = selectedPaymentMethod?.is_deferred || false;
 
