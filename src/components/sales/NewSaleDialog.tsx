@@ -1179,7 +1179,7 @@ export default function NewSaleDialog({
       const [{ data: products, error }, { data: variantsData }] = await Promise.all([
         supabase
           .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id, marketing_status, marketing_prices")
           .in("id", productIds),
         supabase
           .from("product_variants")
@@ -1196,8 +1196,19 @@ export default function NewSaleDialog({
 
       const cartItems: CartItem[] = consignmentData.items.map(item => {
         const dbProduct = products.find(p => p.id === item.product_id);
+        // Resolve promotional price: if product has active marketing status, use the promotional price
+        let resolvedPrice = item.price;
+        if (dbProduct) {
+          const mStatus = (dbProduct as any).marketing_status as string[] | null;
+          const mPrices = (dbProduct as any).marketing_prices as Record<string, number> | null;
+          if (mStatus && mStatus.length > 0 && mPrices) {
+            // Use first active status price if available
+            const promoPrice = mPrices[mStatus[0]];
+            if (promoPrice && promoPrice > 0) resolvedPrice = promoPrice;
+          }
+        }
         const product: Product = dbProduct
-          ? { ...dbProduct, isB2B: false }
+          ? { ...dbProduct, price: resolvedPrice, isB2B: false }
           : {
               id: item.product_id,
               name: item.product_name,
