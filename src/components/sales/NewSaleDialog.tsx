@@ -1404,12 +1404,20 @@ export default function NewSaleDialog({
     const loadPartnerPointItems = async () => {
       const productIds = partnerPointOrderData.items.map(i => i.product_id).filter(Boolean);
       let products: any[] = [];
+      let ppVariants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
+        const [{ data, error }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url")
+            .in("product_id", productIds),
+        ]);
         if (!error && data) products = data;
+        if (varData) ppVariants = varData;
       }
 
       const cartItems: CartItem[] = partnerPointOrderData.items.map(item => {
@@ -1427,7 +1435,11 @@ export default function NewSaleDialog({
               color: null,
               size: null,
             };
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        // Resolve variant by variant_id (if available) then by name suffix
+        const matchedVariant = item.variant_id
+          ? ppVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : null;
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
