@@ -265,6 +265,9 @@ export default function NewSaleDialog({
   const [customerPhone, setCustomerPhone, clearCustomerPhone] = useFormPersistence("sales_customerPhone", "");
   const [customerInstagram, setCustomerInstagram, clearCustomerInstagram] = useFormPersistence("sales_instagram", "");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId, clearPaymentMethodId] = useFormPersistence("sales_paymentMethodId", "");
+  const [selectedPaymentMethodId2, setSelectedPaymentMethodId2, clearPaymentMethodId2] = useFormPersistence("sales_paymentMethodId2", "");
+  const [splitPaymentAmount, setSplitPaymentAmount, clearSplitPaymentAmount] = useFormPersistence("sales_splitPaymentAmount", 0);
+  const [useSplitPayment, setUseSplitPayment, clearUseSplitPayment] = useFormPersistence("sales_useSplitPayment", false);
   const [discountType, setDiscountType, clearDiscountType] = useFormPersistence("sales_discountType", "fixed");
   const [discountValue, setDiscountValue, clearDiscountValue] = useFormPersistence("sales_discountValue", 0);
   const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
