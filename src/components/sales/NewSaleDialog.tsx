@@ -265,6 +265,9 @@ export default function NewSaleDialog({
   const [customerPhone, setCustomerPhone, clearCustomerPhone] = useFormPersistence("sales_customerPhone", "");
   const [customerInstagram, setCustomerInstagram, clearCustomerInstagram] = useFormPersistence("sales_instagram", "");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId, clearPaymentMethodId] = useFormPersistence("sales_paymentMethodId", "");
+  const [selectedPaymentMethodId2, setSelectedPaymentMethodId2, clearPaymentMethodId2] = useFormPersistence("sales_paymentMethodId2", "");
+  const [splitPaymentAmount, setSplitPaymentAmount, clearSplitPaymentAmount] = useFormPersistence("sales_splitPaymentAmount", 0);
+  const [useSplitPayment, setUseSplitPayment, clearUseSplitPayment] = useFormPersistence("sales_useSplitPayment", false);
   const [discountType, setDiscountType, clearDiscountType] = useFormPersistence("sales_discountType", "fixed");
   const [discountValue, setDiscountValue, clearDiscountValue] = useFormPersistence("sales_discountValue", 0);
   const [notes, setNotes, clearNotes] = useFormPersistence("sales_notes", "");
@@ -398,36 +401,48 @@ export default function NewSaleDialog({
   });
 
   const loadConsignmentForSale = useCallback((consignment: typeof finalizedConsignments[0]) => {
-    // Load items into cart as consignment sale data
-    const consData: ConsignmentSaleData = {
-      consignmentId: consignment.id,
-      customerName: consignment.customerName,
-      customerPhone: consignment.customerPhone,
-      items: consignment.items,
-    };
-    // Manually trigger same flow as external consignmentData
     setCustomerName(consignment.customerName || "");
     setCustomerPhone(consignment.customerPhone || "");
     setNotes(`Venda originada da Bolsa Consignada #${consignment.id.slice(0, 8)}`);
-    // Load products into cart
     const loadItems = async () => {
       const productIds = consignment.items.map(i => i.product_id).filter(Boolean);
       if (productIds.length === 0) return;
-      const { data: products } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-        .in("id", productIds);
+      const [{ data: products }, { data: variantsData }] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds),
+        supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity, image_url, marketing_status, marketing_prices")
+          .in("product_id", productIds),
+      ]);
+      const allVariants = variantsData || [];
       const cartItems: CartItem[] = consignment.items.map(item => {
         const dbProduct = (products || []).find(p => p.id === item.product_id);
+        const matchedVariant = item.variant_id
+          ? allVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? allVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === (item.size as string | null)?.toLowerCase().trim()) ?? null
+            : null;
+        // Resolve promotional price from variant marketing_prices
+        let resolvedPrice = item.price;
+        if (matchedVariant) {
+          const vStatus = (matchedVariant as any).marketing_status as string[] | null;
+          const vPrices = (matchedVariant as any).marketing_prices as Record<string, number> | null;
+          if (vStatus && vStatus.length > 0 && vPrices) {
+            const promoPrice = vPrices[vStatus[0]];
+            if (promoPrice && promoPrice > 0) resolvedPrice = promoPrice;
+          }
+        }
         const product: Product = dbProduct
-          ? { ...dbProduct, isB2B: false }
+          ? { ...dbProduct, price: resolvedPrice, isB2B: false }
           : { id: item.product_id, name: item.product_name, price: item.price, stock_quantity: 1, owner_id: user?.id || "", group_id: null, category: "", color: item.color, size: item.size };
-        return { product, quantity: 1, isPartnerStock: false };
+        return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
       setCart(cartItems);
     };
     loadItems();
-    // Store consignment ID for marking as completed after sale
     setInlineConsignmentId(consignment.id);
   }, [user, setCart, setCustomerName, setCustomerPhone, setNotes]);
 
@@ -1180,7 +1195,7 @@ export default function NewSaleDialog({
           .in("id", productIds),
         supabase
           .from("product_variants")
-          .select("id, product_id, size, stock_quantity, image_url")
+          .select("id, product_id, size, stock_quantity, image_url, marketing_status, marketing_prices")
           .in("product_id", productIds),
       ]);
 
@@ -1193,8 +1208,27 @@ export default function NewSaleDialog({
 
       const cartItems: CartItem[] = consignmentData.items.map(item => {
         const dbProduct = products.find(p => p.id === item.product_id);
+
+        // Resolve variant by variant_id (preferred) or by size
+        const matchedVariant = item.variant_id
+          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
+            : null;
+
+        // Resolve promotional price from variant (preferred) or product
+        let resolvedPrice = item.price;
+        if (matchedVariant) {
+          const vStatus = (matchedVariant as any).marketing_status as string[] | null;
+          const vPrices = (matchedVariant as any).marketing_prices as Record<string, number> | null;
+          if (vStatus && vStatus.length > 0 && vPrices) {
+            const promoPrice = vPrices[vStatus[0]];
+            if (promoPrice && promoPrice > 0) resolvedPrice = promoPrice;
+          }
+        }
+
         const product: Product = dbProduct
-          ? { ...dbProduct, isB2B: false }
+          ? { ...dbProduct, price: resolvedPrice, isB2B: false }
           : {
               id: item.product_id,
               name: item.product_name,
@@ -1206,12 +1240,6 @@ export default function NewSaleDialog({
               color: item.color,
               size: item.size,
             };
-        // Resolve variant by variant_id (preferred) or by size
-        const matchedVariant = item.variant_id
-          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
-          : item.size
-            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
-            : null;
         return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
 
@@ -1538,19 +1566,21 @@ export default function NewSaleDialog({
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
-    clearPaymentMethodId(); clearDiscountType(); clearDiscountValue(); clearNotes();
+    clearPaymentMethodId(); clearPaymentMethodId2(); clearSplitPaymentAmount(); clearUseSplitPayment();
+    clearDiscountType(); clearDiscountValue(); clearNotes();
     clearManualSaleSource(); clearManualEventName();
     clearManualPartnerPointId(); clearManualPartnerPointCommType(); clearManualConsortiumParticipantId();
     clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
-    setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
+    setSelectedPaymentMethodId(""); setSelectedPaymentMethodId2(""); setSplitPaymentAmount(0); setUseSplitPayment(false);
+    setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
     setDiscountValue(0); setNotes(""); setManualSaleSource(""); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
     setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); setManualConsortiumParticipantId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
     setManualBazarItems([]);
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
     setImportCartCode(""); setImportedCartId(null);
-  }, [clearCart, clearCustomerName, clearCustomerPhone, clearCustomerInstagram, clearPaymentMethodId, clearDiscountType, clearDiscountValue, clearNotes, clearDueDate, clearInstallments, clearShippingData, setCart, setCustomerName, setCustomerPhone, setCustomerInstagram, setSelectedPaymentMethodId, setInstallments, setDiscountType, setDiscountValue, setNotes, setDueDate, setShippingData]);
+  }, [clearCart, clearCustomerName, clearCustomerPhone, clearCustomerInstagram, clearPaymentMethodId, clearPaymentMethodId2, clearSplitPaymentAmount, clearUseSplitPayment, clearDiscountType, clearDiscountValue, clearNotes, clearDueDate, clearInstallments, clearShippingData, setCart, setCustomerName, setCustomerPhone, setCustomerInstagram, setSelectedPaymentMethodId, setInstallments, setDiscountType, setDiscountValue, setNotes, setDueDate, setShippingData]);
 
   // ─── Create sale mutation (RPC-based, atomic) ─────────────
   const createSaleMutation = useMutation({
@@ -1566,7 +1596,14 @@ export default function NewSaleDialog({
       const partnerItems = cart.filter(item => item.isPartnerStock);
 
       const selectedPaymentMethod = customPaymentMethods.find(m => m.id === selectedPaymentMethodId);
-      const paymentMethodName = selectedPaymentMethod?.name || "Dinheiro";
+      const paymentMethodName = (() => {
+        const m1 = selectedPaymentMethod?.name || "Dinheiro";
+        if (useSplitPayment && splitPaymentAmount > 0) {
+          const m2name = customPaymentMethods.find(m => m.id === selectedPaymentMethodId2)?.name || "Dinheiro";
+          return `${m1} + ${m2name}`;
+        }
+        return m1;
+      })();
       const feePercent = selectedPaymentMethod?.fee_percent || 0;
       const isDeferred = selectedPaymentMethod?.is_deferred || false;
 
@@ -2715,8 +2752,17 @@ export default function NewSaleDialog({
               </div></>}
 
               {/* Payment Method */}
-              <div>
-                <Label>Forma de Pagamento</Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Forma de Pagamento</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline-offset-2 hover:underline"
+                    onClick={() => { setUseSplitPayment(v => !v); if (useSplitPayment) { setSelectedPaymentMethodId2(""); setSplitPaymentAmount(0); } }}
+                  >
+                    {useSplitPayment ? "− Remover 2ª forma" : "+ 2 formas de pagamento"}
+                  </button>
+                </div>
                 <Select value={selectedPaymentMethodId || "default"} onValueChange={(v) => { setSelectedPaymentMethodId(v === "default" ? "" : v); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent portal={!isMobile}>
@@ -2727,7 +2773,50 @@ export default function NewSaleDialog({
                       </SelectItem>
                     ))}
                   </SelectContent>
-              </Select>
+                </Select>
+
+                {/* Split payment — 2nd method */}
+                {useSplitPayment && (
+                  <div className="space-y-2 p-3 rounded-lg border border-dashed bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground">2ª Forma de Pagamento</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Método</Label>
+                        <Select value={selectedPaymentMethodId2 || "default"} onValueChange={(v) => setSelectedPaymentMethodId2(v === "default" ? "" : v)}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent portal={!isMobile}>
+                            <SelectItem value="default">Dinheiro (sem taxa)</SelectItem>
+                            {customPaymentMethods.map(m => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} {m.fee_percent > 0 ? `(${m.fee_percent}%)` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Valor (R$)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          max={total}
+                          step="0.01"
+                          placeholder="0,00"
+                          value={splitPaymentAmount || ""}
+                          onChange={e => setSplitPaymentAmount(Math.min(Number(e.target.value), total))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    {splitPaymentAmount > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        1ª forma: R$ {(total - splitPaymentAmount).toFixed(2).replace(".", ",")} · 2ª forma: R$ {splitPaymentAmount.toFixed(2).replace(".", ",")}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Partner Point Commission Banner */}
               {partnerPointOrderData && (
@@ -2746,8 +2835,7 @@ export default function NewSaleDialog({
                     Fórmula: (Total − Taxas) × {partnerPointOrderData.rackCommissionPct}%
                   </p>
                 </div>
-              )}
-              </div>
+                )}
 
               {/* Deferred payment fields */}
               {customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.is_deferred && (
