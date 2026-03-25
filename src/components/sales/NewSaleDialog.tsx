@@ -401,36 +401,48 @@ export default function NewSaleDialog({
   });
 
   const loadConsignmentForSale = useCallback((consignment: typeof finalizedConsignments[0]) => {
-    // Load items into cart as consignment sale data
-    const consData: ConsignmentSaleData = {
-      consignmentId: consignment.id,
-      customerName: consignment.customerName,
-      customerPhone: consignment.customerPhone,
-      items: consignment.items,
-    };
-    // Manually trigger same flow as external consignmentData
     setCustomerName(consignment.customerName || "");
     setCustomerPhone(consignment.customerPhone || "");
     setNotes(`Venda originada da Bolsa Consignada #${consignment.id.slice(0, 8)}`);
-    // Load products into cart
     const loadItems = async () => {
       const productIds = consignment.items.map(i => i.product_id).filter(Boolean);
       if (productIds.length === 0) return;
-      const { data: products } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-        .in("id", productIds);
+      const [{ data: products }, { data: variantsData }] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds),
+        supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity, image_url, marketing_status, marketing_prices")
+          .in("product_id", productIds),
+      ]);
+      const allVariants = variantsData || [];
       const cartItems: CartItem[] = consignment.items.map(item => {
         const dbProduct = (products || []).find(p => p.id === item.product_id);
+        const matchedVariant = item.variant_id
+          ? allVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? allVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === (item.size as string | null)?.toLowerCase().trim()) ?? null
+            : null;
+        // Resolve promotional price from variant marketing_prices
+        let resolvedPrice = item.price;
+        if (matchedVariant) {
+          const vStatus = (matchedVariant as any).marketing_status as string[] | null;
+          const vPrices = (matchedVariant as any).marketing_prices as Record<string, number> | null;
+          if (vStatus && vStatus.length > 0 && vPrices) {
+            const promoPrice = vPrices[vStatus[0]];
+            if (promoPrice && promoPrice > 0) resolvedPrice = promoPrice;
+          }
+        }
         const product: Product = dbProduct
-          ? { ...dbProduct, isB2B: false }
+          ? { ...dbProduct, price: resolvedPrice, isB2B: false }
           : { id: item.product_id, name: item.product_name, price: item.price, stock_quantity: 1, owner_id: user?.id || "", group_id: null, category: "", color: item.color, size: item.size };
-        return { product, quantity: 1, isPartnerStock: false };
+        return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
       setCart(cartItems);
     };
     loadItems();
-    // Store consignment ID for marking as completed after sale
     setInlineConsignmentId(consignment.id);
   }, [user, setCart, setCustomerName, setCustomerPhone, setNotes]);
 
