@@ -1474,12 +1474,20 @@ export default function NewSaleDialog({
     const loadConsortiumItems = async () => {
       const productIds = consortiumSaleData.items.map(i => i.product_id).filter(Boolean) as string[];
       let products: any[] = [];
+      let csVariants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
+        const [{ data, error }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url")
+            .in("product_id", productIds),
+        ]);
         if (!error && data) products = data;
+        if (varData) csVariants = varData;
       }
 
       const cartItems: CartItem[] = consortiumSaleData.items.map(item => {
@@ -1498,7 +1506,10 @@ export default function NewSaleDialog({
               size: item.selected_size || null,
               _isExternalItem: true,
             } as any;
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        const matchedVariant = item.selected_size
+          ? csVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
