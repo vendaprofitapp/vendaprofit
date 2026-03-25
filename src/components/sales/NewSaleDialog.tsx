@@ -2720,8 +2720,17 @@ export default function NewSaleDialog({
               </div></>}
 
               {/* Payment Method */}
-              <div>
-                <Label>Forma de Pagamento</Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Forma de Pagamento</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline-offset-2 hover:underline"
+                    onClick={() => { setUseSplitPayment(v => !v); if (useSplitPayment) { setSelectedPaymentMethodId2(""); setSplitPaymentAmount(0); } }}
+                  >
+                    {useSplitPayment ? "− Remover 2ª forma" : "+ 2 formas de pagamento"}
+                  </button>
+                </div>
                 <Select value={selectedPaymentMethodId || "default"} onValueChange={(v) => { setSelectedPaymentMethodId(v === "default" ? "" : v); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent portal={!isMobile}>
@@ -2732,7 +2741,50 @@ export default function NewSaleDialog({
                       </SelectItem>
                     ))}
                   </SelectContent>
-              </Select>
+                </Select>
+
+                {/* Split payment — 2nd method */}
+                {useSplitPayment && (
+                  <div className="space-y-2 p-3 rounded-lg border border-dashed bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground">2ª Forma de Pagamento</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Método</Label>
+                        <Select value={selectedPaymentMethodId2 || "default"} onValueChange={(v) => setSelectedPaymentMethodId2(v === "default" ? "" : v)}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent portal={!isMobile}>
+                            <SelectItem value="default">Dinheiro (sem taxa)</SelectItem>
+                            {customPaymentMethods.map(m => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} {m.fee_percent > 0 ? `(${m.fee_percent}%)` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Valor (R$)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          max={total}
+                          step="0.01"
+                          placeholder="0,00"
+                          value={splitPaymentAmount || ""}
+                          onChange={e => setSplitPaymentAmount(Math.min(Number(e.target.value), total))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    {splitPaymentAmount > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        1ª forma: R$ {(total - splitPaymentAmount).toFixed(2).replace(".", ",")} · 2ª forma: R$ {splitPaymentAmount.toFixed(2).replace(".", ",")}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Partner Point Commission Banner */}
               {partnerPointOrderData && (
