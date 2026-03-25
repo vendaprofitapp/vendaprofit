@@ -1280,12 +1280,20 @@ export default function NewSaleDialog({
         .map(i => i.product_id);
       
       let products: any[] = [];
+      let variants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
-        if (!error && data) products = data;
+        const [{ data: prodData, error: prodError }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity")
+            .in("product_id", productIds),
+        ]);
+        if (!prodError && prodData) products = prodData;
+        if (varData) variants = varData;
       }
 
       const cartItems: CartItem[] = catalogOrderData.items.map(item => {
@@ -1314,8 +1322,12 @@ export default function NewSaleDialog({
           return { product: bazarProduct, quantity: item.quantity, isPartnerStock: false };
         }
 
-        // Regular product
+        // Regular product — resolve variant by selected_size
         const dbProduct = products.find(p => p.id === item.product_id);
+        const matchedVariant = item.selected_size
+          ? variants.find(v => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+
         const product: Product = dbProduct
           ? { ...dbProduct, isB2B: false }
           : {
@@ -1330,7 +1342,7 @@ export default function NewSaleDialog({
               size: item.selected_size || null,
               _isExternalItem: true,
             } as any;
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
