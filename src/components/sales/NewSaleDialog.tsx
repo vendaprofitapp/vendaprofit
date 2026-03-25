@@ -1119,6 +1119,19 @@ export default function NewSaleDialog({
       if (savedCart.status === "converted") { toast({ title: "Carrinho já convertido", description: "Este carrinho já foi importado anteriormente.", variant: "destructive" }); return; }
       setCustomerName(savedCart.customer_name || "");
       setCustomerPhone(savedCart.customer_phone || "");
+
+      // Fetch variants for all products in the cart to resolve size → variant_id
+      const cartProductIds = (savedCart.saved_cart_items || [])
+        .map((sci: any) => sci.product_id).filter(Boolean);
+      let importedVariants: any[] = [];
+      if (cartProductIds.length > 0) {
+        const { data: varData } = await supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity")
+          .in("product_id", cartProductIds);
+        if (varData) importedVariants = varData;
+      }
+
       const items: CartItem[] = [];
       for (const sci of (savedCart.saved_cart_items || [])) {
         let matchedProduct: Product | undefined;
@@ -1127,7 +1140,6 @@ export default function NewSaleDialog({
         } else {
           matchedProduct = ownProducts.find(p => p.id === sci.product_id);
         }
-        const isRealProduct = !!matchedProduct;
         const product: Product = matchedProduct ? {
           ...matchedProduct,
           isB2B: sci.source === "b2b" ? true : (matchedProduct.isB2B || !!matchedProduct.b2b_source_product_id),
@@ -1137,7 +1149,11 @@ export default function NewSaleDialog({
           size: sci.selected_size, isB2B: sci.source === "b2b", b2b_source_product_id: sci.source === "b2b" ? "imported" : null,
           _isExternalItem: true,
         } as any;
-        items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: null });
+        // Resolve variant by selected_size
+        const matchedVariant = sci.selected_size
+          ? importedVariants.find((v: any) => v.product_id === sci.product_id && v.size?.toLowerCase().trim() === sci.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+        items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: matchedVariant });
       }
       setCart(items);
       setImportedCartId(savedCart.id);
