@@ -1179,11 +1179,11 @@ export default function NewSaleDialog({
       const [{ data: products, error }, { data: variantsData }] = await Promise.all([
         supabase
           .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id, marketing_status, marketing_prices")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
           .in("id", productIds),
         supabase
           .from("product_variants")
-          .select("id, product_id, size, stock_quantity, image_url")
+          .select("id, product_id, size, stock_quantity, image_url, marketing_status, marketing_prices")
           .in("product_id", productIds),
       ]);
 
@@ -1196,17 +1196,25 @@ export default function NewSaleDialog({
 
       const cartItems: CartItem[] = consignmentData.items.map(item => {
         const dbProduct = products.find(p => p.id === item.product_id);
-        // Resolve promotional price: if product has active marketing status, use the promotional price
+
+        // Resolve variant by variant_id (preferred) or by size
+        const matchedVariant = item.variant_id
+          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
+            : null;
+
+        // Resolve promotional price from variant (preferred) or product
         let resolvedPrice = item.price;
-        if (dbProduct) {
-          const mStatus = (dbProduct as any).marketing_status as string[] | null;
-          const mPrices = (dbProduct as any).marketing_prices as Record<string, number> | null;
-          if (mStatus && mStatus.length > 0 && mPrices) {
-            // Use first active status price if available
-            const promoPrice = mPrices[mStatus[0]];
+        if (matchedVariant) {
+          const vStatus = (matchedVariant as any).marketing_status as string[] | null;
+          const vPrices = (matchedVariant as any).marketing_prices as Record<string, number> | null;
+          if (vStatus && vStatus.length > 0 && vPrices) {
+            const promoPrice = vPrices[vStatus[0]];
             if (promoPrice && promoPrice > 0) resolvedPrice = promoPrice;
           }
         }
+
         const product: Product = dbProduct
           ? { ...dbProduct, price: resolvedPrice, isB2B: false }
           : {
@@ -1220,12 +1228,6 @@ export default function NewSaleDialog({
               color: item.color,
               size: item.size,
             };
-        // Resolve variant by variant_id (preferred) or by size
-        const matchedVariant = item.variant_id
-          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
-          : item.size
-            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
-            : null;
         return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
 
