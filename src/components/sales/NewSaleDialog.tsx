@@ -2803,8 +2803,7 @@ export default function NewSaleDialog({
                     Fórmula: (Total − Taxas) × {partnerPointOrderData.rackCommissionPct}%
                   </p>
                 </div>
-              )}
-              </div>
+                )}
 
               {/* Deferred payment fields */}
               {customPaymentMethods.find(m => m.id === selectedPaymentMethodId)?.is_deferred && (
