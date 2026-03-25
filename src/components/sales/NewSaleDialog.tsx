@@ -1173,15 +1173,23 @@ export default function NewSaleDialog({
       const productIds = consignmentData.items.map(i => i.product_id).filter(Boolean);
       if (productIds.length === 0) return;
 
-      const { data: products, error } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-        .in("id", productIds);
+      const [{ data: products, error }, { data: variantsData }] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds),
+        supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity")
+          .in("product_id", productIds),
+      ]);
 
       if (error || !products) {
         toast({ title: "Erro ao carregar produtos da malinha", variant: "destructive" });
         return;
       }
+
+      const consignVariants = variantsData || [];
 
       const cartItems: CartItem[] = consignmentData.items.map(item => {
         const dbProduct = products.find(p => p.id === item.product_id);
@@ -1198,7 +1206,13 @@ export default function NewSaleDialog({
               color: item.color,
               size: item.size,
             };
-        return { product, quantity: 1, isPartnerStock: false };
+        // Resolve variant by variant_id (preferred) or by size
+        const matchedVariant = item.variant_id
+          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
+            : null;
+        return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
