@@ -1541,19 +1541,21 @@ export default function NewSaleDialog({
   // ─── Reset form ───────────────────────────────────────────
   const resetForm = useCallback(() => {
     clearCart(); clearCustomerName(); clearCustomerPhone(); clearCustomerInstagram();
-    clearPaymentMethodId(); clearDiscountType(); clearDiscountValue(); clearNotes();
+    clearPaymentMethodId(); clearPaymentMethodId2(); clearSplitPaymentAmount(); clearUseSplitPayment();
+    clearDiscountType(); clearDiscountValue(); clearNotes();
     clearManualSaleSource(); clearManualEventName();
     clearManualPartnerPointId(); clearManualPartnerPointCommType(); clearManualConsortiumParticipantId();
     clearDueDate(); clearInstallments(); clearInstallmentDetails(); clearShippingData();
     setCart([]); setCustomerName(""); setCustomerPhone(""); setCustomerInstagram("");
-    setSelectedPaymentMethodId(""); setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
+    setSelectedPaymentMethodId(""); setSelectedPaymentMethodId2(""); setSplitPaymentAmount(0); setUseSplitPayment(false);
+    setInstallments(1); setInstallmentDetails([]); setDiscountType("fixed");
     setDiscountValue(0); setNotes(""); setManualSaleSource(""); setManualEventName(""); setProductSearch(""); setSelectedCustomerId("");
     setManualPartnerPointId(""); setManualPartnerPointCommType("rack"); setManualConsortiumParticipantId("");
     setDueDate(""); setShippingData({ method: "presencial", company: "", cost: 0, payer: "seller", address: "", notes: "" });
     setManualBazarItems([]);
     setShippingLabelUrl(null); setShippingTracking(null); setSaleIdForShipping("");
     setImportCartCode(""); setImportedCartId(null);
-  }, [clearCart, clearCustomerName, clearCustomerPhone, clearCustomerInstagram, clearPaymentMethodId, clearDiscountType, clearDiscountValue, clearNotes, clearDueDate, clearInstallments, clearShippingData, setCart, setCustomerName, setCustomerPhone, setCustomerInstagram, setSelectedPaymentMethodId, setInstallments, setDiscountType, setDiscountValue, setNotes, setDueDate, setShippingData]);
+  }, [clearCart, clearCustomerName, clearCustomerPhone, clearCustomerInstagram, clearPaymentMethodId, clearPaymentMethodId2, clearSplitPaymentAmount, clearUseSplitPayment, clearDiscountType, clearDiscountValue, clearNotes, clearDueDate, clearInstallments, clearShippingData, setCart, setCustomerName, setCustomerPhone, setCustomerInstagram, setSelectedPaymentMethodId, setInstallments, setDiscountType, setDiscountValue, setNotes, setDueDate, setShippingData]);
 
   // ─── Create sale mutation (RPC-based, atomic) ─────────────
   const createSaleMutation = useMutation({
