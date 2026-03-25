@@ -1119,6 +1119,19 @@ export default function NewSaleDialog({
       if (savedCart.status === "converted") { toast({ title: "Carrinho já convertido", description: "Este carrinho já foi importado anteriormente.", variant: "destructive" }); return; }
       setCustomerName(savedCart.customer_name || "");
       setCustomerPhone(savedCart.customer_phone || "");
+
+      // Fetch variants for all products in the cart to resolve size → variant_id
+      const cartProductIds = (savedCart.saved_cart_items || [])
+        .map((sci: any) => sci.product_id).filter(Boolean);
+      let importedVariants: any[] = [];
+      if (cartProductIds.length > 0) {
+        const { data: varData } = await supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity, image_url")
+          .in("product_id", cartProductIds);
+        if (varData) importedVariants = varData;
+      }
+
       const items: CartItem[] = [];
       for (const sci of (savedCart.saved_cart_items || [])) {
         let matchedProduct: Product | undefined;
@@ -1127,7 +1140,6 @@ export default function NewSaleDialog({
         } else {
           matchedProduct = ownProducts.find(p => p.id === sci.product_id);
         }
-        const isRealProduct = !!matchedProduct;
         const product: Product = matchedProduct ? {
           ...matchedProduct,
           isB2B: sci.source === "b2b" ? true : (matchedProduct.isB2B || !!matchedProduct.b2b_source_product_id),
@@ -1137,7 +1149,11 @@ export default function NewSaleDialog({
           size: sci.selected_size, isB2B: sci.source === "b2b", b2b_source_product_id: sci.source === "b2b" ? "imported" : null,
           _isExternalItem: true,
         } as any;
-        items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: null });
+        // Resolve variant by selected_size
+        const matchedVariant = sci.selected_size
+          ? importedVariants.find((v: any) => v.product_id === sci.product_id && v.size?.toLowerCase().trim() === sci.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+        items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: matchedVariant });
       }
       setCart(items);
       setImportedCartId(savedCart.id);
@@ -1157,15 +1173,23 @@ export default function NewSaleDialog({
       const productIds = consignmentData.items.map(i => i.product_id).filter(Boolean);
       if (productIds.length === 0) return;
 
-      const { data: products, error } = await supabase
-        .from("products")
-        .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-        .in("id", productIds);
+      const [{ data: products, error }, { data: variantsData }] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+          .in("id", productIds),
+        supabase
+          .from("product_variants")
+          .select("id, product_id, size, stock_quantity, image_url")
+          .in("product_id", productIds),
+      ]);
 
       if (error || !products) {
         toast({ title: "Erro ao carregar produtos da malinha", variant: "destructive" });
         return;
       }
+
+      const consignVariants = variantsData || [];
 
       const cartItems: CartItem[] = consignmentData.items.map(item => {
         const dbProduct = products.find(p => p.id === item.product_id);
@@ -1182,7 +1206,13 @@ export default function NewSaleDialog({
               color: item.color,
               size: item.size,
             };
-        return { product, quantity: 1, isPartnerStock: false };
+        // Resolve variant by variant_id (preferred) or by size
+        const matchedVariant = item.variant_id
+          ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : item.size
+            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
+            : null;
+        return { product, quantity: 1, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
@@ -1280,12 +1310,20 @@ export default function NewSaleDialog({
         .map(i => i.product_id);
       
       let products: any[] = [];
+      let variants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
-        if (!error && data) products = data;
+        const [{ data: prodData, error: prodError }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url")
+            .in("product_id", productIds),
+        ]);
+        if (!prodError && prodData) products = prodData;
+        if (varData) variants = varData;
       }
 
       const cartItems: CartItem[] = catalogOrderData.items.map(item => {
@@ -1314,8 +1352,12 @@ export default function NewSaleDialog({
           return { product: bazarProduct, quantity: item.quantity, isPartnerStock: false };
         }
 
-        // Regular product
+        // Regular product — resolve variant by selected_size
         const dbProduct = products.find(p => p.id === item.product_id);
+        const matchedVariant = item.selected_size
+          ? variants.find(v => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+
         const product: Product = dbProduct
           ? { ...dbProduct, isB2B: false }
           : {
@@ -1330,7 +1372,7 @@ export default function NewSaleDialog({
               size: item.selected_size || null,
               _isExternalItem: true,
             } as any;
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
@@ -1362,12 +1404,20 @@ export default function NewSaleDialog({
     const loadPartnerPointItems = async () => {
       const productIds = partnerPointOrderData.items.map(i => i.product_id).filter(Boolean);
       let products: any[] = [];
+      let ppVariants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
+        const [{ data, error }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url")
+            .in("product_id", productIds),
+        ]);
         if (!error && data) products = data;
+        if (varData) ppVariants = varData;
       }
 
       const cartItems: CartItem[] = partnerPointOrderData.items.map(item => {
@@ -1385,7 +1435,11 @@ export default function NewSaleDialog({
               color: null,
               size: null,
             };
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        // Resolve variant by variant_id (if available) then by name suffix
+        const matchedVariant = item.variant_id
+          ? ppVariants.find((v: any) => v.id === item.variant_id) ?? null
+          : null;
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
@@ -1420,12 +1474,20 @@ export default function NewSaleDialog({
     const loadConsortiumItems = async () => {
       const productIds = consortiumSaleData.items.map(i => i.product_id).filter(Boolean) as string[];
       let products: any[] = [];
+      let csVariants: any[] = [];
       if (productIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
-          .in("id", productIds);
+        const [{ data, error }, { data: varData }] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, stock_quantity, owner_id, group_id, category, color, size, b2b_source_product_id")
+            .in("id", productIds),
+          supabase
+            .from("product_variants")
+            .select("id, product_id, size, stock_quantity, image_url")
+            .in("product_id", productIds),
+        ]);
         if (!error && data) products = data;
+        if (varData) csVariants = varData;
       }
 
       const cartItems: CartItem[] = consortiumSaleData.items.map(item => {
@@ -1444,7 +1506,10 @@ export default function NewSaleDialog({
               size: item.selected_size || null,
               _isExternalItem: true,
             } as any;
-        return { product, quantity: item.quantity, isPartnerStock: false };
+        const matchedVariant = item.selected_size
+          ? csVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          : null;
+        return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
 
       setCart(cartItems);
