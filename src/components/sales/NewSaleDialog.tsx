@@ -1127,7 +1127,7 @@ export default function NewSaleDialog({
       if (cartProductIds.length > 0) {
         const { data: varData } = await supabase
           .from("product_variants")
-          .select("id, product_id, size, stock_quantity")
+          .select("id, product_id, size, stock_quantity, image_url")
           .in("product_id", cartProductIds);
         if (varData) importedVariants = varData;
       }
@@ -1180,7 +1180,7 @@ export default function NewSaleDialog({
           .in("id", productIds),
         supabase
           .from("product_variants")
-          .select("id, product_id, size, stock_quantity")
+          .select("id, product_id, size, stock_quantity, image_url")
           .in("product_id", productIds),
       ]);
 
@@ -1319,7 +1319,7 @@ export default function NewSaleDialog({
             .in("id", productIds),
           supabase
             .from("product_variants")
-            .select("id, product_id, size, stock_quantity")
+            .select("id, product_id, size, stock_quantity, image_url")
             .in("product_id", productIds),
         ]);
         if (!prodError && prodData) products = prodData;
