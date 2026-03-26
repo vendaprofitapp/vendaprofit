@@ -718,6 +718,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreProducts} loadMore={loadMoreProducts} visibleCount={visibleProducts.length} totalCount={totalProducts} />
         </TabsContent>
 
         {/* Sociedade Stock Tab */}
