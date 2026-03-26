@@ -508,12 +508,17 @@ export default function StockControl() {
   }, [filters]);
 
   const filteredDirectPartnerProducts = directPartnerProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   const filteredGroupPartnerProducts = groupPartnerProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
+
+  // Pagination
+  const { visibleItems: visibleProducts, hasMore: hasMoreProducts, loadMore: loadMoreProducts, totalCount: totalProducts } = useLoadMore(filteredProducts);
+  const { visibleItems: visibleDirectPartner, hasMore: hasMoreDirect, loadMore: loadMoreDirect, totalCount: totalDirect } = useLoadMore(filteredDirectPartnerProducts);
+  const { visibleItems: visibleGroupPartner, hasMore: hasMoreGroup, loadMore: loadMoreGroup, totalCount: totalGroup } = useLoadMore(filteredGroupPartnerProducts);
 
   return (
     <MainLayout>
