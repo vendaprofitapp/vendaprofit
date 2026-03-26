@@ -746,7 +746,7 @@ export default function StockControl() {
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum produto de sociedade disponível</TableCell>
                   </TableRow>
                 ) : (
-                  filteredDirectPartnerProducts.map((product) => {
+                  visibleDirectPartner.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
