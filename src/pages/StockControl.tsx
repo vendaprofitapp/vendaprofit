@@ -486,7 +486,7 @@ export default function StockControl() {
         matchesMarketingStatus
       );
     });
-  }, [products, searchTerm, filters, suppliers]);
+  }, [products, debouncedSearch, filters, suppliers]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
