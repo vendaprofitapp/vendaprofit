@@ -193,13 +193,17 @@ export default function AdminUsers() {
     fetchData();
   }, [isAdmin]);
 
+  const debouncedSearch = useDebouncedValue(search);
+
   const filteredProfiles = useMemo(() => {
-    if (!search.trim()) return profiles;
-    const lower = search.toLowerCase();
+    if (!debouncedSearch.trim()) return profiles;
+    const lower = debouncedSearch.toLowerCase();
     return profiles.filter(
       (p) => p.full_name.toLowerCase().includes(lower) || p.email.toLowerCase().includes(lower)
     );
-  }, [profiles, search]);
+  }, [profiles, debouncedSearch]);
+
+  const { visibleItems: visibleProfiles, hasMore, loadMore, totalCount } = useLoadMore(filteredProfiles);
 
   const isUserAdmin = (userId: string) => roles.some((r) => r.user_id === userId && r.role === "admin");
   const getSubscription = (userId: string) => subscriptions.find((s) => s.user_id === userId);
