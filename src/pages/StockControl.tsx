@@ -644,7 +644,7 @@ export default function StockControl() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredProducts.map((product) => {
+                  visibleProducts.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
