@@ -409,7 +409,7 @@ export default function Sales() {
               ) : filteredSales.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada</TableCell></TableRow>
               ) : (
-                filteredSales.map((sale) => {
+                visibleSales.map((sale) => {
                   const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
                   return (
                     <TableRow key={sale.id} className="cursor-pointer hover:bg-secondary/30" onClick={() => viewSaleDetails(sale)}>
