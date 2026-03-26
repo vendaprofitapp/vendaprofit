@@ -378,9 +378,11 @@ export default function StockControl() {
     return "available";
   };
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredProducts = useMemo(() => {
     // Normalize search term - remove extra spaces and convert to lowercase
-    const term = searchTerm.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const term = debouncedSearch.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return products.filter((p) => {
       const stockNum = Number(p.stock_quantity) || 0;
