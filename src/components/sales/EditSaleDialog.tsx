@@ -97,28 +97,67 @@ export function EditSaleDialog({
   userId,
 }: EditSaleDialogProps) {
   const queryClient = useQueryClient();
-  
-  // Edit form state
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [discountType, setDiscountType] = useState("fixed");
-  const [discountValue, setDiscountValue] = useState(0);
-  const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState("completed");
-  const [saleSource, setSaleSource] = useState("manual");
-  const [eventName, setEventName] = useState("");
 
-  // Shipping state
-  const [shippingMethod, setShippingMethod] = useState("presencial");
-  const [shippingCompany, setShippingCompany] = useState("");
-  const [shippingCost, setShippingCost] = useState(0);
-  const [shippingPayer, setShippingPayer] = useState("seller");
-  const [shippingAddress, setShippingAddress] = useState("");
-  const [shippingNotes, setShippingNotes] = useState("");
-  const [shippingTracking, setShippingTracking] = useState("");
+  const persistKey = sale?.id ? `edit_sale_${sale.id}` : `edit_sale_noop`;
+
+  // Edit form state with persistence
+  const [formDraft, setFormDraft, clearFormDraft] = useFormPersistence(persistKey, {
+    customerName: "",
+    customerPhone: "",
+    paymentMethod: "",
+    discountType: "fixed",
+    discountValue: 0,
+    notes: "",
+    status: "completed",
+    saleSource: "manual",
+    eventName: "",
+    shippingMethod: "presencial",
+    shippingCompany: "",
+    shippingCost: 0,
+    shippingPayer: "seller",
+    shippingAddress: "",
+    shippingNotes: "",
+    shippingTracking: "",
+  });
+
+  const customerName = formDraft.customerName;
+  const customerPhone = formDraft.customerPhone;
+  const paymentMethod = formDraft.paymentMethod;
+  const discountType = formDraft.discountType;
+  const discountValue = formDraft.discountValue;
+  const notes = formDraft.notes;
+  const status = formDraft.status;
+  const saleSource = formDraft.saleSource;
+  const eventName = formDraft.eventName;
+  const shippingMethod = formDraft.shippingMethod;
+  const shippingCompany = formDraft.shippingCompany;
+  const shippingCost = formDraft.shippingCost;
+  const shippingPayer = formDraft.shippingPayer;
+  const shippingAddress = formDraft.shippingAddress;
+  const shippingNotes = formDraft.shippingNotes;
+  const shippingTracking = formDraft.shippingTracking;
+
+  const setField = <K extends keyof typeof formDraft>(field: K, value: (typeof formDraft)[K]) =>
+    setFormDraft((prev) => ({ ...prev, [field]: value }));
+
+  const setCustomerName = (v: string) => setField("customerName", v);
+  const setCustomerPhone = (v: string) => setField("customerPhone", v);
+  const setPaymentMethod = (v: string) => setField("paymentMethod", v);
+  const setDiscountType = (v: string) => setField("discountType", v);
+  const setDiscountValue = (v: number) => setField("discountValue", v);
+  const setNotes = (v: string) => setField("notes", v);
+  const setStatus = (v: string) => setField("status", v);
+  const setSaleSource = (v: string) => setField("saleSource", v);
+  const setEventName = (v: string) => setField("eventName", v);
+  const setShippingMethod = (v: string) => setField("shippingMethod", v);
+  const setShippingCompany = (v: string) => setField("shippingCompany", v);
+  const setShippingCost = (v: number) => setField("shippingCost", v);
+  const setShippingPayer = (v: string) => setField("shippingPayer", v);
+  const setShippingAddress = (v: string) => setField("shippingAddress", v);
+  const setShippingNotes = (v: string) => setField("shippingNotes", v);
+  const setShippingTracking = (v: string) => setField("shippingTracking", v);
   
-  // Delete state
+  // Delete state (not persisted — transient UI)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedItemsToDelete, setSelectedItemsToDelete] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -128,22 +167,24 @@ export function EditSaleDialog({
   // Initialize form with sale data
   useEffect(() => {
     if (sale) {
-      setCustomerName(sale.customer_name || "");
-      setCustomerPhone(sale.customer_phone || "");
-      setPaymentMethod(sale.payment_method);
-      setDiscountType(sale.discount_type || "fixed");
-      setDiscountValue(sale.discount_value || 0);
-      setNotes(sale.notes || "");
-      setStatus(sale.status);
-      setSaleSource(sale.sale_source || "manual");
-      setEventName(sale.event_name || "");
-      setShippingMethod(sale.shipping_method || "presencial");
-      setShippingCompany(sale.shipping_company || "");
-      setShippingCost(sale.shipping_cost || 0);
-      setShippingPayer(sale.shipping_payer || "seller");
-      setShippingAddress(sale.shipping_address || "");
-      setShippingNotes(sale.shipping_notes || "");
-      setShippingTracking(sale.shipping_tracking || "");
+      setFormDraft({
+        customerName: sale.customer_name || "",
+        customerPhone: sale.customer_phone || "",
+        paymentMethod: sale.payment_method,
+        discountType: sale.discount_type || "fixed",
+        discountValue: sale.discount_value || 0,
+        notes: sale.notes || "",
+        status: sale.status,
+        saleSource: sale.sale_source || "manual",
+        eventName: sale.event_name || "",
+        shippingMethod: sale.shipping_method || "presencial",
+        shippingCompany: sale.shipping_company || "",
+        shippingCost: sale.shipping_cost || 0,
+        shippingPayer: sale.shipping_payer || "seller",
+        shippingAddress: sale.shipping_address || "",
+        shippingNotes: sale.shipping_notes || "",
+        shippingTracking: sale.shipping_tracking || "",
+      });
       setSelectedItemsToDelete([]);
       setDeleteMode("all");
     }
