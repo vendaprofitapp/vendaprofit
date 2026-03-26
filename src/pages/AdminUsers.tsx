@@ -451,6 +451,7 @@ export default function AdminUsers() {
               </Table>
             </div>
           )}
+          <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleProfiles.length} totalCount={totalCount} />
         </CardContent>
       </Card>
 
