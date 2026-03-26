@@ -364,7 +364,7 @@ export default function Sales() {
           ) : filteredSales.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada</div>
           ) : (
-            filteredSales.map((sale) => {
+            visibleSales.map((sale) => {
               const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
               return (
                 <div key={sale.id} className="rounded-xl bg-card p-4 shadow-soft cursor-pointer active:scale-[0.98] transition-transform" onClick={() => viewSaleDetails(sale)}>
