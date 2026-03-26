@@ -179,6 +179,7 @@ export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile 
       }
 
       toast.success("Configuração concluída! Bem-vindo ao Venda Profit 🎉");
+      clearWizardDraft();
       onComplete();
     } catch (err: any) {
       console.error("Onboarding error:", err);
