@@ -189,13 +189,15 @@ export default function Sales() {
   const monthTotal = monthSales.reduce((sum, s) => sum + Number(s.total), 0);
   const avgTicket = monthSales.length > 0 ? monthTotal / monthSales.length : 0;
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredSales = sales.filter(
     (sale) =>
-      sale.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+      sale.id.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      (sale.customer_name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ?? false)
   );
 
-  const viewSaleDetails = async (sale: Sale) => {
+  const { visibleItems: visibleSales, hasMore, loadMore, totalCount } = useLoadMore(filteredSales);
     setSelectedSale(sale);
     const { data, error } = await supabase.from("sale_items").select("*").eq("sale_id", sale.id);
     if (!error && data) setSaleItems(data);
