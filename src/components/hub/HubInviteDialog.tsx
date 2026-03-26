@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +16,8 @@ interface Props {
 
 export function HubInviteDialog({ open, onClose, onCreated }: Props) {
   const { user } = useAuth();
-  const [email, setEmail] = useState("");
-  const [commission, setCommission] = useState("30");
+  const [email, setEmail, clearEmail] = useFormPersistence(`hub_invite_email_${user?.id || "anon"}`, "");
+  const [commission, setCommission, clearCommission] = useFormPersistence(`hub_invite_comm_${user?.id || "anon"}`, "30");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,10 +36,9 @@ export function HubInviteDialog({ open, onClose, onCreated }: Props) {
       if (error) throw error;
 
       toast.success("Convite criado! Compartilhe o código com o vendedor.");
+      clearEmail(); clearCommission();
       onCreated();
       onClose();
-      setEmail("");
-      setCommission("30");
     } catch (err: any) {
       toast.error(err.message || "Erro ao criar convite");
     } finally {
