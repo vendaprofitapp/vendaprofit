@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { 
   Plus, Search, Edit, Trash2, 
