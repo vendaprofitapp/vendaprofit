@@ -555,7 +555,11 @@ export function ProductFormDialog({
       }
 
       toast.success(editingProduct ? "Produto atualizado!" : "Produto cadastrado!");
-      // Invalida o cache das variantes para garantir dados frescos na próxima edição
+      // Invalida caches de estoque e variantes para refletir mudanças imediatamente
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["product-variants"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       if (editingProduct) {
         queryClient.invalidateQueries({ queryKey: ["product-variants-form", editingProduct.id] });
       }
