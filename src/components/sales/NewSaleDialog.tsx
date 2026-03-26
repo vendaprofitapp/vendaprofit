@@ -2247,6 +2247,11 @@ export default function NewSaleDialog({
       queryClient.invalidateQueries({ queryKey: ["product-partnerships-financial"] });
 
       queryClient.invalidateQueries({ queryKey: ["hub-sale-splits"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["own-products-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["product-variants"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
 
       toast({ title: "Venda registrada com sucesso!" });
       resetForm();
