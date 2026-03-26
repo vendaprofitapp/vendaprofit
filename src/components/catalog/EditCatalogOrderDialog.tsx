@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +31,9 @@ interface EditCatalogOrderDialogProps {
 }
 
 export function EditCatalogOrderDialog({ open, onOpenChange, order, onSaved }: EditCatalogOrderDialogProps) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const persistKey = order?.id ? `edit_catalog_order_${order.id}` : `edit_catalog_order_noop`;
+  const [customerName, setCustomerName, clearName] = useFormPersistence(persistKey + "_name", "");
+  const [customerPhone, setCustomerPhone, clearPhone] = useFormPersistence(persistKey + "_phone", "");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [saving, setSaving] = useState(false);
 
