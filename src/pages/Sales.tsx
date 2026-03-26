@@ -198,6 +198,8 @@ export default function Sales() {
   );
 
   const { visibleItems: visibleSales, hasMore, loadMore, totalCount } = useLoadMore(filteredSales);
+
+  const viewSaleDetails = async (sale: Sale) => {
     setSelectedSale(sale);
     const { data, error } = await supabase.from("sale_items").select("*").eq("sale_id", sale.id);
     if (!error && data) setSaleItems(data);
