@@ -781,6 +781,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreDirect} loadMore={loadMoreDirect} visibleCount={visibleDirectPartner.length} totalCount={totalDirect} />
         </TabsContent>
 
         {/* Parcerias Stock Tab */}
