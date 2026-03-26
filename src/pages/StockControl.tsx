@@ -843,6 +843,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreGroup} loadMore={loadMoreGroup} visibleCount={visibleGroupPartner.length} totalCount={totalGroup} />
         </TabsContent>
 
         {/* B2B Stock Tab */}
