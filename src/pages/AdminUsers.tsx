@@ -408,7 +408,7 @@ export default function AdminUsers() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProfiles.map((p) => {
+                  {visibleProfiles.map((p) => {
                     const admin = isUserAdmin(p.id);
                     const isSelf = p.id === user?.id;
                     const sub = getSubscription(p.id);
