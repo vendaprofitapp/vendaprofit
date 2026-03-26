@@ -196,16 +196,20 @@ export default function Customers() {
   }, [customers, salesData]);
 
   // Filter customers
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredCustomers = useMemo(() => {
-    if (!searchTerm) return customersWithSales;
-    const term = searchTerm.toLowerCase();
+    if (!debouncedSearch) return customersWithSales;
+    const term = debouncedSearch.toLowerCase();
     return customersWithSales.filter(
       (c) =>
         c.name.toLowerCase().includes(term) ||
         c.phone?.includes(term) ||
         c.instagram?.toLowerCase().includes(term)
     );
-  }, [customersWithSales, searchTerm]);
+  }, [customersWithSales, debouncedSearch]);
+
+  const { visibleItems: visibleCustomers, hasMore, loadMore, totalCount } = useLoadMore(filteredCustomers);
 
   // Stats
   const stats = useMemo(() => {
