@@ -595,7 +595,7 @@ export default function Customers() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCustomers.map((customer) => (
+                    {visibleCustomers.map((customer) => (
                       <TableRow key={customer.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
