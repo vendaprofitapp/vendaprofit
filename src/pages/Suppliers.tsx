@@ -290,12 +290,16 @@ export default function Suppliers() {
     fetchSuppliers();
   };
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredSuppliers = suppliers.filter(
     (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.cnpj?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.attendant_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      s.cnpj?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      s.attendant_name?.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
+
+  const { visibleItems: visibleSuppliers, hasMore, loadMore, totalCount } = useLoadMore(filteredSuppliers);
 
   return (
     <MainLayout>
