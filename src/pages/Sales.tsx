@@ -438,6 +438,8 @@ export default function Sales() {
         </div>
       )}
 
+      <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleSales.length} totalCount={totalCount} />
+
       {/* New Sale Dialog */}
       <NewSaleDialog
         open={isNewSaleOpen}
