@@ -437,6 +437,7 @@ export default function Suppliers() {
                 </Table>
               </div>
             )}
+            <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleSuppliers.length} totalCount={totalCount} />
           </CardContent>
         </Card>
 

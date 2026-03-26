@@ -710,6 +710,7 @@ export default function Customers() {
                 </Table>
               </div>
             )}
+            <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleCustomers.length} totalCount={totalCount} />
           </CardContent>
         </Card>
 
