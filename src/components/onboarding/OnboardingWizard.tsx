@@ -189,8 +189,8 @@ export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile 
   };
 
   const toggleBrand = (brand: string) => {
-    setSelectedBrands((prev) =>
-      prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
+    setSelectedBrands(
+      selectedBrands.includes(brand) ? selectedBrands.filter((b) => b !== brand) : [...selectedBrands, brand]
     );
   };
 
