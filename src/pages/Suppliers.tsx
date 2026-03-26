@@ -360,7 +360,7 @@ export default function Suppliers() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSuppliers.map((supplier) => (
+                    {visibleSuppliers.map((supplier) => (
                       <TableRow key={supplier.id}>
                         <TableCell className="font-medium">
                           {supplier.name}
