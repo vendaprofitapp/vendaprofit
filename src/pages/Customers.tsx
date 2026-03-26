@@ -1,4 +1,7 @@
 import { useState, useMemo, useRef } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { MapPin, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -193,16 +196,20 @@ export default function Customers() {
   }, [customers, salesData]);
 
   // Filter customers
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredCustomers = useMemo(() => {
-    if (!searchTerm) return customersWithSales;
-    const term = searchTerm.toLowerCase();
+    if (!debouncedSearch) return customersWithSales;
+    const term = debouncedSearch.toLowerCase();
     return customersWithSales.filter(
       (c) =>
         c.name.toLowerCase().includes(term) ||
         c.phone?.includes(term) ||
         c.instagram?.toLowerCase().includes(term)
     );
-  }, [customersWithSales, searchTerm]);
+  }, [customersWithSales, debouncedSearch]);
+
+  const { visibleItems: visibleCustomers, hasMore, loadMore, totalCount } = useLoadMore(filteredCustomers);
 
   // Stats
   const stats = useMemo(() => {
@@ -588,7 +595,7 @@ export default function Customers() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCustomers.map((customer) => (
+                    {visibleCustomers.map((customer) => (
                       <TableRow key={customer.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -703,6 +710,7 @@ export default function Customers() {
                 </Table>
               </div>
             )}
+            <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleCustomers.length} totalCount={totalCount} />
           </CardContent>
         </Card>
 

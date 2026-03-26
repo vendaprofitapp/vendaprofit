@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { 
   Plus, Search, Edit, Trash2, 
@@ -376,9 +379,11 @@ export default function StockControl() {
     return "available";
   };
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredProducts = useMemo(() => {
     // Normalize search term - remove extra spaces and convert to lowercase
-    const term = searchTerm.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const term = debouncedSearch.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return products.filter((p) => {
       const stockNum = Number(p.stock_quantity) || 0;
@@ -484,7 +489,7 @@ export default function StockControl() {
         matchesMarketingStatus
       );
     });
-  }, [products, searchTerm, filters, suppliers]);
+  }, [products, debouncedSearch, filters, suppliers]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -506,12 +511,17 @@ export default function StockControl() {
   }, [filters]);
 
   const filteredDirectPartnerProducts = directPartnerProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   const filteredGroupPartnerProducts = groupPartnerProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
+
+  // Pagination
+  const { visibleItems: visibleProducts, hasMore: hasMoreProducts, loadMore: loadMoreProducts, totalCount: totalProducts } = useLoadMore(filteredProducts);
+  const { visibleItems: visibleDirectPartner, hasMore: hasMoreDirect, loadMore: loadMoreDirect, totalCount: totalDirect } = useLoadMore(filteredDirectPartnerProducts);
+  const { visibleItems: visibleGroupPartner, hasMore: hasMoreGroup, loadMore: loadMoreGroup, totalCount: totalGroup } = useLoadMore(filteredGroupPartnerProducts);
 
   return (
     <MainLayout>
@@ -635,7 +645,7 @@ export default function StockControl() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredProducts.map((product) => {
+                  visibleProducts.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
@@ -709,6 +719,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreProducts} loadMore={loadMoreProducts} visibleCount={visibleProducts.length} totalCount={totalProducts} />
         </TabsContent>
 
         {/* Sociedade Stock Tab */}
@@ -736,7 +747,7 @@ export default function StockControl() {
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum produto de sociedade disponível</TableCell>
                   </TableRow>
                 ) : (
-                  filteredDirectPartnerProducts.map((product) => {
+                  visibleDirectPartner.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
@@ -770,6 +781,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreDirect} loadMore={loadMoreDirect} visibleCount={visibleDirectPartner.length} totalCount={totalDirect} />
         </TabsContent>
 
         {/* Parcerias Stock Tab */}
@@ -797,7 +809,7 @@ export default function StockControl() {
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum produto de parceria disponível</TableCell>
                   </TableRow>
                 ) : (
-                  filteredGroupPartnerProducts.map((product) => {
+                  visibleGroupPartner.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
@@ -831,6 +843,7 @@ export default function StockControl() {
               </TableBody>
             </Table>
           </div>
+          <LoadMoreButton hasMore={hasMoreGroup} loadMore={loadMoreGroup} visibleCount={visibleGroupPartner.length} totalCount={totalGroup} />
         </TabsContent>
 
         {/* B2B Stock Tab */}

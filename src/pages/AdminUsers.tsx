@@ -1,4 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -190,13 +193,17 @@ export default function AdminUsers() {
     fetchData();
   }, [isAdmin]);
 
+  const debouncedSearch = useDebouncedValue(search);
+
   const filteredProfiles = useMemo(() => {
-    if (!search.trim()) return profiles;
-    const lower = search.toLowerCase();
+    if (!debouncedSearch.trim()) return profiles;
+    const lower = debouncedSearch.toLowerCase();
     return profiles.filter(
       (p) => p.full_name.toLowerCase().includes(lower) || p.email.toLowerCase().includes(lower)
     );
-  }, [profiles, search]);
+  }, [profiles, debouncedSearch]);
+
+  const { visibleItems: visibleProfiles, hasMore, loadMore, totalCount } = useLoadMore(filteredProfiles);
 
   const isUserAdmin = (userId: string) => roles.some((r) => r.user_id === userId && r.role === "admin");
   const getSubscription = (userId: string) => subscriptions.find((s) => s.user_id === userId);
@@ -401,7 +408,7 @@ export default function AdminUsers() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProfiles.map((p) => {
+                  {visibleProfiles.map((p) => {
                     const admin = isUserAdmin(p.id);
                     const isSelf = p.id === user?.id;
                     const sub = getSubscription(p.id);
@@ -444,6 +451,7 @@ export default function AdminUsers() {
               </Table>
             </div>
           )}
+          <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleProfiles.length} totalCount={totalCount} />
         </CardContent>
       </Card>
 

@@ -1,4 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Plus, Search, ShoppingCart, Eye, Edit2, Truck, Mic } from "lucide-react";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -186,11 +189,15 @@ export default function Sales() {
   const monthTotal = monthSales.reduce((sum, s) => sum + Number(s.total), 0);
   const avgTicket = monthSales.length > 0 ? monthTotal / monthSales.length : 0;
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredSales = sales.filter(
     (sale) =>
-      sale.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+      sale.id.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      (sale.customer_name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ?? false)
   );
+
+  const { visibleItems: visibleSales, hasMore, loadMore, totalCount } = useLoadMore(filteredSales);
 
   const viewSaleDetails = async (sale: Sale) => {
     setSelectedSale(sale);
@@ -357,7 +364,7 @@ export default function Sales() {
           ) : filteredSales.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada</div>
           ) : (
-            filteredSales.map((sale) => {
+            visibleSales.map((sale) => {
               const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
               return (
                 <div key={sale.id} className="rounded-xl bg-card p-4 shadow-soft cursor-pointer active:scale-[0.98] transition-transform" onClick={() => viewSaleDetails(sale)}>
@@ -402,7 +409,7 @@ export default function Sales() {
               ) : filteredSales.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada</TableCell></TableRow>
               ) : (
-                filteredSales.map((sale) => {
+                visibleSales.map((sale) => {
                   const status = statusConfig[sale.status as keyof typeof statusConfig] || statusConfig.completed;
                   return (
                     <TableRow key={sale.id} className="cursor-pointer hover:bg-secondary/30" onClick={() => viewSaleDetails(sale)}>
@@ -430,6 +437,8 @@ export default function Sales() {
           </Table>
         </div>
       )}
+
+      <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleSales.length} totalCount={totalCount} />
 
       {/* New Sale Dialog */}
       <NewSaleDialog

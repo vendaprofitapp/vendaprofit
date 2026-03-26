@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLoadMore } from "@/hooks/useLoadMore";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -287,12 +290,16 @@ export default function Suppliers() {
     fetchSuppliers();
   };
 
+  const debouncedSearch = useDebouncedValue(searchTerm);
+
   const filteredSuppliers = suppliers.filter(
     (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.cnpj?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.attendant_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      s.cnpj?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      s.attendant_name?.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
+
+  const { visibleItems: visibleSuppliers, hasMore, loadMore, totalCount } = useLoadMore(filteredSuppliers);
 
   return (
     <MainLayout>
@@ -353,7 +360,7 @@ export default function Suppliers() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSuppliers.map((supplier) => (
+                    {visibleSuppliers.map((supplier) => (
                       <TableRow key={supplier.id}>
                         <TableCell className="font-medium">
                           {supplier.name}
@@ -430,6 +437,7 @@ export default function Suppliers() {
                 </Table>
               </div>
             )}
+            <LoadMoreButton hasMore={hasMore} loadMore={loadMore} visibleCount={visibleSuppliers.length} totalCount={totalCount} />
           </CardContent>
         </Card>
 
