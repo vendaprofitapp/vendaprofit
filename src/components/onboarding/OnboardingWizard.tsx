@@ -58,19 +58,42 @@ function maskCPF(value: string): string {
 
 export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile }: OnboardingWizardProps) {
   const { user } = useAuth();
-  const [step, setStep] = useState(1);
+  const persistKey = `onboarding_${user?.id || "anon"}`;
+  const [wizardDraft, setWizardDraft, clearWizardDraft] = useFormPersistence(persistKey, {
+    step: 1,
+    storeName: existingProfile?.store_name || "",
+    phone: existingProfile?.phone ? maskPhone(existingProfile.phone) : "",
+    originZip: existingProfile?.origin_zip ? maskCEP(existingProfile.origin_zip) : "",
+    cpf: existingProfile?.cpf ? maskCPF(existingProfile.cpf) : "",
+    slug: "",
+    slugEdited: false,
+    selectedBrands: [] as string[],
+    otherBrand: "",
+  });
   const [saving, setSaving] = useState(false);
 
-  const [storeName, setStoreName] = useState(existingProfile?.store_name || "");
-  const [phone, setPhone] = useState(existingProfile?.phone ? maskPhone(existingProfile.phone) : "");
-  const [originZip, setOriginZip] = useState(existingProfile?.origin_zip ? maskCEP(existingProfile.origin_zip) : "");
-  const [cpf, setCpf] = useState(existingProfile?.cpf ? maskCPF(existingProfile.cpf) : "");
+  const step = wizardDraft.step;
+  const storeName = wizardDraft.storeName;
+  const phone = wizardDraft.phone;
+  const originZip = wizardDraft.originZip;
+  const cpf = wizardDraft.cpf;
+  const slug = wizardDraft.slug;
+  const slugEdited = wizardDraft.slugEdited;
+  const selectedBrands = wizardDraft.selectedBrands;
+  const otherBrand = wizardDraft.otherBrand;
 
-  const [slug, setSlug] = useState("");
-  const [slugEdited, setSlugEdited] = useState(false);
+  const setWField = <K extends keyof typeof wizardDraft>(field: K, value: (typeof wizardDraft)[K]) =>
+    setWizardDraft((prev) => ({ ...prev, [field]: value }));
 
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [otherBrand, setOtherBrand] = useState("");
+  const setStep = (v: number) => setWField("step", v);
+  const setStoreName = (v: string) => setWField("storeName", v);
+  const setPhone = (v: string) => setWField("phone", v);
+  const setOriginZip = (v: string) => setWField("originZip", v);
+  const setCpf = (v: string) => setWField("cpf", v);
+  const setSlug = (v: string) => setWField("slug", v);
+  const setSlugEdited = (v: boolean) => setWField("slugEdited", v);
+  const setSelectedBrands = (v: string[]) => setWField("selectedBrands", v);
+  const setOtherBrand = (v: string) => setWField("otherBrand", v);
 
   const step1Valid = storeName.trim().length >= 2 && phone.replace(/\D/g, "").length >= 10 && originZip.replace(/\D/g, "").length === 8;
 

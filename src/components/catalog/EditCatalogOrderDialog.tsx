@@ -88,6 +88,7 @@ export function EditCatalogOrderDialog({ open, onOpenChange, order, onSaved }: E
       }
 
       toast.success("Pedido atualizado!");
+      clearName(); clearPhone();
       onSaved();
       onOpenChange(false);
     } catch (err) {

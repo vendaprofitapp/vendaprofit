@@ -36,10 +36,9 @@ export function HubInviteDialog({ open, onClose, onCreated }: Props) {
       if (error) throw error;
 
       toast.success("Convite criado! Compartilhe o código com o vendedor.");
+      clearEmail(); clearCommission();
       onCreated();
       onClose();
-      setEmail("");
-      setCommission("30");
     } catch (err: any) {
       toast.error(err.message || "Erro ao criar convite");
     } finally {

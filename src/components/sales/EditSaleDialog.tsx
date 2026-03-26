@@ -242,6 +242,7 @@ export function EditSaleDialog({
         .eq("sale_id", sale.id);
 
       toast({ title: "Venda atualizada com sucesso!" });
+      clearFormDraft();
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["financial-splits"] });
       queryClient.invalidateQueries({ queryKey: ["payment-reminders"] });
