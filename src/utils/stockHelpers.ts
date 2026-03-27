@@ -22,10 +22,10 @@ interface ConsignmentItem {
  * que estão em bolsas consignadas com status 'active' ou 'awaiting_approval'
  */
 export async function getAvailableStock(productId: string, variantId?: string): Promise<number> {
-  try {
-    // Get the physical stock
-    let physicalStock = 0;
+  // Get the physical stock
+  let physicalStock = 0;
 
+  try {
     if (variantId) {
       const { data: variant } = await supabase
         .from('product_variants')
@@ -43,18 +43,18 @@ export async function getAvailableStock(productId: string, variantId?: string): 
       
       physicalStock = product?.stock_quantity || 0;
     }
+  } catch (error) {
+    console.error('Erro ao buscar estoque físico:', error);
+    return 0;
+  }
 
-    // Get count of items in active/awaiting consignments
+  // Get count of items in active/awaiting consignments
+  // If this query fails, we still return the physical stock (best effort)
+  try {
     const { data: consignmentItems, error } = await supabase
       .from('consignment_items')
-      .select(`
-        id,
-        product_id,
-        variant_id,
-        consignments!inner (status)
-      `)
+      .select('id, product_id, variant_id, consignment_id')
       .eq('product_id', productId)
-      .in('consignments.status', ['active', 'awaiting_approval'])
       .in('status', ['pending', 'active']);
 
     if (error) {
@@ -62,18 +62,33 @@ export async function getAvailableStock(productId: string, variantId?: string): 
       return physicalStock;
     }
 
+    if (!consignmentItems || consignmentItems.length === 0) {
+      return physicalStock;
+    }
+
+    // Now check which of these belong to active consignments
+    const consignmentIds = [...new Set(consignmentItems.map(i => i.consignment_id))];
+    const { data: activeConsignments } = await supabase
+      .from('consignments')
+      .select('id')
+      .in('id', consignmentIds)
+      .in('status', ['active', 'awaiting_approval']);
+
+    const activeConsignmentIds = new Set((activeConsignments || []).map(c => c.id));
+
+    // Filter to only items in active consignments
+    const activeItems = consignmentItems.filter(i => activeConsignmentIds.has(i.consignment_id));
+
     // Filter by variant if specified
     const reservedItems = variantId
-      ? consignmentItems?.filter(item => item.variant_id === variantId) || []
-      : consignmentItems?.filter(item => !item.variant_id) || [];
+      ? activeItems.filter(item => item.variant_id === variantId)
+      : activeItems.filter(item => !item.variant_id);
 
     const reservedCount = reservedItems.length;
-    const availableStock = Math.max(0, physicalStock - reservedCount);
-
-    return availableStock;
+    return Math.max(0, physicalStock - reservedCount);
   } catch (error) {
-    console.error('Erro ao calcular estoque disponível:', error);
-    return 0;
+    console.error('Erro ao calcular reservas de consignação:', error);
+    return physicalStock;
   }
 }
 
