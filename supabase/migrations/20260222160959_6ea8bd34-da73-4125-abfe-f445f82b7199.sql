@@ -6,7 +6,7 @@ CREATE TABLE public.customer_bazar_permissions (
   owner_id UUID NOT NULL,
   can_sell BOOLEAN NOT NULL DEFAULT false,
   can_buy BOOLEAN NOT NULL DEFAULT false,
-  bazar_token TEXT NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
+  bazar_token TEXT NOT NULL DEFAULT encode(extensions.gen_random_bytes(16), 'hex'),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(customer_id, owner_id)
