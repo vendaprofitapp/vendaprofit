@@ -109,7 +109,7 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
           <DialogTitle>Recolher Peças de {partnerName}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 max-h-[60vh] h-[500px] border rounded-lg">
+        <div className="flex-1 overflow-y-auto max-h-[60vh] min-h-[300px] border rounded-lg p-2">
           {fetching ? (
             <div className="p-6 text-center text-muted-foreground text-sm">Carregando...</div>
           ) : items.length === 0 ? (
@@ -118,7 +118,7 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
               Nenhuma peça alocada neste ponto
             </div>
           ) : (
-            <div className="p-2 space-y-1">
+            <div className="space-y-1">
               {items.map(item => (
                 <div
                   key={item.id}
@@ -155,7 +155,7 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
               ))}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         <DialogFooter>
           <div className="text-sm text-muted-foreground mr-auto">
