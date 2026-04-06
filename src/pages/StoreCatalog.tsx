@@ -1670,7 +1670,10 @@ export default function StoreCatalog() {
         const matchesMainCat = !selectedMainCategory || 
           (selectedMainCategory.toLowerCase() === "lançamentos" 
             ? (item.is_new_release || Object.values(item.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
-            : (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
+            : (
+                (item.main_category && item.main_category.toLowerCase() === selectedMainCategory.toLowerCase()) ||
+                [item.category, item.category_2, item.category_3].filter(Boolean).map(c => c?.toLowerCase()).includes(selectedMainCategory.toLowerCase())
+              ));
         const matchesSubCat = !selectedSubcategory || 
           (item.subcategory && item.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
@@ -1717,7 +1720,10 @@ export default function StoreCatalog() {
         const matchesMainCat = !selectedMainCategory || 
           (selectedMainCategory.toLowerCase() === "lançamentos" 
             ? (p.is_new_release || Object.values(p.sizeMarketingStatus).some(s => hasStatus(s, "launch")))
-            : (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase()));
+            : (
+                (p.main_category && p.main_category.toLowerCase() === selectedMainCategory.toLowerCase()) ||
+                [p.category, p.category_2, p.category_3].filter(Boolean).map(c => c?.toLowerCase()).includes(selectedMainCategory.toLowerCase())
+              ));
         const matchesSubCat = !selectedSubcategory || 
           (p.subcategory && p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase());
         
