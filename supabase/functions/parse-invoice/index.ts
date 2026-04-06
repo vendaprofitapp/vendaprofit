@@ -129,7 +129,7 @@ serve(async (req) => {
     if (!imageBase64) {
       return new Response(
         JSON.stringify({ success: false, error: 'Imagem não fornecida' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -220,8 +220,8 @@ serve(async (req) => {
             console.log('Gemini rate limited, trying Lovable AI...');
           } else if (!LOVABLE_API_KEY) {
             return new Response(
-              JSON.stringify({ success: false, error: 'Limite de requisições excedido. Aguarde alguns segundos.' }),
-              { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              JSON.stringify({ success: false, error: `Gemini Error ${response.status}: ${errorText}` }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
         }
@@ -247,7 +247,7 @@ serve(async (req) => {
       if (response.status === 402) {
         return new Response(
           JSON.stringify({ success: false, error: 'Créditos de IA esgotados. Tente novamente mais tarde.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -256,7 +256,7 @@ serve(async (req) => {
         console.error('Lovable AI error:', response.status, errorData);
         return new Response(
           JSON.stringify({ success: false, error: 'Erro ao processar imagem. Tente novamente.' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -266,7 +266,7 @@ serve(async (req) => {
       if (!content) {
         return new Response(
           JSON.stringify({ success: false, error: 'Resposta vazia da IA. Tente uma imagem mais clara.' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -281,7 +281,7 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: false, error: 'Nenhum serviço de IA disponível.' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
@@ -289,7 +289,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Erro interno';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

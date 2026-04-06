@@ -39,10 +39,13 @@ interface Product {
   size: string | null;
   color: string | null;
   stock_quantity: number;
+  marketing_status?: string[] | null;
   product_variants?: Array<{
     id: string;
     size: string;
     stock_quantity: number;
+    marketing_status?: string[] | null;
+    marketing_prices?: Record<string, number> | null;
   }>;
 }
 
@@ -97,8 +100,8 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
       const { data, error } = await supabase
         .from("products")
         .select(`
-          id, name, price, image_url, size, color, stock_quantity,
-          product_variants (id, size, stock_quantity)
+          id, name, price, image_url, size, color, stock_quantity, marketing_status,
+          product_variants (id, size, stock_quantity, marketing_status, marketing_prices)
         `)
         .eq("owner_id", user.id)
         .eq("is_active", true)
@@ -187,12 +190,22 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
       return;
     }
 
+    // Resolve marketing prices
+    let finalPrice = product.price;
+    if (variant && variant.marketing_status && variant.marketing_status.length > 0 && variant.marketing_prices) {
+      const activeStatus = variant.marketing_status[0];
+      const promoPrice = variant.marketing_prices[activeStatus];
+      if (typeof promoPrice === 'number' && promoPrice > 0) {
+        finalPrice = promoPrice;
+      }
+    }
+
     setSelectedItems(prev => [...prev, {
       product,
       variant_id: variantId,
       size: variant?.size || product.size,
       color: product.color, // Color now comes from product
-      price: product.price,
+      price: finalPrice,
       availableStock,
     }]);
     

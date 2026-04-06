@@ -51,7 +51,9 @@ interface AllocatedItem {
   quantity: number;
   status: string;
   allocated_at: string;
+  variant_id: string | null;
   product?: { name: string; image_url: string | null; price: number };
+  variant?: { size: string };
 }
 
 interface Sale {
@@ -116,7 +118,7 @@ export default function PartnerPointDetail() {
 
     const [{ data: pp }, { data: rawItems }, { data: rawSales }] = await Promise.all([
       supabase.from("partner_points").select("*").eq("id", id).eq("owner_id", user.id).maybeSingle(),
-      supabase.from("partner_point_items").select("id, product_id, quantity, status, allocated_at")
+      supabase.from("partner_point_items").select("id, product_id, variant_id, quantity, status, allocated_at")
         .eq("partner_point_id", id).not("status", "in", '("returned","lost")').order("allocated_at", { ascending: false }),
       supabase.from("partner_point_sales").select("id, customer_name, customer_phone, total_gross, payment_method, pass_color, pass_status, created_at, items, notes")
         .eq("partner_point_id", id).order("created_at", { ascending: false }).limit(50),
@@ -128,9 +130,21 @@ export default function PartnerPointDetail() {
 
     if (rawItems && rawItems.length > 0) {
       const productIds = [...new Set(rawItems.map((i: any) => i.product_id))];
-      const { data: products } = await supabase.from("products").select("id, name, image_url, price").in("id", productIds);
+      const variantIds = [...new Set(rawItems.map((i: any) => i.variant_id).filter(Boolean))];
+      
+      const [{ data: products }, { data: variants }] = await Promise.all([
+        supabase.from("products").select("id, name, image_url, price").in("id", productIds),
+        supabase.from("product_variants").select("id, size").in("id", variantIds)
+      ]);
+
       const productMap = Object.fromEntries((products ?? []).map(p => [p.id, p]));
-      setItems((rawItems as any[]).map(i => ({ ...i, product: productMap[i.product_id] })));
+      const variantMap = Object.fromEntries((variants ?? []).map(v => [v.id, v]));
+
+      setItems((rawItems as any[]).map(i => ({ 
+        ...i, 
+        product: productMap[i.product_id],
+        variant: i.variant_id ? variantMap[i.variant_id] : null
+      })));
     } else {
       setItems([]);
     }
@@ -356,7 +370,10 @@ export default function PartnerPointDetail() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.product?.name ?? "Produto"}</p>
+                        <p className="text-sm font-medium truncate">
+                          {item.product?.name ?? "Produto"}
+                          {item.variant?.size ? ` - ${item.variant.size}` : ""}
+                        </p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant={statusInfo.variant} className="text-xs py-0">{statusInfo.label}</Badge>
                           <span className="text-xs text-muted-foreground">{item.quantity} un.</span>

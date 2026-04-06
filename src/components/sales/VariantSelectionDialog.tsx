@@ -14,6 +14,8 @@ interface ProductVariant {
   size: string;
   stock_quantity: number;
   image_url: string | null;
+  marketing_status?: string[] | null;
+  marketing_prices?: Record<string, number> | null;
 }
 
 interface Product {
@@ -109,7 +111,7 @@ export function VariantSelectionDialog({
       // Fetch ONLY own product variants (never partner variants)
       const { data: ownVariants, error: ownError } = await supabase
         .from("product_variants")
-        .select("id, product_id, size, stock_quantity, image_url")
+        .select("id, product_id, size, stock_quantity, image_url, marketing_status, marketing_prices")
         .eq("product_id", prod.id)
         .gt("stock_quantity", 0)
         .order("size");
@@ -202,8 +204,20 @@ export function VariantSelectionDialog({
       return;
     }
     
+    // Resolve marketing prices
+    let finalPrice = product.price;
+    if (selectedVariant?.marketing_status && selectedVariant.marketing_status.length > 0 && selectedVariant.marketing_prices) {
+      const activeStatus = selectedVariant.marketing_status[0];
+      const promoPrice = selectedVariant.marketing_prices[activeStatus];
+      if (typeof promoPrice === 'number' && promoPrice > 0) {
+        finalPrice = promoPrice;
+      }
+    }
+    
+    const productWithModifiedPrice = { ...product, price: finalPrice };
+
     // Always own stock (partner variants no longer shown here)
-    onConfirm(product, selectedVariant, quantity, false);
+    onConfirm(productWithModifiedPrice, selectedVariant, quantity, false);
     onOpenChange(false);
   };
 

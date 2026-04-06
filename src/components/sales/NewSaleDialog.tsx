@@ -2234,6 +2234,45 @@ export default function NewSaleDialog({
         }
       }
 
+      // Deduct sold products from partner point physical stock ("arara")
+      const applicablePartnerPointId = partnerPointOrderData?.partnerPointId || (manualSaleSource === "partner_point" ? manualPartnerPointId : null);
+      if (applicablePartnerPointId && result?.sale_id) {
+        for (const item of cart) {
+          if (!item.product.id || (item.product as any)._isExternalItem) continue;
+
+          let qtyToDeduct = item.quantity;
+          let query = supabase
+            .from("partner_point_items")
+            .select("id, quantity, status")
+            .eq("partner_point_id", applicablePartnerPointId)
+            .eq("product_id", item.product.id)
+            .in("status", ["allocated", "sold_online", "returning"])
+            .order("allocated_at", { ascending: true });
+
+          if (item.variant?.id) {
+            query = query.eq("variant_id", item.variant.id);
+          } else {
+            query = query.is("variant_id", null);
+          }
+
+          const { data: ppItems } = await query;
+          if (ppItems && ppItems.length > 0) {
+            for (const ppi of ppItems) {
+              if (qtyToDeduct <= 0) break;
+              if (ppi.quantity <= qtyToDeduct) {
+                qtyToDeduct -= ppi.quantity;
+                await supabase.from("partner_point_items").update({ status: "sold_at_location", quantity: 0 }).eq("id", ppi.id);
+              } else {
+                await supabase.from("partner_point_items").update({ quantity: ppi.quantity - qtyToDeduct }).eq("id", ppi.id);
+                qtyToDeduct = 0;
+              }
+            }
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ["partner-point-items"] });
+        queryClient.invalidateQueries({ queryKey: ["partner-point-sales"] });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["registered-customers-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["partner-sales"] });

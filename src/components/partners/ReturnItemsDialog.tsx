@@ -15,7 +15,9 @@ interface AllocatedItem {
   status: string;
   allocated_at: string;
   notes: string | null;
+  variant_id: string | null;
   product?: { name: string; image_url: string | null; price: number };
+  variant?: { size: string };
 }
 
 interface ReturnItemsDialogProps {
@@ -49,19 +51,28 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
       setFetching(true);
       supabase
         .from("partner_point_items")
-        .select("id, product_id, quantity, status, allocated_at, notes")
+        .select("id, product_id, variant_id, quantity, status, allocated_at, notes")
         .eq("partner_point_id", partnerPointId)
         .in("status", ["allocated", "sold_online", "returning"])
         .order("allocated_at", { ascending: false })
         .then(async ({ data }) => {
           if (!data) { setFetching(false); return; }
           const productIds = [...new Set(data.map(i => i.product_id))];
-          const { data: products } = await supabase
-            .from("products")
-            .select("id, name, image_url, price")
-            .in("id", productIds);
+          const variantIds = [...new Set(data.map(i => i.variant_id).filter(Boolean))];
+          
+          const [{ data: products }, { data: variants }] = await Promise.all([
+            supabase.from("products").select("id, name, image_url, price").in("id", productIds),
+            supabase.from("product_variants").select("id, size").in("id", variantIds)
+          ]);
+          
           const productMap = Object.fromEntries((products ?? []).map(p => [p.id, p]));
-          setItems(data.map(i => ({ ...i, product: productMap[i.product_id] })));
+          const variantMap = Object.fromEntries((variants ?? []).map(v => [v.id, v]));
+          
+          setItems(data.map(i => ({ 
+            ...i, 
+            product: productMap[i.product_id],
+            variant: i.variant_id ? variantMap[i.variant_id] : null
+          })));
           setFetching(false);
         });
     } else {
@@ -98,7 +109,7 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
           <DialogTitle>Recolher Peças de {partnerName}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 border rounded-lg">
+        <ScrollArea className="flex-1 max-h-[60vh] h-[500px] border rounded-lg">
           {fetching ? (
             <div className="p-6 text-center text-muted-foreground text-sm">Carregando...</div>
           ) : items.length === 0 ? (
@@ -123,7 +134,10 @@ export function ReturnItemsDialog({ open, onOpenChange, partnerPointId, partnerN
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.product?.name ?? item.product_id}</p>
+                    <p className="text-sm font-medium truncate">
+                      {item.product?.name ?? item.product_id}
+                      {item.variant?.size ? ` - ${item.variant.size}` : ""}
+                    </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <Badge variant={STATUS_COLORS[item.status] as any ?? "outline"} className="text-xs py-0">
                         {STATUS_LABELS[item.status] ?? item.status}
