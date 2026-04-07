@@ -4,7 +4,7 @@ import fs from 'fs';
 const sqlPath = 'C:\\Users\\Team WOD Brasil\\Desktop\\vendaprofit-antigravity\\vendaprofit\\data_import.sql';
 
 const client = new Client({
-  connectionString: 'postgresql://postgres.nkmktefsbvhjexodkbtw:zNftfq4hPR3l00vW@aws-0-sa-east-1.pooler.supabase.com:6543/postgres',
+  connectionString: 'postgresql://postgres.nkmktefsbvhjexodkbtw:t0hs4Apye8Kg2MUq@aws-1-us-east-2.pooler.supabase.com:5432/postgres',
   ssl: { rejectUnauthorized: false }
 });
 

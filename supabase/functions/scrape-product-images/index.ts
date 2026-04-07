@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
     if (!url) {
       return new Response(
         JSON.stringify({ success: false, error: 'URL é obrigatória' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
       console.error('FIRECRAWL_API_KEY not configured');
       return new Response(
         JSON.stringify({ success: false, error: 'Firecrawl não está configurado' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
         : 'Erro de conexão. Tente novamente em alguns segundos.';
       return new Response(
         JSON.stringify({ success: false, error: errorMsg }),
-        { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -305,34 +305,34 @@ Deno.serve(async (req) => {
       if (response.status === 408) {
         return new Response(
           JSON.stringify({ success: false, error: errorDetail || 'Site demorou muito para responder. Tente novamente.' }),
-          { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
       if (response.status === 500) {
         return new Response(
           JSON.stringify({ success: false, error: errorDetail || 'Erro ao processar a página. Verifique se a URL está correta.' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return new Response(
           JSON.stringify({ success: false, error: 'Serviço temporariamente indisponível. Tente novamente em alguns segundos.' }),
-          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ success: false, error: 'Limite de requisições atingido. Aguarde um momento.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
       return new Response(
         JSON.stringify({ success: false, error: errorDetail || `Erro ao acessar a página (${response.status})` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -344,7 +344,7 @@ Deno.serve(async (req) => {
       console.error('Failed to parse JSON response:', jsonError);
       return new Response(
         JSON.stringify({ success: false, error: 'Resposta inválida do serviço de scraping' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -635,7 +635,7 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Erro ao buscar imagens';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

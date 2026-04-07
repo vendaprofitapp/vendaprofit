@@ -16,7 +16,7 @@
      if (!url) {
        return new Response(
          JSON.stringify({ success: false, error: 'URL é obrigatória' }),
-         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
        );
      }
  
@@ -25,7 +25,7 @@
        console.error('FIRECRAWL_API_KEY not configured');
        return new Response(
          JSON.stringify({ success: false, error: 'Serviço de scraping não configurado' }),
-         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
        );
      }
  
@@ -76,7 +76,7 @@
               ? 'Serviço de scraping indisponível. Tente novamente em alguns segundos.' 
               : `Erro ao buscar dados (${response.status})` 
           }),
-          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -87,7 +87,7 @@
         console.error('Failed to parse Firecrawl response:', parseError);
         return new Response(
           JSON.stringify({ success: false, error: 'Resposta inválida do serviço de scraping' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
  
@@ -213,7 +213,7 @@
      const errorMessage = error instanceof Error ? error.message : 'Erro ao processar';
      return new Response(
        JSON.stringify({ success: false, error: errorMessage }),
-       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
      );
    }
  });

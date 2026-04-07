@@ -108,11 +108,9 @@ export function ProductFormDialog({
   const { isTrial, productLimit } = usePlan();
   const [productCount, setProductCount] = useState<number>(0);
   const [saving, setSaving] = useState(false);
-  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
   const [originalVariantCount, setOriginalVariantCount] = useState(0);
 
   // Product-level images
-  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
   const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
 
@@ -140,8 +138,12 @@ export function ProductFormDialog({
   // Only persist for new product creation (not edit/duplicate)
   const shouldPersist = !editingProduct && !duplicatingProduct;
   const persistKey = shouldPersist ? `stock_form_${user?.id || "anon"}` : `stock_form_noop_${Date.now()}`;
+  const variantsPersistKey = shouldPersist ? `stock_variants_${user?.id || "anon"}` : `stock_variants_noop_${Date.now()}`;
+  const imagesPersistKey = shouldPersist ? `stock_images_${user?.id || "anon"}` : `stock_images_noop_${Date.now()}`;
 
   const [form, setForm, clearFormPersistence] = useFormPersistence(persistKey, defaultForm);
+  const [productVariants, setProductVariants, clearVariantsPersistence] = useFormPersistence<ProductVariant[]>(variantsPersistKey, []);
+  const [existingImageUrls, setExistingImageUrls, clearImagesPersistence] = useFormPersistence<string[]>(imagesPersistKey, []);
 
   // --- React Query: suppliers with 5min staleTime ---
   const { data: suppliers = [] } = useQuery({
@@ -276,6 +278,8 @@ export function ProductFormDialog({
       weight_grams: "", width_cm: "", height_cm: "", length_cm: "",
     });
     clearFormPersistence();
+    clearVariantsPersistence();
+    clearImagesPersistence();
     newImagePreviews.forEach(url => URL.revokeObjectURL(url));
     setExistingImageUrls([]);
     setNewImageFiles([]);
@@ -527,25 +531,45 @@ export function ProductFormDialog({
         const existingMap = new Map<string, string>();
         (existingVariants || []).forEach(ev => existingMap.set(ev.size, ev.id));
 
+        // Separate variants into updates vs inserts
+        const toUpdate: { id: string; data: typeof variantsToUpsert[0] }[] = [];
+        const toInsert: typeof variantsToUpsert = [];
+
         for (const variant of variantsToUpsert) {
           const existingId = existingMap.get(variant.size);
           if (existingId) {
-            const { error: updateError } = await supabase.from("product_variants")
-              .update({ stock_quantity: variant.stock_quantity, marketing_status: variant.marketing_status, marketing_prices: variant.marketing_prices, marketing_delivery_days: variant.marketing_delivery_days })
-              .eq("id", existingId);
-            if (updateError) throw updateError;
+            toUpdate.push({ id: existingId, data: variant });
             existingMap.delete(variant.size);
           } else {
-            const { error: insertError } = await supabase.from("product_variants").insert(variant);
-            if (insertError) throw insertError;
+            toInsert.push(variant);
           }
         }
 
+        // Batch update existing variants in parallel
+        if (toUpdate.length > 0) {
+          const updateResults = await Promise.all(
+            toUpdate.map(({ id, data }) =>
+              supabase.from("product_variants")
+                .update({ stock_quantity: data.stock_quantity, marketing_status: data.marketing_status, marketing_prices: data.marketing_prices, marketing_delivery_days: data.marketing_delivery_days })
+                .eq("id", id)
+            )
+          );
+          const firstError = updateResults.find(r => r.error);
+          if (firstError?.error) throw firstError.error;
+        }
+
+        // Batch insert new variants in a single call
+        if (toInsert.length > 0) {
+          const { error: insertError } = await supabase.from("product_variants").insert(toInsert);
+          if (insertError) throw insertError;
+        }
+
+        // Batch delete orphan variants in parallel
         const shouldDeleteOrphans = variantsToUpsert.length > 0 || originalVariantCount === 0;
-        if (shouldDeleteOrphans) {
-          for (const [, variantId] of existingMap) {
-            await supabase.from("product_variants").delete().eq("id", variantId);
-          }
+        if (shouldDeleteOrphans && existingMap.size > 0) {
+          const orphanIds = Array.from(existingMap.values());
+          const { error: deleteError } = await supabase.from("product_variants").delete().in("id", orphanIds);
+          if (deleteError) throw deleteError;
         }
       } else {
         if (variantsToUpsert.length > 0) {
