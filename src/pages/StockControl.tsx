@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useDialogPersistence } from "@/hooks/useDialogPersistence";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLoadMore } from "@/hooks/useLoadMore";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
@@ -123,7 +124,7 @@ export default function StockControl() {
   });
   
   // Product form state
-  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen, closeProductDialog] = useDialogPersistence("product_form");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Import dialog state
@@ -869,8 +870,10 @@ export default function StockControl() {
       <ProductFormDialog
         open={productDialogOpen}
         onOpenChange={(open) => {
-          setProductDialogOpen(open);
-          if (!open) {
+          if (open) {
+            setProductDialogOpen(true);
+          } else {
+            closeProductDialog();
             setEditingProduct(null);
             setDuplicatingProduct(null);
             setInitialProductName("");

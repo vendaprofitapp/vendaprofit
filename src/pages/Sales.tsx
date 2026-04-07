@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useDialogPersistence } from "@/hooks/useDialogPersistence";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLoadMore } from "@/hooks/useLoadMore";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
@@ -88,7 +89,7 @@ export default function Sales() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
-  const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
+  const [isNewSaleOpen, setIsNewSaleOpen, closeNewSale] = useDialogPersistence("new_sale");
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
@@ -443,7 +444,7 @@ export default function Sales() {
       {/* New Sale Dialog */}
       <NewSaleDialog
         open={isNewSaleOpen}
-        onOpenChange={setIsNewSaleOpen}
+        onOpenChange={(v) => { if (!v) closeNewSale(); else setIsNewSaleOpen(true); }}
         voiceCommand={pendingVoiceCommand}
         onVoiceCommandProcessed={() => setPendingVoiceCommand(null)}
         fromDraftId={fromDraftId}
