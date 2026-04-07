@@ -133,7 +133,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   // Filter products - only include those with own available stock (not partner stock)
   // And filter variants to only show those with stock > 0
   const filteredProducts = products
-    .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+    .filter(p => String(p.name || "").toLowerCase().includes(String(productSearch || "").toLowerCase()))
     .map(p => ({
       ...p,
       // Filter variants to only show those with stock > 0

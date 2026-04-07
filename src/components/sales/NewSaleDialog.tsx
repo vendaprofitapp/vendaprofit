@@ -423,7 +423,7 @@ export default function NewSaleDialog({
         const matchedVariant = item.variant_id
           ? allVariants.find((v: any) => v.id === item.variant_id) ?? null
           : item.size
-            ? allVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === (item.size as string | null)?.toLowerCase().trim()) ?? null
+            ? allVariants.find((v: any) => v.product_id === item.product_id && String(v.size || "").toLowerCase().trim() === String(item.size || "").toLowerCase().trim()) ?? null
             : null;
         // Resolve promotional price from variant marketing_prices
         let resolvedPrice = item.price;
@@ -785,22 +785,22 @@ export default function NewSaleDialog({
   // When bazar source is active, filter bazar items instead
   const filteredBazarItems = useMemo(() => {
     if (manualSaleSource !== "bazar" || !debouncedSearch || debouncedSearch.length < 2) return [];
-    const search = debouncedSearch.toLowerCase();
-    return bazarItemsForSale.filter(b => b.title.toLowerCase().includes(search)).slice(0, 30);
+    const search = String(debouncedSearch || "").toLowerCase();
+    return bazarItemsForSale.filter(b => String(b.title || "").toLowerCase().includes(search)).slice(0, 30);
   }, [bazarItemsForSale, debouncedSearch, manualSaleSource]);
 
   const filteredOwnProducts = useMemo(() => {
     if (manualSaleSource === "bazar") return []; // Block normal products in bazar mode
     if (!debouncedSearch || debouncedSearch.length < 2) return [];
-    const search = debouncedSearch.toLowerCase();
-    return ownProducts.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
+    const search = String(debouncedSearch || "").toLowerCase();
+    return ownProducts.filter(p => String(p.name || "").toLowerCase().includes(search)).slice(0, 30);
   }, [ownProducts, debouncedSearch, manualSaleSource]);
 
   const filteredPartnerProducts = useMemo(() => {
     if (manualSaleSource === "bazar") return []; // Block partner products in bazar mode
     if (!debouncedSearch || debouncedSearch.length < 2) return [];
-    const search = debouncedSearch.toLowerCase();
-    return partnerProductsForList.filter(p => p.name.toLowerCase().includes(search)).slice(0, 30);
+    const search = String(debouncedSearch || "").toLowerCase();
+    return partnerProductsForList.filter(p => String(p.name || "").toLowerCase().includes(search)).slice(0, 30);
   }, [partnerProductsForList, debouncedSearch, manualSaleSource]);
 
   const filteredHubProducts = useMemo(() => {
@@ -809,8 +809,8 @@ export default function NewSaleDialog({
       // Show all HUB products when no search (especially important for sellers with no own stock)
       return hubProductsForSale.slice(0, 50);
     }
-    const search = debouncedSearch.toLowerCase();
-    return hubProductsForSale.filter(p => p.name.toLowerCase().includes(search)).slice(0, 50);
+    const search = String(debouncedSearch || "").toLowerCase();
+    return hubProductsForSale.filter(p => String(p.name || "").toLowerCase().includes(search)).slice(0, 50);
   }, [hubProductsForSale, debouncedSearch, manualSaleSource]);
 
   const combinedProductsList = useMemo(() => {
@@ -947,7 +947,7 @@ export default function NewSaleDialog({
     setProductSearch(searchValue);
     if (searchValue.length < 2) return;
     const forcePartner = !!opts?.forcePartner;
-    const ownMatch = ownProducts.filter(p => p.name.toLowerCase().includes(searchValue.toLowerCase()));
+    const ownMatch = ownProducts.filter(p => String(p.name || "").toLowerCase().includes(String(searchValue || "").toLowerCase()));
     if (forcePartner || ownMatch.length === 0) {
       setSearchedProductName(searchValue);
       const partnerResults = await searchPartnerProducts(searchValue);
@@ -965,7 +965,7 @@ export default function NewSaleDialog({
   // Auto partner search effect
   useEffect(() => {
     if (productSearch.length < 2) { setAutoPartnerSearching(false); return; }
-    const ownMatch = ownProducts.some(p => p.name.toLowerCase().includes(productSearch.toLowerCase()));
+    const ownMatch = ownProducts.some(p => String(p.name || "").toLowerCase().includes(String(productSearch || "").toLowerCase()));
     if (ownMatch) return;
     if (productSearch === autoPartnerLastQuery) return;
     if (autoPartnerSearching) return;
@@ -1173,7 +1173,7 @@ export default function NewSaleDialog({
         } as any;
         // Resolve variant by selected_size
         const matchedVariant = sci.selected_size
-          ? importedVariants.find((v: any) => v.product_id === sci.product_id && v.size?.toLowerCase().trim() === sci.selected_size?.toLowerCase().trim()) ?? null
+          ? importedVariants.find((v: any) => v.product_id === sci.product_id && String(v.size || "").toLowerCase().trim() === String(sci.selected_size || "").toLowerCase().trim()) ?? null
           : null;
         items.push({ product, quantity: sci.quantity, isPartnerStock: sci.source === "partner", ownerName: sci.source === "partner" ? "Parceira" : undefined, variant: matchedVariant });
       }
@@ -1220,7 +1220,7 @@ export default function NewSaleDialog({
         const matchedVariant = item.variant_id
           ? consignVariants.find((v: any) => v.id === item.variant_id) ?? null
           : item.size
-            ? consignVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.size?.toLowerCase().trim()) ?? null
+            ? consignVariants.find((v: any) => v.product_id === item.product_id && String(v.size || "").toLowerCase().trim() === String(item.size || "").toLowerCase().trim()) ?? null
             : null;
 
         // Resolve promotional price from variant (preferred) or product
@@ -1390,7 +1390,7 @@ export default function NewSaleDialog({
         // Regular product — resolve variant by selected_size
         const dbProduct = products.find(p => p.id === item.product_id);
         const matchedVariant = item.selected_size
-          ? variants.find(v => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          ? variants.find(v => v.product_id === item.product_id && String(v.size || "").toLowerCase().trim() === String(item.selected_size || "").toLowerCase().trim()) ?? null
           : null;
 
         const product: Product = dbProduct
@@ -1542,7 +1542,7 @@ export default function NewSaleDialog({
               _isExternalItem: true,
             } as any;
         const matchedVariant = item.selected_size
-          ? csVariants.find((v: any) => v.product_id === item.product_id && v.size?.toLowerCase().trim() === item.selected_size?.toLowerCase().trim()) ?? null
+          ? csVariants.find((v: any) => v.product_id === item.product_id && String(v.size || "").toLowerCase().trim() === String(item.selected_size || "").toLowerCase().trim()) ?? null
           : null;
         return { product, quantity: item.quantity, isPartnerStock: false, variant: matchedVariant };
       });
@@ -2373,7 +2373,7 @@ export default function NewSaleDialog({
     if (!voiceCommand || !open) return;
     if (voiceCommand.customerName) setCustomerName(voiceCommand.customerName);
     if (voiceCommand.paymentMethod) {
-      const matchedMethod = customPaymentMethods.find(m => m.name.toLowerCase().includes(voiceCommand.paymentMethod?.toLowerCase() || ""));
+      const matchedMethod = customPaymentMethods.find(m => String(m.name || "").toLowerCase().includes(String(voiceCommand.paymentMethod || "").toLowerCase()));
       if (matchedMethod) setSelectedPaymentMethodId(matchedMethod.id);
     }
     setVoiceSaleCommand(voiceCommand);
