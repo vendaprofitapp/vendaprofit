@@ -128,7 +128,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   });
 
   const selectedCustomer = customers.find(c => c.id === customerId);
-  const customerSize = selectedCustomer?.size?.toUpperCase()?.trim() || null;
+  const customerSize = selectedCustomer?.size ? String(selectedCustomer.size).toUpperCase().trim() : null;
 
   // Filter products - only include those with own available stock (not partner stock)
   // And filter variants to only show those with stock > 0
@@ -149,7 +149,7 @@ export function NewConsignmentDialog({ open, onOpenChange, onSuccess }: NewConsi
   // Helper to check if a size matches customer's preferred size
   const matchesCustomerSize = (size: string | null): boolean => {
     if (!customerSize || !size) return false;
-    return size.toUpperCase().trim() === customerSize;
+    return String(size).toUpperCase().trim() === customerSize;
   };
 
   // Sort products: customer size matches first if filter is enabled
