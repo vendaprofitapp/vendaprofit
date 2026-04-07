@@ -69,10 +69,13 @@ export default function Dashboard() {
   const { data: sales = [] } = useQuery({
     queryKey: ['dashboard-sales', user?.id],
     queryFn: async () => {
+      // Filtrar apenas últimos 30 dias para não engasgar com histórico total
+      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
       const { data, error } = await supabase
         .from('sales')
         .select('*, sale_items(*)')
         .eq('owner_id', user?.id)
+        .gte('created_at', thirtyDaysAgo)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -97,10 +100,12 @@ export default function Dashboard() {
   const { data: hubCommissions = [] } = useQuery({
     queryKey: ['dashboard-hub-commissions', user?.id],
     queryFn: async () => {
+      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
       const { data } = await supabase
         .from('hub_sale_splits')
         .select('commission_amount, owner_amount, seller_amount, created_at')
-        .eq('seller_id', user?.id);
+        .eq('seller_id', user?.id)
+        .gte('created_at', thirtyDaysAgo);
       return data ?? [];
     },
     enabled: !!user?.id,
