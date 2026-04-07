@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   }
 
   const origin = url.origin.includes("supabase")
-    ? "https://vendaprofit.lovable.app"
+    ? "https://vendaprofit.com.br"
     : url.origin;
   const storeLink = `${origin}/loja/${store.store_slug}`;
 

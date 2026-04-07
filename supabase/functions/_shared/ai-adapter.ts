@@ -32,11 +32,6 @@ export function getAIConfig(req: Request): AIConfig {
 
   // Fallback to system keys
   const systemGeminiKey = Deno.env.get("GOOGLE_GEMINI_API_KEY");
-  const systemLovableKey = Deno.env.get("LOVABLE_API_KEY");
-
-  if (systemLovableKey) {
-    return { provider: "gemini", apiKey: systemLovableKey };
-  }
 
   if (systemGeminiKey) {
     return { provider: "gemini", apiKey: systemGeminiKey };
@@ -45,27 +40,11 @@ export function getAIConfig(req: Request): AIConfig {
   throw new Error("Nenhuma chave de API encontrada. Configure sua chave nas configurações.");
 }
 
-// Call Gemini API (via Lovable gateway or direct)
+// Call Gemini API directly
 export async function callGeminiChat(
   apiKey: string, 
-  messages: ChatMessage[],
-  useLovableGateway: boolean = true
+  messages: ChatMessage[]
 ): Promise<Response> {
-  if (useLovableGateway) {
-    return fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages,
-      }),
-    });
-  }
-
-  // Direct Gemini API call
   const systemMessage = messages.find(m => m.role === "system");
   const userMessage = messages.find(m => m.role === "user");
   const prompt = `${systemMessage?.content || ""}\n\n${typeof userMessage?.content === "string" ? userMessage.content : ""}`;
@@ -105,60 +84,48 @@ export function parseOpenAIResponse(data: any): string | null {
   return data.choices?.[0]?.message?.content || null;
 }
 
+// Keep for backward compat — same as parseOpenAIResponse
 export function parseLovableResponse(data: any): string | null {
   return data.choices?.[0]?.message?.content || null;
 }
 
-// Audio transcription via Gemini
+// Audio transcription via Gemini (direct API)
 export async function transcribeWithGemini(
   audioBase64: string,
   mimeType: string,
-  apiKey: string,
-  useLovableGateway: boolean = true
+  apiKey: string
 ): Promise<TranscriptionResult> {
   const systemPrompt = `Você é um assistente de transcrição de áudio em português brasileiro. 
 Sua tarefa é transcrever exatamente o que foi dito no áudio.
 Retorne APENAS o texto transcrito, sem explicações adicionais.
 Se não conseguir entender o áudio, retorne "AUDIO_UNCLEAR".`;
 
-  if (useLovableGateway) {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Transcreva o áudio a seguir para texto em português:" },
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${audioBase64}` } }
-            ]
-          }
-        ],
-      }),
-    });
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: `${systemPrompt}\n\nTranscreva o áudio a seguir para texto em português:` },
+          { inline_data: { mime_type: mimeType, data: audioBase64 } }
+        ]
+      }],
+      generationConfig: { temperature: 0.1 }
+    }),
+  });
 
-    if (!response.ok) {
-      return { error: `API error: ${response.status}` };
-    }
-
-    const data = await response.json();
-    const transcription = parseLovableResponse(data)?.trim();
-
-    if (!transcription || transcription === "AUDIO_UNCLEAR") {
-      return { error: "Não foi possível entender o áudio" };
-    }
-
-    return { transcription };
+  if (!response.ok) {
+    return { error: `API error: ${response.status}` };
   }
 
-  // Direct Gemini call would go here if needed
-  return { error: "Direct Gemini transcription not implemented" };
+  const data = await response.json();
+  const transcription = parseGeminiResponse(data)?.trim();
+
+  if (!transcription || transcription === "AUDIO_UNCLEAR") {
+    return { error: "Não foi possível entender o áudio" };
+  }
+
+  return { transcription };
 }
 
 // Audio transcription via OpenAI Whisper

@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const storeSlug = store?.store_slug || "";
-    const origin = "https://vendaprofit.lovable.app";
+    const origin = "https://vendaprofit.com.br";
     const targetUrl = product_id
       ? `${origin}/loja/${storeSlug}?utm_source=${platform}&utm_campaign=vp_boost&product=${product_id}`
       : `${origin}/loja/${storeSlug}?utm_source=${platform}&utm_campaign=vp_boost`;

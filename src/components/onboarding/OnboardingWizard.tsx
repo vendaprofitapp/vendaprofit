@@ -271,7 +271,7 @@ export function OnboardingWizard({ open, onComplete, onDismiss, existingProfile 
             <div className="rounded-lg border bg-muted/50 p-4">
               <p className="text-sm text-muted-foreground">Sua loja ficará disponível em:</p>
               <p className="text-sm font-medium text-primary mt-1">
-                vendaprofit.lovable.app/loja/{slug || slugify(storeName) || "sua-loja"}
+                vendaprofit.com.br/{slug || slugify(storeName) || "sua-loja"}
               </p>
             </div>
           </div>
