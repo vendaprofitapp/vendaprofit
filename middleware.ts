@@ -21,10 +21,9 @@ const BOT_AGENTS = [
 // Rotas de app que NUNCA devem ser interceptadas
 const PASS_THROUGH_PREFIXES = [
   "/auth", "/stock", "/sales", "/customers", "/reports", "/settings",
-  "/financial", "/marketing", "/partner-points", "/orders", "/consignments",
   "/consortiums", "/evento", "/admin", "/b2b-orders", "/analytics",
   "/my-store", "/catalog-orders", "/tutorial", "/hub-", "/plano-expirado",
-  "/p/", "/contrato/", "/bag/", "/bazar/", "/_", "/api",
+  "/p/", "/contrato/", "/bazar/", "/_", "/api",
   "/favicon", "/icon", "/manifest", "/assets",
 ];
 
@@ -92,31 +91,66 @@ export default async function middleware(req: Request): Promise<Response> {
     });
   }
 
-  // Extrai slug (/nome-da-loja → "nome-da-loja")
-  const slug = pathname.replace(/^\//, "").split("/")[0];
-  if (!slug || slug.length < 2) {
-    return new Response(null, { status: 200, headers: { "x-middleware-next": "1" } });
-  }
-
   try {
-    const apiUrl = `${SUPABASE_URL}/rest/v1/store_settings?store_slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=store_name,store_description,logo_url,banner_url,primary_color&limit=1`;
+    let name = "Venda PROFIT";
+    let description = "Gestão inteligente de vendas e estoque";
+    let image = "https://vendaprofit.com.br/favicon.png";
+    let color = "#DA2576";
+    let ogUrl = `https://vendaprofit.com.br${pathname}`;
 
-    const res = await fetch(apiUrl, {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-    });
+    if (pathname.startsWith("/bag/")) {
+      // Logic for /bag/:token
+      const token = pathname.replace("/bag/", "").split("/")[0];
+      if (token) {
+        // 1. Get consignment to find seller_id
+        const consUrl = `${SUPABASE_URL}/rest/v1/consignments?access_token=eq.${encodeURIComponent(token)}&select=seller_id&limit=1`;
+        const consRes = await fetch(consUrl, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+        const consRows = await consRes.json();
+        const sellerId = consRows?.[0]?.seller_id;
 
-    const rows: any[] = await res.json();
-    const store = rows?.[0];
+        if (sellerId) {
+          // 2. Get store settings for that seller
+          const storeUrl = `${SUPABASE_URL}/rest/v1/store_settings?owner_id=eq.${sellerId}&select=store_name,logo_url,banner_url,primary_color&limit=1`;
+          const storeRes = await fetch(storeUrl, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+          });
+          const storeRows = await storeRes.json();
+          const store = storeRows?.[0];
 
-    const name = store?.store_name || "Venda PROFIT";
-    const description = store?.store_description || `Confira o catálogo de ${name}`;
-    const image = store?.logo_url || store?.banner_url || "https://vendaprofit.com.br/favicon.png";
-    const color = store?.primary_color || "#DA2576";
+          if (store) {
+            name = store.store_name ? `Bolsa Consignada - ${store.store_name}` : "Bolsa Consignada";
+            description = `Sua bolsa consignada está pronta para você conferir!`;
+            image = store.logo_url || store.banner_url || image;
+            color = store.primary_color || color;
+          } else {
+            name = "Bolsa Consignada";
+            description = "Sua bolsa consignada da Venda PROFIT está pronta para você conferir!";
+          }
+        }
+      }
+    } else {
+      // Logic for /:slug
+      const slug = pathname.replace(/^\//, "").split("/")[0];
+      if (slug && slug.length >= 2) {
+        const apiUrl = `${SUPABASE_URL}/rest/v1/store_settings?store_slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=store_name,store_description,logo_url,banner_url,primary_color&limit=1`;
+        const res = await fetch(apiUrl, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+        const rows = await res.json();
+        const store = rows?.[0];
 
-    return new Response(buildHtml(slug, name, description, image, color), {
+        if (store) {
+          name = store.store_name || name;
+          description = store.store_description || `Confira o catálogo de ${name}`;
+          image = store.logo_url || store.banner_url || image;
+          color = store.primary_color || color;
+        }
+      }
+    }
+
+    return new Response(buildHtml(pathname.replace(/^\//, ""), name, description, image, color), {
       status: 200,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
