@@ -533,6 +533,18 @@ export default function NewSaleDialog({
     enabled: !!user && open,
   });
 
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && open,
+  });
+
   const { data: userGroupsData = [] } = useQuery({
     queryKey: ["user-groups-with-direct"],
     queryFn: async () => {
