@@ -504,18 +504,6 @@ export default function NewSaleDialog({
     enabled: !!user && open,
   });
 
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["profiles"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, email");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user && open,
-  });
-
   const { data: shippingProfile } = useQuery({
     queryKey: ["shipping-profile", user?.id],
     queryFn: async () => {
@@ -567,7 +555,7 @@ export default function NewSaleDialog({
   );
 
   const { data: partnerProductsForList = [] } = useQuery({
-    queryKey: ["partner-products-for-sale-list", directGroupIds, profiles],
+    queryKey: ["partner-products-for-sale-list", directGroupIds],
     queryFn: async () => {
       if (directGroupIds.length === 0) return [];
       const { data, error } = await supabase
@@ -579,17 +567,36 @@ export default function NewSaleDialog({
         .gt("products.stock_quantity", 0);
       if (error) throw error;
 
+      // Collect unique owner_ids to fetch only what is needed
       const uniqueById = new Map<string, any>();
+      const ownerIds = new Set<string>();
       for (const row of data || []) {
         const product = (row as any).product;
         if (product?.id && !uniqueById.has(product.id)) {
-          const owner = profiles.find(p => p.id === product.owner_id);
-          uniqueById.set(product.id, { ...product, isPartner: true, ownerName: owner?.full_name || "Parceira" });
+          uniqueById.set(product.id, product);
+          if (product.owner_id) ownerIds.add(product.owner_id);
         }
       }
-      return Array.from(uniqueById.values()) as (Product & { isPartner: boolean; ownerName: string })[];
+
+      // Fetch only the specific owner profiles needed (not all profiles)
+      let ownerNames: Record<string, string> = {};
+      if (ownerIds.size > 0) {
+        const { data: ownersData } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", Array.from(ownerIds));
+        ownerNames = Object.fromEntries(
+          (ownersData || []).map(p => [p.id, p.full_name || "Parceira"])
+        );
+      }
+
+      return Array.from(uniqueById.values()).map(product => ({
+        ...product,
+        isPartner: true,
+        ownerName: ownerNames[product.owner_id] || "Parceira",
+      })) as (Product & { isPartner: boolean; ownerName: string })[];
     },
-    enabled: !!user && open && directGroupIds.length > 0 && profiles.length > 0,
+    enabled: !!user && open && directGroupIds.length > 0,
   });
 
   // ─── Partner Points for manual sale source selector ────────
