@@ -194,8 +194,8 @@ export default function Sales() {
 
   const filteredSales = sales.filter(
     (sale) =>
-      sale.id.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      (sale.customer_name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ?? false)
+      String(sale.id || "").toLowerCase().includes(String(debouncedSearch || "").toLowerCase()) ||
+      (sale.customer_name ? String(sale.customer_name).toLowerCase().includes(String(debouncedSearch || "").toLowerCase()) : false)
   );
 
   const { visibleItems: visibleSales, hasMore, loadMore, totalCount } = useLoadMore(filteredSales);
