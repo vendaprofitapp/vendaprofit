@@ -25,7 +25,7 @@ Para cada produto encontrado, extraia:
 - name: nome do produto COM a cor incluída, SEM o tamanho (ex: "TOP CAROL VERMELHO")
 - color: cor extraída (ex: "VERMELHO") - será usada como color_label do produto
 - size: tamanho extraído (ex: "G", "38", etc.)
-- cost_price: preço de custo/unitário (apenas números, sem símbolos de moeda)
+- cost_price: preço de custo/unitário (Obrigatório usar ponto '.' como decimal, ex: 35.90. NÃO USE VÍRGULA '35,90')
 - quantity: quantidade (apenas números)
 - supplier: nome do fornecedor/empresa emissora da nota
 - original_name: nome original completo como está na nota (para referência)
@@ -69,13 +69,10 @@ async function callLovableAI(imageBase64: string, mimeType: string, apiKey: stri
   });
 }
 
-async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: string) {
-  console.log("Using Gemini direct API with gemini-2.0-flash");
+async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: string, model: string = "gemini-2.5-flash") {
+  console.log(`Using Gemini direct API with ${model}`);
   
-  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    const requestBody: Record<string, unknown> = {
       contents: [{
         parts: [
           { text: INVOICE_PROMPT },
@@ -83,11 +80,18 @@ async function callGeminiDirect(imageBase64: string, mimeType: string, apiKey: s
         ]
       }],
       generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: 0.1
+        maxOutputTokens: 65536,
+        temperature: 0.1,
+        // Disable thinking on 2.5 models to prevent token budget exhaustion
+        ...(model.startsWith("gemini-2.5") ? { thinking_config: { thinking_budget: 0 } } : {})
       }
-    }),
-  });
+    };
+    
+    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
 }
 
 async function callOpenAI(imageBase64: string, mimeType: string, apiKey: string) {
@@ -113,9 +117,77 @@ async function callOpenAI(imageBase64: string, mimeType: string, apiKey: string)
   });
 }
 
+function fixBrazilianDecimals(jsonStr: string): string {
+  // Fix Brazilian decimal commas in numeric values (e.g. 79,90 → 79.90)
+  return jsonStr.replace(/:\s*(\d+),(\d{1,2})(\s*[,}\]\r\n])/g, ': $1.$2$3');
+}
+
+function fixTruncatedJson(jsonStr: string): string {
+  // If JSON was truncated mid-generation, try to close it properly
+  let fixed = jsonStr.trim();
+  
+  // Remove trailing incomplete key-value (e.g. '"name": "BLUSA RO' )
+  fixed = fixed.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, '');
+  fixed = fixed.replace(/,\s*"[^"]*"\s*:\s*$/, '');
+  fixed = fixed.replace(/,\s*"[^"]*$/, '');
+  // Remove trailing comma
+  fixed = fixed.replace(/,\s*$/, '');
+  
+  // Count open/close braces and brackets
+  const openBraces = (fixed.match(/\{/g) || []).length;
+  const closeBraces = (fixed.match(/\}/g) || []).length;
+  const openBrackets = (fixed.match(/\[/g) || []).length;
+  const closeBrackets = (fixed.match(/\]/g) || []).length;
+  
+  // Close any open brackets and braces
+  for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+  for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+  
+  return fixed;
+}
+
 function parseAIResponse(content: string) {
-  const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleanContent);
+  let cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  
+  // Fix missing array commas: }{ → },{  
+  cleanContent = cleanContent.replace(/\}\s*\{/g, '},{');
+  
+  // Fix Brazilian decimal commas BEFORE parsing
+  cleanContent = fixBrazilianDecimals(cleanContent);
+  
+  try {
+    return JSON.parse(cleanContent);
+  } catch (e) {
+    console.error("First parse failed. Error:", e, "Content preview:", cleanContent.substring(0, 500));
+    
+    // Try fixing truncated JSON
+    try {
+      const truncFixed = fixTruncatedJson(cleanContent);
+      console.log("Trying truncation fix...");
+      return JSON.parse(truncFixed);
+    } catch (e2) {
+      // ignore
+    }
+    
+    // Try to extract the outermost JSON object
+    const match = cleanContent.match(/\{[\s\S]*\}/);
+    if (match) {
+      let extracted = match[0];
+      extracted = extracted.replace(/\}\s*\{/g, '},{');
+      extracted = fixBrazilianDecimals(extracted);
+      try {
+        return JSON.parse(extracted);
+      } catch (e3) {
+        // Try truncation fix on extracted
+        try {
+          return JSON.parse(fixTruncatedJson(extracted));
+        } catch (e4) {
+          console.error("All parse attempts failed");
+        }
+      }
+    }
+    throw e;
+  }
 }
 
 serve(async (req) => {
@@ -146,7 +218,12 @@ serve(async (req) => {
         if (userProvider === "openai") {
           response = await callOpenAI(imageBase64, mimeType, userKey);
         } else {
-          response = await callGeminiDirect(imageBase64, mimeType, userKey);
+          response = await callGeminiDirect(imageBase64, mimeType, userKey, "gemini-2.5-flash");
+          // Internal fallback for user key
+          if (!response.ok && (response.status === 503 || response.status === 429)) {
+            console.log("User key hit 503/429 on 2.5, falling back to 1.5-pro");
+            response = await callGeminiDirect(imageBase64, mimeType, userKey, "gemini-1.5-pro");
+          }
         }
 
         if (response.ok) {
@@ -177,11 +254,12 @@ serve(async (req) => {
       }
     }
 
-    // System keys - try Gemini first (user's paid key), then Lovable AI as fallback
+    // System keys - try Gemini first (user's paid key), then OpenAI, then Lovable AI as fallback
     const GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
-    if (!GEMINI_API_KEY && !LOVABLE_API_KEY) {
+    if (!GEMINI_API_KEY && !LOVABLE_API_KEY && !OPENAI_API_KEY) {
       console.error('No API key configured');
       return new Response(
         JSON.stringify({ success: false, error: 'Serviço de IA não configurado.' }),
@@ -196,7 +274,18 @@ serve(async (req) => {
       console.log('Using paid Gemini API key...');
       
       try {
-        const response = await callGeminiDirect(imageBase64, mimeType, GEMINI_API_KEY);
+        let response = await callGeminiDirect(imageBase64, mimeType, GEMINI_API_KEY, "gemini-2.5-flash");
+        
+        // internal fallback to 1.5-pro if 503/429
+        if (!response.ok && (response.status === 503 || response.status === 429)) {
+          console.log('Gemini 2.5 congested. Falling back to Gemini 1.5 Pro...');
+          response = await callGeminiDirect(imageBase64, mimeType, GEMINI_API_KEY, "gemini-1.5-pro");
+          
+          if (!response.ok && (response.status === 503 || response.status === 429)) {
+             console.log('Gemini 1.5 Pro also congested. Falling back to Gemini 1.5 Flash...');
+             response = await callGeminiDirect(imageBase64, mimeType, GEMINI_API_KEY, "gemini-1.5-flash");
+          }
+        }
         
         if (response.ok) {
           const data = await response.json();
@@ -215,19 +304,66 @@ serve(async (req) => {
           const errorText = await response.text();
           console.error('Gemini API error:', response.status, errorText);
           
-          // If rate limited, try Lovable AI
-          if (response.status === 429 && LOVABLE_API_KEY) {
-            console.log('Gemini rate limited, trying Lovable AI...');
-          } else if (!LOVABLE_API_KEY) {
+          // If it fails with ANY error (like 503 or 429) and we have fallback keys, just continue to fallbacks
+          if (!OPENAI_API_KEY && !LOVABLE_API_KEY) {
             return new Response(
               JSON.stringify({ success: false, error: `Gemini Error ${response.status}: ${errorText}` }),
               { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
+          } else {
+            console.log('Gemini failed, trying fallback options...');
           }
         }
       } catch (geminiError) {
         console.error('Gemini error:', geminiError);
-        // Continue to Lovable AI fallback
+        if (!OPENAI_API_KEY && !LOVABLE_API_KEY) {
+          const errorMessage = geminiError instanceof Error ? geminiError.message : 'Erro na API do Gemini';
+          return new Response(
+            JSON.stringify({ success: false, error: `Falha na leitura: A IA retornou um formato inválido (${errorMessage}). Tente tirar a foto mais de perto.` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+
+    // Fallback to OpenAI API
+    if (OPENAI_API_KEY) {
+      console.log('Using OpenAI API as fallback...');
+      
+      try {
+        const response = await callOpenAI(imageBase64, mimeType, OPENAI_API_KEY);
+        
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+          
+          if (content) {
+            console.log('OpenAI response received, parsing...');
+            const parsedData = parseAIResponse(content);
+            
+            return new Response(
+              JSON.stringify({ success: true, data: parsedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('OpenAI API error:', response.status, errorText);
+          if (!LOVABLE_API_KEY) {
+            return new Response(
+              JSON.stringify({ success: false, error: `OpenAI Error ${response.status}: ${errorText}` }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      } catch (openaiError) {
+        console.error('OpenAI error:', openaiError);
+        if (!LOVABLE_API_KEY) {
+          return new Response(
+            JSON.stringify({ success: false, error: `Erro na leitura (OpenAI): ${openaiError}` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
