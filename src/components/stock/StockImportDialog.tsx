@@ -734,8 +734,10 @@ export function StockImportDialog({ open, onOpenChange, onImportComplete }: Stoc
         return;
       }
 
-      const delimiter = text.includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+      // Detect delimiter: Tab > Semicolon (Brazilian Excel) > Comma
+      const delimiter = text.includes('\t') ? '\t' : (text.includes(';') ? ';' : ',');
+      console.log(`CSV delimiter detected: "${delimiter === '\t' ? 'TAB' : delimiter}"`);
+      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
       
       const nameIdx = headers.findIndex(h => h.includes('nome') || h.includes('name') || h.includes('produto'));
       // SKU column removed - we no longer use SKU
