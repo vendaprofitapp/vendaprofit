@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useDialogPersistence } from "@/hooks/useDialogPersistence";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLoadMore } from "@/hooks/useLoadMore";
@@ -313,16 +313,16 @@ export default function StockControl() {
     setProductDialogOpen(true);
   };
 
-  // Bulk selection handlers
-  const toggleSelectAll = useCallback(() => {
+  // Bulk selection handlers (plain functions to avoid TDZ with filteredProducts useMemo)
+  const toggleSelectAll = () => {
     if (selectedIds.size === filteredProducts.length) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filteredProducts.map(p => p.id)));
     }
-  }, [filteredProducts, selectedIds.size]);
+  };
 
-  const toggleSelectProduct = useCallback((productId: string) => {
+  const toggleSelectProduct = (productId: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(productId)) {
@@ -332,11 +332,11 @@ export default function StockControl() {
       }
       return next;
     });
-  }, []);
+  };
 
-  const clearSelection = useCallback(() => {
+  const clearSelection = () => {
     setSelectedIds(new Set());
-  }, []);
+  };
 
   // Bulk delete
   const handleBulkDelete = async () => {
