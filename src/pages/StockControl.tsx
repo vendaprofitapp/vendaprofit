@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useDialogPersistence } from "@/hooks/useDialogPersistence";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLoadMore } from "@/hooks/useLoadMore";
@@ -6,8 +6,10 @@ import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { 
   Plus, Search, Edit, Trash2, 
-  ArrowRightLeft, Upload, Package, Copy, Filter, Globe
+  ArrowRightLeft, Upload, Package, Copy, Filter, Globe,
+  CheckSquare, X, Tag, DollarSign, PackageMinus
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +146,16 @@ export default function StockControl() {
   
   // Duplicate product state
   const [duplicatingProduct, setDuplicatingProduct] = useState<Product | null>(null);
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkCategoryDialogOpen, setBulkCategoryDialogOpen] = useState(false);
+  const [bulkPriceDialogOpen, setBulkPriceDialogOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkSubcategory, setBulkSubcategory] = useState("");
+  const [bulkPriceMode, setBulkPriceMode] = useState<"percent" | "fixed">("percent");
+  const [bulkPriceValue, setBulkPriceValue] = useState("");
+  const [bulkPriceField, setBulkPriceField] = useState<"price" | "cost_price">("price");
 
   // Voice command hook
   const {
@@ -299,6 +311,141 @@ export default function StockControl() {
     setEditingProduct(null);
     setInitialProductName("");
     setProductDialogOpen(true);
+  };
+
+  // Bulk selection handlers
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredProducts.map(p => p.id)));
+    }
+  }, [filteredProducts, selectedIds.size]);
+
+  const toggleSelectProduct = useCallback((productId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    if (!confirm(`Tem certeza que deseja excluir ${selectedIds.size} produto(s)? Esta ação não pode ser desfeita.`)) return;
+    
+    const ids = Array.from(selectedIds);
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .in("id", ids);
+
+    if (error) {
+      toast.error("Erro ao excluir produtos");
+    } else {
+      toast.success(`${ids.length} produto(s) excluído(s)!`);
+      clearSelection();
+      fetchProducts();
+    }
+  };
+
+  // Bulk category update
+  const handleBulkCategoryUpdate = async () => {
+    if (!bulkCategory) {
+      toast.error("Selecione uma categoria");
+      return;
+    }
+
+    const ids = Array.from(selectedIds);
+    const updateData: Record<string, string> = { 
+      main_category: bulkCategory, 
+      category: bulkCategory 
+    };
+    if (bulkSubcategory) updateData.subcategory = bulkSubcategory;
+
+    const { error } = await supabase
+      .from("products")
+      .update(updateData)
+      .in("id", ids);
+
+    if (error) {
+      toast.error("Erro ao atualizar categoria");
+    } else {
+      toast.success(`Categoria atualizada em ${ids.length} produto(s)!`);
+      setBulkCategoryDialogOpen(false);
+      setBulkCategory("");
+      setBulkSubcategory("");
+      clearSelection();
+      fetchProducts();
+    }
+  };
+
+  // Bulk price update
+  const handleBulkPriceUpdate = async () => {
+    const value = parseFloat(bulkPriceValue);
+    if (isNaN(value) || value === 0) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+
+    const ids = Array.from(selectedIds);
+    const selectedProducts = products.filter(p => ids.includes(p.id));
+    let successCount = 0;
+
+    for (const product of selectedProducts) {
+      const currentPrice = bulkPriceField === "price" ? product.price : (product.cost_price || 0);
+      const newPrice = bulkPriceMode === "percent" 
+        ? currentPrice * (1 + value / 100)
+        : value;
+
+      const { error } = await supabase
+        .from("products")
+        .update({ [bulkPriceField]: Math.max(0, parseFloat(newPrice.toFixed(2))) })
+        .eq("id", product.id);
+
+      if (!error) successCount++;
+    }
+
+    toast.success(`Preço atualizado em ${successCount} produto(s)!`);
+    setBulkPriceDialogOpen(false);
+    setBulkPriceValue("");
+    clearSelection();
+    fetchProducts();
+  };
+
+  // Bulk zero stock
+  const handleBulkZeroStock = async () => {
+    if (!confirm(`Tem certeza que deseja ZERAR o estoque de ${selectedIds.size} produto(s)?`)) return;
+    
+    const ids = Array.from(selectedIds);
+    
+    // Zero main product stock
+    const { error: mainError } = await supabase
+      .from("products")
+      .update({ stock_quantity: 0 })
+      .in("id", ids);
+
+    // Zero variant stock too
+    const { error: variantError } = await supabase
+      .from("product_variants")
+      .update({ stock_quantity: 0 })
+      .in("product_id", ids);
+
+    if (mainError || variantError) {
+      toast.error("Erro ao zerar estoque");
+    } else {
+      toast.success(`Estoque zerado em ${ids.length} produto(s)!`);
+      clearSelection();
+      fetchProducts();
+    }
   };
 
   const handleRequestProduct = async () => {
@@ -622,6 +769,13 @@ export default function StockControl() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox 
+                      checked={filteredProducts.length > 0 && selectedIds.size === filteredProducts.length}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Selecionar todos"
+                    />
+                  </TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead className="hidden md:table-cell">Categoria</TableHead>
                   <TableHead className="hidden sm:table-cell">Tamanho</TableHead>
@@ -635,13 +789,13 @@ export default function StockControl() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       Carregando...
                     </TableCell>
                   </TableRow>
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       Nenhum produto encontrado
                     </TableCell>
                   </TableRow>
@@ -649,7 +803,14 @@ export default function StockControl() {
                   visibleProducts.map((product) => {
                     const status = getStockStatus(product.stock_quantity, product.min_stock_level);
                     return (
-                      <TableRow key={product.id}>
+                      <TableRow key={product.id} className={selectedIds.has(product.id) ? "bg-primary/5" : ""}>
+                        <TableCell className="w-10">
+                          <Checkbox 
+                            checked={selectedIds.has(product.id)}
+                            onCheckedChange={() => toggleSelectProduct(product.id)}
+                            aria-label={`Selecionar ${product.name}`}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2 sm:gap-3">
                             {product.image_url ? (
@@ -865,6 +1026,169 @@ export default function StockControl() {
           }} />}
         </TabsContent>
       </Tabs>
+
+      {/* Bulk Actions Floating Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-foreground text-background rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3 border border-border/20">
+            <div className="flex items-center gap-2 pr-3 border-r border-background/20">
+              <CheckSquare className="h-4 w-4" />
+              <span className="text-sm font-medium whitespace-nowrap">{selectedIds.size} selecionado(s)</span>
+            </div>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-background hover:text-background hover:bg-background/20 gap-1.5"
+              onClick={() => setBulkCategoryDialogOpen(true)}
+            >
+              <Tag className="h-4 w-4" />
+              <span className="hidden sm:inline">Categoria</span>
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-background hover:text-background hover:bg-background/20 gap-1.5"
+              onClick={() => setBulkPriceDialogOpen(true)}
+            >
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Preço</span>
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-background hover:text-background hover:bg-background/20 gap-1.5"
+              onClick={handleBulkZeroStock}
+            >
+              <PackageMinus className="h-4 w-4" />
+              <span className="hidden sm:inline">Zerar Estoque</span>
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-300 hover:bg-red-500/20 gap-1.5"
+              onClick={handleBulkDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Excluir</span>
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-background/60 hover:text-background hover:bg-background/20 h-8 w-8 ml-1"
+              onClick={clearSelection}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Category Dialog */}
+      <Dialog open={bulkCategoryDialogOpen} onOpenChange={setBulkCategoryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Categoria em Massa</DialogTitle>
+            <DialogDescription>
+              Alterar a categoria de {selectedIds.size} produto(s) selecionado(s)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Categoria Principal *</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+              >
+                <option value="">Selecione...</option>
+                {mainCategories.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            {bulkCategory && subcategories.filter(s => s.parentId === mainCategories.find(m => m.name === bulkCategory)?.id).length > 0 && (
+              <div className="space-y-2">
+                <Label>Subcategoria</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={bulkSubcategory}
+                  onChange={(e) => setBulkSubcategory(e.target.value)}
+                >
+                  <option value="">Nenhuma</option>
+                  {subcategories
+                    .filter(s => s.parentId === mainCategories.find(m => m.name === bulkCategory)?.id)
+                    .map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkCategoryDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleBulkCategoryUpdate}>Aplicar em {selectedIds.size} produto(s)</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Price Dialog */}
+      <Dialog open={bulkPriceDialogOpen} onOpenChange={setBulkPriceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Preço em Massa</DialogTitle>
+            <DialogDescription>
+              Alterar preço de {selectedIds.size} produto(s) selecionado(s)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Campo</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={bulkPriceField}
+                onChange={(e) => setBulkPriceField(e.target.value as "price" | "cost_price")}
+              >
+                <option value="price">Preço de Venda</option>
+                <option value="cost_price">Preço de Custo</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Modo de Alteração</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={bulkPriceMode}
+                onChange={(e) => setBulkPriceMode(e.target.value as "percent" | "fixed")}
+              >
+                <option value="percent">Porcentagem (% aumento/desconto)</option>
+                <option value="fixed">Valor Fixo (R$)</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>
+                {bulkPriceMode === "percent" 
+                  ? "Percentual (ex: 10 para +10%, -15 para -15%)" 
+                  : "Novo valor em R$"}
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={bulkPriceValue}
+                onChange={(e) => setBulkPriceValue(e.target.value)}
+                placeholder={bulkPriceMode === "percent" ? "Ex: 10 ou -15" : "Ex: 149.90"}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkPriceDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleBulkPriceUpdate}>Aplicar em {selectedIds.size} produto(s)</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Product Form Dialog */}
       <ProductFormDialog
