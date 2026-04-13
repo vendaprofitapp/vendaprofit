@@ -47,6 +47,8 @@ interface Product {
   image_url: string | null;
   category: string | null;
   is_active: boolean;
+  supplier_id?: string | null;
+  suppliers?: { name: string } | null;
 }
 
 interface HubSharedProduct {
@@ -767,6 +769,7 @@ export default function HubFornecedor() {
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterHubStatus, setFilterHubStatus] = useState<string>("all");
+  const [filterSupplier, setFilterSupplier] = useState<string>("all");
 
   // Description / PIX / location settings
   const [hubDescription, setHubDescription] = useState("");
@@ -823,7 +826,7 @@ export default function HubFornecedor() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, cost_price, stock_quantity, image_url, category, is_active")
+        .select("id, name, price, cost_price, stock_quantity, image_url, category, is_active, supplier_id, suppliers(name)")
         .eq("owner_id", user!.id)
         .eq("is_active", true)
         .order("name");
@@ -902,6 +905,16 @@ export default function HubFornecedor() {
 
   // Unique categories for filter
   const categories = [...new Set(products.map((p) => p.category).filter(Boolean))] as string[];
+  
+  // Unique suppliers for filter
+  const suppliersList = Object.values(
+    products.reduce((acc, p) => {
+      if (p.supplier_id && p.suppliers?.name) {
+        acc[p.supplier_id] = { id: p.supplier_id, name: p.suppliers.name };
+      }
+      return acc;
+    }, {} as Record<string, { id: string; name: string }>)
+  ).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filtered products
   const filteredProducts = products.filter((p) => {
@@ -909,6 +922,7 @@ export default function HubFornecedor() {
     if (filterCategory !== "all" && p.category !== filterCategory) return false;
     if (filterHubStatus === "active" && !(hubEntry?.is_active)) return false;
     if (filterHubStatus === "inactive" && hubEntry?.is_active) return false;
+    if (filterSupplier !== "all" && p.supplier_id !== filterSupplier) return false;
     return true;
   });
 
@@ -1016,8 +1030,19 @@ export default function HubFornecedor() {
                   <SelectItem value="inactive">Inativos no HUB</SelectItem>
                 </SelectContent>
               </Select>
-              {(filterCategory !== "all" || filterHubStatus !== "all") && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => { setFilterCategory("all"); setFilterHubStatus("all"); }}>
+              <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue placeholder="Fornecedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os fornecedores</SelectItem>
+                  {suppliersList.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(filterCategory !== "all" || filterHubStatus !== "all" || filterSupplier !== "all") && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => { setFilterCategory("all"); setFilterHubStatus("all"); setFilterSupplier("all"); }}>
                   Limpar
                 </Button>
               )}
