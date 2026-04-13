@@ -92,6 +92,13 @@ interface Product {
   }>;
 }
 
+const getTotalStock = (product: Product): number => {
+  if (product.product_variants && product.product_variants.length > 0) {
+    return product.product_variants.reduce((sum, v) => sum + (Number(v.stock_quantity) || 0), 0);
+  }
+  return Number(product.stock_quantity) || 0;
+};
+
 
 export default function StockControl() {
   const { user } = useAuth();
@@ -534,7 +541,7 @@ export default function StockControl() {
     const term = debouncedSearch.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return products.filter((p) => {
-      const stockNum = Number(p.stock_quantity) || 0;
+      const stockNum = getTotalStock(p);
       const minLevelNum = Number(p.min_stock_level) || 0;
       const statusKey = getStockStatusKey(stockNum, minLevelNum);
       
@@ -801,7 +808,8 @@ export default function StockControl() {
                   </TableRow>
                 ) : (
                   visibleProducts.map((product) => {
-                    const status = getStockStatus(product.stock_quantity, product.min_stock_level);
+                    const stockNum = getTotalStock(product);
+                    const status = getStockStatus(stockNum, product.min_stock_level);
                     return (
                       <TableRow key={product.id} className={selectedIds.has(product.id) ? "bg-primary/5" : ""}>
                         <TableCell className="w-10">
@@ -839,7 +847,7 @@ export default function StockControl() {
                         <TableCell className="font-medium whitespace-nowrap">
                           R$ {product.price.toFixed(2).replace(".", ",")}
                         </TableCell>
-                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell>{stockNum}</TableCell>
                         <TableCell className="hidden sm:table-cell">
                           <Badge variant={status.variant}>{status.label}</Badge>
                         </TableCell>
@@ -910,7 +918,8 @@ export default function StockControl() {
                   </TableRow>
                 ) : (
                   visibleDirectPartner.map((product) => {
-                    const status = getStockStatus(product.stock_quantity, product.min_stock_level);
+                    const stockNum = getTotalStock(product);
+                    const status = getStockStatus(stockNum, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
                         <TableCell>
@@ -928,7 +937,7 @@ export default function StockControl() {
                         <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">{getProductSizesLabel(product)}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">{getProductColorsLabel(product)}</TableCell>
-                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell>{stockNum}</TableCell>
                         <TableCell className="hidden sm:table-cell"><Badge variant={status.variant}>{status.label}</Badge></TableCell>
                         <TableCell className="text-right">
                           <Button variant="outline" size="sm" onClick={() => { setSelectedProduct(product); setRequestDialogOpen(true); }}>
@@ -972,7 +981,8 @@ export default function StockControl() {
                   </TableRow>
                 ) : (
                   visibleGroupPartner.map((product) => {
-                    const status = getStockStatus(product.stock_quantity, product.min_stock_level);
+                    const stockNum = getTotalStock(product);
+                    const status = getStockStatus(stockNum, product.min_stock_level);
                     return (
                       <TableRow key={product.id}>
                         <TableCell>
@@ -990,7 +1000,7 @@ export default function StockControl() {
                         <TableCell className="text-muted-foreground hidden md:table-cell">{product.category}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">{getProductSizesLabel(product)}</TableCell>
                         <TableCell className="text-muted-foreground hidden sm:table-cell">{getProductColorsLabel(product)}</TableCell>
-                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell>{stockNum}</TableCell>
                         <TableCell className="hidden sm:table-cell"><Badge variant={status.variant}>{status.label}</Badge></TableCell>
                         <TableCell className="text-right">
                           <Button variant="outline" size="sm" onClick={() => { setSelectedProduct(product); setRequestDialogOpen(true); }}>
